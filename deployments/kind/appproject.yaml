@@ -1,0 +1,23 @@
+# The Argo CD AppProject the portal targets (matches ARGOCD_PROJECT default
+# "portal-managed"). Deliberately permissive — this is a local test stand, not
+# a multi-tenant prod project. It must allow BOTH application sources (the
+# in-cluster OCI registry chart + the GitLab values repo) and the cluster-/
+# namespace-scoped kinds the ingress-gateway chart renders (Gateway API + Istio).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: portal-managed
+  namespace: argocd
+spec:
+  description: Portal-managed services (local e2e stand)
+  sourceRepos:
+    - "*"
+  destinations:
+    - server: "*"
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

@@ -1,0 +1,81 @@
+# Local stack: Postgres + Redis + portal (fakes-only upstreams).
+# The fakes simulate Harbor/GitLab/ArgoCD so the full order happy-path runs
+# without any of those systems present.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal
+      POSTGRES_DB: portal
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # Minimal Keycloak for testing the OIDC flow. dev-mode, imports the "internal"
+  # realm (client "portal", groups team-*/platform-admins, users alice/padmin).
+  # Exposed on :8081 so browser and a host-run portal share the same issuer
+  # (http://localhost:8081/realms/internal). See README "OIDC" for how to run.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8080"
+    volumes:
+      - ./keycloak/realm-internal.json:/opt/keycloak/data/import/realm-internal.json:ro
+    ports:
+      - "8081:8080"
+
+  portal:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      HTTP_PORT: "8080"
+      # storage backends
+      STORE: postgres
+      CACHE: redis
+      DATABASE_URL: postgres://portal:portal@postgres:5432/portal?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      # upstreams: explicit fakes for this zero-infra dev stack (built-in default
+      # is now "real"; the upstreams overlay sets real + URLs/tokens).
+      HARBOR_MODE: fake
+      GITLAB_MODE: fake
+      ARGOCD_MODE: fake
+      # auth: dev mode (no Keycloak); user via X-Dev-* headers
+      AUTH_MODE: dev
+      STATUS_POLL_INTERVAL: 5s
+      LOG_FORMAT: text
+    ports:
+      - "8080:8080"
+
+  # Frontend SPA served by nginx; proxies /api -> portal and injects dev-auth.
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    depends_on:
+      - portal
+    ports:
+      - "8088:80"

@@ -1,0 +1,1 @@
+ALTER TABLE requests DROP COLUMN IF EXISTS namespace;

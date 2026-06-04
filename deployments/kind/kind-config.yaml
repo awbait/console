@@ -1,0 +1,21 @@
+# Single-node KinD cluster for the IDP e2e stand.
+# extraPortMappings publish two in-cluster NodePorts to fixed host ports so the
+# host (and the portal container, via host.docker.internal) can reach them
+# without a flaky `kubectl port-forward`:
+#   8083 -> argocd-server   (NodePort 30083, HTTP/insecure)
+#   8084 -> Harbor          (NodePort 30084, HTTPS/self-signed) — API + OCI registry
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: idp
+nodes:
+  # Pinned to v1.33.7 (kind v0.31's tested image): the default v1.35.0 node fails
+  # to bring up the kubelet on Docker Desktop / WSL2 ("required cgroups disabled").
+  - role: control-plane
+    image: kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040
+    extraPortMappings:
+      - containerPort: 30083
+        hostPort: 8083
+        protocol: TCP
+      - containerPort: 30084
+        hostPort: 8084
+        protocol: TCP

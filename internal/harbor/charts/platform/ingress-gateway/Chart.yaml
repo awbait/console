@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ingress-gateway
+version: 3.1.0
+appVersion: "3.1.0"
+description: Minimal test fixture for the harbor fake/client unit tests. The real, deployable chart lives in charts/ingress-gateway and is pushed to Harbor (the runtime source of charts).

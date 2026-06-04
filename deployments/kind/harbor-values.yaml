@@ -1,0 +1,49 @@
+# Minimal Harbor for the local e2e stand (harbor-helm, https://helm.goharbor.io).
+# Goal: a real registry serving BOTH the API v2.0 (portal catalog reads it) and
+# the OCI distribution endpoints (Argo CD pulls charts), reachable at the single
+# host name host.docker.internal:8084 — the same trick used for GitLab, so the
+# repoURL/registry host resolves identically from the host, the portal container,
+# and Argo pods inside KinD (via the CoreDNS patch in 10-coredns.ps1).
+#
+# "Minimal" = self-signed TLS, no Trivy scanner. Argo's Helm OCI client always
+# upgrades to HTTPS, so Harbor must speak TLS; Argo/helm skip verification
+# (insecure: true / --insecure-skip-tls-verify).
+#
+# Persistence is ON (KinD's default local-path StorageClass): the registry MUST
+# keep its blobs across pod restarts. With emptyDir, any registry pod roll wipes
+# the blob store while the DB keeps the artifact rows — a re-push then HEADs the
+# (now-missing) config blob, helm skips re-uploading it, and Harbor's core reads a
+# 0-byte blob → "unexpected EOF" → HTTP 500 on the manifest. PVCs avoid that. Data
+# is still disposable: `make stand-down` deletes the whole KinD cluster.
+expose:
+  type: nodePort
+  tls:
+    enabled: true
+    certSource: auto
+    auto:
+      commonName: host.docker.internal
+  nodePort:
+    name: harbor
+    ports:
+      http:
+        port: 80
+        nodePort: 30085
+      https:
+        port: 443
+        nodePort: 30084
+
+# Token realms + redirects are built from this; both the portal (host) and Argo
+# pods (CoreDNS) resolve it, so the WWW-Authenticate realm works everywhere.
+externalURL: https://host.docker.internal:8084
+
+harborAdminPassword: "Harbor12345"
+
+# Trim everything the chart catalog/OCI pull doesn't need, to fit a laptop.
+trivy:
+  enabled: false
+internalTLS:
+  enabled: false
+
+# Persistent volumes via KinD's default local-path StorageClass (see note above).
+persistence:
+  enabled: true

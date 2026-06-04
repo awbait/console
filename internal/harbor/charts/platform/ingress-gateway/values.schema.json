@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Minimal test fixture only. The real schema ships with charts/ingress-gateway and is served from Harbor at runtime. Keep top-level gateways/xroutes so the harbor unit tests still exercise schema extraction.",
+  "title": "ingress-gateway (test fixture)",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "naming": { "type": "object" },
+    "gateways": { "type": "array", "items": { "type": "object" } },
+    "xroutes": { "type": "array", "items": { "type": "object" } }
+  }
+}

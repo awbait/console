@@ -1,0 +1,73 @@
+{
+  "realm": "internal",
+  "enabled": true,
+  "sslRequired": "none",
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "portal",
+      "name": "IDP Portal",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "portal-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:8080/api/v1/auth/callback",
+        "http://localhost:5173/api/v1/auth/callback",
+        "http://10.10.100.33:8080/api/v1/auth/callback",
+        "http://10.10.100.33:5173/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://10.10.100.33:8080",
+        "http://10.10.100.33:5173"
+      ],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        }
+      ]
+    }
+  ],
+  "groups": [
+    { "name": "team-core" },
+    { "name": "team-dbaas" },
+    { "name": "team-payments" },
+    { "name": "platform-admins" }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Dev",
+      "credentials": [{ "type": "password", "value": "alice", "temporary": false }],
+      "groups": ["/team-core", "/team-dbaas"]
+    },
+    {
+      "username": "padmin",
+      "enabled": true,
+      "email": "padmin@example.com",
+      "emailVerified": true,
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "padmin", "temporary": false }],
+      "groups": ["/platform-admins", "/team-core", "/team-dbaas"]
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+# Локальный e2e-стенд: KinD + Argo CD + реальный GitLab
+
+Поднимает одноузловой KinD с Argo CD и связывает всё так, чтобы **полная петля
+работала на настоящем кластере**: заказ в портале → IDP коммитит
+`values.yaml`+`application.yaml` в реальный GitLab и открывает MR → авто-merge →
+Argo CD деплоит чарт в KinD → статус возвращается в портал
+(`DEPLOYING` → `Progressing`/`HEALTHY`).
+
+Требуется: Docker Desktop, `kind`, `kubectl`, `helm` (v3.13+/v4).
+
+## Архитектура
+
+- **Единое имя для GitLab — `host.docker.internal:8929`** — резолвится из хоста,
+  из контейнера portal и (после патча CoreDNS) из подов KinD. Поэтому `repoURL` в
+  Application одинаков везде.
+- **Argo CD** — `argocd-server` в insecure-режиме (HTTP), опубликован на
+  `host.docker.internal:8083` через NodePort 30083 (`kind-config.yaml`
+  `extraPortMappings`).
+- **Harbor** (`harbor-helm`, минимальный: Trivy off, **самоподписанный TLS**,
+  persistent volumes через local-path StorageClass KinD — registry обязан хранить
+  блобы между перекатами пода, иначе emptyDir теряет их и push даёт 500) —
+  настоящий реестр, отдаёт И API v2.0 (каталог портала
+  читает его), И OCI-реестр (Argo тянет чарты). Опубликован на
+  `host.docker.internal:8084` (NodePort 30084) — **тем же именем**, что и GitLab,
+  поэтому host/container/поды KinD (через CoreDNS) резолвят его одинаково. Argo CD
+  всегда апгрейдит OCI до HTTPS → Harbor обязан говорить по TLS; Argo и `helm`
+  пропускают проверку (`insecure: true` / `--insecure-skip-tls-verify`). Проект
+  `platform` создаётся **public** (`45-harbor-project.ps1`) → анонимный pull и
+  анонимное чтение каталога (creds не нужны); push (`50-charts.ps1`) — под admin
+  (`admin` / `Harbor12345`). Раскладка чартов — `docs/chart-convention.md`.
+- **IDP коммитит полноценный `application.yaml`** (`kind: Application`,
+  multi-source) рядом с `values.yaml` в папке заказа `<service>/`: source 0 — чарт
+  из OCI (`{CHART_REGISTRY}/{chart_project}`), source 1 — этот же git-репо
+  (`ref: values`), а `helm.valueFiles: $values/<service>/values.yaml` подмешивает
+  соседний values. Манифест самодостаточен.
+- **`CHART_REGISTRY`** (env у бэка) — база OCI для chart-source. На стенде
+  `host.docker.internal:8084` (тот же хост, что HARBOR_URL); в проде — Harbor.
+- **app-of-apps ApplicationSet** (`applicationset.yaml`, `kind: ApplicationSet`) —
+  единый generic-механизм без перечисления репо: SCM-provider (GitLab) авто-находит
+  ВСЕ репозитории группы `managed-services` (incl. подгруппы) и на каждый создаёт
+  directory-`Application`, который рекурсивно применяет `<service>/application.yaml`
+  как CR. Новые репо/сервисы подхватываются автоматически.
+
+## Запуск
+
+```powershell
+make stand-up            # KinD + Argo + registry + charts + appset; печатает ARGOCD_TOKEN
+# скопировать ARGOCD_TOKEN в deployments/.env
+make up-upstreams        # реальный GitLab + portal в real-режиме (тяжело: ~4 ГБ)
+# подождать пока GitLab healthy (~3-5 мин)
+make gitlab-seed         # группы GitOps + фиксированный токен
+make stand-down          # снести KinD-кластер
+```
+
+## e2e-проверка
+
+1. `kubectl get pods -n argocd` — все Running.
+2. CoreDNS-резолв: `kubectl run dnstest --rm -it --image=busybox --restart=Never -- nslookup host.docker.internal`.
+3. Чарт в реестре: `helm pull oci://host.docker.internal:8084/platform/ingress-gateway --version 3.1.0 --insecure-skip-tls-verify`
+   (или Harbor API: `curl -sk https://host.docker.internal:8084/api/v2.0/projects/platform/repositories`).
+4. Argo API: `curl -H "Authorization: Bearer $env:ARGOCD_TOKEN" http://host.docker.internal:8083/api/v1/version`.
+5. Заказ (dev-auth, команда `core`; тело `values` — см. `charts/ingress-gateway/minimal-values.yaml`):
+   ```bash
+   curl -X POST http://localhost:8080/api/v1/requests -H 'Content-Type: application/json' \
+     -H 'X-Dev-Sub: alice' -H 'X-Dev-Teams: core' -H 'X-Dev-Role: member' \
+     -d '{"chart":"platform/ingress-gateway","version":"3.1.0","team":"core","service_name":"demo-gw","values":{...}}'
+   ```
+   → `status: MR_CREATED`, `argocd_app_name: core-demo-gw`.
+6. MR авто-мёржится поллером → `MR_MERGED`.
+7. SCM-provider находит репо (≤60с) и создаёт directory-app `repo-<chart>-<hash>`;
+   тот применяет `<service>/application.yaml`. Проверка:
+   `kubectl get applications -n argocd -l idp.service=demo-gw` → появляется `core-demo-gw`.
+8. `kubectl describe application core-demo-gw -n argocd` → два source (OCI chart 3.1.0 + git `$values`), `Synced`/`Progressing`.
+9. `GET /api/v1/requests/<id>` → `MR_MERGED` → `DEPLOYING` → `Progressing`/`HEALTHY`.
+10. Удаление: `DELETE /requests/<id>` → MR убирает папку → directory-app prune → child `Application` удаляется → портал `DELETED`.
+
+## Скрипты
+
+`up.ps1` оркеструет: `00-cluster` → `20-argocd` → `10-coredns` → `30-crds` →
+`35-istio` → `40-harbor` → `45-harbor-project` → `50-charts` → `60-argo-repos` →
+`70-appset` → `token`. Каждый можно запускать отдельно (идемпотентны где возможно).
+`40-harbor.ps1` ставит Harbor через `harbor-helm` (values — `harbor-values.yaml`) и
+ждёт `/api/v2.0/health`. `35-istio.ps1` ставит istiod + MetalLB, чтобы Gateway
+(`gatewayClassName: istio`) был `Programmed` и приложение могло стать `Healthy`.
+
+## Известные риски / тонкие места
+
+1. **`host.docker.internal` в подах KinD** — чинится патчем CoreDNS
+   (`10-coredns.ps1`, gateway сети `kind`). Без него Argo не склонирует git-source.
+   Фолбэк: подключить kind-ноду к compose-сети и DNS-имя `gitlab` (хуже — меняет
+   `repoURL`).
+2. **OCI поверх HTTP не работает в Argo** — Argo CD (helm-клиент) всегда апгрейдит
+   OCI до HTTPS (`server gave HTTP response to HTTPS client`). Поэтому реестр здесь
+   на самоподписанном TLS, а Argo пропускает проверку через `insecure: true`
+   (= `helm --insecure-skip-tls-verify`). Plain-http через поле репозитория в
+   v3.4 недоступно для `type: helm`.
+3. **Healthy и Gateway** — `35-istio.ps1` ставит istiod (регистрирует
+   `GatewayClass istio` и программирует Gateway) + MetalLB (даёт LoadBalancer-IP в
+   KinD, иначе Gateway `Programmed=False/AddressNotAssigned`). После этого Gateway
+   `Accepted+Programmed=True`. Приложение становится `Healthy`, **только если
+   маршруты заказа валидны**: `parentRef`/`sectionName` совпадает с listener'ом
+   Gateway и `backendRefs` указывают на существующие Service. Иначе HTTPRoute
+   `Accepted=False (NoMatchingParent)` / `ResolvedRefs=False (BackendNotFound)` →
+   приложение `Degraded` (это данные заказа, не инфраструктура). Gateway API
+   ставится из **experimental**-канала (нужны TCP/TLS/UDP routes чарта).
+4. **Образ ноды KinD** закреплён на `v1.33.7`: дефолтный `v1.35.0` не поднимает
+   kubelet на Docker Desktop/WSL2 (`required cgroups disabled`).
+5. **Установка Argo — server-side apply** (`--server-side --force-conflicts`): CRD
+   `applicationsets` слишком велик для client-side apply (аннотация > 256 КБ).
+
+## Про `kind: Application` vs `kind: ApplicationSet`
+
+`Application` **не устарел** — это базовый CRD, единица деплоя (один инстанс).
+`ApplicationSet` — это «фабрика», которая по генератору (git/scm/list) **создаёт
+множество** `Application`. Это разные сущности, а не замена одной другой.
+
+Поэтому в стенде два слоя с разными kind:
+- то, что IDP коммитит на КАЖДЫЙ заказ — `kind: Application` (`<service>/application.yaml`):
+  один сервис = один Application;
+- bootstrap (`deployments/kind/applicationset.yaml`) — `kind: ApplicationSet`: он
+  обнаруживает репо и создаёт directory-`Application`, которые применяют те самые
+  закоммиченные `Application`.
+
+Коммитить `kind: ApplicationSet` на каждый сервис смысла нет (ApplicationSet
+генерирует приложения, а не описывает один инстанс).

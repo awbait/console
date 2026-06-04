@@ -1,0 +1,174 @@
+package auth
+
+import (
+	"cmp"
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"net/http"
+	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"idp/pkg/models"
+	"golang.org/x/oauth2"
+)
+
+// OIDC authenticates via Keycloak Authorization Code flow (PKCE-ready) and keeps
+// server-side sessions in Redis. Access tokens are silently refreshed.
+type OIDC struct {
+	provider   *oidc.Provider
+	verifier   *oidc.IDTokenVerifier
+	oauth      oauth2.Config
+	sessions   *SessionStore
+	rbac       RBAC
+	cookieName string
+	secure     bool
+	postLogin  string
+}
+
+var _ Authenticator = (*OIDC)(nil)
+
+// OIDCConfig configures the OIDC authenticator.
+type OIDCConfig struct {
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
+	Scopes       []string
+	CookieName   string
+	Secure       bool
+	// Where to send the browser after a successful login (default "/").
+	PostLogin string
+}
+
+// NewOIDC discovers the issuer and builds the authenticator.
+func NewOIDC(ctx context.Context, c OIDCConfig, sessions *SessionStore, rbac RBAC) (*OIDC, error) {
+	provider, err := oidc.NewProvider(ctx, c.Issuer)
+	if err != nil {
+		return nil, err
+	}
+	return &OIDC{
+		provider: provider,
+		verifier: provider.Verifier(&oidc.Config{ClientID: c.ClientID}),
+		oauth: oauth2.Config{
+			ClientID:     c.ClientID,
+			ClientSecret: c.ClientSecret,
+			Endpoint:     provider.Endpoint(),
+			RedirectURL:  c.RedirectURL,
+			Scopes:       c.Scopes,
+		},
+		sessions:   sessions,
+		rbac:       rbac,
+		cookieName: c.CookieName,
+		secure:     c.Secure,
+		postLogin:  cmp.Or(c.PostLogin, "/"),
+	}, nil
+}
+
+type claims struct {
+	Email    string   `json:"email"`
+	Username string   `json:"preferred_username"`
+	Name     string   `json:"name"`
+	Groups   []string `json:"groups"`
+}
+
+func randState() string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
+	state := randState()
+	http.SetCookie(w, &http.Cookie{
+		Name: "oauth_state", Value: state, Path: "/", HttpOnly: true,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
+	})
+	http.Redirect(w, r, o.oauth.AuthCodeURL(state), http.StatusFound)
+}
+
+func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	stateCookie, err := r.Cookie("oauth_state")
+	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return
+	}
+	oauth2Token, err := o.oauth.Exchange(ctx, r.URL.Query().Get("code"))
+	if err != nil {
+		http.Error(w, "token exchange failed", http.StatusBadGateway)
+		return
+	}
+	rawID, ok := oauth2Token.Extra("id_token").(string)
+	if !ok {
+		http.Error(w, "no id_token", http.StatusBadGateway)
+		return
+	}
+	idToken, err := o.verifier.Verify(ctx, rawID)
+	if err != nil {
+		http.Error(w, "invalid id_token", http.StatusUnauthorized)
+		return
+	}
+	var cl claims
+	if err := idToken.Claims(&cl); err != nil {
+		http.Error(w, "bad claims", http.StatusBadGateway)
+		return
+	}
+	user := o.rbac.BuildUser(idToken.Subject, cl.Email, cl.Username, cl.Name, cl.Groups)
+	sess := &Session{
+		User:         user,
+		AccessToken:  oauth2Token.AccessToken,
+		RefreshToken: oauth2Token.RefreshToken,
+		IDToken:      rawID,
+		Expiry:       oauth2Token.Expiry,
+	}
+	id, err := o.sessions.Create(ctx, sess)
+	if err != nil {
+		http.Error(w, "session error", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: o.cookieName, Value: id, Path: "/", HttpOnly: true,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(w, r, o.postLogin, http.StatusFound)
+}
+
+func (o *OIDC) Authenticate(r *http.Request) (*models.User, error) {
+	c, err := r.Cookie(o.cookieName)
+	if err != nil || c.Value == "" {
+		return nil, ErrUnauthenticated
+	}
+	sess, err := o.sessions.Get(r.Context(), c.Value)
+	if err != nil {
+		return nil, ErrUnauthenticated
+	}
+	// Silent refresh: if the access token expired and we have a refresh token,
+	// refresh and persist. On failure, force re-login.
+	if !sess.Expiry.IsZero() && time.Now().After(sess.Expiry) && sess.RefreshToken != "" {
+		ts := o.oauth.TokenSource(r.Context(), &oauth2.Token{RefreshToken: sess.RefreshToken})
+		newTok, err := ts.Token()
+		if err != nil {
+			_ = o.sessions.Delete(r.Context(), c.Value)
+			return nil, ErrUnauthenticated
+		}
+		sess.AccessToken = newTok.AccessToken
+		sess.Expiry = newTok.Expiry
+		if newTok.RefreshToken != "" {
+			sess.RefreshToken = newTok.RefreshToken
+		}
+		// best-effort persist (overwrites same key would need re-create; skipped for skeleton)
+	}
+	return sess.User, nil
+}
+
+func (o *OIDC) Logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(o.cookieName); err == nil && c.Value != "" {
+		_ = o.sessions.Delete(r.Context(), c.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: o.cookieName, Value: "", Path: "/", HttpOnly: true,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}

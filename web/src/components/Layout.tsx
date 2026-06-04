@@ -1,0 +1,430 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import {
+  Button,
+  Dialog,
+  DialogTrigger,
+  Disclosure,
+  DisclosureGroup,
+  DisclosurePanel,
+  Heading,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Modal,
+  ModalOverlay,
+  Popover,
+} from "react-aria-components";
+import {
+  IconActivity,
+  IconBell,
+  IconBox,
+  IconChevronDown,
+  IconChevronRight,
+  IconCloud,
+  IconHelp,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconLogout,
+  IconPackages,
+  IconUser,
+  IconUsersGroup,
+} from "@tabler/icons-react";
+import { api } from "../api/client";
+import { useAsync } from "../hooks/useAsync";
+import { useUser } from "../auth/UserContext";
+import { useTeam } from "../app/TeamContext";
+import { PRODUCT_CATEGORIES, findProductByChart, type ProductDef } from "./icons";
+import { Spinner } from "./ui";
+
+const navItems = [
+  { to: "/requests", label: "Список заказов", Icon: IconBox },
+  { to: "/catalog", label: "Чарты", Icon: IconPackages },
+];
+
+export function Layout() {
+  const { user, loading, unauthenticated } = useUser();
+  const [collapsed, setCollapsed] = useState(false);
+  const { pathname } = useLocation();
+
+  // On a request detail/edit route the URL doesn't say which product it is, so
+  // fetch the order and map its chart to a product — that product's sidebar item
+  // then lights up (e.g. viewing an Ingress Gateway order highlights it).
+  const reqId = pathname.match(/^\/requests\/([^/]+)(?:\/edit)?$/)?.[1];
+  const { data: reqForNav } = useAsync(
+    () => (reqId ? api.getRequest(reqId) : Promise.resolve(null)),
+    [reqId],
+  );
+  const navReq = reqForNav?.request;
+  const activeReqProduct = navReq ? findProductByChart(navReq.chart_project, navReq.chart_name) : undefined;
+
+  // Which products can actually be ordered: a mapped chart that exists in the
+  // registry, or a chart-less product backed by a static schema. Non-orderable
+  // products are disabled (greyed, non-clickable) in the sidebar. While the chart
+  // list is loading we stay optimistic for mapped products (don't disable) to
+  // avoid flicker and false-offs on a transient API hiccup.
+  const { data: charts } = useAsync(() => api.listCharts(), []);
+  const chartKeys = useMemo(
+    () => new Set((charts ?? []).map((c) => `${c.project}/${c.name}`)),
+    [charts],
+  );
+  const orderable = (p: ProductDef) =>
+    p.chart
+      ? charts === undefined || chartKeys.has(`${p.chart.project}/${p.chart.name}`)
+      : !!p.schema;
+
+  // A product is "active" on its own page (/products/:slug[/…]), while ordering
+  // its chart (/catalog/:project/:name/order — ordering is a product action), and
+  // on a request of its chart (/requests/:id). Browsing the chart itself
+  // (/catalog/:project/:name, no /order) is NOT a product — it belongs to "Чарты",
+  // so that top-level item lights up there instead.
+  const productActive = (p: { slug: string; chart?: { project: string; name: string } }) =>
+    pathname === `/products/${p.slug}` ||
+    pathname.startsWith(`/products/${p.slug}/`) ||
+    (!!p.chart && pathname === `/catalog/${p.chart.project}/${p.chart.name}/order`) ||
+    activeReqProduct?.slug === p.slug;
+  const activeCategory = PRODUCT_CATEGORIES.find((g) => g.products.some(productActive))?.id;
+
+  // Controlled category expansion: all categories open by default, user toggles
+  // persist, and the active category auto-expands (it can resolve async, after
+  // the request fetch, so defaultExpandedKeys alone wouldn't reopen it).
+  const [expanded, setExpanded] = useState(() => new Set<string>(PRODUCT_CATEGORIES.map((g) => g.id)));
+  useEffect(() => {
+    if (activeCategory) {
+      setExpanded((prev) => (prev.has(activeCategory) ? prev : new Set(prev).add(activeCategory)));
+    }
+  }, [activeCategory]);
+
+  // Top-level nav active state. "Чарты"/"Список заказов" must NOT light up when
+  // the route belongs to a product (ordering a gateway under /catalog/…, or
+  // viewing a gateway order under /requests/:id) — the product item owns it.
+  const navActive = (to: string) => {
+    if (to === "/catalog")
+      return (pathname === "/catalog" || pathname.startsWith("/catalog/")) && !activeCategory;
+    if (to === "/requests")
+      return (pathname === "/requests" || pathname.startsWith("/requests/")) && !activeReqProduct;
+    return pathname === to || pathname.startsWith(`${to}/`);
+  };
+
+  if (loading) return <Spinner />;
+  if (unauthenticated || !user) return <LoginScreen />;
+
+  return (
+    <div className="flex h-screen bg-slate-50 text-slate-800">
+      {/* LEFT NAV — full height; width animates (px→px) for a smooth collapse */}
+      <aside
+        className={`flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-in-out ${
+          collapsed ? "w-16" : "w-[260px]"
+        }`}
+      >
+        <div className="flex h-14 items-center gap-2.5 border-b border-slate-100 px-4">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-white">
+            <IconCloud size={20} stroke={1.8} />
+          </span>
+          {!collapsed && <span className="truncate text-sm font-semibold text-slate-800">Dev Portal</span>}
+        </div>
+
+        {/* flat group: Ресурсы / Чарты (active via navActive aria-current) */}
+        <nav className="px-2 py-3">
+          <ul className="flex flex-col gap-0.5">
+            {navItems.map((n) => {
+              const Icon = n.Icon;
+              return (
+                <li key={n.to}>
+                  <Link
+                    to={n.to}
+                    title={collapsed ? n.label : undefined}
+                    aria-current={navActive(n.to) ? "page" : undefined}
+                    className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+                  >
+                    <Icon size={20} stroke={1.7} className="shrink-0" />
+                    {!collapsed && <span className="shrink-0">{n.label}</span>}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        <div className="mx-3 border-t border-slate-100" />
+
+        {/* static product categories (order is placed from here) */}
+        {collapsed ? (
+          <nav className="flex flex-col gap-0.5 px-2 py-3">
+            {PRODUCT_CATEGORIES.map((g) => {
+              const Icon = g.Icon;
+              const first = g.products.find(orderable);
+              return (
+                <Link
+                  key={g.id}
+                  to={first ? `/products/${first.slug}` : "/catalog"}
+                  title={g.label}
+                  aria-current={activeCategory === g.id ? "page" : undefined}
+                  className="flex rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+                >
+                  <Icon size={20} stroke={1.7} />
+                </Link>
+              );
+            })}
+          </nav>
+        ) : (
+          <DisclosureGroup
+            allowsMultipleExpanded
+            expandedKeys={expanded}
+            onExpandedChange={(keys) => setExpanded(new Set([...keys].map(String)))}
+            className="px-2 py-3"
+          >
+            {PRODUCT_CATEGORIES.map((g) => {
+              const Icon = g.Icon;
+              return (
+                <Disclosure key={g.id} id={g.id} className="group">
+                  <Heading>
+                    <Button
+                      slot="trigger"
+                      className="flex w-full items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
+                      <span className="flex items-center gap-3">
+                        <Icon size={20} stroke={1.7} />
+                        {g.label}
+                      </span>
+                      <IconChevronRight
+                        size={16}
+                        className="text-slate-400 transition-transform duration-200 group-data-[expanded]:rotate-90"
+                      />
+                    </Button>
+                  </Heading>
+                  <DisclosurePanel>
+                    <ul className="ml-[22px] flex flex-col gap-0.5 border-l border-slate-100 py-1 pl-2">
+                      {g.products.map((p) =>
+                        orderable(p) ? (
+                          <li key={p.slug}>
+                            <Link
+                              to={`/products/${p.slug}`}
+                              aria-current={productActive(p) ? "page" : undefined}
+                              className="block whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700"
+                            >
+                              {p.label}
+                            </Link>
+                          </li>
+                        ) : (
+                          // Not orderable (no chart in the registry, no static schema):
+                          // show it greyed and non-clickable so the taxonomy still reads.
+                          <li key={p.slug}>
+                            <span
+                              title="Недоступен для заказа"
+                              aria-disabled="true"
+                              className="block cursor-not-allowed whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-300"
+                            >
+                              {p.label}
+                            </span>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </DisclosurePanel>
+                </Disclosure>
+              );
+            })}
+          </DisclosureGroup>
+        )}
+
+        {/* collapse toggle */}
+        <div className="mt-auto border-t border-slate-100 p-2">
+          <Button
+            onPress={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+            aria-pressed={collapsed}
+            className="flex w-full items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            {collapsed ? (
+              <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
+            ) : (
+              <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
+            )}
+            {!collapsed && <span className="shrink-0">Свернуть меню</span>}
+          </Button>
+        </div>
+      </aside>
+
+      {/* RIGHT COLUMN: topbar + content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* TOPBAR */}
+      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4">
+        <OrgSelector />
+        <div className="flex items-center gap-1">
+          <Link
+            to="/status"
+            aria-label="Статус системы"
+            title="Статус системы"
+            aria-current={pathname.startsWith("/status") ? "page" : undefined}
+            className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+          >
+            <IconActivity size={20} stroke={1.7} />
+          </Link>
+          <IconButton label="Документация">
+            <IconHelp size={20} stroke={1.7} />
+          </IconButton>
+          <IconButton label="Уведомления">
+            <IconBell size={20} stroke={1.7} />
+          </IconButton>
+          <UserMenu />
+        </div>
+      </header>
+
+        {/* MAIN — min-h-0 lets this flex child shrink below its content so its
+            own overflow-y-auto scrolls instead of growing the page. relative
+            makes it the containing block for react-aria's absolutely-positioned
+            hidden nodes (VisuallyHidden/HiddenSelect) so they're clipped here
+            instead of escaping to grow the document (whole-page scroll + phantom
+            white block on the form). */}
+        <main className="relative min-h-0 flex-1 overflow-y-auto p-6">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function OrgSelector() {
+  const { team, teams, setTeam } = useTeam();
+  if (teams.length === 0) {
+    return (
+      <span className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-1.5 text-sm text-slate-400">
+        <IconUsersGroup size={18} stroke={1.7} />
+        нет группы
+      </span>
+    );
+  }
+  // A single group can't be switched: show it as a static "current project" chip
+  // (no chevron, no hover affordance) so it reads as context, not a control.
+  if (teams.length === 1) {
+    return (
+      <span className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm">
+        <IconUsersGroup size={18} stroke={1.7} className="text-brand-600" />
+        <span className="text-slate-400">Проект:</span>
+        <span className="font-semibold text-slate-800">{team}</span>
+      </span>
+    );
+  }
+  return (
+    <DialogTrigger>
+      <Button className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50">
+        <IconUsersGroup size={18} stroke={1.7} className="text-brand-600" />
+        <span className="text-slate-400">Проект:</span>
+        <span className="font-semibold text-slate-800">{team}</span>
+        <IconChevronDown
+          size={16}
+          className="text-slate-400 transition-transform duration-200 group-hover:text-brand-500 group-data-[pressed]:rotate-180"
+        />
+      </Button>
+      <ModalOverlay
+        isDismissable
+        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
+      >
+        <Modal className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
+          <Dialog className="outline-none">
+            {({ close }) => (
+              <>
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <Heading slot="title" className="text-sm font-semibold text-slate-800">
+                    Выбор группы
+                  </Heading>
+                  <p className="text-xs text-slate-500">Ваши team-* группы</p>
+                </div>
+                <ul className="max-h-72 overflow-auto p-2">
+                  {teams.map((t) => (
+                    <li key={t}>
+                      <button
+                        onClick={() => {
+                          setTeam(t);
+                          close();
+                        }}
+                        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="flex items-center gap-3">
+                          <IconUsersGroup size={18} stroke={1.7} className="text-brand-600" />
+                          <span className="font-medium text-slate-800">{t}</span>
+                        </span>
+                        {t === team && <span className="text-xs text-brand-600">текущая</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+    </DialogTrigger>
+  );
+}
+
+function IconButton({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <button
+      aria-label={label}
+      className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+    >
+      {children}
+    </button>
+  );
+}
+
+function UserMenu() {
+  const { user } = useUser();
+  if (!user) return null;
+
+  return (
+    <MenuTrigger>
+      <Button className="ml-2 flex items-center gap-2 rounded-md py-1 pl-1 pr-2 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+          <IconUser size={18} stroke={1.7} />
+        </span>
+        <span className="text-left text-xs leading-tight">
+          <span className="block font-medium text-slate-800">{user.name || user.preferred_username}</span>
+          <span className="block text-slate-400">{user.role}</span>
+        </span>
+      </Button>
+      <Popover className="min-w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu
+          className="outline-none"
+          onAction={(key) => {
+            if (key === "logout") {
+              api.logout().finally(() => {
+                window.location.href = "/";
+              });
+            }
+          }}
+        >
+          <MenuItem
+            id="logout"
+            className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+          >
+            <IconLogout size={16} stroke={1.7} />
+            Выйти
+          </MenuItem>
+        </Menu>
+      </Popover>
+    </MenuTrigger>
+  );
+}
+
+function LoginScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-brand-600 text-white">
+          <IconCloud size={24} stroke={1.8} />
+        </div>
+        <h1 className="text-lg font-semibold text-slate-800">Dev Portal</h1>
+        <p className="mt-1 text-sm text-slate-500">Вы не аутентифицированы.</p>
+        <a
+          href={api.loginUrl()}
+          className="mt-4 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+        >
+          Войти через Keycloak
+        </a>
+      </div>
+    </div>
+  );
+}

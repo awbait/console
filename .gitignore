@@ -1,0 +1,25 @@
+# Binaries
+/portal
+/bin/
+*.exe
+
+# Env / secrets
+.env
+
+# Go
+/vendor/
+
+# Frontend
+node_modules/
+web/dist/
+web/.vite/
+*.log
+
+# Helm packaging artifacts
+*.tgz
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,4 @@
+# Test fixture defaults only. The real chart's values live in
+# charts/ingress-gateway/values.yaml and are served from Harbor at runtime.
+gateways: []
+xroutes: []
