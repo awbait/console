@@ -12,6 +12,7 @@ import type {
   UpdateOrderBody,
   User,
   SystemStatus,
+  ViewDocument,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -86,6 +87,13 @@ export const api = {
       "GET",
       `/charts/${enc(project)}/${enc(name)}/changelog/aggregated?limit=${limit}`,
     ),
+  // Активная согласованная view чарта (view-документ из публикации). null —
+  // у чарта нет approved-view (заказ через форму недоступен).
+  getChartView: (project: string, name: string) =>
+    req<ViewDocument>("GET", `/charts/${enc(project)}/${enc(name)}/view`).catch((e) => {
+      if (e instanceof HttpError && e.status === 404) return null;
+      throw e;
+    }),
 
   // requests
   listRequests: (params?: Record<string, string>) =>

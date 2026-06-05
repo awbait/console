@@ -59,9 +59,9 @@ interface ItemConfig {
   // Optional: post-process an item before it's saved (e.g. force enabled=true,
   // fill parentRefs[].gateway with our Gateway's name).
   prepare?: (item: Values, full: Values) => Values;
-  // Optional: pick the item-form presentation view from the chart's companion
-  // {chart}.ui.json (e.g. hide enabled/gateway). Keeps presentation in the views
-  // file, not in the chart schema.
+  // Optional: pick the item-form presentation view from the chart's approved
+  // view document (e.g. hide enabled/gateway). Keeps presentation in the view
+  // document, not in the chart schema.
   itemView?: (ui: any) => View | undefined;
 }
 
@@ -73,17 +73,17 @@ const SAVE_HINT = "Изменение откроет merge request с обнов
 function ItemsTab({ request, modifiable, reload, config }: ProductTabProps & { config: ItemConfig }) {
   const full = useMemo(() => parseValues(request.values_yaml), [request.values_yaml]);
   const items = config.read(full);
-  // Item-form presentation comes from the chart's companion {chart}.ui.json (so
-  // hiding fields stays in the views file, not the chart schema).
+  // Item-form presentation comes from the chart's approved view document (so
+  // hiding fields stays in the view document, not the chart schema).
   const { data: itemView } = useAsync(
     () =>
       config.itemView
-        ? fetch(`/schemas/${encodeURIComponent(request.chart_name)}.ui.json`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((j) => config.itemView!(j) ?? null)
+        ? api
+            .getChartView(request.chart_project, request.chart_name)
+            .then((j) => (j ? config.itemView!(j) ?? null : null))
             .catch(() => null)
         : Promise.resolve(null),
-    [request.chart_name],
+    [request.chart_project, request.chart_name],
   );
   const [editIndex, setEditIndex] = useState<number | null>(null); // row index being edited
   const [adding, setAdding] = useState(false);
@@ -430,7 +430,7 @@ const ROUTES: ItemConfig = {
     return out;
   },
   // Presentation (hide enabled, hide parentRefs[].gateway) lives in the routes
-  // view of {chart}.ui.json, applied to one xroute item.
+  // view of the chart's view document, applied to one xroute item.
   itemView: (ui) => ui?.views?.routes?.overrides?.xroutes?.["ui:view"],
 };
 

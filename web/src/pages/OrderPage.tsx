@@ -77,17 +77,15 @@ export function OrderPage() {
   // A draft keeps its pinned version; a new order always takes the latest.
   const effectiveVersion = editing ? draft?.chart_version ?? null : chart?.latest_version ?? null;
 
-  // Load the schema (from the chart, via the API) plus an optional companion
-  // /schemas/{name}.ui.json holding presentation views. The "order" view curates
-  // the form (e.g. one Gateway, hide xroutes); the schema stays the single
-  // source of truth for validation.
+  // Load the schema (from the chart, via the API) plus the chart's approved
+  // view document (from its publication). The "order" view curates the form
+  // (e.g. one Gateway, hide xroutes); the schema stays the single source of
+  // truth for validation.
   const { data: form } = useAsync(
     async () => {
       if (!project || !name || !effectiveVersion) return null;
       const schema = await api.getSchema(project, name, effectiveVersion);
-      const ui = await fetch(`/schemas/${name}.ui.json`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
+      const ui = await api.getChartView(project, name).catch(() => null);
       return { schema, view: ui?.views?.order };
     },
     [project, name, effectiveVersion],

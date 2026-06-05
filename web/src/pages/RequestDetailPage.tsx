@@ -413,15 +413,15 @@ function InfoTab({
 function InfoActions({ request: r, onChanged }: { request: RequestDetail["request"]; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   // The resources editor is declared as a "resources" view in the chart's
-  // companion {name}.ui.json (same place as the order/routes views). No view ->
+  // approved view document (same place as the order/routes views). No view ->
   // no action (charts without one don't get the menu).
   const { data: resourcesView } = useAsync(
     () =>
-      fetch(`/schemas/${encodeURIComponent(r.chart_name)}.ui.json`)
-        .then((res) => (res.ok ? res.json() : null))
+      api
+        .getChartView(r.chart_project, r.chart_name)
         .then((j) => j?.views?.resources ?? null)
         .catch(() => null),
-    [r.chart_name],
+    [r.chart_project, r.chart_name],
   );
   if (!resourcesView) return null;
   const item = "cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50";
@@ -447,7 +447,7 @@ function InfoActions({ request: r, onChanged }: { request: RequestDetail["reques
 
 // ResourcesModal edits gateways[0].resources with a SCHEMA + VIEW driven form:
 // it fetches the chart's values.schema.json and renders it through the chart's
-// "resources" view (declared in {name}.ui.json), so the fields stay in sync with
+// "resources" view (declared in the chart's view document), so the fields stay in sync with
 // the schema and the projection lives declaratively alongside the order/routes views.
 function ResourcesModal({
   request: r,

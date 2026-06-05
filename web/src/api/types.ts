@@ -129,6 +129,13 @@ export interface SystemStatus {
   components: ComponentStatus[];
 }
 
+// View-документ публикации чарта (бывший /schemas/{chart}.ui.json, теперь в БД,
+// отдаётся бэкендом). views.* — презентационные проекции поверх values.schema.json
+// (order/routes/listeners/resources, см. SchemaForm.View).
+export interface ViewDocument {
+  views?: Record<string, any>;
+}
+
 // A minimal JSON Schema subset we render forms from.
 export interface JSONSchema {
   type?: string;
