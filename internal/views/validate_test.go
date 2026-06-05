@@ -89,18 +89,18 @@ func TestStructuralIssues(t *testing.T) {
 	cases := []struct {
 		name, doc, path, msg string
 	}{
-		{"broken json", `{broken`, "", "невалидный JSON"},
+		{"broken json", `{broken`, "", "Невалидный JSON"},
 		{"no views", `{"version":1}`, "", `"views"`},
 		{"views not object", `{"views":[]}`, "/views", "объект"},
-		{"unknown root key", `{"views":{"order":{}},"viws":{}}`, "/viws", "неизвестное"},
-		{"unknown view key", `{"views":{"order":{"includ":["x"]}}}`, "/views/order/includ", "неизвестное"},
+		{"unknown root key", `{"views":{"order":{}},"viws":{}}`, "/viws", "Лишнее поле"},
+		{"unknown view key", `{"views":{"order":{"includ":["x"]}}}`, "/views/order/includ", "Неизвестное поле"},
 		{"include not array", `{"views":{"order":{"include":"naming"}}}`, "/views/order/include", "массивом"},
 		{"bad widget", `{"views":{"order":{"overrides":{"x":{"ui:widget":"fancy"}}}}}`, "ui:widget", "single"},
 		{"identity not pointer", `{"views":{"order":{"identity":"gateways"}}}`, "/identity", "pointer"},
 		{"identity nested", `{"views":{"order":{"overrides":{"x":{"ui:view":{"identity":"/a"}}}}}}`, "ui:view/identity", "верхнем уровне"},
 		// view "order" — ровно одна.
-		{"order missing", `{"views":{"routes":{}}}`, "", `добавьте view "order"`},
-		{"order duplicated", `{"views":{"order":{},"order":{}}}`, "/views/order", "дублирующийся ключ"},
+		{"order missing", `{"views":{"routes":{}}}`, "", `Не хватает view "order"`},
+		{"order duplicated", `{"views":{"order":{},"order":{}}}`, "/views/order", "указан дважды"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -119,24 +119,24 @@ func TestSchemaCrossChecks(t *testing.T) {
 		{
 			"include unknown field",
 			`{"views":{"order":{"include":["naming","nope"]}}}`,
-			"/views/order/include/1", `не найден definition "nope"`,
+			"/views/order/include/1", `Definition "nope" не найден`,
 		},
 		{
 			"override unknown field",
 			`{"views":{"order":{"overrides":{"nope":{"title":"x"}}}}}`,
-			"/views/order/overrides/nope", `не найден definition "nope"`,
+			"/views/order/overrides/nope", `Definition "nope" не найден`,
 		},
 		{
 			"nested exclude unknown (через $ref и массив)",
 			`{"views":{"order":{"overrides":{"gateways":{"ui:view":{"exclude":["nope"]}}}}}}`,
-			"ui:view/exclude/0", "не найден definition",
+			"ui:view/exclude/0", "Definition",
 		},
 		{
 			// Правило: include внутри overrides.gateways.ui:view сверяется с
 			// properties элемента массива gateways (gateways[].nosuch не существует).
 			"nested include unknown (gateways[].items)",
 			`{"views":{"order":{"include":["gateways"],"overrides":{"gateways":{"ui:view":{"include":["nosuch"]}}}}}}`,
-			"overrides/gateways/ui:view/include/0", `не найден definition "nosuch"`,
+			"overrides/gateways/ui:view/include/0", `Definition "nosuch" не найден`,
 		},
 		{
 			"identity unresolved",

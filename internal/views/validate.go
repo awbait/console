@@ -34,7 +34,7 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	var issues []Issue
 	var doc map[string]any
 	if err := json.Unmarshal(viewJSON, &doc); err != nil {
-		return []Issue{{Path: "", Message: "невалидный JSON: " + err.Error()}}
+		return []Issue{{Path: "", Message: "Невалидный JSON: " + err.Error()}}
 	}
 	// json.Unmarshal молча схлопывает дублирующиеся ключи (вторая "order"
 	// перетёрла бы первую) — ловим их токен-сканом до содержательных проверок.
@@ -43,24 +43,26 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 		switch k {
 		case "views", "version", "$comment":
 		default:
-			issues = append(issues, Issue{"/" + k, "неизвестное поле на верхнем уровне (ожидаются views, version)"})
+			issues = append(issues, Issue{"/" + k,
+				fmt.Sprintf("Лишнее поле %q — на верхнем уровне допустимы только \"views\" и \"version\"", k)})
 		}
 	}
 	viewsRaw, ok := doc["views"]
 	if !ok {
-		return append(issues, Issue{"", `отсутствует обязательное поле "views"`})
+		return append(issues, Issue{"", `В документе нет блока "views" — добавьте {"views": {"order": { … }}}`})
 	}
 	viewsMap, ok := viewsRaw.(map[string]any)
 	if !ok {
-		return append(issues, Issue{"/views", "должно быть объектом"})
+		return append(issues, Issue{"/views", `Блок "views" должен быть объектом: {"views": {"order": { … }}}`})
 	}
 	if len(viewsMap) == 0 {
-		issues = append(issues, Issue{"/views", "не задано ни одной view"})
+		issues = append(issues, Issue{"/views", `Блок "views" пуст — опишите хотя бы view "order" (форму заказа)`})
 	}
 	// view "order" обязательна и ровно одна: по ней строится форма заказа и
 	// пункт в меню (дубль ключа поймал бы duplicateKeys выше).
 	if _, ok := viewsMap["order"]; !ok && len(viewsMap) > 0 {
-		issues = append(issues, Issue{"", `добавьте view "order" — по ней строится форма заказа (она должна быть ровно одна)`})
+		issues = append(issues, Issue{"",
+			`Не хватает view "order" — это форма заказа, она обязательна и должна быть ровно одна`})
 	}
 
 	var schema map[string]any
@@ -73,7 +75,8 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 		path := "/views/" + name
 		vm, ok := v.(map[string]any)
 		if !ok {
-			issues = append(issues, Issue{path, "view должна быть объектом"})
+			issues = append(issues, Issue{path,
+				fmt.Sprintf("View %q должна быть объектом с полями include/exclude/overrides", name)})
 			continue
 		}
 		issues = append(issues, validateView(path, vm, schema, schema, true)...)
@@ -94,18 +97,20 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 		}
 		list, ok := raw.([]any)
 		if !ok {
-			issues = append(issues, Issue{path + "/" + key, "должно быть массивом строк"})
+			issues = append(issues, Issue{path + "/" + key,
+				fmt.Sprintf("Поле %q должно быть массивом имён полей схемы, например [\"naming\", \"gateways\"]", key)})
 			return
 		}
 		for i, item := range list {
 			s, ok := item.(string)
 			if !ok {
-				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i), "должно быть строкой"})
+				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
+					fmt.Sprintf("Элементы %q должны быть строками — именами полей из values.schema.json", key)})
 				continue
 			}
 			if props != nil && props[s] == nil {
 				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-					fmt.Sprintf("не найден definition %q в values.schema.json", s)})
+					fmt.Sprintf("Definition %q не найден в values.schema.json — сверьтесь со вкладкой схемы", s)})
 			}
 		}
 	}
@@ -116,23 +121,26 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 		case "identity":
 			s, ok := v.(string)
 			if !ok || !strings.HasPrefix(s, "/") {
-				issues = append(issues, Issue{path + "/identity", `должно быть JSON pointer'ом (строка, начинается с "/")`})
+				issues = append(issues, Issue{path + "/identity",
+					`Поле "identity" должно быть JSON pointer'ом — строкой вида "/gateways/0/name"`})
 				continue
 			}
 			if !top {
-				issues = append(issues, Issue{path + "/identity", "identity допустим только на верхнем уровне view"})
+				issues = append(issues, Issue{path + "/identity",
+					`Поле "identity" допустимо только на верхнем уровне view — уберите его из ui:view`})
 				continue
 			}
 			if node != nil && !pointerResolves(s, node, root) {
 				issues = append(issues, Issue{path + "/identity",
-					fmt.Sprintf("указатель %q не находит поле в схеме чарта", s)})
+					fmt.Sprintf("Указатель %q не находит поле в values.schema.json — проверьте путь", s)})
 			}
 		case "include", "exclude", "required":
 			checkFieldList(k)
 		case "overrides":
 			om, ok := v.(map[string]any)
 			if !ok {
-				issues = append(issues, Issue{path + "/overrides", "должно быть объектом"})
+				issues = append(issues, Issue{path + "/overrides",
+					`Поле "overrides" должно быть объектом: {"<имя поля>": { настройки }}`})
 				continue
 			}
 			for field, ov := range om {
@@ -141,21 +149,22 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 				if props != nil {
 					if props[field] == nil {
 						issues = append(issues, Issue{fp,
-							fmt.Sprintf("не найден definition %q в values.schema.json", field)})
+							fmt.Sprintf("Definition %q не найден в values.schema.json — сверьтесь со вкладкой схемы", field)})
 					} else {
 						fieldNode, _ = props[field].(map[string]any)
 					}
 				}
 				ovm, ok := ov.(map[string]any)
 				if !ok {
-					issues = append(issues, Issue{fp, "override должен быть объектом"})
+					issues = append(issues, Issue{fp,
+						"Настройка поля должна быть объектом (title, ui:widget, ui:view, …)"})
 					continue
 				}
 				issues = append(issues, validateOverride(fp, ovm, fieldNode, root)...)
 			}
 		default:
 			issues = append(issues, Issue{path + "/" + k,
-				"неизвестное поле view (ожидаются identity, include, exclude, required, overrides)"})
+				fmt.Sprintf("Неизвестное поле %q — во view допустимы identity, include, exclude, required, overrides", k)})
 		}
 	}
 	return issues
@@ -170,12 +179,14 @@ func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue 
 		case "ui:widget":
 			s, ok := v.(string)
 			if !ok || !knownWidgets[s] {
-				issues = append(issues, Issue{path + "/ui:widget", `допустимые значения: "single", "edit", "hidden"`})
+				issues = append(issues, Issue{path + "/ui:widget",
+					fmt.Sprintf("Неизвестный виджет %v — доступны \"single\", \"edit\", \"hidden\"", v)})
 			}
 		case "ui:view":
 			vm, ok := v.(map[string]any)
 			if !ok {
-				issues = append(issues, Issue{path + "/ui:view", "должно быть объектом"})
+				issues = append(issues, Issue{path + "/ui:view",
+					`Поле "ui:view" должно быть объектом вложенной view (include/exclude/overrides)`})
 				continue
 			}
 			// Вложенный ui:view применяется к полям объекта; для массива —
@@ -184,7 +195,7 @@ func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue 
 			issues = append(issues, validateView(path+"/ui:view", vm, child, root, false)...)
 		case "title":
 			if _, ok := v.(string); !ok {
-				issues = append(issues, Issue{path + "/title", "должно быть строкой"})
+				issues = append(issues, Issue{path + "/title", `Поле "title" должно быть строкой`})
 			}
 		}
 	}
@@ -217,7 +228,8 @@ func duplicateKeys(data []byte) []Issue {
 				key, _ := kt.(string)
 				kp := path + "/" + key
 				if seen[key] {
-					issues = append(issues, Issue{kp, "дублирующийся ключ — JSON оставит только последнее значение"})
+					issues = append(issues, Issue{kp,
+						fmt.Sprintf("Ключ %q указан дважды — JSON оставит только последнее значение, уберите дубль", key)})
 				}
 				seen[key] = true
 				issues = append(issues, scanValue(kp)...)
