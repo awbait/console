@@ -1,8 +1,12 @@
+import { useEffect } from "react";
 import { IconExternalLink } from "@tabler/icons-react";
 import { api } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { Button, ErrorBox, Spinner } from "../components/ui";
 import type { ComponentStatus } from "../api/types";
+
+// Интервал автообновления статуса, сек.
+const REFRESH_SECONDS = 30;
 
 // Friendly labels for each component the backend reports.
 const LABELS: Record<string, string> = {
@@ -18,11 +22,18 @@ const BACKEND_LABELS: Record<string, string> = { postgres: "PostgreSQL", redis: 
 export function StatusPage() {
   const { data, error, loading, reload } = useAsync(() => api.getSystemStatus(), []);
 
+  // Автообновление: статус живой, держим страницу свежей без ручного рефреша.
+  useEffect(() => {
+    const t = setInterval(reload, REFRESH_SECONDS * 1000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const integrations = (data?.components ?? []).filter((c) => c.kind === "integration");
   const storage = (data?.components ?? []).filter((c) => c.kind === "storage");
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex max-w-2xl flex-col gap-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-slate-900">Статус системы</h1>
@@ -37,9 +48,12 @@ export function StatusPage() {
               </span>
             ))}
         </div>
-        <Button variant="secondary" onPress={reload} isDisabled={loading}>
-          {loading ? "Обновление…" : "Обновить"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">автообновление каждые {REFRESH_SECONDS} сек</span>
+          <Button variant="secondary" onPress={reload} isDisabled={loading}>
+            {loading ? "Обновление…" : "Обновить"}
+          </Button>
+        </div>
       </div>
 
       {loading && !data ? (

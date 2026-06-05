@@ -148,6 +148,38 @@ func TestCreateDisplayName(t *testing.T) {
 	}
 }
 
+func TestCreateNamespaceValidation(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+
+	// чисто числовой namespace отклоняется
+	var ve *provisioning.ValidationError
+	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg1", Namespace: "12345", Values: validValues(),
+	}); !errors.As(err, &ve) {
+		t.Fatalf("numeric namespace: want validation error, got %v", err)
+	}
+
+	// невалидное k8s-имя тоже
+	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg1", Namespace: "Bad_NS", Values: validValues(),
+	}); !errors.As(err, &ve) {
+		t.Fatalf("bad namespace: want validation error, got %v", err)
+	}
+
+	// нормальный namespace проходит
+	req, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg1", Namespace: "payments-prod", Values: validValues(),
+	})
+	if err != nil || req.Namespace != "payments-prod" {
+		t.Fatalf("valid namespace: err=%v ns=%q", err, req.Namespace)
+	}
+}
+
 func TestCreateConflict(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)

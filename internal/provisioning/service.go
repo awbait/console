@@ -22,6 +22,14 @@ import (
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
+var allDigitsRe = regexp.MustCompile(`^[0-9]+$`)
+
+// validNamespace: DNS-1123 label и не чисто числовой (число в namespace
+// почти наверняка опечатка, и часть инструментов такое имя не переваривает).
+func validNamespace(ns string) bool {
+	return nameRe.MatchString(ns) && len(ns) <= 63 && !allDigitsRe.MatchString(ns)
+}
+
 // Service is the provisioning domain.
 type Service struct {
 	store          store.Store
@@ -124,6 +132,9 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	}
 	if !nameRe.MatchString(in.ServiceName) || len(in.ServiceName) > 63 {
 		return nil, &ValidationError{Message: "service_name must be a valid Kubernetes name"}
+	}
+	if in.Namespace != "" && !validNamespace(in.Namespace) {
+		return nil, &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
 	}
 	if _, err := s.catalog.GetVersion(ctx, in.ChartProject, in.ChartName, in.Version); err != nil {
 		if errors.Is(err, models.ErrNotFound) {
@@ -328,6 +339,9 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		r.Cluster = in.Cluster
 	}
 	if in.Namespace != "" {
+		if !validNamespace(in.Namespace) {
+			return nil, &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
+		}
 		r.Namespace = in.Namespace
 	}
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, in.Values, false)
