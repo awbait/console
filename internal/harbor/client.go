@@ -83,19 +83,22 @@ type apiError struct {
 
 func (e *apiError) Error() string { return fmt.Sprintf("harbor: status %d: %s", e.status, e.body) }
 
+// IsAccessDenied reports whether the error is a Harbor 401/403: the project is
+// private and the portal's credentials (robot account, or anonymous) can't read
+// it. Callers can turn this into a friendly "no access" message instead of a
+// raw upstream error.
+func IsAccessDenied(err error) bool {
+	var ae *apiError
+	return errors.As(err, &ae) &&
+		(ae.status == http.StatusUnauthorized || ae.status == http.StatusForbidden)
+}
+
 // isProjectSkippable reports whether a per-project listing error means "this
 // project isn't here / not visible" (so the catalog should skip it) rather than
 // a real failure. Harbor returns 404 for a known-absent project, but 401/403 when
 // an absent or private project is read without sufficient credentials.
 func isProjectSkippable(err error) bool {
-	if err == models.ErrNotFound {
-		return true
-	}
-	var ae *apiError
-	if errors.As(err, &ae) {
-		return ae.status == http.StatusUnauthorized || ae.status == http.StatusForbidden
-	}
-	return false
+	return err == models.ErrNotFound || IsAccessDenied(err)
 }
 
 func (c *Client) basicAuth() string {

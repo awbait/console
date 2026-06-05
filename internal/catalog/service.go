@@ -174,6 +174,12 @@ func (s *Service) CheckChart(ctx context.Context, project, name string) (*CheckR
 		if errors.Is(err, models.ErrNotFound) {
 			return &CheckResult{Error: fmt.Sprintf("чарт %s/%s не найден в Harbor", project, name)}, nil
 		}
+		if harbor.IsAccessDenied(err) {
+			return &CheckResult{Error: fmt.Sprintf(
+				"нет доступа к %s/%s: проект приватный, а у портала нет прав на него. "+
+					"Сделайте проект публичным или выдайте доступ роботу портала (HARBOR_ROBOT_USER)",
+				project, name)}, nil
+		}
 		return nil, err
 	}
 	if chart.LatestVersion == "" {
@@ -184,8 +190,13 @@ func (s *Service) CheckChart(ctx context.Context, project, name string) (*CheckR
 		_, ferr := f.fetch(s, ctx, project, name, chart.LatestVersion)
 		found := ferr == nil
 		if ferr != nil && !errors.Is(ferr, models.ErrNotFound) {
-			// Битый артефакт (не «файла нет», а «не смогли прочитать») — отчёт, не 502.
-			res.Error = fmt.Sprintf("не удалось прочитать артефакт: %v", ferr)
+			// Битый/недоступный артефакт (не «файла нет», а «не смогли прочитать») —
+			// отчёт, не 502.
+			if harbor.IsAccessDenied(ferr) {
+				res.Error = "нет доступа к артефакту чарта: проект приватный — сделайте его публичным или выдайте доступ роботу портала"
+			} else {
+				res.Error = fmt.Sprintf("не удалось прочитать артефакт: %v", ferr)
+			}
 			res.OK = false
 		}
 		res.Files = append(res.Files, FileCheck{Name: f.name, Required: f.required, Found: found})
