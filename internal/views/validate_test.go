@@ -99,7 +99,7 @@ func TestStructuralIssues(t *testing.T) {
 		{"identity not pointer", `{"views":{"order":{"identity":"gateways"}}}`, "/identity", "pointer"},
 		{"identity nested", `{"views":{"order":{"overrides":{"x":{"ui:view":{"identity":"/a"}}}}}}`, "ui:view/identity", "верхнем уровне"},
 		// view "order" — ровно одна.
-		{"order missing", `{"views":{"routes":{}}}`, "/views", `view "order" обязательна`},
+		{"order missing", `{"views":{"routes":{}}}`, "", `добавьте view "order"`},
 		{"order duplicated", `{"views":{"order":{},"order":{}}}`, "/views/order", "дублирующийся ключ"},
 	}
 	for _, c := range cases {

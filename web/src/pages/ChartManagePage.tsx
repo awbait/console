@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import { IconAlertCircle, IconCheck } from "@tabler/icons-react";
 import { api, HttpError } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { useUser, canModify } from "../auth/UserContext";
@@ -443,15 +444,26 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
               {syntaxErr ? (
                 <p className="text-xs text-red-600">Синтаксис: {syntaxErr}</p>
               ) : issues.length > 0 ? (
-                <ul className="flex flex-col gap-1 text-xs text-red-600">
+                <ul className="flex flex-col gap-1.5 rounded-md border border-red-100 bg-red-50/50 p-2 text-xs">
                   {issues.map((i, idx) => (
-                    <li key={idx}>
-                      <code className="rounded bg-red-50 px-1">{i.path || "/"}</code> {i.message}
+                    <li key={idx} className="flex items-start gap-1.5 text-red-700">
+                      <IconAlertCircle size={14} stroke={1.8} className="mt-px shrink-0 text-red-500" />
+                      <span>
+                        {i.path && (
+                          <code className="mr-1 rounded bg-white px-1 py-px font-mono text-[11px] text-red-600 ring-1 ring-red-200">
+                            {i.path}
+                          </code>
+                        )}
+                        {i.message}
+                      </span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-emerald-600">Документ валиден.</p>
+                <p className="flex items-center gap-1.5 text-xs text-emerald-600">
+                  <IconCheck size={14} stroke={2} />
+                  Документ валиден.
+                </p>
               )}
             </TabPanel>
             {/* Схема чарта — источник полей для include/exclude/overrides; только чтение. */}

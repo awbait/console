@@ -60,7 +60,7 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	// view "order" обязательна и ровно одна: по ней строится форма заказа и
 	// пункт в меню (дубль ключа поймал бы duplicateKeys выше).
 	if _, ok := viewsMap["order"]; !ok && len(viewsMap) > 0 {
-		issues = append(issues, Issue{"/views", `view "order" обязательна (ровно одна)`})
+		issues = append(issues, Issue{"", `добавьте view "order" — по ней строится форма заказа (она должна быть ровно одна)`})
 	}
 
 	var schema map[string]any
