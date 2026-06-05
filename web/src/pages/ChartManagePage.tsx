@@ -3,6 +3,9 @@ import { useParams } from "react-router-dom";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
   Button as AriaButton,
+  Disclosure,
+  DisclosurePanel,
+  Heading,
   ListBox,
   ListBoxItem,
   Popover,
@@ -13,7 +16,7 @@ import {
   TabPanel,
   Tabs,
 } from "react-aria-components";
-import { IconAlertCircle, IconCheck, IconChevronDown } from "@tabler/icons-react";
+import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { api, HttpError } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { useUser, canModify } from "../auth/UserContext";
@@ -445,6 +448,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
               <EditorTab id="schema">values.schema.json</EditorTab>
             </TabList>
             <TabPanel id="view" className="flex flex-col gap-2 pt-3 outline-none">
+              <FormatHelp />
               <div className="overflow-hidden rounded-md border border-slate-200">
                 <Editor
                   height="480px"
@@ -523,7 +527,11 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           ) : viewNames.length === 0 ? (
             <p className="text-sm text-gray-500">Добавьте view в документ, чтобы увидеть форму.</p>
           ) : (
-            <PreviewTabs schema={schema as Record<string, any>} views={parsed!.views!} />
+            <PreviewPane
+              schema={schema as Record<string, any>}
+              views={parsed!.views!}
+              label={chartLabel(name)}
+            />
           )}
         </Card>
       </div>
@@ -593,32 +601,270 @@ function EditorTab({ id, children }: { id: string; children: React.ReactNode }) 
   );
 }
 
-// Предпросмотр форм по каждой view документа, рендерим реальным SchemaForm с
-// реальной схемой чарта; значения локальные, никуда не отправляются.
-function PreviewTabs({ schema, views }: { schema: Record<string, any>; views: Record<string, View> }) {
-  const names = Object.keys(views);
-  const [values, setValues] = useState<Record<string, Values>>({});
+// FormatHelp, разворачиваемая справка по заполнению view.schema.json.
+function FormatHelp() {
+  return (
+    <Disclosure className="group rounded-md border border-slate-200 bg-slate-50">
+      <Heading>
+        <AriaButton
+          slot="trigger"
+          className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 outline-none hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          <IconChevronRight
+            size={14}
+            className="text-slate-400 transition-transform duration-200 group-data-[expanded]:rotate-90"
+          />
+          Как заполнять view.schema.json
+        </AriaButton>
+      </Heading>
+      <DisclosurePanel className="px-3 pb-3 text-xs leading-relaxed text-slate-600">
+        <ul className="flex list-disc flex-col gap-1 pl-4">
+          <li>
+            Документ: <code className="rounded bg-white px-1 ring-1 ring-slate-200">{'{"views": { ... }}'}</code>.
+            View <b>order</b> обязательна: это форма нового заказа, она же даёт пункт в левом меню.
+            Остальные views (routes, listeners, resources, ...) становятся вкладками страницы
+            заказанного продукта.
+          </li>
+          <li>
+            <b>include</b> / <b>exclude</b>: какие поля схемы показать или скрыть. Имена берутся из
+            values.schema.json (вкладка рядом).
+          </li>
+          <li>
+            <b>overrides</b>: настройка конкретного поля. <b>title</b> переопределяет подпись,{" "}
+            <b>ui:widget</b>: "single" (массив рендерится как один объект), "edit", "hidden",{" "}
+            <b>ui:view</b>: вложенная проекция для объекта или элемента массива.
+          </li>
+          <li>
+            <b>identity</b>: JSON pointer на поле, из которого берётся имя сервиса, например{" "}
+            <code className="rounded bg-white px-1 ring-1 ring-slate-200">"/gateways/0/name"</code>.
+          </li>
+          <li>
+            Подписи и описания полей форма берёт из <b>title</b> / <b>description</b> в
+            values.schema.json; чтобы поправить текст, меняйте схему в чарте или title в overrides.
+          </li>
+        </ul>
+        <pre className="mt-2 overflow-x-auto rounded-md bg-white p-2 ring-1 ring-slate-200">
+          {`{
+  "views": {
+    "order": {
+      "identity": "/gateways/0/name",
+      "include": ["naming", "gateways"],
+      "overrides": {
+        "gateways": {
+          "ui:widget": "single",
+          "title": "Gateway",
+          "ui:view": { "exclude": ["hpa"] }
+        }
+      }
+    },
+    "routes": { "include": ["xroutes"] }
+  }
+}`}
+        </pre>
+      </DisclosurePanel>
+    </Disclosure>
+  );
+}
+
+// readPointer достаёт строку из values по JSON pointer (identity предпросмотра).
+function readPointer(v: unknown, ptr: string): string {
+  let cur: any = v;
+  for (const seg of ptr.split("/").slice(1)) {
+    if (cur == null) return "";
+    cur = Array.isArray(cur) ? cur[Number(seg)] : cur[seg];
+  }
+  return typeof cur === "string" ? cur : "";
+}
+
+// Человеческие подписи вкладок мока для известных view.
+const VIEW_TAB_LABELS: Record<string, string> = {
+  routes: "Маршруты",
+  listeners: "Слушатели",
+  resources: "Ресурсы",
+};
+
+function PreviewBadge({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-md border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+      {children}
+    </p>
+  );
+}
+
+// Предпросмотр: полноценная форма нового заказа (view "order") и кликабельный
+// мок страницы заказанного продукта. Всё рендерится реальным SchemaForm по
+// реальной схеме чарта; значения локальные, никуда не отправляются.
+function PreviewPane({
+  schema,
+  views,
+  label,
+}: {
+  schema: Record<string, any>;
+  views: Record<string, View & { identity?: string }>;
+  label: string;
+}) {
+  // Значения формы заказа шарятся с моком продукта: заполнил форму, открыл
+  // вкладку продукта и видишь свой заказ.
+  const [orderValues, setOrderValues] = useState<Values>({});
   return (
     <Tabs>
-      <TabList aria-label="Предпросмотр view" className="flex gap-1 border-b border-gray-200">
-        {names.map((n) => (
-          <EditorTab key={n} id={n}>
-            {n}
-          </EditorTab>
-        ))}
+      <TabList aria-label="Предпросмотр" className="flex gap-1 border-b border-gray-200">
+        <EditorTab id="order">Форма заказа</EditorTab>
+        <EditorTab id="product">Страница продукта</EditorTab>
       </TabList>
-      {names.map((n) => (
-        <TabPanel key={n} id={n} className="pt-3 outline-none">
-          <div className="max-h-[440px] overflow-y-auto pr-1">
-            <SchemaForm
-              schema={schema}
-              view={views[n]}
-              value={values[n] ?? {}}
-              onChange={(v) => setValues((prev) => ({ ...prev, [n]: v }))}
-            />
-          </div>
-        </TabPanel>
-      ))}
+      <TabPanel id="order" className="pt-3 outline-none">
+        <OrderFormPreview
+          schema={schema}
+          view={views.order}
+          label={label}
+          values={orderValues}
+          onChange={setOrderValues}
+        />
+      </TabPanel>
+      <TabPanel id="product" className="pt-3 outline-none">
+        <ProductPageMock schema={schema} views={views} label={label} orderValues={orderValues} />
+      </TabPanel>
     </Tabs>
+  );
+}
+
+// Форма нового заказа, как её увидит пользователь: верхние поля заказа +
+// SchemaForm c проекцией view "order".
+function OrderFormPreview({
+  schema,
+  view,
+  label,
+  values,
+  onChange,
+}: {
+  schema: Record<string, any>;
+  view?: View & { identity?: string };
+  label: string;
+  values: Values;
+  onChange: (v: Values) => void;
+}) {
+  const [displayName, setDisplayName] = useState(label);
+  const [namespace, setNamespace] = useState("");
+  const [svcName, setSvcName] = useState("");
+  if (!view) {
+    return <p className="text-sm text-gray-500">В документе нет view "order", форма заказа не строится.</p>;
+  }
+  const identity = view.identity;
+  const identityName = identity ? readPointer(values, identity) : "";
+  return (
+    <div className="flex flex-col gap-3">
+      <PreviewBadge>
+        Предпросмотр формы нового заказа (view "order"). Значения локальные, никуда не
+        отправляются.
+      </PreviewBadge>
+      <div className="flex max-h-[460px] flex-col gap-3 overflow-y-auto pr-1">
+        <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
+          {identity ? (
+            <p className="text-sm text-gray-600">
+              Имя сервиса:{" "}
+              <span className="font-medium text-gray-800">{identityName || "(пусто)"}</span>{" "}
+              <span className="text-xs text-gray-400">из поля формы (identity: {identity})</span>
+            </p>
+          ) : (
+            <TextField
+              label="Имя сервиса"
+              value={svcName}
+              onChange={(v: string) => setSvcName(v)}
+              placeholder="my-service"
+            />
+          )}
+          <TextField
+            label="Отображаемое имя"
+            value={displayName}
+            onChange={(v: string) => setDisplayName(v)}
+          />
+          <TextField
+            label="Namespace"
+            value={namespace}
+            onChange={(v: string) => setNamespace(v)}
+            placeholder="по умолчанию: имя сервиса"
+          />
+        </div>
+        <SchemaForm schema={schema} view={view} value={values} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+// Мок страницы заказанного продукта: шапка с псевдостатусом и вкладки,
+// сгенерированные из views документа (кроме order). Можно пощёлкать.
+function ProductPageMock({
+  schema,
+  views,
+  label,
+  orderValues,
+}: {
+  schema: Record<string, any>;
+  views: Record<string, View & { identity?: string }>;
+  label: string;
+  orderValues: Values;
+}) {
+  const productViews = Object.keys(views).filter((n) => n !== "order");
+  const [vals, setVals] = useState<Record<string, Values>>({});
+  const identity = views.order?.identity;
+  const serviceName = (identity && readPointer(orderValues, identity)) || "demo-service";
+  return (
+    <div className="flex flex-col gap-3">
+      <PreviewBadge>
+        Мок страницы заказанного продукта: вкладки построены из views документа. Данные
+        локальные.
+      </PreviewBadge>
+      <div className="max-h-[460px] overflow-y-auto rounded-md border border-slate-200 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs text-slate-400">{label}</p>
+            <p className="text-sm font-semibold text-slate-800">{serviceName}</p>
+          </div>
+          <Chip className="bg-emerald-50 text-emerald-700">
+            <IconCheck size={12} stroke={2.5} />
+            HEALTHY
+          </Chip>
+        </div>
+        <Tabs className="mt-2">
+          <TabList aria-label="Вкладки продукта" className="flex gap-1 border-b border-gray-200">
+            <EditorTab id="__info">Общая информация</EditorTab>
+            {productViews.map((n) => (
+              <EditorTab key={n} id={n}>
+                {VIEW_TAB_LABELS[n] ?? n}
+              </EditorTab>
+            ))}
+          </TabList>
+          <TabPanel id="__info" className="pt-3 outline-none">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <MockField label="Сервис" value={serviceName} />
+              <MockField label="Статус" value="HEALTHY" />
+              <MockField label="Кластер" value="in-cluster" />
+              <MockField label="Namespace" value={serviceName} />
+              <MockField label="Команда" value="team" />
+              <MockField label="ArgoCD App" value={`team-${serviceName}`} />
+            </div>
+          </TabPanel>
+          {productViews.map((n) => (
+            <TabPanel key={n} id={n} className="pt-3 outline-none">
+              <SchemaForm
+                schema={schema}
+                view={views[n]}
+                value={vals[n] ?? orderValues}
+                onChange={(v) => setVals((prev) => ({ ...prev, [n]: v }))}
+              />
+            </TabPanel>
+          ))}
+        </Tabs>
+      </div>
+    </div>
+  );
+}
+
+function MockField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-slate-800">{value}</p>
+    </div>
   );
 }
