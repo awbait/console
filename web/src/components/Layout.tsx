@@ -19,6 +19,7 @@ import {
   IconActivity,
   IconBell,
   IconBox,
+  IconChecklist,
   IconChevronDown,
   IconChevronRight,
   IconCloud,
@@ -43,6 +44,9 @@ const navItems = [
   { to: "/requests", label: "Список заказов", Icon: IconBox },
   { to: "/catalog", label: "Чарты", Icon: IconPackages },
 ];
+
+// Дополнительные пункты для админа (согласование публикаций + категории).
+const adminNavItems = [{ to: "/admin/publications", label: "Публикации", Icon: IconChecklist }];
 
 export function Layout() {
   const { user, loading, unauthenticated } = useUser();
@@ -136,7 +140,7 @@ export function Layout() {
         {/* flat group: Ресурсы / Чарты (active via navActive aria-current) */}
         <nav className="px-2 py-3">
           <ul className="flex flex-col gap-0.5">
-            {navItems.map((n) => {
+            {[...navItems, ...(user.role === "admin" ? adminNavItems : [])].map((n) => {
               const Icon = n.Icon;
               return (
                 <li key={n.to}>

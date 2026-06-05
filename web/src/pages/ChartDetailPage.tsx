@@ -6,12 +6,19 @@ import { Button, Card, ErrorBox, Spinner } from "../components/ui";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Markdown } from "../components/Markdown";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { useUser, canModify } from "../auth/UserContext";
 
 export function ChartDetailPage() {
   const { project = "", name = "" } = useParams();
   const { data: chart, error, loading } = useAsync(() => api.getChart(project, name), [project, name]);
   const { categories, charts: catalogCharts } = useCatalog();
+  const { user } = useUser();
   const pub = findCatalogChart(catalogCharts, project, name)?.publication;
+  // «Управление» — владельцам/админам; «Опубликовать» (нет публикации) — любому
+  // участнику команды (группу-владельца он выберет при регистрации).
+  const manageable = pub
+    ? canModify(user, pub.owner_team)
+    : user?.role === "admin" || (user?.teams.length ?? 0) > 0;
 
   if (loading) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
@@ -49,17 +56,24 @@ export function ChartDetailPage() {
             )}
           </div>
         </div>
-        {orderable ? (
-          <Link to={`/products/${project}/${name}`}>
-            <Button variant="primary">Заказать</Button>
-          </Link>
-        ) : (
-          <span title="Форма заказа не согласована для этого чарта">
-            <Button variant="primary" isDisabled>
-              Заказать
-            </Button>
-          </span>
-        )}
+        <div className="flex shrink-0 gap-2">
+          {manageable && (
+            <Link to={`/catalog/${project}/${name}/manage`}>
+              <Button>{pub ? "Управление" : "Опубликовать"}</Button>
+            </Link>
+          )}
+          {orderable ? (
+            <Link to={`/products/${project}/${name}`}>
+              <Button variant="primary">Заказать</Button>
+            </Link>
+          ) : (
+            <span title="Форма заказа не согласована для этого чарта">
+              <Button variant="primary" isDisabled>
+                Заказать
+              </Button>
+            </span>
+          )}
+        </div>
       </div>
 
       <Tabs>

@@ -2,18 +2,22 @@ import type {
   Application,
   ApiError,
   CatalogResponse,
+  Category,
   Chart,
+  ChartPublication,
   FieldError,
   ChartVersion,
   ChangelogEntry,
   CreateOrderBody,
   JSONSchema,
   OrderRequest,
+  PublicationDetail,
   RequestDetail,
   UpdateOrderBody,
   User,
   SystemStatus,
   ViewDocument,
+  ViewIssue,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -97,6 +101,31 @@ export const api = {
       if (e instanceof HttpError && e.status === 404) return null;
       throw e;
     }),
+
+  // категории каталога (CRUD — admin)
+  listCategories: () => req<Category[]>("GET", "/categories"),
+  createCategory: (c: Category) => req<Category>("POST", "/categories", c),
+  updateCategory: (c: Category) =>
+    req<Category>("PATCH", `/categories/${enc(c.id)}`, { label: c.label, sort: c.sort }),
+  deleteCategory: (id: string) => req<void>("DELETE", `/categories/${enc(id)}`),
+
+  // публикации чартов (метаданные + view-конструктор + согласование)
+  listPublications: (params?: Record<string, string>) =>
+    req<ChartPublication[] | null>("GET", "/publications" + qs(params)).then((r) => r ?? []),
+  createPublication: (body: { chart: string; category_id: string; owner_team: string }) =>
+    req<ChartPublication>("POST", "/publications", body),
+  getPublication: (id: string) => req<PublicationDetail>("GET", `/publications/${enc(id)}`),
+  updatePublication: (
+    id: string,
+    body: { category_id?: string; owner_team?: string; view?: ViewDocument },
+  ) => req<ChartPublication>("PATCH", `/publications/${enc(id)}`, body),
+  validatePublication: (id: string, view: ViewDocument) =>
+    req<{ issues: ViewIssue[] }>("POST", `/publications/${enc(id)}/validate`, { view }),
+  submitPublication: (id: string) => req<ChartPublication>("POST", `/publications/${enc(id)}/submit`),
+  approvePublication: (id: string) =>
+    req<ChartPublication>("POST", `/publications/${enc(id)}/approve`),
+  rejectPublication: (id: string, comment: string) =>
+    req<ChartPublication>("POST", `/publications/${enc(id)}/reject`, { comment }),
 
   // requests
   listRequests: (params?: Record<string, string>) =>

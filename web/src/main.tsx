@@ -13,6 +13,8 @@ import { RequestsPage } from "./pages/RequestsPage";
 import { RequestDetailPage } from "./pages/RequestDetailPage";
 import { ApplicationsPage } from "./pages/ApplicationsPage";
 import { ProductPage } from "./pages/ProductPage";
+import { ChartManagePage } from "./pages/ChartManagePage";
+import { AdminPublicationsPage } from "./pages/AdminPublicationsPage";
 import { StatusPage } from "./pages/StatusPage";
 
 const router = createBrowserRouter([
@@ -24,6 +26,8 @@ const router = createBrowserRouter([
       { path: "catalog", element: <CatalogPage /> },
       { path: "catalog/:project/:name", element: <ChartDetailPage /> },
       { path: "catalog/:project/:name/order", element: <OrderPage /> },
+      { path: "catalog/:project/:name/manage", element: <ChartManagePage /> },
+      { path: "admin/publications", element: <AdminPublicationsPage /> },
       { path: "requests", element: <RequestsPage /> },
       { path: "requests/:id/edit", element: <OrderPage /> },
       { path: "products/:project/:name", element: <ProductPage /> },

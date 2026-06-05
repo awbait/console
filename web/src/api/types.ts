@@ -170,6 +170,47 @@ export interface ViewDocument {
   views?: Record<string, any>;
 }
 
+// Полная публикация (GET/PATCH /publications/*).
+export interface ChartPublication {
+  id: string;
+  chart_project: string;
+  chart_name: string;
+  category_id: string;
+  owner_team: string;
+  created_by: string;
+  created_by_name: string;
+  status: PublicationStatus;
+  view_json?: ViewDocument | null; // черновик
+  approved_view_json?: ViewDocument | null; // активная согласованная версия
+  reviewed_by?: string;
+  review_comment?: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicationEvent {
+  id: number;
+  publication_id: string;
+  actor: string;
+  event_type: string;
+  from_status?: PublicationStatus;
+  to_status?: PublicationStatus;
+  payload?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PublicationDetail {
+  publication: ChartPublication;
+  events: PublicationEvent[] | null;
+}
+
+// Проблема валидации view-документа (path — JSON pointer внутри документа).
+export interface ViewIssue {
+  path: string;
+  message: string;
+}
+
 // A minimal JSON Schema subset we render forms from.
 export interface JSONSchema {
   type?: string;
