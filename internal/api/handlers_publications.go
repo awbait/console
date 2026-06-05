@@ -183,6 +183,16 @@ func (s *Server) handleSubmitPublication(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, pub)
 }
 
+func (s *Server) handleWithdrawPublication(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	pub, err := s.Pubs.Withdraw(r.Context(), u, chi.URLParam(r, "id"))
+	if err != nil {
+		writeDomainErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pub)
+}
+
 func (s *Server) handleApprovePublication(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	pub, err := s.Pubs.Approve(r.Context(), u, chi.URLParam(r, "id"))

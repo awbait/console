@@ -130,6 +130,48 @@ func TestPublicationLifecycle(t *testing.T) {
 	}
 }
 
+func TestWithdraw(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	owner := member("core")
+
+	p, err := svc.Create(ctx, owner, publications.CreateInput{
+		ChartProject: "platform", ChartName: "x", CategoryID: "network", OwnerTeam: "core",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// не с согласования — конфликт
+	if _, err := svc.Withdraw(ctx, owner, p.ID); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("withdraw from draft: want conflict, got %v", err)
+	}
+
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Submit(ctx, owner, p.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// чужой — нельзя
+	if _, err := svc.Withdraw(ctx, member("dbaas"), p.ID); !errors.Is(err, publications.ErrForbidden) {
+		t.Fatalf("foreign withdraw: want forbidden, got %v", err)
+	}
+
+	// владелец отзывает → DRAFT, правки снова открыты
+	p, err = svc.Withdraw(ctx, owner, p.ID)
+	if err != nil {
+		t.Fatalf("withdraw: %v", err)
+	}
+	if p.Status != models.PubDraft {
+		t.Fatalf("want DRAFT after withdraw, got %s", p.Status)
+	}
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV2}); err != nil {
+		t.Fatalf("edit after withdraw: %v", err)
+	}
+}
+
 func TestCreateRBACAndValidation(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := setup(t)

@@ -174,7 +174,8 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
 
   const pending = pub.status === "PENDING";
   const isAdmin = user?.role === "admin";
-  const editable = canModify(user, pub.owner_team) && !pending;
+  const isOwner = canModify(user, pub.owner_team);
+  const editable = isOwner && !pending;
 
   // Метаданные.
   const [categoryId, setCategoryId] = useState<string | null>(pub.category_id);
@@ -184,7 +185,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     pub.view_json ? JSON.stringify(pub.view_json, null, 2) : VIEW_TEMPLATE,
   );
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "save" | "submit" | "approve" | "reject">(null);
+  const [busy, setBusy] = useState<null | "save" | "submit" | "approve" | "reject" | "withdraw">(null);
   const [rejectComment, setRejectComment] = useState("");
 
   // Live-валидация: локальный JSON.parse — сразу, серверная (формат + сверка со
@@ -243,6 +244,19 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     setBusy("submit");
     try {
       await api.submitPublication(pub.id);
+      reload();
+    } catch (e) {
+      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onWithdraw() {
+    setBusy("withdraw");
+    setErr(null);
+    try {
+      await api.withdrawPublication(pub.id);
       reload();
     } catch (e) {
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
@@ -325,9 +339,14 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           <p className="mt-0.5">{pub.review_comment}</p>
         </div>
       )}
-      {pending && !isAdmin && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Черновик на согласовании у администратора — правки заморожены до решения.
+      {pending && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>Черновик на согласовании у администратора — правки заморожены до решения.</span>
+          {isOwner && (
+            <Button isDisabled={busy !== null} onPress={onWithdraw}>
+              Отозвать для изменения
+            </Button>
+          )}
         </div>
       )}
       {err && <p className="text-sm text-red-600">{err}</p>}

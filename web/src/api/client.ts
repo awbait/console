@@ -125,6 +125,8 @@ export const api = {
   validatePublication: (id: string, view: ViewDocument) =>
     req<{ issues: ViewIssue[] }>("POST", `/publications/${enc(id)}/validate`, { view }),
   submitPublication: (id: string) => req<ChartPublication>("POST", `/publications/${enc(id)}/submit`),
+  withdrawPublication: (id: string) =>
+    req<ChartPublication>("POST", `/publications/${enc(id)}/withdraw`),
   approvePublication: (id: string) =>
     req<ChartPublication>("POST", `/publications/${enc(id)}/approve`),
   rejectPublication: (id: string, comment: string) =>

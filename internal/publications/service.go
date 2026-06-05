@@ -258,6 +258,28 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	return p, nil
 }
 
+// Withdraw отзывает черновик с согласования для доработки: PENDING → DRAFT.
+// Доступно владельцам (и админу); approved-версия, как обычно, не трогается.
+func (s *Service) Withdraw(ctx context.Context, u *models.User, id string) (*models.ChartPublication, error) {
+	p, err := s.store.GetPublication(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canManage(u, p.OwnerTeam) {
+		return nil, ErrForbidden
+	}
+	if p.Status != models.PubPending {
+		return nil, conflict("публикация не находится на согласовании")
+	}
+	from := p.Status
+	p.Status = models.PubDraft
+	if err := s.store.UpdatePublication(ctx, p); err != nil {
+		return nil, err
+	}
+	s.addEvent(ctx, p.ID, u, "withdrawn", from, p.Status, nil)
+	return p, nil
+}
+
 // Approve (admin): черновик становится активной view.
 func (s *Service) Approve(ctx context.Context, u *models.User, id string) (*models.ChartPublication, error) {
 	return s.review(ctx, u, id, models.PubApproved, "")
