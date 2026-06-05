@@ -20,7 +20,7 @@ export interface ProductTab {
 
 // Per-chart detail tabs, keyed by chart name. Chart-specific "plugins": the
 // declarative view document covers presentation, but enum-enrichment and
-// auto-fill (enrichSchema/prepare) are still code — they live here until a
+// auto-fill (enrichSchema/prepare) are still code, they live here until a
 // declarative DSL replaces them. A chart without an entry contributes no tabs.
 export const PRODUCT_TABS: Record<string, ProductTab[]> = {
   "ingress-gateway": [

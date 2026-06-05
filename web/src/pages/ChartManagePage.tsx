@@ -165,7 +165,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
   const project = pub.chart_project;
   const name = pub.chart_name;
 
-  // Схема чарта (последняя версия) — для предпросмотра форм.
+  // Схема чарта (последняя версия), для предпросмотра форм.
   const { data: chart } = useAsync(() => api.getChart(project, name), [project, name]);
   const version = chart?.latest_version ?? "";
   const { data: schema } = useAsync(
@@ -189,8 +189,8 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
   const [busy, setBusy] = useState<null | "save" | "submit" | "approve" | "reject" | "withdraw">(null);
   const [rejectComment, setRejectComment] = useState("");
 
-  // Live-валидация: локальный JSON.parse — сразу, серверная (формат + сверка со
-  // схемой чарта) — с дебаунсом.
+  // Live-валидация: локальный JSON.parse, сразу, серверная (формат + сверка со
+  // схемой чарта), с дебаунсом.
   const [issues, setIssues] = useState<ViewIssue[]>([]);
   const [syntaxErr, setSyntaxErr] = useState<string | null>(null);
   const parsed = useMemo<ViewDocument | null>(() => {
@@ -211,7 +211,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
       api
         .validatePublication(pub.id, parsed)
         .then((r) => setIssues(r.issues))
-        .catch(() => {}); // валидация — best effort, сеть мигнула — не страшно
+        .catch(() => {}); // валидация, best effort, сеть мигнула, не страшно
     }, 500);
     return () => clearTimeout(debounce.current);
   }, [parsed, pub.id]);
@@ -342,7 +342,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
       )}
       {pending && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>Черновик на согласовании у администратора — правки заморожены до решения.</span>
+          <span>Черновик на согласовании у администратора, правки заморожены до решения.</span>
           {isOwner && (
             <Button isDisabled={busy !== null} onPress={onWithdraw}>
               Отозвать для изменения
@@ -368,7 +368,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
             </div>
           ) : (
             <p className="text-sm text-gray-500">
-              Первая публикация view — действующей версии для сравнения нет.
+              Первая публикация view: действующей версии для сравнения нет.
             </p>
           )}
           <div className="flex items-end gap-2">
@@ -423,7 +423,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
         <Card className="flex flex-col gap-2">
           <Tabs>
             <TabList aria-label="Документы" className="flex gap-1 border-b border-gray-200">
-              <EditorTab id="view">view-документ</EditorTab>
+              <EditorTab id="view">view.schema.json</EditorTab>
               <EditorTab id="schema">values.schema.json</EditorTab>
             </TabList>
             <TabPanel id="view" className="flex flex-col gap-2 pt-3 outline-none">
@@ -466,7 +466,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
                 </p>
               )}
             </TabPanel>
-            {/* Схема чарта — источник полей для include/exclude/overrides; только чтение. */}
+            {/* Схема чарта, источник полей для include/exclude/overrides; только чтение. */}
             <TabPanel id="schema" className="flex flex-col gap-2 pt-3 outline-none">
               {schema ? (
                 <>
@@ -485,8 +485,8 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
                     />
                   </div>
                   <p className="text-xs text-slate-400">
-                    values.schema.json из чарта{version ? ` (v${version})` : ""} — только чтение;
-                    схема меняется только новой версией чарта.
+                    values.schema.json из чарта{version ? ` (v${version})` : ""}, только чтение.
+                    Схема меняется только новой версией чарта.
                   </p>
                 </>
               ) : (
@@ -500,7 +500,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           <h2 className="text-sm font-semibold text-slate-800">Предпросмотр</h2>
           {!schema ? (
             <p className="text-sm text-gray-500">
-              Схема values.schema.json недоступна — предпросмотр невозможен.
+              Схема values.schema.json недоступна, предпросмотр невозможен.
             </p>
           ) : viewNames.length === 0 ? (
             <p className="text-sm text-gray-500">Добавьте view в документ, чтобы увидеть форму.</p>
@@ -524,7 +524,7 @@ function EditorTab({ id, children }: { id: string; children: React.ReactNode }) 
   );
 }
 
-// Предпросмотр форм по каждой view документа — рендерим реальным SchemaForm с
+// Предпросмотр форм по каждой view документа, рендерим реальным SchemaForm с
 // реальной схемой чарта; значения локальные, никуда не отправляются.
 function PreviewTabs({ schema, views }: { schema: Record<string, any>; views: Record<string, View> }) {
   const names = Object.keys(views);

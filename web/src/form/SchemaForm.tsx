@@ -257,7 +257,7 @@ export function SchemaForm({
   const root = schema;
   const s = deref(schema, root);
   if (s.type !== "object" || !s.properties) {
-    return <p className="text-sm text-gray-500">Нет структурной схемы — используйте редактор YAML.</p>;
+    return <p className="text-sm text-gray-500">Нет структурной схемы, используйте редактор YAML.</p>;
   }
   return (
     <ValidationCtx.Provider value={validation}>
@@ -612,7 +612,7 @@ function ArrayField({
         )}
 
         {minItems > 0 && atMin && (
-          <p className="text-xs text-gray-400">Минимум {minItems} — последний удалить нельзя.</p>
+          <p className="text-xs text-gray-400">Минимум {minItems}, последний удалить нельзя.</p>
         )}
 
         <div>

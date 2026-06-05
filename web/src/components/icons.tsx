@@ -17,7 +17,7 @@ import {
 export type TablerIcon = ComponentType<{ size?: number | string; stroke?: number; className?: string }>;
 
 // Иконка категории каталога по её slug (категории живут в БД и управляются
-// админом; иконки — клиентская косметика с дефолтом для незнакомых slug'ов).
+// админом; иконки, клиентская косметика с дефолтом для незнакомых slug'ов).
 const CATEGORY_ICONS: Record<string, TablerIcon> = {
   platform: IconStack3,
   databases: IconDatabase,

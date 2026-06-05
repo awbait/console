@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// PublicationStatus — жизненный цикл черновика view-документа публикации.
+// PublicationStatus, жизненный цикл черновика view-документа публикации.
 // «Опубликованность» (форма заказа доступна) определяется наличием
 // ApprovedViewJSON, а не статусом: approved-версия продолжает работать,
 // пока новый черновик находится на согласовании.
@@ -25,8 +25,8 @@ type Category struct {
 	Sort  int    `json:"sort"`
 }
 
-// ChartPublication — портальные метаданные поверх Harbor-чарта: категория,
-// владелец (owner_team управляет, created_by — автор) и view-документ
+// ChartPublication, портальные метаданные поверх Harbor-чарта: категория,
+// владелец (owner_team управляет, created_by, автор) и view-документ
 // (бывший web/public/schemas/<chart>.ui.json).
 type ChartPublication struct {
 	ID            string            `json:"id"`
@@ -37,7 +37,7 @@ type ChartPublication struct {
 	CreatedBy     string            `json:"created_by"`
 	CreatedByName string            `json:"created_by_name"`
 	Status        PublicationStatus `json:"status"`
-	// ViewJSON — редактируемый черновик view-документа; ApprovedViewJSON —
+	// ViewJSON, редактируемый черновик view-документа; ApprovedViewJSON —
 	// активная согласованная версия (по ней строятся формы заказа).
 	ViewJSON         json.RawMessage `json:"view_json,omitempty"`
 	ApprovedViewJSON json.RawMessage `json:"approved_view_json,omitempty"`
@@ -51,7 +51,7 @@ type ChartPublication struct {
 // Published сообщает, есть ли у публикации действующая согласованная view.
 func (p *ChartPublication) Published() bool { return len(p.ApprovedViewJSON) > 0 }
 
-// PublicationEvent — запись аудита / смены статуса публикации.
+// PublicationEvent, запись аудита / смены статуса публикации.
 type PublicationEvent struct {
 	ID            int64             `json:"id"`
 	PublicationID string            `json:"publication_id"`

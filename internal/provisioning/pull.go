@@ -36,14 +36,14 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 
 	vb, err := s.gl.GetFile(ctx, proj.ID, s.gitops.ValuesPath(r.Cluster, r.ServiceName), branch)
 	if errors.Is(err, models.ErrNotFound) {
-		return nil, &ValidationError{Message: "в Git нет манифестов этого сервиса — он удалён вне портала; нечего подтягивать, используйте «Удалить»"}
+		return nil, &ValidationError{Message: "в Git нет манифестов этого сервиса, он удалён вне портала. Нечего подтягивать, используйте «Удалить»"}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: read values.yaml from git: %v", ErrUpstream, err)
 	}
 	ab, err := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r.Cluster, r.ServiceName), branch)
 	if errors.Is(err, models.ErrNotFound) {
-		return nil, &ValidationError{Message: "в Git нет манифестов этого сервиса — он удалён вне портала; нечего подтягивать, используйте «Удалить»"}
+		return nil, &ValidationError{Message: "в Git нет манифестов этого сервиса, он удалён вне портала. Нечего подтягивать, используйте «Удалить»"}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: read application.yaml from git: %v", ErrUpstream, err)

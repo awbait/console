@@ -122,8 +122,8 @@ export function FormErrors({
         <ul className="mt-2 flex flex-col gap-1">
           {rows.map((r, i) => (
             <li key={i} className="flex flex-wrap gap-x-2">
-              <span className="font-medium text-red-700">{r.field}</span>
-              <span className="text-red-600">— {r.message}</span>
+              <span className="font-medium text-red-700">{r.field}:</span>
+              <span className="text-red-600">{r.message}</span>
             </li>
           ))}
         </ul>

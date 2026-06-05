@@ -98,7 +98,7 @@ func TestStructuralIssues(t *testing.T) {
 		{"bad widget", `{"views":{"order":{"overrides":{"x":{"ui:widget":"fancy"}}}}}`, "ui:widget", "single"},
 		{"identity not pointer", `{"views":{"order":{"identity":"gateways"}}}`, "/identity", "pointer"},
 		{"identity nested", `{"views":{"order":{"overrides":{"x":{"ui:view":{"identity":"/a"}}}}}}`, "ui:view/identity", "верхнем уровне"},
-		// view "order" — ровно одна.
+		// view "order", ровно одна.
 		{"order missing", `{"views":{"routes":{}}}`, "", `Не хватает view "order"`},
 		{"order duplicated", `{"views":{"order":{},"order":{}}}`, "/views/order", "указан дважды"},
 	}

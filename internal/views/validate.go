@@ -1,6 +1,6 @@
 // Package views валидирует view-документы публикаций чартов: структуру формата
-// (views.* с include/exclude/overrides/identity) и — при наличии values.schema.json
-// чарта — ссылки на реальные поля схемы. Схема чарта остаётся единственным
+// (views.* с include/exclude/overrides/identity) и, при наличии values.schema.json
+// чарта, ссылки на реальные поля схемы. Схема чарта остаётся единственным
 // источником истины; view только проецирует её поля.
 package views
 
@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// Issue — одна проблема валидации; Path указывает внутрь view-документа
-// (JSON pointer), для ошибок ссылок на схему — на ссылающееся поле.
+// Issue, одна проблема валидации; Path указывает внутрь view-документа
+// (JSON pointer), для ошибок ссылок на схему, на ссылающееся поле.
 type Issue struct {
 	Path    string `json:"path"`
 	Message string `json:"message"`
@@ -28,7 +28,7 @@ func ValidateStructure(viewJSON []byte) []Issue {
 
 // Validate проверяет view-документ. Когда schemaJSON непуст, дополнительно
 // сверяет include/exclude/overrides/identity с полями values.schema.json
-// (неизвестная структура схемы пропускается молча — проверяем лишь то, что
+// (неизвестная структура схемы пропускается молча, проверяем лишь то, что
 // можем доказать).
 func Validate(viewJSON, schemaJSON []byte) []Issue {
 	var issues []Issue
@@ -37,37 +37,37 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 		return []Issue{{Path: "", Message: "Невалидный JSON: " + err.Error()}}
 	}
 	// json.Unmarshal молча схлопывает дублирующиеся ключи (вторая "order"
-	// перетёрла бы первую) — ловим их токен-сканом до содержательных проверок.
+	// перетёрла бы первую), ловим их токен-сканом до содержательных проверок.
 	issues = append(issues, duplicateKeys(viewJSON)...)
 	for k := range doc {
 		switch k {
 		case "views", "version", "$comment":
 		default:
 			issues = append(issues, Issue{"/" + k,
-				fmt.Sprintf("Лишнее поле %q — на верхнем уровне допустимы только \"views\" и \"version\"", k)})
+				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\" и \"version\"", k)})
 		}
 	}
 	viewsRaw, ok := doc["views"]
 	if !ok {
-		return append(issues, Issue{"", `В документе нет блока "views" — добавьте {"views": {"order": { … }}}`})
+		return append(issues, Issue{"", `В документе нет блока "views". Добавьте {"views": {"order": { ... }}}`})
 	}
 	viewsMap, ok := viewsRaw.(map[string]any)
 	if !ok {
-		return append(issues, Issue{"/views", `Блок "views" должен быть объектом: {"views": {"order": { … }}}`})
+		return append(issues, Issue{"/views", `Блок "views" должен быть объектом: {"views": {"order": { ... }}}`})
 	}
 	if len(viewsMap) == 0 {
-		issues = append(issues, Issue{"/views", `Блок "views" пуст — опишите хотя бы view "order" (форму заказа)`})
+		issues = append(issues, Issue{"/views", `Блок "views" пуст. Опишите хотя бы view "order" (форму заказа)`})
 	}
 	// view "order" обязательна и ровно одна: по ней строится форма заказа и
 	// пункт в меню (дубль ключа поймал бы duplicateKeys выше).
 	if _, ok := viewsMap["order"]; !ok && len(viewsMap) > 0 {
 		issues = append(issues, Issue{"",
-			`Не хватает view "order" — это форма заказа, она обязательна и должна быть ровно одна`})
+			`Не хватает view "order": это форма заказа, она обязательна и должна быть ровно одна`})
 	}
 
 	var schema map[string]any
 	if len(schemaJSON) > 0 {
-		// Сломанную схему чарта не вменяем view-документу — просто без кросс-проверок.
+		// Сломанную схему чарта не вменяем view-документу, просто без кросс-проверок.
 		_ = json.Unmarshal(schemaJSON, &schema)
 	}
 
@@ -85,7 +85,7 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 }
 
 // validateView проверяет одну view (или вложенный ui:view) против узла схемы.
-// node — узел схемы, на чьи поля ссылается view (nil = проверка невозможна).
+// node, узел схемы, на чьи поля ссылается view (nil = проверка невозможна).
 func validateView(path string, vm map[string]any, node, root map[string]any, top bool) []Issue {
 	var issues []Issue
 	props := collectProperties(node, root)
@@ -105,12 +105,12 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 			s, ok := item.(string)
 			if !ok {
 				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-					fmt.Sprintf("Элементы %q должны быть строками — именами полей из values.schema.json", key)})
+					fmt.Sprintf("Элементы %q должны быть строками, именами полей из values.schema.json", key)})
 				continue
 			}
 			if props != nil && props[s] == nil {
 				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-					fmt.Sprintf("Definition %q не найден в values.schema.json — сверьтесь со вкладкой схемы", s)})
+					fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", s)})
 			}
 		}
 	}
@@ -122,17 +122,17 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 			s, ok := v.(string)
 			if !ok || !strings.HasPrefix(s, "/") {
 				issues = append(issues, Issue{path + "/identity",
-					`Поле "identity" должно быть JSON pointer'ом — строкой вида "/gateways/0/name"`})
+					`Поле "identity" должно быть JSON pointer'ом, строкой вида "/gateways/0/name"`})
 				continue
 			}
 			if !top {
 				issues = append(issues, Issue{path + "/identity",
-					`Поле "identity" допустимо только на верхнем уровне view — уберите его из ui:view`})
+					`Поле "identity" допустимо только на верхнем уровне view. Уберите его из ui:view`})
 				continue
 			}
 			if node != nil && !pointerResolves(s, node, root) {
 				issues = append(issues, Issue{path + "/identity",
-					fmt.Sprintf("Указатель %q не находит поле в values.schema.json — проверьте путь", s)})
+					fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", s)})
 			}
 		case "include", "exclude", "required":
 			checkFieldList(k)
@@ -149,7 +149,7 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 				if props != nil {
 					if props[field] == nil {
 						issues = append(issues, Issue{fp,
-							fmt.Sprintf("Definition %q не найден в values.schema.json — сверьтесь со вкладкой схемы", field)})
+							fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", field)})
 					} else {
 						fieldNode, _ = props[field].(map[string]any)
 					}
@@ -164,13 +164,13 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 			}
 		default:
 			issues = append(issues, Issue{path + "/" + k,
-				fmt.Sprintf("Неизвестное поле %q — во view допустимы identity, include, exclude, required, overrides", k)})
+				fmt.Sprintf("Неизвестное поле %q: во view допустимы identity, include, exclude, required, overrides", k)})
 		}
 	}
 	return issues
 }
 
-// validateOverride проверяет известные ключи override; прочие ключи — это
+// validateOverride проверяет известные ключи override; прочие ключи, это
 // schema-хинты (title/description/enum/...), их пропускаем.
 func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue {
 	var issues []Issue
@@ -180,7 +180,7 @@ func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue 
 			s, ok := v.(string)
 			if !ok || !knownWidgets[s] {
 				issues = append(issues, Issue{path + "/ui:widget",
-					fmt.Sprintf("Неизвестный виджет %v — доступны \"single\", \"edit\", \"hidden\"", v)})
+					fmt.Sprintf("Неизвестный виджет %v: доступны \"single\", \"edit\", \"hidden\"", v)})
 			}
 		case "ui:view":
 			vm, ok := v.(map[string]any)
@@ -189,7 +189,7 @@ func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue 
 					`Поле "ui:view" должно быть объектом вложенной view (include/exclude/overrides)`})
 				continue
 			}
-			// Вложенный ui:view применяется к полям объекта; для массива —
+			// Вложенный ui:view применяется к полям объекта; для массива
 			// к элементу (массив рендерится списком карточек или как single).
 			child := itemNode(fieldNode, root)
 			issues = append(issues, validateView(path+"/ui:view", vm, child, root, false)...)
@@ -229,7 +229,7 @@ func duplicateKeys(data []byte) []Issue {
 				kp := path + "/" + key
 				if seen[key] {
 					issues = append(issues, Issue{kp,
-						fmt.Sprintf("Ключ %q указан дважды — JSON оставит только последнее значение, уберите дубль", key)})
+						fmt.Sprintf("Ключ %q указан дважды, JSON оставит только последнее значение. Уберите дубль", key)})
 				}
 				seen[key] = true
 				issues = append(issues, scanValue(kp)...)
@@ -273,7 +273,7 @@ func deref(node, root map[string]any) map[string]any {
 }
 
 // collectProperties собирает объединённые properties узла: собственные + ветки
-// allOf/oneOf/anyOf/then/else (поля могут жить в условных ветках). nil — узел
+// allOf/oneOf/anyOf/then/else (поля могут жить в условных ветках). nil, узел
 // неизвестен или не описывает объект с properties (проверки пропускаются).
 func collectProperties(node, root map[string]any) map[string]any {
 	if node == nil {
@@ -314,7 +314,7 @@ func collectProperties(node, root map[string]any) map[string]any {
 }
 
 // itemNode возвращает узел, к чьим полям применяется вложенный ui:view: для
-// массива — items (view описывает один элемент), иначе сам узел.
+// массива, items (view описывает один элемент), иначе сам узел.
 func itemNode(node, root map[string]any) map[string]any {
 	if node == nil {
 		return nil
@@ -332,13 +332,13 @@ func itemNode(node, root map[string]any) map[string]any {
 
 // pointerResolves проверяет, что JSON pointer по values (например
 // /gateways/0/name) находит поле в схеме: числовой сегмент шагает в items,
-// прочие — в properties. Неизвестные участки схемы считаются совпадением
+// прочие, в properties. Неизвестные участки схемы считаются совпадением
 // (доказать ошибку нельзя).
 func pointerResolves(ptr string, node, root map[string]any) bool {
 	cur := deref(node, root)
 	for seg := range strings.SplitSeq(strings.TrimPrefix(ptr, "/"), "/") {
 		if cur == nil {
-			return true // дальше схема не описана — не вменяем
+			return true // дальше схема не описана, не вменяем
 		}
 		if isIndex(seg) {
 			if t, _ := cur["type"].(string); t != "" && t != "array" {

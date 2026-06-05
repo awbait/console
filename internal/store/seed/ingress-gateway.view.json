@@ -16,7 +16,7 @@
       }
     },
     "routes": {
-      "$comment": "Редактор роутов в карточке уже созданного гейтвея. include — список xroutes того же инстанса; overrides.xroutes.ui:view — презентация одного маршрута: enabled всегда true (скрыт), parentRefs[].gateway подставляется автоматически (скрыт), hostnames скрыт целиком — чарт сам выводит hostname из listener'а, на который ссылается route через parentRefs[].sectionName (если у listener'а есть hostname — подставит, нет — оставит пустым). sectionName рендерится селектором из listener'ов (опции наполняются в UI на лету).",
+      "$comment": "Редактор роутов в карточке уже созданного гейтвея. include, список xroutes того же инстанса; overrides.xroutes.ui:view, презентация одного маршрута: enabled всегда true (скрыт), parentRefs[].gateway подставляется автоматически (скрыт), hostnames скрыт целиком, чарт сам выводит hostname из listener'а, на который ссылается route через parentRefs[].sectionName (если у listener'а есть hostname, подставит, нет, оставит пустым). sectionName рендерится селектором из listener'ов (опции наполняются в UI на лету).",
       "include": ["xroutes"],
       "overrides": {
         "xroutes": {

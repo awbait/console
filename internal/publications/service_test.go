@@ -75,7 +75,7 @@ func TestPublicationLifecycle(t *testing.T) {
 		t.Fatalf("double submit: want conflict, got %v", err)
 	}
 
-	// approve — только админ
+	// approve, только админ
 	if _, err := svc.Approve(ctx, owner, p.ID); !errors.Is(err, publications.ErrForbidden) {
 		t.Fatalf("member approve: want forbidden, got %v", err)
 	}
@@ -142,7 +142,7 @@ func TestWithdraw(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// не с согласования — конфликт
+	// не с согласования, конфликт
 	if _, err := svc.Withdraw(ctx, owner, p.ID); !errors.Is(err, models.ErrConflict) {
 		t.Fatalf("withdraw from draft: want conflict, got %v", err)
 	}
@@ -154,7 +154,7 @@ func TestWithdraw(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// чужой — нельзя
+	// чужой, нельзя
 	if _, err := svc.Withdraw(ctx, member("dbaas"), p.ID); !errors.Is(err, publications.ErrForbidden) {
 		t.Fatalf("foreign withdraw: want forbidden, got %v", err)
 	}
@@ -221,13 +221,13 @@ func TestOwnerTeamHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// в свою вторую команду — можно
+	// в свою вторую команду, можно
 	to := "dbaas"
 	if _, err := svc.Update(ctx, member("core", "dbaas"), p.ID, publications.UpdateInput{OwnerTeam: &to}); err != nil {
 		t.Fatalf("handoff to own team: %v", err)
 	}
 
-	// участник новой команды управляет, старой — нет
+	// участник новой команды управляет, старой, нет
 	back := "payments"
 	if _, err := svc.Update(ctx, member("dbaas"), p.ID, publications.UpdateInput{OwnerTeam: &back}); !errors.Is(err, publications.ErrForbidden) {
 		t.Fatalf("handoff to foreign team: want forbidden, got %v", err)

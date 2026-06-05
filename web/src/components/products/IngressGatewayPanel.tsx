@@ -176,7 +176,7 @@ function ItemsTab({ request, modifiable, reload, config }: ProductTabProps & { c
                         onClick={() => setDeleting(i)}
                         aria-label="Удалить"
                         disabled={atMin}
-                        title={atMin ? `Минимум ${config.minItems} — последний удалить нельзя` : undefined}
+                        title={atMin ? `Минимум ${config.minItems}, последний удалить нельзя` : undefined}
                         className="rounded-md p-1 text-red-500 outline-none hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-40"
                       >
                         <IconTrash size={15} stroke={1.8} />
@@ -191,7 +191,7 @@ function ItemsTab({ request, modifiable, reload, config }: ProductTabProps & { c
       )}
 
       {atMin && config.minItems > 0 && (
-        <p className="text-xs text-gray-400">Минимум {config.minItems} — последний удалить нельзя.</p>
+        <p className="text-xs text-gray-400">Минимум {config.minItems}, последний удалить нельзя.</p>
       )}
 
       <ConfirmDialog

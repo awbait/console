@@ -15,7 +15,7 @@ import (
 //go:embed seed/ingress-gateway.view.json
 var seedIngressView []byte
 
-// seedCategories — стартовый список категорий каталога; дальше управляется
+// seedCategories, стартовый список категорий каталога; дальше управляется
 // админом через API.
 var seedCategories = []models.Category{
 	{ID: "databases", Label: "Базы данных", Sort: 10},
@@ -36,7 +36,7 @@ func SeedPublications(ctx context.Context, s Store) error {
 
 	_, err := s.GetPublicationByChart(ctx, "platform", "ingress-gateway")
 	if err == nil {
-		return nil // уже есть — не перезаписываем
+		return nil // уже есть, не перезаписываем
 	}
 	if !errors.Is(err, models.ErrNotFound) {
 		return err

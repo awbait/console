@@ -184,7 +184,7 @@ export function RequestDetailPage() {
               </p>
               <p className="mt-0.5 text-amber-700">
                 {driftMissing
-                  ? `${r.drift_detail} — подтягивать нечего, сервис можно удалить из портала.`
+                  ? `${r.drift_detail}. Подтягивать нечего, сервис можно удалить из портала.`
                   : r.drift_detail || "Состояние в Git расходится с тем, что хранит портал."}
               </p>
             </div>
@@ -497,7 +497,7 @@ function ResourcesModal({
     try {
       const values = ((yaml.load(r.values_yaml) as Record<string, any>) ?? {}) as Record<string, any>;
       if (!Array.isArray(values.gateways) || !values.gateways[0]) {
-        throw new Error("В values нет Gateway — нечего редактировать.");
+        throw new Error("В values нет Gateway, нечего редактировать.");
       }
       const edited = (pruneEmpty(value).gateways as any)?.[0]?.resources;
       values.gateways[0].resources = edited; // undefined -> falls back to chart default

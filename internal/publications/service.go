@@ -21,11 +21,11 @@ import (
 
 var (
 	ErrForbidden = errors.New("forbidden")
-	// ErrPendingLocked: черновик на согласовании — правки заморожены до решения админа.
+	// ErrPendingLocked: черновик на согласовании, правки заморожены до решения админа.
 	ErrPendingLocked = errors.New("publication is pending review")
 )
 
-// ValidationError — ошибка валидации входных данных (422 в API). Issues
+// ValidationError, ошибка валидации входных данных (422 в API). Issues
 // заполнен для ошибок view-документа (путь внутри документа + сообщение).
 type ValidationError struct {
 	Message string
@@ -38,7 +38,7 @@ func invalid(format string, a ...any) error {
 	return &ValidationError{Message: fmt.Sprintf(format, a...)}
 }
 
-// conflictError — конфликт с человекочитаемой причиной: errors.Is(err,
+// conflictError, конфликт с человекочитаемой причиной: errors.Is(err,
 // models.ErrConflict) остаётся истинным (API маппит в 409), но в message
 // уходит понятный текст вместо голого "conflict".
 type conflictError struct{ msg string }
@@ -52,7 +52,7 @@ func conflict(format string, a ...any) error {
 
 // SchemaSource отдаёт values.schema.json последней версии чарта (реализуется
 // catalog.Service). Нужен для кросс-валидации view-документов; nil или ошибка
-// источника — кросс-проверки пропускаются (чарт может вовсе не иметь схемы).
+// источника, кросс-проверки пропускаются (чарт может вовсе не иметь схемы).
 type SchemaSource interface {
 	LatestSchema(ctx context.Context, project, name string) ([]byte, error)
 }
@@ -69,7 +69,7 @@ func New(st store.Store, schemas SchemaSource) *Service {
 
 func newID() string { return uuid.Must(uuid.NewV7()).String() }
 
-// canManage: управление публикацией — участник группы-владельца или админ.
+// canManage: управление публикацией, участник группы-владельца или админ.
 func canManage(u *models.User, ownerTeam string) bool {
 	return u.IsAdmin() || u.InTeam(ownerTeam)
 }
@@ -114,7 +114,7 @@ func (s *Service) DeleteCategory(ctx context.Context, u *models.User, id string)
 	}
 	if err := s.store.DeleteCategory(ctx, id); err != nil {
 		if errors.Is(err, models.ErrConflict) {
-			return conflict("категория %q используется публикациями — сначала перенесите их", id)
+			return conflict("категория %q используется публикациями, сначала перенесите их", id)
 		}
 		return err
 	}
@@ -169,7 +169,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	return p, nil
 }
 
-// UpdateInput — правка метаданных и/или черновика view. Nil-поля не трогаются.
+// UpdateInput, правка метаданных и/или черновика view. Nil-поля не трогаются.
 type UpdateInput struct {
 	CategoryID *string
 	OwnerTeam  *string
@@ -196,7 +196,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		payload["category_id"] = p.CategoryID
 	}
 	if in.OwnerTeam != nil && *in.OwnerTeam != p.OwnerTeam {
-		// Передать владение можно только в свою команду; админ — в любую.
+		// Передать владение можно только в свою команду; админ, в любую.
 		if *in.OwnerTeam == "" {
 			return nil, invalid("owner_team must not be empty")
 		}
@@ -210,7 +210,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		// Черновик можно сохранить со схемными недочётами (схема чарта может
 		// меняться), но структура формата обязана быть валидной.
 		if issues := views.ValidateStructure(in.View); len(issues) > 0 {
-			return nil, &ValidationError{Message: "view-документ не проходит валидацию формата", Issues: issues}
+			return nil, &ValidationError{Message: "view.schema.json не проходит валидацию формата", Issues: issues}
 		}
 		p.ViewJSON = in.View
 		payload["view_updated"] = true
@@ -247,7 +247,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	// На согласование уходит только полностью валидный документ: формат +
 	// (по возможности) сверка с values.schema.json чарта.
 	if issues := s.validateView(ctx, p, p.ViewJSON); len(issues) > 0 {
-		return nil, &ValidationError{Message: "view-документ не проходит валидацию", Issues: issues}
+		return nil, &ValidationError{Message: "view.schema.json не проходит валидацию", Issues: issues}
 	}
 	from := p.Status
 	p.Status = models.PubPending
@@ -351,7 +351,7 @@ func (s *Service) ActiveView(ctx context.Context, project, name string) (json.Ra
 
 // ValidateView прогоняет полную валидацию черновика view для конструктора
 // (live-проверка): структура формата + сверка со схемой чарта. Возвращает
-// список проблем (пустой = всё хорошо), а не ошибку — 422 здесь не нужен.
+// список проблем (пустой = всё хорошо), а не ошибку, 422 здесь не нужен.
 func (s *Service) ValidateView(ctx context.Context, id string, view json.RawMessage) ([]views.Issue, error) {
 	p, err := s.store.GetPublication(ctx, id)
 	if err != nil {
@@ -360,8 +360,8 @@ func (s *Service) ValidateView(ctx context.Context, id string, view json.RawMess
 	return s.validateView(ctx, p, view), nil
 }
 
-// validateView — формат + best-effort кросс-валидация со схемой чарта: схема
-// недоступна (нет SchemaSource, чарт без схемы, Harbor недоступен) — проверяем
+// validateView, формат + best-effort кросс-валидация со схемой чарта: схема
+// недоступна (нет SchemaSource, чарт без схемы, Harbor недоступен), проверяем
 // только структуру.
 func (s *Service) validateView(ctx context.Context, p *models.ChartPublication, view json.RawMessage) []views.Issue {
 	var schema []byte

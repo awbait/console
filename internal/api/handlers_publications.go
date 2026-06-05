@@ -154,7 +154,7 @@ type validatePubReq struct {
 	View json.RawMessage `json:"view"`
 }
 
-// handleValidatePublication — live-валидация черновика view из конструктора:
+// handleValidatePublication, live-валидация черновика view из конструктора:
 // всегда 200 со списком проблем (пустой = документ валиден).
 func (s *Server) handleValidatePublication(w http.ResponseWriter, r *http.Request) {
 	var body validatePubReq
@@ -220,7 +220,7 @@ func (s *Server) handleRejectPublication(w http.ResponseWriter, r *http.Request)
 
 // --- catalog overlay & active view ---
 
-// publicationSummary — лёгкая проекция публикации для каталога/меню
+// publicationSummary, лёгкая проекция публикации для каталога/меню
 // (без тел view-документов).
 type publicationSummary struct {
 	ID            string                   `json:"id"`
@@ -240,7 +240,7 @@ type catalogChart struct {
 	Missing bool `json:"missing,omitempty"`
 }
 
-// handleCatalog — каталог одним запросом: живой Harbor-листинг настроенных
+// handleCatalog, каталог одним запросом: живой Harbor-листинг настроенных
 // проектов + категории + наложенные метаданные публикаций. Чарты без публикации
 // остаются видимыми (живой каталог); публикации, чьи чарты лежат вне настроенных
 // проектов (добавлены по пути), дотягиваются из Harbor поштучно.
@@ -281,7 +281,7 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		listed[c.Project+"/"+c.Name] = true
 		out = append(out, catalogChart{Chart: c, Publication: byChart[c.Project+"/"+c.Name]})
 	}
-	// Публикации чартов вне Harbor-листинга: добавлены по произвольному пути —
+	// Публикации чартов вне Harbor-листинга: добавлены по произвольному пути:
 	// дотягиваем метаданные поштучно; пропавший из Harbor чарт показываем с
 	// пометкой missing (владельцу видно, что публикация осиротела).
 	for _, p := range pubs {
@@ -330,7 +330,7 @@ func (s *Server) handleCheckChart(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.Contains(name, "/") {
 		writeErr(w, http.StatusUnprocessableEntity, "validation_failed",
-			"вложенные пути (project/a/b) пока не поддерживаются — укажите project/name")
+			"вложенные пути (project/a/b) пока не поддерживаются, укажите project/name")
 		return
 	}
 	res, err := s.Catalog.CheckChart(r.Context(), project, name)

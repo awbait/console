@@ -9,8 +9,8 @@ import (
 	"idp/pkg/models"
 )
 
-// TestHTTPCheckChart — проверка чарта по пути: фикстурный чарт комплектен,
-// несуществующий — ok=false, кривой путь — 422.
+// TestHTTPCheckChart, проверка чарта по пути: фикстурный чарт комплектен,
+// несуществующий, ok=false, кривой путь, 422.
 func TestHTTPCheckChart(t *testing.T) {
 	srv, _, _ := newServer(t)
 	h := srv.Router()
@@ -58,7 +58,7 @@ func TestHTTPCheckChart(t *testing.T) {
 	}
 }
 
-// TestHTTPCatalogIncludesOrphanPublication — публикация чарта вне Harbor-листинга
+// TestHTTPCatalogIncludesOrphanPublication, публикация чарта вне Harbor-листинга
 // видна в каталоге с пометкой missing.
 func TestHTTPCatalogIncludesOrphanPublication(t *testing.T) {
 	srv, _, _ := newServer(t)

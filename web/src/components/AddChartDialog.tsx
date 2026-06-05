@@ -18,7 +18,7 @@ import type { ChartCheckResult } from "../api/types";
 // «Добавить чарт»: чарт может лежать по произвольному пути в Harbor (вне
 // настроенных проектов). Указываем путь project/name → проверяем существование
 // и комплектность файлов → выбираем категорию/владельца → публикуем (черновик,
-// дальше — конструктор view).
+// дальше, конструктор view).
 export function AddChartDialog() {
   const { user } = useUser();
   const { categories, reload: reloadCatalog } = useCatalog();
@@ -31,12 +31,12 @@ export function AddChartDialog() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [ownerTeam, setOwnerTeam] = useState<string | null>(user?.teams[0] ?? null);
   const [busy, setBusy] = useState(false);
-  // Чарт уже опубликован (409) — вместо формы предлагаем перейти к управлению.
+  // Чарт уже опубликован (409), вместо формы предлагаем перейти к управлению.
   const [conflict, setConflict] = useState(false);
 
   const teams = user?.teams ?? [];
   const isAdmin = user?.role === "admin";
-  if (!isAdmin && teams.length === 0) return null; // viewer — публикация недоступна
+  if (!isAdmin && teams.length === 0) return null; // viewer, публикация недоступна
 
   function reset() {
     setPath("");
@@ -107,7 +107,7 @@ export function AddChartDialog() {
                   </Heading>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Чарты из настроенных проектов появляются в каталоге автоматически. Чарт по
-                    другому пути добавьте здесь: укажите project/name — проверим, что он на месте
+                    другому пути добавьте здесь: укажите project/name, проверим, что он на месте
                     и в комплекте есть нужные файлы.
                   </p>
                 </div>

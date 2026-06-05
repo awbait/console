@@ -4,7 +4,7 @@ import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext"
 
 // Страница продукта (= опубликованного чарта): список его заказов + «Заказать».
 // В меню попадают только чарты с согласованной order-view, но прямой переход по
-// URL возможен для любого чарта — тогда заказ просто недоступен.
+// URL возможен для любого чарта, тогда заказ просто недоступен.
 export function ProductPage() {
   const { project = "", name = "" } = useParams();
   const { charts, loading } = useCatalog();
@@ -23,7 +23,7 @@ export function ProductPage() {
     );
   }
 
-  // Заказ доступен при согласованной order-view. Пока каталог грузится — без
+  // Заказ доступен при согласованной order-view. Пока каталог грузится, без
   // кнопки, без ложного «недоступно».
   const orderableKnown = !!chart;
   const orderable = !!chart?.publication?.published && !!chart?.publication?.has_order_view;
@@ -39,7 +39,7 @@ export function ProductPage() {
       orderDisabledReason={orderDisabledReason}
       emptyHint={
         orderTo ? (
-          <>Заказов {label} пока нет — нажмите «Заказать».</>
+          <>Заказов {label} пока нет. Нажмите «Заказать».</>
         ) : orderDisabledReason ? (
           <>{orderDisabledReason}. Заказ недоступен, пока view не согласована.</>
         ) : undefined
