@@ -2,7 +2,7 @@
 #
 # Commits application.yaml + values.yaml for an ingress-gateway instance under
 # managed-services/team-<Team>/ingress-gateway/<Cluster>/<Service>/, exactly where
-# the portal's GitOps convention expects them — but WITHOUT going through the
+# the portal's GitOps convention expects them - but WITHOUT going through the
 # portal. With IMPORT_DISCOVERY_ENABLED=true the import reconciler then adopts it
 # as an IMPORTED order (and the app-of-apps ApplicationSet will also deploy it).
 #
@@ -59,7 +59,7 @@ $instanceDir = "$Cluster/$Service"
 $gitRepo     = "http://$GitHost/$repoPath.git"
 
 # NOTE: this MUST stay byte-identical (semantically) to what the portal renders
-# (internal/provisioning/gitops.go RenderApplication) — import only adopts
+# (internal/provisioning/gitops.go RenderApplication) - import only adopts
 # manifests that re-render to exactly this. `$values` is ArgoCD's literal ref
 # token, escaped so PowerShell does not interpolate it; $Team/$Chart/$Service/etc
 # ARE interpolated on purpose.

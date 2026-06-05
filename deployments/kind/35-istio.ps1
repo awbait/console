@@ -24,7 +24,7 @@ kubectl -n metallb-system rollout status deployment controller --timeout=180s | 
 kubectl -n metallb-system rollout status daemonset speaker --timeout=180s | Out-Host
 
 # Address pool from the kind network's IPv4 /16 (e.g. 172.21.0.0/16 -> .255.200-.255.250).
-# NOTE: emit one subnet per line ({{println}}) and filter in the pipeline — do NOT
+# NOTE: emit one subnet per line ({{println}}) and filter in the pipeline - do NOT
 # pass `-split` after the native `docker` call: PowerShell would hand `-split` to
 # docker as a flag ("unknown shorthand flag: 's'"), not treat it as an operator.
 $sub = (docker network inspect kind --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' |

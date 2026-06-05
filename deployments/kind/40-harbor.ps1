@@ -4,7 +4,7 @@
 # TLS). See harbor-values.yaml for the trimmed config.
 $ErrorActionPreference = "Stop"
 
-# Install only if absent — a re-run leaves the running Harbor untouched rather
+# Install only if absent - a re-run leaves the running Harbor untouched rather
 # than `helm upgrade`-ing it. Storage is persistent (PVCs), so an upgrade would be
 # safe, but skipping it also avoids the ~minute the core needs to re-gate its API
 # after a roll (during which project/push calls flap). `make stand-down` (deletes

@@ -1,14 +1,14 @@
 # Seed the stand's Harbor with Helm charts from an EXTERNAL directory.
 #
 # This repo is chart-agnostic: it does not vendor deployable charts. The charts
-# (ingress-gateway, egress, …) live in their own location/repo and are published
+# (ingress-gateway, egress, ...) live in their own location/repo and are published
 # to Harbor by their own pipeline. For a local stand you can point this script at
 # that directory to push them once; at runtime the portal + ArgoCD only consume
 # whatever is in Harbor.
 #
 # Source: -ChartsDir <path>, or $env:STAND_CHARTS_DIR. The directory holds one
 # subfolder per chart (each with a Chart.yaml). All are pushed to the Harbor
-# project below. If no source is configured the step is skipped (non-fatal) —
+# project below. If no source is configured the step is skipped (non-fatal) -
 # populate Harbor separately.
 param(
     [string]$ChartsDir = $env:STAND_CHARTS_DIR,
@@ -20,14 +20,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not $ChartsDir -or -not (Test-Path $ChartsDir)) {
-    Write-Host "[charts] no chart source (set -ChartsDir or `$env:STAND_CHARTS_DIR) — skipping." -ForegroundColor DarkYellow
+    Write-Host "[charts] no chart source (set -ChartsDir or `$env:STAND_CHARTS_DIR) - skipping." -ForegroundColor DarkYellow
     Write-Host "[charts] Harbor must be populated separately; the portal/Argo read whatever is in Harbor."
     exit 0
 }
 
 $chartDirs = Get-ChildItem -Path $ChartsDir -Directory | Where-Object { Test-Path (Join-Path $_.FullName "Chart.yaml") }
 if (-not $chartDirs) {
-    Write-Host "[charts] no chart subfolders (with Chart.yaml) under $ChartsDir — nothing to push." -ForegroundColor DarkYellow
+    Write-Host "[charts] no chart subfolders (with Chart.yaml) under $ChartsDir - nothing to push." -ForegroundColor DarkYellow
     exit 0
 }
 
@@ -39,7 +39,7 @@ foreach ($dir in $chartDirs) {
     $chartDir = $dir.FullName
     $verLine = Select-String -Path (Join-Path $chartDir "Chart.yaml") -Pattern '^version:\s*(.+)$' | Select-Object -First 1
     $nameLine = Select-String -Path (Join-Path $chartDir "Chart.yaml") -Pattern '^name:\s*(.+)$' | Select-Object -First 1
-    if (-not $verLine -or -not $nameLine) { Write-Host "[charts] $($dir.Name): no name/version in Chart.yaml — skip" -ForegroundColor DarkYellow; continue }
+    if (-not $verLine -or -not $nameLine) { Write-Host "[charts] $($dir.Name): no name/version in Chart.yaml - skip" -ForegroundColor DarkYellow; continue }
     $ver = $verLine.Matches[0].Groups[1].Value.Trim()
     $name = $nameLine.Matches[0].Groups[1].Value.Trim()
     Write-Host "[charts] $name version $ver"

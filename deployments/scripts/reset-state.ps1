@@ -1,12 +1,12 @@
 # Reset the demo state WITHOUT recreating the stand: wipes the portal store
 # (Postgres), the cache (Redis), the Argo CD applications, and the GitLab repos
-# the portal created — so the next bring-up starts from a clean slate.
+# the portal created - so the next bring-up starts from a clean slate.
 #
 # Explicitly does NOT touch:
-#   - Harbor (the chart registry) — charts stay published.
-#   - The KinD cluster / Argo CD install itself — only the Applications go.
+#   - Harbor (the chart registry) - charts stay published.
+#   - The KinD cluster / Argo CD install itself - only the Applications go.
 #   - The GitLab groups (managed-services + team-* subgroups) and the portal
-#     token from the seed — only the project repos under them are deleted.
+#     token from the seed - only the project repos under them are deleted.
 #
 # Requires: the compose Postgres/Redis running (`make up-upstreams`), the KinD
 # stand up (`make stand-up`), and GitLab reachable. Run from the repo root:

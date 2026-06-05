@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 & "$PSScriptRoot\40-harbor.ps1"
 & "$PSScriptRoot\45-harbor-project.ps1"
 # Seeds Harbor from an external chart dir if STAND_CHARTS_DIR is set; otherwise
-# skips (this repo doesn't vendor charts — populate Harbor separately).
+# skips (this repo doesn't vendor charts - populate Harbor separately).
 & "$PSScriptRoot\50-charts.ps1"
 & "$PSScriptRoot\60-argo-repos.ps1"
 & "$PSScriptRoot\70-appset.ps1"

@@ -56,14 +56,14 @@ if ($RealGitlab) {
   # Real Harbor from the KinD stand (NodePort on host port 8084, self-signed TLS).
   # The host-run portal reads the catalog here via the published port (localhost,
   # like GITLAB_URL/ARGOCD_URL above). Only the `platform` project holds charts on
-  # the stand — listing the absent `managed-services` project would 401 anonymously.
+  # the stand - listing the absent `managed-services` project would 401 anonymously.
   $env:HARBOR_MODE         = "real"
   $env:HARBOR_URL          = "https://localhost:8084"
   $env:HARBOR_INSECURE_TLS = "true"
   $env:HARBOR_PROJECTS     = "platform"
   # OCI registry base baked into the committed application.yaml chart source (Argo
   # pulls the chart from Harbor; values come from git). MUST stay host.docker.internal
-  # — that's the name Argo pods resolve inside KinD (via CoreDNS), not localhost.
+  # - that's the name Argo pods resolve inside KinD (via CoreDNS), not localhost.
   $env:CHART_REGISTRY = "host.docker.internal:8084"
   $env:STORE        = "postgres"
   $env:DATABASE_URL = "postgres://portal:portal@localhost:5432/portal?sslmode=disable"
@@ -98,7 +98,7 @@ if ($RealGitlab) {
   $env:STORE = "memory"
   $env:CACHE = "memory"
   # Clear real-only vars that may linger from a prior -RealGitlab run in THIS
-  # PowerShell session (env persists per-session) — otherwise the portal would
+  # PowerShell session (env persists per-session) - otherwise the portal would
   # mix fake modes with a real DB/URLs.
   foreach ($v in "HARBOR_URL", "HARBOR_PROJECTS", "HARBOR_INSECURE_TLS",
                  "GITLAB_URL", "GITLAB_TOKEN", "GITLAB_AUTO_MERGE",

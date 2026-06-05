@@ -9,9 +9,9 @@ $base = "https://host.docker.internal:8084/api/v2.0"
 $body = "{`"project_name`":`"$Project`",`"metadata`":{`"public`":`"true`"}}"
 
 # Harbor's /health flips to 200 a good minute before the project API can accept
-# writes — right after a (re)install the core rolls and POST returns a transient
+# writes - right after a (re)install the core rolls and POST returns a transient
 # 422/5xx until it's truly ready. So: each round first GET the project (reads come
-# up earlier than writes — this makes idempotent re-runs succeed instantly), and
+# up earlier than writes - this makes idempotent re-runs succeed instantly), and
 # only POST when it's absent. A freshly installed core can take ~3 min before it
 # accepts project writes (422 until then), so retry generously (~300s).
 $done = $false
