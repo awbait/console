@@ -98,6 +98,9 @@ func TestStructuralIssues(t *testing.T) {
 		{"bad widget", `{"views":{"order":{"overrides":{"x":{"ui:widget":"fancy"}}}}}`, "ui:widget", "single"},
 		{"identity not pointer", `{"views":{"order":{"identity":"gateways"}}}`, "/identity", "pointer"},
 		{"identity nested", `{"views":{"order":{"overrides":{"x":{"ui:view":{"identity":"/a"}}}}}}`, "ui:view/identity", "верхнем уровне"},
+		// view "order" — ровно одна.
+		{"order missing", `{"views":{"routes":{}}}`, "/views", `view "order" обязательна`},
+		{"order duplicated", `{"views":{"order":{},"order":{}}}`, "/views/order", "дублирующийся ключ"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -116,17 +119,24 @@ func TestSchemaCrossChecks(t *testing.T) {
 		{
 			"include unknown field",
 			`{"views":{"order":{"include":["naming","nope"]}}}`,
-			"/views/order/include/1", "отсутствует в схеме",
+			"/views/order/include/1", `не найден definition "nope"`,
 		},
 		{
 			"override unknown field",
 			`{"views":{"order":{"overrides":{"nope":{"title":"x"}}}}}`,
-			"/views/order/overrides/nope", "отсутствует в схеме",
+			"/views/order/overrides/nope", `не найден definition "nope"`,
 		},
 		{
 			"nested exclude unknown (через $ref и массив)",
 			`{"views":{"order":{"overrides":{"gateways":{"ui:view":{"exclude":["nope"]}}}}}}`,
-			"ui:view/exclude/0", "отсутствует в схеме",
+			"ui:view/exclude/0", "не найден definition",
+		},
+		{
+			// Правило: include внутри overrides.gateways.ui:view сверяется с
+			// properties элемента массива gateways (gateways[].nosuch не существует).
+			"nested include unknown (gateways[].items)",
+			`{"views":{"order":{"include":["gateways"],"overrides":{"gateways":{"ui:view":{"include":["nosuch"]}}}}}}`,
+			"overrides/gateways/ui:view/include/0", `не найден definition "nosuch"`,
 		},
 		{
 			"identity unresolved",
@@ -141,6 +151,17 @@ func TestSchemaCrossChecks(t *testing.T) {
 				t.Fatalf("want issue %q at %q, got %+v", c.msg, c.path, issues)
 			}
 		})
+	}
+}
+
+// Правильно прописанный вложенный include (gateways[].listeners) проходит без ошибок.
+func TestNestedIncludeValid(t *testing.T) {
+	doc := `{"views":{"order":{
+		"include":["gateways"],
+		"overrides":{"gateways":{"ui:widget":"single","ui:view":{"include":["listeners"]}}}
+	}}}`
+	if issues := views.Validate([]byte(doc), []byte(schema)); len(issues) > 0 {
+		t.Fatalf("gateways[].listeners must validate, got %+v", issues)
 	}
 }
 

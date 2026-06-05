@@ -5,6 +5,7 @@
 package views
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -35,6 +36,9 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	if err := json.Unmarshal(viewJSON, &doc); err != nil {
 		return []Issue{{Path: "", Message: "невалидный JSON: " + err.Error()}}
 	}
+	// json.Unmarshal молча схлопывает дублирующиеся ключи (вторая "order"
+	// перетёрла бы первую) — ловим их токен-сканом до содержательных проверок.
+	issues = append(issues, duplicateKeys(viewJSON)...)
 	for k := range doc {
 		switch k {
 		case "views", "version", "$comment":
@@ -52,6 +56,11 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	}
 	if len(viewsMap) == 0 {
 		issues = append(issues, Issue{"/views", "не задано ни одной view"})
+	}
+	// view "order" обязательна и ровно одна: по ней строится форма заказа и
+	// пункт в меню (дубль ключа поймал бы duplicateKeys выше).
+	if _, ok := viewsMap["order"]; !ok && len(viewsMap) > 0 {
+		issues = append(issues, Issue{"/views", `view "order" обязательна (ровно одна)`})
 	}
 
 	var schema map[string]any
@@ -96,7 +105,7 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 			}
 			if props != nil && props[s] == nil {
 				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-					fmt.Sprintf("поле %q отсутствует в схеме чарта", s)})
+					fmt.Sprintf("не найден definition %q в values.schema.json", s)})
 			}
 		}
 	}
@@ -131,7 +140,8 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 				var fieldNode map[string]any
 				if props != nil {
 					if props[field] == nil {
-						issues = append(issues, Issue{fp, fmt.Sprintf("поле %q отсутствует в схеме чарта", field)})
+						issues = append(issues, Issue{fp,
+							fmt.Sprintf("не найден definition %q в values.schema.json", field)})
 					} else {
 						fieldNode, _ = props[field].(map[string]any)
 					}
@@ -179,6 +189,49 @@ func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue 
 		}
 	}
 	return issues
+}
+
+// duplicateKeys токен-сканом находит повторяющиеся ключи в объектах документа
+// (json.Unmarshal их молча схлопывает, теряя данные).
+func duplicateKeys(data []byte) []Issue {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var scanValue func(path string) []Issue
+	scanValue = func(path string) []Issue {
+		t, err := dec.Token()
+		if err != nil {
+			return nil
+		}
+		d, ok := t.(json.Delim)
+		if !ok {
+			return nil // скаляр
+		}
+		var issues []Issue
+		switch d {
+		case '{':
+			seen := map[string]bool{}
+			for dec.More() {
+				kt, err := dec.Token()
+				if err != nil {
+					return issues
+				}
+				key, _ := kt.(string)
+				kp := path + "/" + key
+				if seen[key] {
+					issues = append(issues, Issue{kp, "дублирующийся ключ — JSON оставит только последнее значение"})
+				}
+				seen[key] = true
+				issues = append(issues, scanValue(kp)...)
+			}
+			_, _ = dec.Token() // '}'
+		case '[':
+			for i := 0; dec.More(); i++ {
+				issues = append(issues, scanValue(fmt.Sprintf("%s/%d", path, i))...)
+			}
+			_, _ = dec.Token() // ']'
+		}
+		return issues
+	}
+	return scanValue("")
 }
 
 // --- навигация по схеме ---
