@@ -42,8 +42,9 @@ Write-Host "[reset] GitLab: listing projects under managed-services..." -Foregro
 $B = "$GitlabUrl/api/v4"
 $listJson = curl.exe -s -H "PRIVATE-TOKEN: $GitlabToken" `
     "$B/groups/managed-services/projects?include_subgroups=true&per_page=100&simple=true"
-$ids = ($listJson | python -c "import sys,json; [print(p['id']) for p in json.load(sys.stdin)]" 2>$null)
-if ($LASTEXITCODE -ne 0 -or -not $ids) {
+$ids = @()
+try { $ids = @(($listJson | ConvertFrom-Json) | ForEach-Object { $_.id }) } catch {}
+if (-not $ids) {
     Write-Host "[reset] GitLab: no projects to delete (or group absent)." -ForegroundColor DarkGray
 } else {
     foreach ($id in $ids) {
