@@ -92,6 +92,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/publications", s.handleCreatePublication)
 			r.Get("/publications/{id}", s.handleGetPublication)
 			r.Patch("/publications/{id}", s.handlePatchPublication)
+			r.Post("/publications/{id}/validate", s.handleValidatePublication) // live-проверка из конструктора
 			r.Post("/publications/{id}/submit", s.handleSubmitPublication)
 			r.Post("/publications/{id}/approve", s.handleApprovePublication) // admin
 			r.Post("/publications/{id}/reject", s.handleRejectPublication)   // admin

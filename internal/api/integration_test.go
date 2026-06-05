@@ -35,7 +35,7 @@ func newServer(t *testing.T) (*api.Server, *argocd.Fake, *provisioning.Service) 
 	gitops, _ := provisioning.NewGitOps("managed-services", "team-{{.Team}}", "{{.Team}}-{{.ServiceName}}", "portal-managed", "main")
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", false)
 	srv := &api.Server{
-		Auth: auth.NewDev(), Catalog: cat, Prov: prov, Pubs: publications.New(st), Status: status.New(argo),
+		Auth: auth.NewDev(), Catalog: cat, Prov: prov, Pubs: publications.New(st, cat), Status: status.New(argo),
 		Store: st, Cache: c, Bus: events.New(), Log: observability.NewLogger("error", "text"),
 	}
 	return srv, argo, prov

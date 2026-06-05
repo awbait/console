@@ -144,7 +144,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	bus := events.New()
 	catalogSvc := catalog.New(hb, c)
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
-	pubsSvc := publications.New(st)
+	pubsSvc := publications.New(st, catalogSvc)
 	statusSvc := status.New(argo)
 
 	// --- auth ---

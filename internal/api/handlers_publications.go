@@ -9,6 +9,7 @@ import (
 	"idp/internal/auth"
 	"idp/internal/publications"
 	"idp/internal/store"
+	"idp/internal/views"
 	"idp/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
@@ -146,6 +147,29 @@ func (s *Server) handlePatchPublication(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
+}
+
+type validatePubReq struct {
+	View json.RawMessage `json:"view"`
+}
+
+// handleValidatePublication — live-валидация черновика view из конструктора:
+// всегда 200 со списком проблем (пустой = документ валиден).
+func (s *Server) handleValidatePublication(w http.ResponseWriter, r *http.Request) {
+	var body validatePubReq
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.View) == 0 {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	issues, err := s.Pubs.ValidateView(r.Context(), chi.URLParam(r, "id"), body.View)
+	if err != nil {
+		writeDomainErr(w, err)
+		return
+	}
+	if issues == nil {
+		issues = []views.Issue{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
 }
 
 func (s *Server) handleSubmitPublication(w http.ResponseWriter, r *http.Request) {

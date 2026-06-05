@@ -38,7 +38,14 @@ func writeDomainErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusUnprocessableEntity,
 			errorBody{Error: "validation_failed", Message: ve.Message, Details: ve.Fields})
 	case errors.As(err, &pve):
-		writeErr(w, http.StatusUnprocessableEntity, "validation_failed", pve.Message)
+		// Проблемы view-документа отдаём в details тем же форматом path+message,
+		// что и схемные ошибки values.
+		details := make([]provisioning.FieldError, 0, len(pve.Issues))
+		for _, is := range pve.Issues {
+			details = append(details, provisioning.FieldError{Path: is.Path, Message: is.Message})
+		}
+		writeJSON(w, http.StatusUnprocessableEntity,
+			errorBody{Error: "validation_failed", Message: pve.Message, Details: details})
 	case errors.Is(err, models.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "not_found", "")
 	case errors.Is(err, models.ErrConflict), errors.Is(err, models.ErrStaleVersion),

@@ -25,7 +25,7 @@ func setup(t *testing.T) (*publications.Service, *store.Memory) {
 	if err := st.CreateCategory(context.Background(), &models.Category{ID: "network", Label: "Сеть"}); err != nil {
 		t.Fatal(err)
 	}
-	return publications.New(st), st
+	return publications.New(st, nil), st
 }
 
 var viewV1 = json.RawMessage(`{"views":{"order":{"include":["gateways"]}}}`)

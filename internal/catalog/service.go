@@ -106,6 +106,19 @@ func (s *Service) GetSchema(ctx context.Context, project, name, version string) 
 	return s.blob(ctx, "schema", project, name, version, s.hb.GetSchema)
 }
 
+// LatestSchema returns the values.schema.json of the chart's latest version
+// (used to cross-validate publication view documents).
+func (s *Service) LatestSchema(ctx context.Context, project, name string) ([]byte, error) {
+	chart, err := s.hb.GetChart(ctx, project, name)
+	if err != nil {
+		return nil, err
+	}
+	if chart.LatestVersion == "" {
+		return nil, models.ErrNotFound
+	}
+	return s.GetSchema(ctx, project, name, chart.LatestVersion)
+}
+
 // GetChangelog returns the parsed changelog entry for the given version.
 func (s *Service) GetChangelog(ctx context.Context, project, name, version string) (*models.ChangelogEntry, error) {
 	raw, err := s.blob(ctx, "changelog", project, name, version, s.hb.GetChangelog)

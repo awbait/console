@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"idp/internal/store"
+	"idp/internal/views"
 	"idp/pkg/models"
 	"github.com/google/uuid"
 )
@@ -24,8 +25,12 @@ var (
 	ErrPendingLocked = errors.New("publication is pending review")
 )
 
-// ValidationError — ошибка валидации входных данных (422 в API).
-type ValidationError struct{ Message string }
+// ValidationError — ошибка валидации входных данных (422 в API). Issues
+// заполнен для ошибок view-документа (путь внутри документа + сообщение).
+type ValidationError struct {
+	Message string
+	Issues  []views.Issue
+}
 
 func (e *ValidationError) Error() string { return e.Message }
 
@@ -33,12 +38,22 @@ func invalid(format string, a ...any) error {
 	return &ValidationError{Message: fmt.Sprintf(format, a...)}
 }
 
-// Service owns publication metadata and the view-approval workflow.
-type Service struct {
-	store store.Store
+// SchemaSource отдаёт values.schema.json последней версии чарта (реализуется
+// catalog.Service). Нужен для кросс-валидации view-документов; nil или ошибка
+// источника — кросс-проверки пропускаются (чарт может вовсе не иметь схемы).
+type SchemaSource interface {
+	LatestSchema(ctx context.Context, project, name string) ([]byte, error)
 }
 
-func New(st store.Store) *Service { return &Service{store: st} }
+// Service owns publication metadata and the view-approval workflow.
+type Service struct {
+	store   store.Store
+	schemas SchemaSource
+}
+
+func New(st store.Store, schemas SchemaSource) *Service {
+	return &Service{store: st, schemas: schemas}
+}
 
 func newID() string { return uuid.Must(uuid.NewV7()).String() }
 
@@ -165,8 +180,10 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		payload["owner_team"] = p.OwnerTeam
 	}
 	if in.View != nil {
-		if !json.Valid(in.View) {
-			return nil, invalid("view must be valid JSON")
+		// Черновик можно сохранить со схемными недочётами (схема чарта может
+		// меняться), но структура формата обязана быть валидной.
+		if issues := views.ValidateStructure(in.View); len(issues) > 0 {
+			return nil, &ValidationError{Message: "view-документ не проходит валидацию формата", Issues: issues}
 		}
 		p.ViewJSON = in.View
 		payload["view_updated"] = true
@@ -199,6 +216,11 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	}
 	if len(p.ViewJSON) == 0 {
 		return nil, invalid("nothing to submit: view draft is empty")
+	}
+	// На согласование уходит только полностью валидный документ: формат +
+	// (по возможности) сверка с values.schema.json чарта.
+	if issues := s.validateView(ctx, p, p.ViewJSON); len(issues) > 0 {
+		return nil, &ValidationError{Message: "view-документ не проходит валидацию", Issues: issues}
 	}
 	from := p.Status
 	p.Status = models.PubPending
@@ -276,6 +298,30 @@ func (s *Service) ActiveView(ctx context.Context, project, name string) (json.Ra
 		return nil, models.ErrNotFound
 	}
 	return p.ApprovedViewJSON, nil
+}
+
+// ValidateView прогоняет полную валидацию черновика view для конструктора
+// (live-проверка): структура формата + сверка со схемой чарта. Возвращает
+// список проблем (пустой = всё хорошо), а не ошибку — 422 здесь не нужен.
+func (s *Service) ValidateView(ctx context.Context, id string, view json.RawMessage) ([]views.Issue, error) {
+	p, err := s.store.GetPublication(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.validateView(ctx, p, view), nil
+}
+
+// validateView — формат + best-effort кросс-валидация со схемой чарта: схема
+// недоступна (нет SchemaSource, чарт без схемы, Harbor недоступен) — проверяем
+// только структуру.
+func (s *Service) validateView(ctx context.Context, p *models.ChartPublication, view json.RawMessage) []views.Issue {
+	var schema []byte
+	if s.schemas != nil {
+		if b, err := s.schemas.LatestSchema(ctx, p.ChartProject, p.ChartName); err == nil {
+			schema = b
+		}
+	}
+	return views.Validate(view, schema)
 }
 
 func (s *Service) checkCategory(ctx context.Context, id string) error {
