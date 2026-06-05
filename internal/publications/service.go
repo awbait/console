@@ -38,6 +38,18 @@ func invalid(format string, a ...any) error {
 	return &ValidationError{Message: fmt.Sprintf(format, a...)}
 }
 
+// conflictError — конфликт с человекочитаемой причиной: errors.Is(err,
+// models.ErrConflict) остаётся истинным (API маппит в 409), но в message
+// уходит понятный текст вместо голого "conflict".
+type conflictError struct{ msg string }
+
+func (e *conflictError) Error() string        { return e.msg }
+func (e *conflictError) Is(target error) bool { return target == models.ErrConflict }
+
+func conflict(format string, a ...any) error {
+	return &conflictError{msg: fmt.Sprintf(format, a...)}
+}
+
 // SchemaSource отдаёт values.schema.json последней версии чарта (реализуется
 // catalog.Service). Нужен для кросс-валидации view-документов; nil или ошибка
 // источника — кросс-проверки пропускаются (чарт может вовсе не иметь схемы).
@@ -77,7 +89,13 @@ func (s *Service) CreateCategory(ctx context.Context, u *models.User, c *models.
 	if c.ID == "" || c.Label == "" {
 		return invalid("id and label are required")
 	}
-	return s.store.CreateCategory(ctx, c)
+	if err := s.store.CreateCategory(ctx, c); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			return conflict("категория %q уже существует", c.ID)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) UpdateCategory(ctx context.Context, u *models.User, c *models.Category) error {
@@ -94,7 +112,13 @@ func (s *Service) DeleteCategory(ctx context.Context, u *models.User, id string)
 	if !u.IsAdmin() {
 		return ErrForbidden
 	}
-	return s.store.DeleteCategory(ctx, id)
+	if err := s.store.DeleteCategory(ctx, id); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			return conflict("категория %q используется публикациями — сначала перенесите их", id)
+		}
+		return err
+	}
+	return nil
 }
 
 // --- publications ---
@@ -134,6 +158,9 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		Status:        models.PubDraft,
 	}
 	if err := s.store.CreatePublication(ctx, p); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			return nil, conflict("чарт %s/%s уже добавлен в каталог", in.ChartProject, in.ChartName)
+		}
 		return nil, err
 	}
 	s.addEvent(ctx, p.ID, u, "created", "", p.Status, map[string]any{
@@ -212,10 +239,10 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 		return nil, ErrForbidden
 	}
 	if p.Status == models.PubPending {
-		return nil, models.ErrConflict
+		return nil, conflict("черновик уже на согласовании")
 	}
 	if len(p.ViewJSON) == 0 {
-		return nil, invalid("nothing to submit: view draft is empty")
+		return nil, invalid("нечего отправлять: черновик view пуст")
 	}
 	// На согласование уходит только полностью валидный документ: формат +
 	// (по возможности) сверка с values.schema.json чарта.
@@ -250,7 +277,7 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 		return nil, err
 	}
 	if p.Status != models.PubPending {
-		return nil, models.ErrConflict
+		return nil, conflict("публикация не находится на согласовании")
 	}
 	from := p.Status
 	p.Status = to

@@ -31,6 +31,8 @@ export function AddChartDialog() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [ownerTeam, setOwnerTeam] = useState<string | null>(user?.teams[0] ?? null);
   const [busy, setBusy] = useState(false);
+  // Чарт уже опубликован (409) — вместо формы предлагаем перейти к управлению.
+  const [conflict, setConflict] = useState(false);
 
   const teams = user?.teams ?? [];
   const isAdmin = user?.role === "admin";
@@ -42,6 +44,7 @@ export function AddChartDialog() {
     setErr(null);
     setChecking(false);
     setBusy(false);
+    setConflict(false);
   }
 
   async function onCheck() {
@@ -65,6 +68,7 @@ export function AddChartDialog() {
     }
     setBusy(true);
     setErr(null);
+    setConflict(false);
     try {
       await api.createPublication({
         chart: `${chart.project}/${chart.name}`,
@@ -76,6 +80,7 @@ export function AddChartDialog() {
       reset();
       navigate(`/catalog/${chart.project}/${chart.name}/manage`);
     } catch (e) {
+      if (e instanceof HttpError && e.status === 409) setConflict(true);
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
     } finally {
       setBusy(false);
@@ -121,7 +126,25 @@ export function AddChartDialog() {
                   </Button>
                 </div>
 
-                {err && <p className="text-sm text-red-600">{err}</p>}
+                {err && (
+                  <div className="text-sm text-red-600">
+                    <p>{err}</p>
+                    {conflict && result?.chart && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const c = result.chart!;
+                          close();
+                          reset();
+                          navigate(`/catalog/${c.project}/${c.name}/manage`);
+                        }}
+                        className="mt-1 text-brand-600 underline hover:text-brand-700"
+                      >
+                        Открыть управление этим чартом
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {result && (
                   <div className="flex flex-col gap-2 rounded-md border border-slate-200 p-3">
