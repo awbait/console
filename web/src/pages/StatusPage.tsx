@@ -13,7 +13,7 @@ const LABELS: Record<string, string> = {
 };
 
 // Storage rows are titled by their backend name directly.
-const BACKEND_LABELS: Record<string, string> = { postgres: "postgresql" };
+const BACKEND_LABELS: Record<string, string> = { postgres: "PostgreSQL", redis: "Redis" };
 
 export function StatusPage() {
   const { data, error, loading, reload } = useAsync(() => api.getSystemStatus(), []);
