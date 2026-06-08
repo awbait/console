@@ -69,14 +69,16 @@ func (p *Postgres) ListCategories(ctx context.Context) ([]*models.Category, erro
 
 const pubCols = `id, chart_project, chart_name, category_id, owner_team,
 	created_by, created_by_name, status, view_json, approved_view_json,
-	COALESCE(reviewed_by,''), COALESCE(review_comment,''), version, created_at, updated_at`
+	COALESCE(reviewed_by,''), COALESCE(review_comment,''), version, created_at, updated_at,
+	draft_category_id, draft_owner_team`
 
 func scanPublication(row pgx.Row) (*models.ChartPublication, error) {
 	var pub models.ChartPublication
 	var view, approved []byte
 	err := row.Scan(&pub.ID, &pub.ChartProject, &pub.ChartName, &pub.CategoryID, &pub.OwnerTeam,
 		&pub.CreatedBy, &pub.CreatedByName, &pub.Status, &view, &approved,
-		&pub.ReviewedBy, &pub.ReviewComment, &pub.Version, &pub.CreatedAt, &pub.UpdatedAt)
+		&pub.ReviewedBy, &pub.ReviewComment, &pub.Version, &pub.CreatedAt, &pub.UpdatedAt,
+		&pub.DraftCategoryID, &pub.DraftOwnerTeam)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, models.ErrNotFound
 	}
@@ -95,11 +97,13 @@ func (p *Postgres) CreatePublication(ctx context.Context, pub *models.ChartPubli
 	_, err := p.pool.Exec(ctx, `
 		INSERT INTO chart_publications
 		(id, chart_project, chart_name, category_id, owner_team, created_by, created_by_name,
-		 status, view_json, approved_view_json, reviewed_by, review_comment, version)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		 status, view_json, approved_view_json, reviewed_by, review_comment, version,
+		 draft_category_id, draft_owner_team)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
 		pub.ID, pub.ChartProject, pub.ChartName, pub.CategoryID, pub.OwnerTeam,
 		pub.CreatedBy, pub.CreatedByName, pub.Status, nullJSON(pub.ViewJSON),
-		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.Version)
+		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.Version,
+		pub.DraftCategoryID, pub.DraftOwnerTeam)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -151,10 +155,12 @@ func (p *Postgres) ListPublications(ctx context.Context, f PublicationFilter) ([
 func (p *Postgres) UpdatePublication(ctx context.Context, pub *models.ChartPublication) error {
 	tag, err := p.pool.Exec(ctx, `
 		UPDATE chart_publications SET
-		  category_id=$1, owner_team=$2, status=$3, view_json=$4, approved_view_json=$5,
-		  reviewed_by=$6, review_comment=$7, version=version+1, updated_at=NOW()
-		WHERE id=$8 AND version=$9`,
-		pub.CategoryID, pub.OwnerTeam, pub.Status, nullJSON(pub.ViewJSON),
+		  category_id=$1, owner_team=$2, draft_category_id=$3, draft_owner_team=$4,
+		  status=$5, view_json=$6, approved_view_json=$7,
+		  reviewed_by=$8, review_comment=$9, version=version+1, updated_at=NOW()
+		WHERE id=$10 AND version=$11`,
+		pub.CategoryID, pub.OwnerTeam, pub.DraftCategoryID, pub.DraftOwnerTeam,
+		pub.Status, nullJSON(pub.ViewJSON),
 		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.ID, pub.Version)
 	if err != nil {
 		return err

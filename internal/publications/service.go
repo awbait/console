@@ -188,23 +188,40 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		return nil, ErrPendingLocked
 	}
 	payload := map[string]any{}
-	if in.CategoryID != nil && *in.CategoryID != p.CategoryID {
-		if err := s.checkCategory(ctx, *in.CategoryID); err != nil {
-			return nil, err
+	// Смена категории/владельца не применяется сразу: она копится в draft-полях и
+	// уходит в live (CategoryID/OwnerTeam) только на approve. Возврат значения к
+	// согласованному снимает черновик.
+	if in.CategoryID != nil {
+		if *in.CategoryID == p.CategoryID {
+			if p.DraftCategoryID != "" {
+				p.DraftCategoryID = ""
+				payload["draft_category_id"] = ""
+			}
+		} else if *in.CategoryID != p.DraftCategoryID {
+			if err := s.checkCategory(ctx, *in.CategoryID); err != nil {
+				return nil, err
+			}
+			p.DraftCategoryID = *in.CategoryID
+			payload["draft_category_id"] = p.DraftCategoryID
 		}
-		p.CategoryID = *in.CategoryID
-		payload["category_id"] = p.CategoryID
 	}
-	if in.OwnerTeam != nil && *in.OwnerTeam != p.OwnerTeam {
-		// Передать владение можно только в свою команду; админ, в любую.
+	if in.OwnerTeam != nil {
 		if *in.OwnerTeam == "" {
 			return nil, invalid("owner_team must not be empty")
 		}
-		if !u.IsAdmin() && !u.InTeam(*in.OwnerTeam) {
-			return nil, ErrForbidden
+		if *in.OwnerTeam == p.OwnerTeam {
+			if p.DraftOwnerTeam != "" {
+				p.DraftOwnerTeam = ""
+				payload["draft_owner_team"] = ""
+			}
+		} else if *in.OwnerTeam != p.DraftOwnerTeam {
+			// Предложить передачу владения можно только в свою команду; админ, в любую.
+			if !u.IsAdmin() && !u.InTeam(*in.OwnerTeam) {
+				return nil, ErrForbidden
+			}
+			p.DraftOwnerTeam = *in.OwnerTeam
+			payload["draft_owner_team"] = p.DraftOwnerTeam
 		}
-		p.OwnerTeam = *in.OwnerTeam
-		payload["owner_team"] = p.OwnerTeam
 	}
 	if in.View != nil {
 		// Черновик можно сохранить со схемными недочётами (схема чарта может
@@ -214,13 +231,14 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		}
 		p.ViewJSON = in.View
 		payload["view_updated"] = true
-		// Правка после отклонения возвращает черновик в работу.
-		if p.Status == models.PubRejected {
-			p.Status = models.PubDraft
-		}
 	}
 	if len(payload) == 0 {
 		return p, nil // no-op
+	}
+	// Любая правка черновика (view или метаданные) возвращает отклонённую
+	// публикацию в работу.
+	if p.Status == models.PubRejected {
+		p.Status = models.PubDraft
 	}
 	if err := s.store.UpdatePublication(ctx, p); err != nil {
 		return nil, err
@@ -241,13 +259,16 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if p.Status == models.PubPending {
 		return nil, conflict("черновик уже на согласовании")
 	}
-	if len(p.ViewJSON) == 0 {
-		return nil, invalid("нечего отправлять: черновик view пуст")
+	if len(p.ViewJSON) == 0 && !p.PendingMeta() {
+		return nil, invalid("нечего отправлять: нет ни черновика view, ни изменений метаданных")
 	}
 	// На согласование уходит только полностью валидный документ: формат +
-	// (по возможности) сверка с values.schema.json чарта.
-	if issues := s.validateView(ctx, p, p.ViewJSON); len(issues) > 0 {
-		return nil, &ValidationError{Message: "view.schema.json не проходит валидацию", Issues: issues}
+	// (по возможности) сверка с values.schema.json чарта. Если меняются только
+	// метаданные (view не трогали), проверять нечего.
+	if len(p.ViewJSON) > 0 {
+		if issues := s.validateView(ctx, p, p.ViewJSON); len(issues) > 0 {
+			return nil, &ValidationError{Message: "view.schema.json не проходит валидацию", Issues: issues}
+		}
 	}
 	from := p.Status
 	p.Status = models.PubPending
@@ -302,12 +323,31 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 		return nil, conflict("публикация не находится на согласовании")
 	}
 	from := p.Status
+	var applied map[string]any
+	if to == models.PubApproved {
+		p.ApprovedViewJSON = p.ViewJSON
+		// Согласованная смена метаданных применяется к live-значениям и черновик
+		// гасится. Категорию перепроверяем: за время ревью её могли удалить.
+		applied = map[string]any{}
+		if p.DraftCategoryID != "" {
+			if err := s.checkCategory(ctx, p.DraftCategoryID); err != nil {
+				return nil, err
+			}
+			p.CategoryID = p.DraftCategoryID
+			p.DraftCategoryID = ""
+			applied["category_id"] = p.CategoryID
+		}
+		if p.DraftOwnerTeam != "" {
+			p.OwnerTeam = p.DraftOwnerTeam
+			p.DraftOwnerTeam = ""
+			applied["owner_team"] = p.OwnerTeam
+		}
+	}
+	// Статус и реквизиты ревью проставляем после возможных проверок, чтобы
+	// неуспешный approve не оставил публикацию в полупринятом виде.
 	p.Status = to
 	p.ReviewedBy = u.Subject
 	p.ReviewComment = comment
-	if to == models.PubApproved {
-		p.ApprovedViewJSON = p.ViewJSON
-	}
 	if err := s.store.UpdatePublication(ctx, p); err != nil {
 		return nil, err
 	}
@@ -316,6 +356,8 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 	if to == models.PubRejected {
 		event = "rejected"
 		payload = map[string]any{"comment": comment}
+	} else if len(applied) > 0 {
+		payload = applied
 	}
 	s.addEvent(ctx, p.ID, u, event, from, to, payload)
 	return p, nil

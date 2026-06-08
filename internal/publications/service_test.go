@@ -221,19 +221,92 @@ func TestOwnerTeamHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// в свою вторую команду, можно
+	// не владелец не может даже предложить передачу
 	to := "dbaas"
-	if _, err := svc.Update(ctx, member("core", "dbaas"), p.ID, publications.UpdateInput{OwnerTeam: &to}); err != nil {
-		t.Fatalf("handoff to own team: %v", err)
+	if _, err := svc.Update(ctx, member("dbaas"), p.ID, publications.UpdateInput{OwnerTeam: &to}); !errors.Is(err, publications.ErrForbidden) {
+		t.Fatalf("non-owner propose: want forbidden, got %v", err)
 	}
 
-	// участник новой команды управляет, старой, нет
-	back := "payments"
-	if _, err := svc.Update(ctx, member("dbaas"), p.ID, publications.UpdateInput{OwnerTeam: &back}); !errors.Is(err, publications.ErrForbidden) {
-		t.Fatalf("handoff to foreign team: want forbidden, got %v", err)
+	// предложить можно только в свою команду; админ, в любую
+	payments := "payments"
+	if _, err := svc.Update(ctx, member("core"), p.ID, publications.UpdateInput{OwnerTeam: &payments}); !errors.Is(err, publications.ErrForbidden) {
+		t.Fatalf("propose to foreign team: want forbidden, got %v", err)
 	}
-	if _, err := svc.Update(ctx, admin(), p.ID, publications.UpdateInput{OwnerTeam: &back}); err != nil {
-		t.Fatalf("admin handoff anywhere: %v", err)
+	if _, err := svc.Update(ctx, admin(), p.ID, publications.UpdateInput{OwnerTeam: &payments}); err != nil {
+		t.Fatalf("admin propose anywhere: %v", err)
+	}
+
+	// владелец предлагает передачу в свою вторую команду: это лишь черновик,
+	// live-владелец не меняется до согласования
+	p, err = svc.Update(ctx, member("core", "dbaas"), p.ID, publications.UpdateInput{OwnerTeam: &to})
+	if err != nil {
+		t.Fatalf("propose handoff: %v", err)
+	}
+	if p.OwnerTeam != "core" || p.DraftOwnerTeam != "dbaas" {
+		t.Fatalf("handoff must be pending: owner=%s draft=%q", p.OwnerTeam, p.DraftOwnerTeam)
+	}
+
+	// применяется только после согласования
+	if _, err := svc.Submit(ctx, member("core"), p.ID); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	p, err = svc.Approve(ctx, admin(), p.ID)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if p.OwnerTeam != "dbaas" || p.DraftOwnerTeam != "" {
+		t.Fatalf("handoff must apply on approve: owner=%s draft=%q", p.OwnerTeam, p.DraftOwnerTeam)
+	}
+}
+
+func TestMetadataApproval(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	if err := st.CreateCategory(ctx, &models.Category{ID: "databases", Label: "Базы"}); err != nil {
+		t.Fatal(err)
+	}
+	owner := member("core")
+
+	p, err := svc.Create(ctx, owner, publications.CreateInput{
+		ChartProject: "platform", ChartName: "pg", CategoryID: "network", OwnerTeam: "core",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// смена категории не применяется сразу: только черновик
+	to := "databases"
+	p, err = svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &to})
+	if err != nil {
+		t.Fatalf("propose category: %v", err)
+	}
+	if p.CategoryID != "network" || p.DraftCategoryID != "databases" {
+		t.Fatalf("category must be pending: live=%s draft=%q", p.CategoryID, p.DraftCategoryID)
+	}
+
+	// возврат к согласованному значению снимает черновик
+	back := "network"
+	p, err = svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &back})
+	if err != nil {
+		t.Fatalf("revert category: %v", err)
+	}
+	if p.DraftCategoryID != "" {
+		t.Fatalf("revert must clear draft, got %q", p.DraftCategoryID)
+	}
+
+	// снова предлагаем и согласуем (без view: согласуются одни метаданные)
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &to}); err != nil {
+		t.Fatalf("re-propose: %v", err)
+	}
+	if _, err := svc.Submit(ctx, owner, p.ID); err != nil {
+		t.Fatalf("submit meta-only: %v", err)
+	}
+	p, err = svc.Approve(ctx, admin(), p.ID)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if p.CategoryID != "databases" || p.DraftCategoryID != "" {
+		t.Fatalf("category must apply on approve: live=%s draft=%q", p.CategoryID, p.DraftCategoryID)
 	}
 }
 

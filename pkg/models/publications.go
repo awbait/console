@@ -37,6 +37,11 @@ type ChartPublication struct {
 	CreatedBy     string            `json:"created_by"`
 	CreatedByName string            `json:"created_by_name"`
 	Status        PublicationStatus `json:"status"`
+	// DraftCategoryID/DraftOwnerTeam, предложенная, но ещё не согласованная смена
+	// метаданных. Live-значения (CategoryID/OwnerTeam, по ним работают каталог и
+	// права) меняются только на approve; пустая строка — нет ожидающих изменений.
+	DraftCategoryID string `json:"draft_category_id,omitempty"`
+	DraftOwnerTeam  string `json:"draft_owner_team,omitempty"`
 	// ViewJSON, редактируемый черновик view-документа; ApprovedViewJSON —
 	// активная согласованная версия (по ней строятся формы заказа).
 	ViewJSON         json.RawMessage `json:"view_json,omitempty"`
@@ -50,6 +55,11 @@ type ChartPublication struct {
 
 // Published сообщает, есть ли у публикации действующая согласованная view.
 func (p *ChartPublication) Published() bool { return len(p.ApprovedViewJSON) > 0 }
+
+// PendingMeta сообщает, есть ли несогласованная смена категории/владельца.
+func (p *ChartPublication) PendingMeta() bool {
+	return p.DraftCategoryID != "" || p.DraftOwnerTeam != ""
+}
 
 // PublicationEvent, запись аудита / смены статуса публикации.
 type PublicationEvent struct {
