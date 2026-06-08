@@ -3,11 +3,13 @@ import { useParams } from "react-router-dom";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
   Button as AriaButton,
-  Disclosure,
-  DisclosurePanel,
+  Dialog,
+  DialogTrigger,
   Heading,
   ListBox,
   ListBoxItem,
+  Modal,
+  ModalOverlay,
   Popover,
   Select as AriaSelect,
   SelectValue,
@@ -16,7 +18,15 @@ import {
   TabPanel,
   Tabs,
 } from "react-aria-components";
-import { IconAlertCircle, IconCheck, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconArrowNarrowRight,
+  IconCheck,
+  IconChevronDown,
+  IconClock,
+  IconHelpCircle,
+  IconX,
+} from "@tabler/icons-react";
 import { api, HttpError } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { useUser, canModify } from "../auth/UserContext";
@@ -247,7 +257,8 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     }
   }
 
-  // Категория/владелец правятся прямо в чипах шапки и сохраняются сразу.
+  // Категория/владелец правятся в чипах шапки, но это лишь черновик: live-значения
+  // (по ним работают каталог и права) меняются только после согласования.
   async function onMetaChange(patch: { category_id?: string; owner_team?: string }) {
     setErr(null);
     try {
@@ -314,8 +325,17 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
 
   const st = STATUS_LABELS[pub.status];
   const viewNames = Object.keys(parsed?.views ?? {});
-  const categoryLabel = categories.find((c) => c.id === pub.category_id)?.label ?? pub.category_id;
-  const ownerOptions = [...new Set([...(user?.teams ?? []), pub.owner_team])];
+  const catLabel = (id: string) => categories.find((c) => c.id === id)?.label ?? id;
+  const categoryLabel = catLabel(pub.category_id);
+  const ownerOptions = [
+    ...new Set([...(user?.teams ?? []), pub.owner_team, pub.draft_owner_team].filter(Boolean) as string[]),
+  ];
+  // Несогласованная смена метаданных: предложения, ждущие approve.
+  const proposals: { label: string; from: string; to: string }[] = [];
+  if (pub.draft_category_id)
+    proposals.push({ label: "Категория", from: categoryLabel, to: catLabel(pub.draft_category_id) });
+  if (pub.draft_owner_team)
+    proposals.push({ label: "Владелец", from: pub.owner_team, to: pub.draft_owner_team });
 
   return (
     <div className="flex flex-col gap-4">
@@ -331,10 +351,13 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
             {editable ? (
               <ChipSelect
                 label="Категория"
-                value={pub.category_id}
+                value={pub.draft_category_id || pub.category_id}
+                pending={!!pub.draft_category_id}
                 options={categories.map((c) => ({ id: c.id, label: c.label }))}
                 onChange={(id) => onMetaChange({ category_id: id })}
               />
+            ) : pub.draft_category_id ? (
+              <ProposalChip label="Категория" from={categoryLabel} to={catLabel(pub.draft_category_id)} />
             ) : (
               <Chip className="bg-slate-100 text-slate-600">
                 <span className="text-slate-400">Категория:</span>
@@ -344,10 +367,13 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
             {editable && ownerOptions.length > 1 ? (
               <ChipSelect
                 label="Владелец"
-                value={pub.owner_team}
+                value={pub.draft_owner_team || pub.owner_team}
+                pending={!!pub.draft_owner_team}
                 options={ownerOptions.map((t) => ({ id: t, label: t }))}
                 onChange={(t) => onMetaChange({ owner_team: t })}
               />
+            ) : pub.draft_owner_team ? (
+              <ProposalChip label="Владелец" from={pub.owner_team} to={pub.draft_owner_team} />
             ) : (
               <Chip className="bg-brand-50 text-brand-700">
                 <span className="text-brand-400">Владелец:</span>
@@ -367,6 +393,13 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
               </Chip>
             )}
           </div>
+          {editable && proposals.length > 0 && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-700">
+              <IconClock size={13} stroke={1.8} className="shrink-0 text-amber-500" />
+              Смена {proposals.map((p) => p.label.toLowerCase()).join(" / ")} применится только после
+              согласования — отправьте на согласование.
+            </p>
+          )}
         </div>
         {editable && (
           <div className="flex shrink-0 gap-2">
@@ -402,10 +435,20 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
       )}
       {err && <p className="text-sm text-red-600">{err}</p>}
 
-      {/* Согласование (admin, pending): diff черновика против активной версии. */}
+      {/* Согласование (admin, pending): смена метаданных + diff view. */}
       {pending && isAdmin && (
         <Card className="flex flex-col gap-3 border-amber-200">
           <h2 className="text-sm font-semibold text-slate-800">Согласование</h2>
+          {proposals.length > 0 && (
+            <div className="flex flex-col gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 p-3">
+              <p className="text-xs font-medium text-amber-800">Смена метаданных</p>
+              <div className="flex flex-wrap gap-1.5">
+                {proposals.map((p) => (
+                  <ProposalChip key={p.label} label={p.label} from={p.from} to={p.to} />
+                ))}
+              </div>
+            </div>
+          )}
           {pub.approved_view_json ? (
             <div className="overflow-hidden rounded-md border border-slate-200">
               <DiffEditor
@@ -548,19 +591,39 @@ function Chip({ className = "", children }: { className?: string; children: Reac
   );
 }
 
+// ProposalChip, янтарный чип «было → стало (на согласовании)»: показывает
+// несогласованную смену категории/владельца там, где правка недоступна.
+function ProposalChip({ label, from, to }: { label: string; from: string; to: string }) {
+  return (
+    <Chip className="bg-amber-50 text-amber-700">
+      <IconClock size={12} stroke={2} className="text-amber-500" aria-hidden />
+      <span className="font-normal text-amber-500">{label}:</span>
+      <span className="text-amber-600/70 line-through">{from}</span>
+      <IconArrowNarrowRight size={13} stroke={2} className="text-amber-400" aria-hidden />
+      {to}
+    </Chip>
+  );
+}
+
 // ChipSelect, селект в форме чипа: компактная правка категории/владельца прямо
-// в шапке, без отдельной карточки метаданных.
+// в шапке, без отдельной карточки метаданных. pending подсвечивает чип янтарём:
+// выбранное значение — предложение, оно станет активным только после согласования.
 function ChipSelect({
   label,
   value,
   options,
   onChange,
+  pending = false,
 }: {
   label: string;
   value: string;
   options: { id: string; label: string }[];
   onChange: (id: string) => void;
+  pending?: boolean;
 }) {
+  const tone = pending
+    ? "bg-amber-50 text-amber-700 hover:bg-amber-100 data-[pressed]:bg-amber-100"
+    : "bg-slate-100 text-slate-600 hover:bg-slate-200 data-[pressed]:bg-slate-200";
   return (
     <AriaSelect
       selectedKey={value}
@@ -568,10 +631,13 @@ function ChipSelect({
       aria-label={label}
       className="inline-flex"
     >
-      <AriaButton className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 outline-none transition-colors hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:bg-slate-200">
-        <span className="font-normal text-slate-400">{label}:</span>
+      <AriaButton
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${tone}`}
+      >
+        <span className={`font-normal ${pending ? "text-amber-500" : "text-slate-400"}`}>{label}:</span>
         <SelectValue />
-        <IconChevronDown size={12} stroke={2} className="text-slate-400" aria-hidden />
+        {pending && <IconClock size={12} stroke={2} className="text-amber-500" aria-hidden />}
+        <IconChevronDown size={12} stroke={2} className={pending ? "text-amber-500" : "text-slate-400"} aria-hidden />
       </AriaButton>
       <Popover className="min-w-[var(--trigger-width)] rounded-md border border-slate-200 bg-white shadow-lg entering:animate-in entering:fade-in">
         <ListBox className="max-h-60 overflow-auto p-1 outline-none">
@@ -601,53 +667,65 @@ function EditorTab({ id, children }: { id: string; children: React.ReactNode }) 
   );
 }
 
-// FormatHelp, разворачиваемая справка по заполнению view.schema.json.
+// FormatHelp, справка по заполнению view.schema.json в модальном окне.
 function FormatHelp() {
   return (
-    <Disclosure className="group rounded-md border border-slate-200 bg-slate-50">
-      <Heading>
-        <AriaButton
-          slot="trigger"
-          className="flex w-full items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 outline-none hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
-        >
-          <IconChevronRight
-            size={14}
-            className="text-slate-400 transition-transform duration-200 group-data-[expanded]:rotate-90"
-          />
-          Как заполнять view.schema.json
-        </AriaButton>
-      </Heading>
-      <DisclosurePanel className="px-3 pb-3 text-xs leading-relaxed text-slate-600">
-        <ul className="flex list-disc flex-col gap-1 pl-4">
-          <li>
-            Документ: <code className="rounded bg-white px-1 ring-1 ring-slate-200">{'{"views": { ... }}'}</code>.
-            View <b>order</b> обязательна: это форма нового заказа, она же даёт пункт в левом меню.
-            Остальные views (routes, listeners, resources, ...) становятся вкладками страницы
-            заказанного продукта.
-          </li>
-          <li>
-            <b>include</b> / <b>exclude</b>: какие поля схемы показать или скрыть. Имена берутся из
-            values.schema.json (вкладка рядом).
-          </li>
-          <li>
-            <b>overrides</b>: настройка конкретного поля. <b>title</b> переопределяет подпись,{" "}
-            <b>ui:view</b>: вложенная проекция для объекта или элемента массива.
-          </li>
-          <li>
-            <b>ui:widget</b>: "single" рендерит массив как один объект, "hidden" скрывает поле,
-            "edit" раскрывает поле, скрытое в схеме чарта (override перебивает ui:widget схемы).
-          </li>
-          <li>
-            <b>identity</b>: JSON pointer на поле, из которого берётся имя сервиса, например{" "}
-            <code className="rounded bg-white px-1 ring-1 ring-slate-200">"/gateways/0/name"</code>.
-          </li>
-          <li>
-            Подписи и описания полей форма берёт из <b>title</b> / <b>description</b> в
-            values.schema.json; чтобы поправить текст, меняйте схему в чарте или title в overrides.
-          </li>
-        </ul>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-white p-2 ring-1 ring-slate-200">
-          {`{
+    <DialogTrigger>
+      <AriaButton className="inline-flex w-fit items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 outline-none transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500">
+        <IconHelpCircle size={14} className="text-slate-400" />
+        Как заполнять view.schema.json
+      </AriaButton>
+      <ModalOverlay
+        isDismissable
+        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-16 entering:animate-in entering:fade-in"
+      >
+        <Modal className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow-xl">
+          <Dialog className="outline-none">
+            {({ close }) => (
+              <div className="flex max-h-[80vh] flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <Heading slot="title" className="text-sm font-semibold text-slate-800">
+                    Как заполнять view.schema.json
+                  </Heading>
+                  <AriaButton
+                    onPress={close}
+                    aria-label="Закрыть"
+                    className="rounded p-1 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
+                  >
+                    <IconX size={16} />
+                  </AriaButton>
+                </div>
+                <div className="overflow-y-auto text-xs leading-relaxed text-slate-600">
+                  <ul className="flex list-disc flex-col gap-1.5 pl-4">
+                    <li>
+                      Документ: <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"views": { ... }}'}</code>.
+                      View <b>order</b> обязательна: это форма нового заказа, она же даёт пункт в левом меню.
+                      Остальные views (routes, listeners, resources, ...) становятся вкладками страницы
+                      заказанного продукта.
+                    </li>
+                    <li>
+                      <b>include</b> / <b>exclude</b>: какие поля схемы показать или скрыть. Имена берутся из
+                      values.schema.json (вкладка рядом).
+                    </li>
+                    <li>
+                      <b>overrides</b>: настройка конкретного поля. <b>title</b> переопределяет подпись,{" "}
+                      <b>ui:view</b>: вложенная проекция для объекта или элемента массива.
+                    </li>
+                    <li>
+                      <b>ui:widget</b>: "single" рендерит массив как один объект, "hidden" скрывает поле,
+                      "edit" раскрывает поле, скрытое в схеме чарта (override перебивает ui:widget схемы).
+                    </li>
+                    <li>
+                      <b>identity</b>: JSON pointer на поле, из которого берётся имя сервиса, например{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/gateways/0/name"</code>.
+                    </li>
+                    <li>
+                      Подписи и описания полей форма берёт из <b>title</b> / <b>description</b> в
+                      values.schema.json; чтобы поправить текст, меняйте схему в чарте или title в overrides.
+                    </li>
+                  </ul>
+                  <pre className="mt-3 overflow-x-auto rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
+                    {`{
   "views": {
     "order": {
       "identity": "/gateways/0/name",
@@ -663,9 +741,14 @@ function FormatHelp() {
     "routes": { "include": ["xroutes"] }
   }
 }`}
-        </pre>
-      </DisclosurePanel>
-    </Disclosure>
+                  </pre>
+                </div>
+              </div>
+            )}
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+    </DialogTrigger>
   );
 }
 

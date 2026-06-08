@@ -195,6 +195,10 @@ export interface ChartPublication {
   created_by: string;
   created_by_name: string;
   status: PublicationStatus;
+  // Несогласованная смена метаданных: live category_id/owner_team меняются только
+  // на approve, до тех пор предложенные значения живут здесь (пусто — нет правок).
+  draft_category_id?: string;
+  draft_owner_team?: string;
   view_json?: ViewDocument | null; // черновик
   approved_view_json?: ViewDocument | null; // активная согласованная версия
   reviewed_by?: string;
