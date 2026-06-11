@@ -89,7 +89,7 @@ export function AddChartDialog() {
 
   return (
     <DialogTrigger onOpenChange={(open) => !open && reset()}>
-      <AriaButton className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500">
+      <AriaButton className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-on-accent outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500">
         <IconPlus size={16} stroke={2} />
         Добавить чарт
       </AriaButton>
@@ -97,7 +97,7 @@ export function AddChartDialog() {
         isDismissable
         className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
       >
-        <Modal className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-xl">
+        <Modal className="w-full max-w-lg rounded-lg border border-slate-200 bg-surface shadow-xl">
           <Dialog className="outline-none">
             {({ close }) => (
               <div className="flex flex-col gap-3 p-4">

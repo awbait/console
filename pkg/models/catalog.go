@@ -11,6 +11,10 @@ type Chart struct {
 	LatestVersion string   `json:"latest_version"`
 	Versions      []string `json:"versions"`
 	AllowedTeams  []string `json:"allowed_teams,omitempty"` // empty = all teams
+	// Author, первый maintainer из Chart.yaml (если есть). Используется как автор
+	// авто-обнаруженной публикации. Реальный Harbor-клиент пока не парсит Chart.yaml,
+	// так что для него пусто.
+	Author string `json:"author,omitempty"`
 }
 
 // ChartVersion is a single artifact (version) of a chart.

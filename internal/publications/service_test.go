@@ -259,6 +259,50 @@ func TestOwnerTeamHandoff(t *testing.T) {
 	}
 }
 
+// fakeSchemas — источник схемы/версии для проверки штампа ApprovedViewVersion.
+type fakeSchemas struct{ version string }
+
+func (f fakeSchemas) LatestSchema(context.Context, string, string) ([]byte, error) { return nil, nil }
+func (f fakeSchemas) LatestVersion(context.Context, string, string) (string, error) {
+	return f.version, nil
+}
+func (f fakeSchemas) LatestDescription(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (f fakeSchemas) LatestIcon(context.Context, string, string) (string, error) {
+	return "", nil
+}
+
+func TestApproveStampsViewVersion(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemory()
+	if err := st.CreateCategory(ctx, &models.Category{ID: "network", Label: "Сеть"}); err != nil {
+		t.Fatal(err)
+	}
+	svc := publications.New(st, fakeSchemas{version: "2.0.0"})
+	owner := member("core")
+
+	p, err := svc.Create(ctx, owner, publications.CreateInput{
+		ChartProject: "platform", ChartName: "ingress-gateway", CategoryID: "network", OwnerTeam: "core",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Submit(ctx, owner, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	p, err = svc.Approve(ctx, admin(), p.ID)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if p.ApprovedViewVersion != "2.0.0" {
+		t.Fatalf("approve must stamp view version: got %q", p.ApprovedViewVersion)
+	}
+}
+
 func TestMetadataApproval(t *testing.T) {
 	ctx := context.Background()
 	svc, st := setup(t)

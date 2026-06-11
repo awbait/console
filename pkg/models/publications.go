@@ -46,6 +46,18 @@ type ChartPublication struct {
 	// активная согласованная версия (по ней строятся формы заказа).
 	ViewJSON         json.RawMessage `json:"view_json,omitempty"`
 	ApprovedViewJSON json.RawMessage `json:"approved_view_json,omitempty"`
+	// ApprovedViewVersion, версия чарта (latest на момент approve), под которую
+	// согласован активный view. «Благословлённая» версия: до неё view проверен,
+	// заказы можно обновлять; новее в Harbor — автору пора обновить view.
+	ApprovedViewVersion string `json:"approved_view_version,omitempty"`
+	// ApprovedDescription, описание чарта (из Chart.yaml/Harbor) на момент approve.
+	// Каталог показывает его, а не живое из Harbor: данные обновляются только после
+	// нового согласования.
+	ApprovedDescription string `json:"approved_description,omitempty"`
+	// ApprovedIconURL, иконка чарта (Chart.yaml icon) на момент approve. Каталог и
+	// профиль чарта показывают её, а не живую из Harbor — иначе новая версия с новой
+	// иконкой «протекала» бы в каталог до согласования. Пусто = иконки нет.
+	ApprovedIconURL string `json:"approved_icon_url,omitempty"`
 	ReviewedBy       string          `json:"reviewed_by,omitempty"`
 	ReviewComment    string          `json:"review_comment,omitempty"`
 	Version          int             `json:"version"` // optimistic lock

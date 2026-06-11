@@ -160,6 +160,7 @@ type apiArtifact struct {
 		Version     string `json:"version"`
 		AppVersion  string `json:"appVersion"`
 		Description string `json:"description"`
+		Icon        string `json:"icon"` // Chart.yaml icon (URL или data:image/...;base64,)
 	} `json:"extra_attrs"`
 }
 
@@ -220,6 +221,9 @@ func (c *Client) GetChart(ctx context.Context, project, name string) (*models.Ch
 		vers = append(vers, artifactToVersion(project, name, a))
 		if ch.Description == "" {
 			ch.Description = a.ExtraAttrs.Description
+		}
+		if ch.IconURL == "" {
+			ch.IconURL = a.ExtraAttrs.Icon
 		}
 	}
 	// versions oldest->newest so LatestVersion is the newest by push time

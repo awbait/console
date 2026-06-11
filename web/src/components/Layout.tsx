@@ -19,6 +19,7 @@ import {
   IconActivity,
   IconBell,
   IconBox,
+  IconCheck,
   IconChecklist,
   IconChevronDown,
   IconChevronRight,
@@ -28,6 +29,7 @@ import {
   IconLayoutSidebarLeftExpand,
   IconLogout,
   IconPackages,
+  IconPalette,
   IconUser,
   IconUsersGroup,
 } from "@tabler/icons-react";
@@ -35,6 +37,7 @@ import { api } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { useUser } from "../auth/UserContext";
 import { useTeam } from "../app/TeamContext";
+import { THEMES, THEME_LABELS, useTheme, type Theme } from "../app/ThemeContext";
 import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import type { CatalogChart } from "../api/types";
 import { categoryIcon } from "./icons";
@@ -119,6 +122,11 @@ export function Layout() {
     return pathname === to || pathname.startsWith(`${to}/`);
   };
 
+  // Конструктор публикации (manage) — широкий двухпанельный редактор: на нём
+  // снимаем ограничение ширины контента, чтобы editor + предпросмотр заняли
+  // весь экран.
+  const fullBleed = /^\/catalog\/[^/]+\/[^/]+\/manage$/.test(pathname);
+
   if (loading) return <Spinner />;
   if (unauthenticated || !user) return <LoginScreen />;
 
@@ -126,15 +134,20 @@ export function Layout() {
     <div className="flex h-screen bg-slate-50 text-slate-800">
       {/* LEFT NAV — full height; width animates (px→px) for a smooth collapse */}
       <aside
-        className={`flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-300 ease-in-out ${
+        className={`flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-surface transition-[width] duration-300 ease-in-out ${
           collapsed ? "w-16" : "w-[260px]"
         }`}
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-slate-100 px-4">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-white">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-on-accent">
             <IconCloud size={20} stroke={1.8} />
           </span>
-          {!collapsed && <span className="truncate text-sm font-semibold text-slate-800">Dev Portal</span>}
+          {!collapsed && (
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-sm font-semibold text-slate-800">Console</span>
+              <span className="truncate text-[11px] text-slate-400">Managed Services</span>
+            </div>
+          )}
         </div>
 
         {/* flat group: Ресурсы / Чарты (active via navActive aria-current) */}
@@ -248,7 +261,7 @@ export function Layout() {
       {/* RIGHT COLUMN: topbar + content */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* TOPBAR */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4">
+      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-surface px-4">
         <OrgSelector />
         <div className="flex items-center gap-1">
           <Link
@@ -260,6 +273,7 @@ export function Layout() {
           >
             <IconActivity size={20} stroke={1.7} />
           </Link>
+          <ThemeMenu />
           <IconButton label="Документация">
             <IconHelp size={20} stroke={1.7} />
           </IconButton>
@@ -277,7 +291,12 @@ export function Layout() {
             instead of escaping to grow the document (whole-page scroll + phantom
             white block on the form). */}
         <main className="relative min-h-0 flex-1 overflow-y-auto p-6">
-          <Outlet />
+          {/* Ограничиваем ширину контента и центрируем: на широких экранах строки
+              не растягиваются во всю ширину. h-full сохраняет цепочку высоты
+              (страницы, тянущиеся на всю высоту, напр. конструктор view). */}
+          <div className={`mx-auto h-full w-full ${fullBleed ? "" : "max-w-screen-xl"}`}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
@@ -320,7 +339,7 @@ function OrgSelector() {
         isDismissable
         className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
       >
-        <Modal className="w-full max-w-md rounded-lg border border-slate-200 bg-white shadow-xl">
+        <Modal className="w-full max-w-md rounded-lg border border-slate-200 bg-surface shadow-xl">
           <Dialog className="outline-none">
             {({ close }) => (
               <>
@@ -369,6 +388,36 @@ function IconButton({ label, children }: { label: string; children: React.ReactN
   );
 }
 
+// Переключатель темы оформления: светлая / тёмная / РН. Выбор сохраняется в
+// localStorage и применяется на <html data-theme> (см. ThemeContext).
+function ThemeMenu() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <MenuTrigger>
+      <Button
+        aria-label="Тема оформления"
+        className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <IconPalette size={20} stroke={1.7} />
+      </Button>
+      <Popover className="min-w-40 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu className="outline-none" onAction={(key) => setTheme(key as Theme)}>
+          {THEMES.map((t) => (
+            <MenuItem
+              key={t}
+              id={t}
+              className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+            >
+              {THEME_LABELS[t]}
+              {theme === t && <IconCheck size={15} className="text-brand-600" />}
+            </MenuItem>
+          ))}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
+  );
+}
+
 function UserMenu() {
   const { user } = useUser();
   if (!user) return null;
@@ -384,7 +433,7 @@ function UserMenu() {
           <span className="block text-slate-400">{user.role}</span>
         </span>
       </Button>
-      <Popover className="min-w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+      <Popover className="min-w-44 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
         <Menu
           className="outline-none"
           onAction={(key) => {
@@ -411,15 +460,16 @@ function UserMenu() {
 function LoginScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-brand-600 text-white">
+      <div className="rounded-lg border border-slate-200 bg-surface p-8 text-center shadow-sm">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-brand-600 text-on-accent">
           <IconCloud size={24} stroke={1.8} />
         </div>
-        <h1 className="text-lg font-semibold text-slate-800">Dev Portal</h1>
-        <p className="mt-1 text-sm text-slate-500">Вы не аутентифицированы.</p>
+        <h1 className="text-lg font-semibold text-slate-800">Console</h1>
+        <p className="text-xs text-slate-400">Managed Services</p>
+        <p className="mt-2 text-sm text-slate-500">Вы не аутентифицированы.</p>
         <a
           href={api.loginUrl()}
-          className="mt-4 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          className="mt-4 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-on-accent hover:bg-brand-700"
         >
           Войти через Keycloak
         </a>

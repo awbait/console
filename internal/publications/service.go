@@ -50,11 +50,15 @@ func conflict(format string, a ...any) error {
 	return &conflictError{msg: fmt.Sprintf(format, a...)}
 }
 
-// SchemaSource отдаёт values.schema.json последней версии чарта (реализуется
-// catalog.Service). Нужен для кросс-валидации view-документов; nil или ошибка
-// источника, кросс-проверки пропускаются (чарт может вовсе не иметь схемы).
+// SchemaSource отдаёт values.schema.json и номер последней версии чарта
+// (реализуется catalog.Service). Схема нужна для кросс-валидации view-документов;
+// версия — чтобы штамповать согласованный view (ApprovedViewVersion). nil или
+// ошибка источника, соответствующий шаг пропускается.
 type SchemaSource interface {
 	LatestSchema(ctx context.Context, project, name string) ([]byte, error)
+	LatestVersion(ctx context.Context, project, name string) (string, error)
+	LatestDescription(ctx context.Context, project, name string) (string, error)
+	LatestIcon(ctx context.Context, project, name string) (string, error)
 }
 
 // Service owns publication metadata and the view-approval workflow.
@@ -326,6 +330,22 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 	var applied map[string]any
 	if to == models.PubApproved {
 		p.ApprovedViewJSON = p.ViewJSON
+		// Штампуем версию, под которую согласован view: это «благословлённая»
+		// версия чарта (latest на момент approve). Best-effort: Harbor недоступен —
+		// оставляем прежнюю отметку.
+		if v := s.latestVersion(ctx, p); v != "" {
+			p.ApprovedViewVersion = v
+		}
+		// Описание и иконку тоже снапшотим — каталог/профиль покажут согласованные,
+		// а не живые из Harbor (иначе новая версия «протекает» в каталог).
+		if s.schemas != nil {
+			if d, err := s.schemas.LatestDescription(ctx, p.ChartProject, p.ChartName); err == nil {
+				p.ApprovedDescription = d
+			}
+			if ic, err := s.schemas.LatestIcon(ctx, p.ChartProject, p.ChartName); err == nil {
+				p.ApprovedIconURL = ic
+			}
+		}
 		// Согласованная смена метаданных применяется к live-значениям и черновик
 		// гасится. Категорию перепроверяем: за время ревью её могли удалить.
 		applied = map[string]any{}
@@ -361,6 +381,49 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 	}
 	s.addEvent(ctx, p.ID, u, event, from, to, payload)
 	return p, nil
+}
+
+// DefaultDiscoveryCategory — категория для авто-обнаруженных черновиков (seed).
+const DefaultDiscoveryCategory = "uncategorized"
+
+// DiscoveredChart — найденный в Harbor чарт для авто-регистрации.
+type DiscoveredChart struct {
+	Project string
+	Name    string
+	Author  string // из Chart.yaml maintainers, может быть пусто
+}
+
+// EnsureDiscovered заводит черновики-публикации для найденных в Harbor чартов,
+// у которых публикации ещё нет: владелец — группа админов (ownerTeam), категория —
+// дефолтная (categoryID), автор — из Chart.yaml. Уже существующие не трогает.
+// Системная операция (без пользователя/RBAC), вызывается фоновым реконсилером.
+func (s *Service) EnsureDiscovered(ctx context.Context, charts []DiscoveredChart, ownerTeam, categoryID string) error {
+	for _, c := range charts {
+		if _, err := s.store.GetPublicationByChart(ctx, c.Project, c.Name); err == nil {
+			continue // уже зарегистрирован
+		} else if !errors.Is(err, models.ErrNotFound) {
+			return err
+		}
+		p := &models.ChartPublication{
+			ID:            newID(),
+			ChartProject:  c.Project,
+			ChartName:     c.Name,
+			CategoryID:    categoryID,
+			OwnerTeam:     ownerTeam,
+			CreatedBy:     "auto-discovery",
+			CreatedByName: c.Author, // пусто, если у чарта нет maintainers
+			Status:        models.PubDraft,
+		}
+		if err := s.store.CreatePublication(ctx, p); err != nil {
+			if errors.Is(err, models.ErrConflict) {
+				continue // гонка с другим путём регистрации — ок
+			}
+			return err
+		}
+		s.addEvent(ctx, p.ID, &models.User{Subject: "auto-discovery"}, "discovered", "", p.Status,
+			map[string]any{"owner_team": ownerTeam, "author": c.Author})
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*models.ChartPublication, error) {
@@ -400,6 +463,19 @@ func (s *Service) ValidateView(ctx context.Context, id string, view json.RawMess
 		return nil, err
 	}
 	return s.validateView(ctx, p, view), nil
+}
+
+// latestVersion, best-effort номер последней версии чарта (для штампа
+// ApprovedViewVersion). Пусто, если источник недоступен.
+func (s *Service) latestVersion(ctx context.Context, p *models.ChartPublication) string {
+	if s.schemas == nil {
+		return ""
+	}
+	v, err := s.schemas.LatestVersion(ctx, p.ChartProject, p.ChartName)
+	if err != nil {
+		return ""
+	}
+	return v
 }
 
 // validateView, формат + best-effort кросс-валидация со схемой чарта: схема

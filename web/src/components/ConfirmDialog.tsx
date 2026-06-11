@@ -64,7 +64,7 @@ export function ConfirmDialog({
       isDismissable={!busy}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
     >
-      <Modal className="w-full max-w-md rounded-lg bg-white shadow-xl outline-none entering:animate-in entering:zoom-in-95">
+      <Modal className="w-full max-w-md rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
         <Dialog role="alertdialog" className="outline-none">
           {({ close }) => (
             <div className="flex flex-col">
@@ -94,15 +94,17 @@ export function ConfirmDialog({
                 <button
                   onClick={close}
                   disabled={busy}
-                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+                  className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
                 >
                   {cancelLabel}
                 </button>
                 <button
                   onClick={confirm}
                   disabled={busy}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 ${
-                    danger ? "bg-red-600 hover:bg-red-700" : "bg-brand-600 hover:bg-brand-700"
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 ${
+                    danger
+                      ? "bg-red-600 text-white hover:bg-red-700"
+                      : "bg-brand-600 text-on-accent hover:bg-brand-700"
                   }`}
                 >
                   {busy ? busyLabel : confirmLabel}

@@ -6,7 +6,7 @@ import {
   Heading,
 } from "react-aria-components";
 import { IconChevronRight, IconTrash, IconX } from "@tabler/icons-react";
-import { Button, Checkbox, Select, TextField } from "../components/ui";
+import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -139,7 +139,7 @@ function resolvePointer(ref: string, root: Schema): Schema {
 
 // deref follows $ref, merging sibling keywords (title/description/ui:widget)
 // over the resolved target so editor hints on $ref nodes are respected.
-function deref(node: Schema | undefined, root: Schema): Schema {
+export function deref(node: Schema | undefined, root: Schema): Schema {
   let n: Schema = node ?? {};
   let guard = 0;
   while (n && typeof n === "object" && n.$ref && guard++ < 20) {
@@ -151,7 +151,7 @@ function deref(node: Schema | undefined, root: Schema): Schema {
 
 const isHidden = (s: Schema) => s["ui:widget"] === "hidden";
 
-function orderedKeys(s: Schema): string[] {
+export function orderedKeys(s: Schema): string[] {
   const props = s.properties ? Object.keys(s.properties) : [];
   const order: string[] = Array.isArray(s.propertyOrder) ? s.propertyOrder : [];
   const inOrder = order.filter((k) => props.includes(k));
@@ -555,7 +555,7 @@ function ArrayField({
         {items.map((it, i) =>
           isObjectItem ? (
             // Collapsible card with a one-line summary; collapsed by default.
-            <Disclosure key={i} className="group rounded-md border border-gray-200 bg-white">
+            <Disclosure key={i} className="group rounded-md border border-gray-200 bg-surface">
               <div className="flex items-center gap-1 pr-1.5">
                 <Heading className="min-w-0 flex-1">
                   <AriaButton
@@ -571,9 +571,16 @@ function ArrayField({
                     </span>
                   </AriaButton>
                 </Heading>
-                <Button variant="danger" aria-label="Удалить" isDisabled={atMin} onPress={() => removeAt(i)}>
-                  <IconTrash size={16} stroke={1.8} />
-                </Button>
+                <Hint text={atMin ? "Нельзя удалить последний элемент" : "Удалить"}>
+                  <Button
+                    variant="danger"
+                    aria-label="Удалить"
+                    className={atMin ? "opacity-50" : ""}
+                    onPress={() => !atMin && removeAt(i)}
+                  >
+                    <IconTrash size={16} stroke={1.8} />
+                  </Button>
+                </Hint>
               </div>
               <DisclosurePanel>
                 <div className="border-t border-gray-100 px-3 py-3">
@@ -604,15 +611,18 @@ function ArrayField({
                   hideLabel
                 />
               </div>
-              <Button variant="danger" aria-label="Удалить" isDisabled={atMin} onPress={() => removeAt(i)}>
-                <IconX size={16} stroke={2} />
-              </Button>
+              <Hint text={atMin ? "Нельзя удалить последний элемент" : "Удалить"}>
+                <Button
+                  variant="danger"
+                  aria-label="Удалить"
+                  className={atMin ? "opacity-50" : ""}
+                  onPress={() => !atMin && removeAt(i)}
+                >
+                  <IconX size={16} stroke={2} />
+                </Button>
+              </Hint>
             </div>
           ),
-        )}
-
-        {minItems > 0 && atMin && (
-          <p className="text-xs text-gray-400">Минимум {minItems}, последний удалить нельзя.</p>
         )}
 
         <div>

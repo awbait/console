@@ -20,6 +20,9 @@ var seedIngressView []byte
 var seedCategories = []models.Category{
 	{ID: "databases", Label: "Базы данных", Sort: 10},
 	{ID: "network", Label: "Сеть", Sort: 20},
+	// Дефолтная категория для авто-обнаруженных чартов (CATALOG_AUTODISCOVER);
+	// админ переносит их в нужную при модерации.
+	{ID: "uncategorized", Label: "Без категории", Sort: 99},
 }
 
 // SeedPublications заполняет базовые категории и approved-публикацию
@@ -52,6 +55,12 @@ func SeedPublications(ctx context.Context, s Store) error {
 		Status:        models.PubApproved,
 		ViewJSON:      seedIngressView,
 		ApprovedViewJSON: seedIngressView,
+		// Снапшот согласованной версии: каталог/профиль показывают эти данные, а не
+		// живые из Harbor. Согласовано на 3.2.0 (без иконки) — новая версия с иконкой
+		// в Harbor видна только в «Управлении» как доступное обновление.
+		ApprovedViewVersion: "3.2.0",
+		ApprovedDescription: "Helm chart for Istio-based ingress gateway (Gateway API, routes, NetworkPolicy, AuthorizationPolicy, OIDC)",
+		ApprovedIconURL:     "",
 	}
 	if err := s.CreatePublication(ctx, pub); err != nil && !errors.Is(err, models.ErrConflict) {
 		return err

@@ -121,6 +121,40 @@ func (s *Service) LatestSchema(ctx context.Context, project, name string) ([]byt
 	return s.GetSchema(ctx, project, name, chart.LatestVersion)
 }
 
+// LatestVersion returns the chart's latest version string (used to stamp the
+// version a publication view was approved against).
+func (s *Service) LatestVersion(ctx context.Context, project, name string) (string, error) {
+	chart, err := s.hb.GetChart(ctx, project, name)
+	if err != nil {
+		return "", err
+	}
+	if chart.LatestVersion == "" {
+		return "", models.ErrNotFound
+	}
+	return chart.LatestVersion, nil
+}
+
+// LatestDescription returns the chart's current description (snapshotted into a
+// publication at approve time so the catalog shows approved, not live, data).
+func (s *Service) LatestDescription(ctx context.Context, project, name string) (string, error) {
+	chart, err := s.hb.GetChart(ctx, project, name)
+	if err != nil {
+		return "", err
+	}
+	return chart.Description, nil
+}
+
+// LatestIcon returns the chart's current icon (Chart.yaml icon: URL/data URI),
+// snapshotted into a publication at approve time so the catalog/chart profile
+// show the approved icon, not the live one from a newer Harbor version.
+func (s *Service) LatestIcon(ctx context.Context, project, name string) (string, error) {
+	chart, err := s.hb.GetChart(ctx, project, name)
+	if err != nil {
+		return "", err
+	}
+	return chart.IconURL, nil
+}
+
 // GetChangelog returns the parsed changelog entry for the given version.
 func (s *Service) GetChangelog(ctx context.Context, project, name, version string) (*models.ChangelogEntry, error) {
 	raw, err := s.blob(ctx, "changelog", project, name, version, s.hb.GetChangelog)

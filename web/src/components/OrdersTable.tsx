@@ -13,7 +13,7 @@ import {
   TableBody,
   TableHeader,
 } from "react-aria-components";
-import { IconAlertTriangle, IconArrowsSort, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPlus, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconArrowsSort, IconArrowUpCircle, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPackages, IconPlus, IconX } from "@tabler/icons-react";
 import { api, HttpError } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { canModify, useUser } from "../auth/UserContext";
@@ -23,7 +23,11 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { StatusBadge, StatusDot } from "./StatusBadge";
 import { ProductIcon } from "./icons";
 import { useCatalog } from "../app/CatalogContext";
+import { isNewer } from "../lib/semver";
 import type { OrderRequest, RequestStatus } from "../api/types";
+
+// Живые статусы заказа (create-MR влит): только их можно обновлять до новой версии.
+const LIVE_STATUSES: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];
 
 interface Props {
   title: string;
@@ -81,6 +85,14 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     const pub = charts.find((c) => c.project === project && c.name === name)?.publication;
     return categories.find((c) => c.id === pub?.category_id)?.label;
   };
+  // Благословлённая версия новее версии заказа → доступно обновление (только для
+  // живых, недрейфующих заказов).
+  const upgradeFor = (r: OrderRequest): string | null => {
+    if (!LIVE_STATUSES.includes(r.status) || r.drifted) return null;
+    const v = charts.find((c) => c.project === r.chart_project && c.name === r.chart_name)
+      ?.publication?.approved_view_version;
+    return v && isNewer(v, r.chart_version) ? v : null;
+  };
 
   const [shown, setShown] = useState<Set<RequestStatus>>(
     () => new Set(STATUSES.filter((s) => !DEFAULT_HIDDEN.includes(s))),
@@ -135,7 +147,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         {orderTo ? (
           <Link
             to={orderTo}
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-brand-700"
           >
             <IconPlus size={16} stroke={2} />
             Заказать
@@ -175,7 +187,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         )}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
         <Table aria-label={title} className="w-full text-sm">
           <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
             <Column className="px-4 py-2.5 text-left">Категория</Column>
@@ -191,15 +203,21 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           </TableHeader>
           <TableBody
             renderEmptyState={() => (
-              <div className="px-4 py-10 text-center text-sm text-slate-500">
+              <div className="px-4 py-12 text-center text-sm text-slate-500">
                 {emptyHint ?? (
-                  <>
-                    Заказов пока нет.{" "}
-                    <Link to="/catalog" className="text-brand-600 hover:underline">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <IconPackages size={24} stroke={1.6} />
+                    </span>
+                    <p>Заказов пока нет</p>
+                    <Link
+                      to="/catalog"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface px-3 py-1.5 font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
                       Открыть каталог
+                      <IconArrowRight size={16} stroke={1.7} className="text-slate-400" />
                     </Link>
-                    .
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -249,6 +267,20 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                           Git
                         </span>
                       )}
+                      {(() => {
+                        const up = upgradeFor(r);
+                        return up ? (
+                          <Link
+                            to={`/requests/${r.id}/upgrade?to=${encodeURIComponent(up)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title={`Доступно обновление до ${up}`}
+                            className="inline-flex items-center gap-0.5 rounded bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
+                          >
+                            <IconArrowUpCircle size={12} stroke={2} />
+                            {up}
+                          </Link>
+                        ) : null;
+                      })()}
                     </span>
                   </Cell>
                   <Cell className="px-4 py-3 text-left text-slate-600">{r.display_name || "—"}</Cell>
@@ -318,7 +350,7 @@ function StatusFilter({
         </span>
         <IconChevronDown size={13} stroke={1.8} className="text-slate-400" />
       </Button>
-      <Popover className="rounded-md border border-slate-200 bg-white py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+      <Popover className="rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
         <Menu
           selectionMode="multiple"
           selectedKeys={shown}
@@ -338,7 +370,7 @@ function StatusFilter({
                 <>
                   <span
                     className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                      isSelected ? "border-brand-600 bg-brand-600 text-white" : "border-slate-300"
+                      isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
                     }`}
                   >
                     {isSelected && <IconCheck size={12} stroke={3} />}
@@ -381,7 +413,7 @@ function RowActions({
       >
         <IconDots size={18} stroke={1.7} />
       </Button>
-      <Popover className="min-w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+      <Popover className="min-w-44 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
         <Menu
           className="outline-none"
           onAction={(key) => {

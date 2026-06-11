@@ -93,6 +93,10 @@ type Config struct {
 	// created directly in Git (bypassing the portal) as IMPORTED orders. Off by
 	// default — it creates order rows.
 	ImportDiscovery bool `env:"IMPORT_DISCOVERY_ENABLED" envDefault:"false"`
+	// CatalogAutodiscover включает фоновую регистрацию найденных в Harbor чартов как
+	// черновиков-публикаций (владелец — группа админов). Off by default — создаёт
+	// строки публикаций для каждого чарта в сканируемых проектах.
+	CatalogAutodiscover bool `env:"CATALOG_AUTODISCOVER" envDefault:"false"`
 
 	// Postgres / Redis
 	DatabaseURL     string `env:"DATABASE_URL"`

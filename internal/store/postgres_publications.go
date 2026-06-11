@@ -70,7 +70,7 @@ func (p *Postgres) ListCategories(ctx context.Context) ([]*models.Category, erro
 const pubCols = `id, chart_project, chart_name, category_id, owner_team,
 	created_by, created_by_name, status, view_json, approved_view_json,
 	COALESCE(reviewed_by,''), COALESCE(review_comment,''), version, created_at, updated_at,
-	draft_category_id, draft_owner_team`
+	draft_category_id, draft_owner_team, approved_view_version, approved_description, approved_icon_url`
 
 func scanPublication(row pgx.Row) (*models.ChartPublication, error) {
 	var pub models.ChartPublication
@@ -78,7 +78,8 @@ func scanPublication(row pgx.Row) (*models.ChartPublication, error) {
 	err := row.Scan(&pub.ID, &pub.ChartProject, &pub.ChartName, &pub.CategoryID, &pub.OwnerTeam,
 		&pub.CreatedBy, &pub.CreatedByName, &pub.Status, &view, &approved,
 		&pub.ReviewedBy, &pub.ReviewComment, &pub.Version, &pub.CreatedAt, &pub.UpdatedAt,
-		&pub.DraftCategoryID, &pub.DraftOwnerTeam)
+		&pub.DraftCategoryID, &pub.DraftOwnerTeam, &pub.ApprovedViewVersion, &pub.ApprovedDescription,
+		&pub.ApprovedIconURL)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, models.ErrNotFound
 	}
@@ -98,12 +99,14 @@ func (p *Postgres) CreatePublication(ctx context.Context, pub *models.ChartPubli
 		INSERT INTO chart_publications
 		(id, chart_project, chart_name, category_id, owner_team, created_by, created_by_name,
 		 status, view_json, approved_view_json, reviewed_by, review_comment, version,
-		 draft_category_id, draft_owner_team)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		 draft_category_id, draft_owner_team, approved_view_version, approved_description,
+		 approved_icon_url)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		pub.ID, pub.ChartProject, pub.ChartName, pub.CategoryID, pub.OwnerTeam,
 		pub.CreatedBy, pub.CreatedByName, pub.Status, nullJSON(pub.ViewJSON),
 		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.Version,
-		pub.DraftCategoryID, pub.DraftOwnerTeam)
+		pub.DraftCategoryID, pub.DraftOwnerTeam, pub.ApprovedViewVersion, pub.ApprovedDescription,
+		pub.ApprovedIconURL)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -157,11 +160,14 @@ func (p *Postgres) UpdatePublication(ctx context.Context, pub *models.ChartPubli
 		UPDATE chart_publications SET
 		  category_id=$1, owner_team=$2, draft_category_id=$3, draft_owner_team=$4,
 		  status=$5, view_json=$6, approved_view_json=$7,
-		  reviewed_by=$8, review_comment=$9, version=version+1, updated_at=NOW()
-		WHERE id=$10 AND version=$11`,
+		  reviewed_by=$8, review_comment=$9, approved_view_version=$10, approved_description=$11,
+		  approved_icon_url=$12,
+		  version=version+1, updated_at=NOW()
+		WHERE id=$13 AND version=$14`,
 		pub.CategoryID, pub.OwnerTeam, pub.DraftCategoryID, pub.DraftOwnerTeam,
 		pub.Status, nullJSON(pub.ViewJSON),
-		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.ID, pub.Version)
+		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.ApprovedViewVersion,
+		pub.ApprovedDescription, pub.ApprovedIconURL, pub.ID, pub.Version)
 	if err != nil {
 		return err
 	}

@@ -369,6 +369,10 @@ func (s *Service) Rename(ctx context.Context, u *models.User, id, displayName st
 	if r.DeletedAt != nil {
 		return nil, models.ErrNotFound
 	}
+	// Имя не изменилось — ничего не пишем и не плодим событие «renamed».
+	if displayName == r.DisplayName {
+		return r, nil
+	}
 	r.DisplayName = displayName
 	if err := s.store.UpdateRequest(ctx, r); err != nil {
 		return nil, err

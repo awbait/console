@@ -13,15 +13,34 @@ import {
   Input,
   Checkbox as AriaCheckbox,
   type CheckboxProps,
+  TooltipTrigger,
+  Tooltip as AriaTooltip,
 } from "react-aria-components";
 
 const btnVariants = {
   primary:
-    "bg-brand-600 text-white pressed:bg-brand-700 hover:bg-brand-700 border border-transparent",
+    "bg-brand-600 text-on-accent pressed:bg-brand-700 hover:bg-brand-700 border border-transparent",
   secondary:
-    "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 pressed:bg-gray-100",
+    "bg-surface text-gray-800 border border-gray-300 hover:bg-gray-50 pressed:bg-gray-100",
   danger: "bg-red-600 text-white hover:bg-red-700 pressed:bg-red-800 border border-transparent",
 };
+
+// Hint wraps a focusable trigger (a react-aria Button) with a styled tooltip,
+// the same look as the small "i" hints. Note: a tooltip won't open on a truly
+// `isDisabled` trigger - keep the button enabled and gate its action instead.
+export function Hint({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <TooltipTrigger delay={150} closeDelay={0}>
+      {children}
+      <AriaTooltip
+        offset={6}
+        className="max-w-xs rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-xs text-slate-700 shadow-lg entering:animate-in entering:fade-in entering:zoom-in-95"
+      >
+        {text}
+      </AriaTooltip>
+    </TooltipTrigger>
+  );
+}
 
 export function Button({
   variant = "secondary",
@@ -108,7 +127,7 @@ export function Checkbox({
             }`}
           >
             {isSelected && (
-              <svg viewBox="0 0 18 18" className="h-3 w-3 fill-none stroke-white stroke-[3]">
+              <svg viewBox="0 0 18 18" className="h-3 w-3 fill-none stroke-on-accent stroke-[3]">
                 <polyline points="1 9 7 14 15 4" />
               </svg>
             )}
@@ -175,7 +194,7 @@ export function Select<T extends string>({
       ) : (
         description && <span className="text-xs text-gray-500">{description}</span>
       )}
-      <Popover className="min-w-[var(--trigger-width)] rounded-md border border-gray-200 bg-white shadow-lg">
+      <Popover className="min-w-[var(--trigger-width)] rounded-md border border-gray-200 bg-surface shadow-lg">
         <ListBox className="max-h-60 overflow-auto p-1 outline-none">
           {options.map((o) => (
             <ListBoxItem
@@ -194,9 +213,22 @@ export function Select<T extends string>({
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-lg border border-gray-200 bg-white p-4 shadow-sm ${className}`}>
+    <div className={`rounded-lg border border-gray-200 bg-surface p-4 shadow-sm ${className}`}>
       {children}
     </div>
+  );
+}
+
+// Chip, единый стиль бейджей-метаданных в шапках (категория, владелец, версия…).
+// Цвета задаёт className: фон + текст (например bg-slate-100 text-slate-600),
+// внутри удобно префиксовать подпись приглушённым <span> (text-slate-400).
+export function Chip({ className = "", children }: { className?: string; children: ReactNode }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${className}`}
+    >
+      {children}
+    </span>
   );
 }
 

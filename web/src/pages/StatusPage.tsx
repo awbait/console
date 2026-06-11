@@ -75,7 +75,7 @@ function Section({ title, items }: { title: string; items: ComponentStatus[] }) 
   return (
     <div>
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
-      <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
         {items.map((c) => (
           <Row key={c.name} c={c} />
         ))}

@@ -231,6 +231,15 @@ type publicationSummary struct {
 	Status        models.PublicationStatus `json:"status"`
 	Published     bool                     `json:"published"`      // есть действующая approved-view
 	HasOrderView  bool                     `json:"has_order_view"` // approved-view содержит views.order
+	// ApprovedViewVersion — «благословлённая» версия чарта: до неё view проверен,
+	// заказы с версией ниже можно обновлять.
+	ApprovedViewVersion string `json:"approved_view_version,omitempty"`
+	// ApprovedDescription — описание чарта на момент согласования (каталог
+	// показывает его, а не живое из Harbor).
+	ApprovedDescription string `json:"approved_description,omitempty"`
+	// ApprovedIconURL — иконка чарта на момент согласования (каталог/профиль
+	// показывают её, а не живую из Harbor).
+	ApprovedIconURL string `json:"approved_icon_url,omitempty"`
 }
 
 type catalogChart struct {
@@ -265,14 +274,17 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	byChart := make(map[string]*publicationSummary, len(pubs))
 	for _, p := range pubs {
 		byChart[p.ChartProject+"/"+p.ChartName] = &publicationSummary{
-			ID:            p.ID,
-			CategoryID:    p.CategoryID,
-			OwnerTeam:     p.OwnerTeam,
-			CreatedBy:     p.CreatedBy,
-			CreatedByName: p.CreatedByName,
-			Status:        p.Status,
-			Published:     p.Published(),
-			HasOrderView:  hasOrderView(p.ApprovedViewJSON),
+			ID:                  p.ID,
+			CategoryID:          p.CategoryID,
+			OwnerTeam:           p.OwnerTeam,
+			CreatedBy:           p.CreatedBy,
+			CreatedByName:       p.CreatedByName,
+			Status:              p.Status,
+			Published:           p.Published(),
+			HasOrderView:        hasOrderView(p.ApprovedViewJSON),
+			ApprovedViewVersion: p.ApprovedViewVersion,
+			ApprovedDescription: p.ApprovedDescription,
+			ApprovedIconURL:     p.ApprovedIconURL,
 		}
 	}
 	out := make([]catalogChart, 0, len(charts))

@@ -27,6 +27,7 @@ import (
 	"idp/internal/publications"
 	"idp/internal/status"
 	"idp/internal/store"
+	"idp/pkg/models"
 )
 
 // demoSubgroups are the team subgroups the fake GitLab pre-seeds (in production
@@ -165,6 +166,16 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if cfg.ImportDiscovery {
 		reconcilers = append(reconcilers, importReconciler{provSvc}) // adopt Git-created apps
 	}
+	if cfg.CatalogAutodiscover {
+		ownerTeam := "platform-admins"
+		if len(cfg.AdminGroups) > 0 {
+			ownerTeam = cfg.AdminGroups[0]
+		}
+		reconcilers = append(reconcilers, discoveryReconciler{
+			pubs: pubsSvc, cat: catalogSvc, ownerTeam: ownerTeam,
+			categoryID: publications.DefaultDiscoveryCategory,
+		})
+	}
 	poller := status.NewPoller(cfg.StatusPollInterval, log, reconcilers...)
 	go poller.Run(ctx)
 
@@ -220,6 +231,28 @@ func (d driftReconciler) Reconcile(ctx context.Context) error { return d.s.Check
 type importReconciler struct{ s *provisioning.Service }
 
 func (i importReconciler) Reconcile(ctx context.Context) error { return i.s.ImportFromGit(ctx) }
+
+// discoveryReconciler регистрирует найденные в Harbor чарты как черновики-
+// публикации (владелец — группа админов). Список чартов берёт от каталога
+// (admin-видимость — все), автор из Chart.yaml.
+type discoveryReconciler struct {
+	pubs       *publications.Service
+	cat        *catalog.Service
+	ownerTeam  string
+	categoryID string
+}
+
+func (d discoveryReconciler) Reconcile(ctx context.Context) error {
+	charts, err := d.cat.ListCharts(ctx, &models.User{Role: models.RoleAdmin})
+	if err != nil {
+		return err
+	}
+	refs := make([]publications.DiscoveredChart, 0, len(charts))
+	for _, c := range charts {
+		refs = append(refs, publications.DiscoveredChart{Project: c.Project, Name: c.Name, Author: c.Author})
+	}
+	return d.pubs.EnsureDiscovered(ctx, refs, d.ownerTeam, d.categoryID)
+}
 
 // backendName reports the effective backend for display on the status page:
 // `match` when that's what was configured, otherwise the default `fallback`.

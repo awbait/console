@@ -1,12 +1,14 @@
 import { Link, useParams } from "react-router-dom";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import { IconTag, IconCategory, IconUser, IconUsersGroup } from "@tabler/icons-react";
 import { api } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
-import { Button, Card, ErrorBox, Spinner } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, Spinner } from "../components/ui";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Markdown } from "../components/Markdown";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { useUser, canModify } from "../auth/UserContext";
+import { isNewer } from "../lib/semver";
 
 export function ChartDetailPage() {
   const { project = "", name = "" } = useParams();
@@ -24,12 +26,22 @@ export function ChartDetailPage() {
   if (error) return <ErrorBox error={error} />;
   if (!chart) return null;
 
-  // No version picker — the catalog always uses the latest tag.
-  const version = chart.latest_version;
+  // Профиль показывает СОГЛАСОВАННУЮ версию (как каталог), а не живую из Harbor:
+  // версия, описание, иконка — снапшот на момент approve. Живая последняя нужна
+  // только чтобы понять, что в Harbor вышло обновление (нудж в «Управление»).
+  const liveVersion = chart.latest_version;
+  const published = !!pub?.published;
+  const version = (published && pub?.approved_view_version) || liveVersion;
+  const description = (published && pub?.approved_description) || chart.description;
+  const iconUrl = published ? pub?.approved_icon_url : undefined;
   // Заказ открыт только для публикаций с согласованной order-view; ведёт на
   // страницу продукта (его список заказов).
   const orderable = !!pub?.published && !!pub?.has_order_view;
   const categoryLabel = categories.find((c) => c.id === pub?.category_id)?.label;
+  // В Harbor есть версия новее согласованной — владельцу пора актуализировать
+  // данные (подсветим кнопку «Управление» точкой).
+  const viewOutdated =
+    !!pub?.approved_view_version && isNewer(liveVersion, pub.approved_view_version);
 
   return (
     <div className="flex flex-col gap-4">
@@ -41,25 +53,51 @@ export function ChartDetailPage() {
               { label: `${chart.project}/${chart.name}` },
             ]}
           />
-          <h1 className="mt-1 text-xl font-semibold">
+          <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold">
+            {iconUrl && (
+              <img src={iconUrl} alt="" className="h-6 w-6 shrink-0 rounded object-contain" />
+            )}
             {chart.project}/{chart.name}
           </h1>
-          <p className="text-sm text-gray-600">{chart.description}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span className="rounded bg-gray-100 px-2 py-0.5">v{version}</span>
-            {categoryLabel && <span className="rounded bg-gray-100 px-2 py-0.5">{categoryLabel}</span>}
+          <p className="text-sm text-gray-600">{description}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Chip className="bg-slate-100 text-slate-600">
+              <IconTag size={13} stroke={1.8} className="text-slate-400" />
+              <span className="text-slate-400">Версия:</span>v{version}
+            </Chip>
+            {categoryLabel && (
+              <Chip className="bg-slate-100 text-slate-600">
+                <IconCategory size={13} stroke={1.8} className="text-slate-400" />
+                <span className="text-slate-400">Категория:</span>
+                {categoryLabel}
+              </Chip>
+            )}
             {pub && (
-              <span className="rounded bg-brand-50 px-2 py-0.5 text-brand-700">
-                Владелец: {pub.owner_team}
-                {pub.created_by_name ? ` · Автор: ${pub.created_by_name}` : ""}
-              </span>
+              <Chip className="bg-brand-50 text-brand-700">
+                <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
+                <span className="text-brand-400">Владелец:</span>
+                {pub.owner_team}
+              </Chip>
+            )}
+            {pub?.created_by_name && (
+              <Chip className="bg-slate-100 text-slate-600">
+                <IconUser size={13} stroke={1.8} className="text-slate-400" />
+                <span className="text-slate-400">Автор:</span>
+                {pub.created_by_name}
+              </Chip>
             )}
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
           {manageable && (
-            <Link to={`/catalog/${project}/${name}/manage`}>
+            <Link to={`/catalog/${project}/${name}/manage`} className="relative">
               <Button>{pub ? "Управление" : "Опубликовать"}</Button>
+              {pub && viewOutdated && (
+                <span
+                  title="В Harbor есть новая версия чарта — актуализируйте данные"
+                  className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-surface"
+                />
+              )}
             </Link>
           )}
           {orderable ? (

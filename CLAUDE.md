@@ -69,3 +69,12 @@ tests + `HARBOR_MODE=fake`). Seed a stand's Harbor from an external dir via
 - Don't re-introduce charts into the repo, or flip `*_MODE` default back to fake.
 - Don't run destructive stand ops (`stand-reset`, deletes) unless asked.
 - Don't add `Co-Authored-By` to commits.
+
+## Правила для Claude
+
+- **Никогда не добавлять `Co-Authored-By` в коммиты.**
+- **Никогда не добавлять `Generated with Claude Code` в PR.**
+- **Не использовать длинное тире (em dash `—`) нигде** — ни в коде, ни в Markdown, ни в issue, PR, комментариях, ни в ответах. Вместо него: обычный дефис `-`, двоеточие или перестроить фразу.
+- **Отвечать на русском.** Все ответы, комментарии и пояснения — на русском языке.
+- **Комментарии в коде — только на английском.** Русский язык допустим только в Markdown-файлах (`.md`), issue, PR и коммитах. В исходниках (Go, TS, Python, Makefile, конфиги) — никакой кириллицы: редакторы и Gitea подсвечивают её как ambiguous Unicode.
+- **Удалять артефакты сборки.** Если `go build` или другая команда создаёт бинарники (`.exe`, бинарные файлы), удалять их после проверки. Не оставлять в рабочей директории.

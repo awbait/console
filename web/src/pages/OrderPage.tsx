@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import yaml from "js-yaml";
 import { api, HttpError } from "../api/client";
@@ -10,7 +10,9 @@ import { Button, Card, ErrorBox, Spinner, TextField } from "../components/ui";
 import { FormErrors } from "../components/FormErrors";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { chartLabel } from "../app/CatalogContext";
-import type { FieldError } from "../api/types";
+import { useTheme } from "../app/ThemeContext";
+import { isNewer } from "../lib/semver";
+import type { ChangelogEntry, FieldError } from "../api/types";
 import { SchemaForm, pruneEmpty, collectErrors } from "../form/SchemaForm";
 
 type Values = Record<string, unknown>;
@@ -27,16 +29,24 @@ function readPointer(obj: unknown, pointer: string): string {
   return cur == null ? "" : String(cur);
 }
 
-// OrderPage drives both ordering a new service (/catalog/:project/:name/order)
-// and editing an existing DRAFT (/requests/:id/edit). A draft can be saved for
-// later ("Сохранить черновик") or finalised, which opens the MR ("Заказать").
-export function OrderPage() {
+// OrderPage drives ordering a new service (/catalog/:project/:name/order),
+// editing an existing DRAFT (/requests/:id/edit), and upgrading a live order to
+// a newer chart version (/requests/:id/upgrade?to=X — the upgrade flag). Upgrade
+// reuses the form at the target version (prefilled from the order) and opens an
+// update MR; identity/cluster/namespace are immutable once deployed.
+export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const { project: pParam = "", name: nParam = "", id } = useParams();
+  const [searchParams] = useSearchParams();
+  // Целевая версия апгрейда из ?to= (благословлённая версия); запасной вариант —
+  // последняя версия чарта.
+  const upgradeToParam = searchParams.get("to") ?? "";
   const editing = !!id;
   const navigate = useNavigate();
   const { user } = useUser();
   // Team is chosen globally (topbar); the order form doesn't ask for it.
   const { team: activeTeam } = useTeam();
+  const { theme } = useTheme();
+  const monacoTheme = theme === "light" ? "light" : "vs-dark";
 
   // In edit mode, load the draft we're continuing. Its chart coordinates and
   // pinned version drive the rest of the page.
@@ -74,8 +84,26 @@ export function OrderPage() {
   // that, a field's error shows only once it's been touched.
   const [showErrors, setShowErrors] = useState(false);
 
-  // A draft keeps its pinned version; a new order always takes the latest.
-  const effectiveVersion = editing ? draft?.chart_version ?? null : chart?.latest_version ?? null;
+  // Upgrade: целевая (новая) версия. Draft: закреплённая версия. Новый заказ:
+  // последняя версия чарта.
+  const targetVersion = upgrade ? upgradeToParam || chart?.latest_version || "" : "";
+  const effectiveVersion = upgrade
+    ? targetVersion || null
+    : editing
+      ? draft?.chart_version ?? null
+      : chart?.latest_version ?? null;
+
+  // Апгрейд: CHANGELOG чарта между текущей версией заказа и целевой, чтобы было
+  // видно, что изменилось.
+  const { data: changelog } = useAsync(
+    async () => {
+      if (!upgrade || !project || !name) return [] as ChangelogEntry[];
+      const all = await api.getAggregatedChangelog(project, name).catch(() => [] as ChangelogEntry[]);
+      const from = draft?.chart_version ?? "";
+      return all.filter((e) => isNewer(e.version, from) && !isNewer(e.version, targetVersion));
+    },
+    [upgrade, project, name, draft?.chart_version, targetVersion],
+  );
 
   // Load the schema (from the chart, via the API) plus the chart's approved
   // view document (from its publication). The "order" view curates the form
@@ -124,8 +152,9 @@ export function OrderPage() {
 
   if (editing && existingLoading) return <Spinner />;
   if (editing && existingErr) return <ErrorBox error={existingErr} />;
-  if (editing && draft && draft.status !== "DRAFT") {
-    // Only drafts are editable here; bounce to the read-only detail page.
+  if (editing && !upgrade && draft && draft.status !== "DRAFT") {
+    // Only drafts are editable here; live orders bounce to the read-only detail
+    // page (the upgrade flow is the one exception — it edits a live order).
     navigate(`/requests/${draft.id}`, { replace: true });
     return null;
   }
@@ -269,10 +298,33 @@ export function OrderPage() {
     }
   }
 
+  // doUpgrade обновляет живой заказ до целевой версии: валидирует значения по
+  // новой схеме и открывает update-MR (api.updateRequest с новой version). Имя
+  // сервиса/кластер/namespace неизменны — отправляем только версию и values.
+  async function doUpgrade() {
+    setSubmitErr(null);
+    if (clientErrors.size > 0) {
+      setShowErrors(true);
+      setSubmitErr({ message: "Заполните обязательные поля, отмеченные красным." });
+      return;
+    }
+    const c = collectValues();
+    if (!c) return;
+    setBusy("submit");
+    try {
+      await api.updateRequest(id!, { version: targetVersion, values: c.values });
+      navigate(`/requests/${id}`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const submitting = busy !== null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-8">
       <Breadcrumbs
         items={[
           {
@@ -282,16 +334,58 @@ export function OrderPage() {
           ...(editing
             ? [
                 { label: draft?.service_name || "черновик", to: `/requests/${id}` },
-                { label: "Редактирование" },
+                { label: upgrade ? "Обновление" : "Редактирование" },
               ]
             : [{ label: "Новый заказ" }]),
         ]}
       />
       <h1 className="text-xl font-semibold">
-        {editing ? "Черновик: " : "Заказ "}
+        {upgrade ? "Обновление: " : editing ? "Черновик: " : "Заказ "}
         {label || `${chart.project}/${chart.name}`}
+        {upgrade && (
+          <span className="text-gray-400">
+            {" "}
+            {draft?.chart_version} → {targetVersion}
+          </span>
+        )}
       </h1>
 
+      {upgrade ? (
+        <Card className="flex flex-col gap-3">
+          <p className="text-sm text-gray-600">
+            Сервис <span className="font-medium text-gray-800">{draft?.service_name}</span> · команда{" "}
+            <span className="font-medium text-gray-800">{draft?.team}</span> · кластер{" "}
+            <span className="font-medium text-gray-800">{draft?.cluster}</span> · namespace{" "}
+            <span className="font-medium text-gray-800">{draft?.namespace}</span>
+          </p>
+          <p className="text-sm text-gray-600">
+            Версия <span className="font-medium text-gray-800">{draft?.chart_version}</span> →{" "}
+            <span className="font-medium text-brand-700">{targetVersion}</span>. Идентификатор,
+            кластер и namespace при обновлении не меняются — правятся только значения под новую схему.
+          </p>
+          {changelog && changelog.length > 0 && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+              <p className="mb-1.5 font-semibold text-slate-700">Что изменилось в чарте</p>
+              <div className="flex flex-col gap-2">
+                {changelog.map((e) => (
+                  <div key={e.version}>
+                    <p className="font-medium text-slate-700">
+                      {e.version}
+                      {e.date && <span className="ml-1.5 font-normal text-slate-400">{e.date}</span>}
+                    </p>
+                    {Object.entries(e.sections).map(([sec, items]) => (
+                      <div key={sec} className="ml-1 mt-0.5">
+                        <span className="uppercase text-slate-400">{sec}:</span>{" "}
+                        <span className="text-slate-600">{items.join("; ")}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      ) : (
       <Card className="flex flex-col gap-3">
         <TextField
           label="Отображаемое имя"
@@ -340,6 +434,7 @@ export function OrderPage() {
           )}
         </p>
       </Card>
+      )}
 
       <Card>
         <div className="mb-3 flex items-center justify-between">
@@ -347,13 +442,13 @@ export function OrderPage() {
           <div className="flex gap-1 rounded-md bg-gray-100 p-0.5 text-xs">
             <button
               onClick={() => switchMode("form")}
-              className={`rounded px-2 py-1 ${mode === "form" ? "bg-white shadow" : "text-gray-500"}`}
+              className={`rounded px-2 py-1 ${mode === "form" ? "bg-surface shadow" : "text-gray-500"}`}
             >
               Form
             </button>
             <button
               onClick={() => switchMode("raw")}
-              className={`rounded px-2 py-1 ${mode === "raw" ? "bg-white shadow" : "text-gray-500"}`}
+              className={`rounded px-2 py-1 ${mode === "raw" ? "bg-surface shadow" : "text-gray-500"}`}
             >
               Raw YAML
             </button>
@@ -380,6 +475,7 @@ export function OrderPage() {
             <Editor
               height="320px"
               defaultLanguage="yaml"
+              theme={monacoTheme}
               value={raw}
               onChange={(v) => setRaw(v ?? "")}
               options={{ minimap: { enabled: false }, fontSize: 13, automaticLayout: true }}
@@ -398,16 +494,28 @@ export function OrderPage() {
       )}
 
       <div className="flex gap-2">
-        <Button
-          variant="primary"
-          isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam)}
-          onPress={submit}
-        >
-          {busy === "submit" ? "Заказываем…" : "Заказать"}
-        </Button>
-        <Button variant="secondary" isDisabled={submitting || !effectiveVersion} onPress={saveDraft}>
-          {busy === "draft" ? "Сохраняем…" : "Сохранить черновик"}
-        </Button>
+        {upgrade ? (
+          <Button
+            variant="primary"
+            isDisabled={submitting || !targetVersion}
+            onPress={doUpgrade}
+          >
+            {busy === "submit" ? "Обновляем…" : `Обновить до ${targetVersion}`}
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="primary"
+              isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam)}
+              onPress={submit}
+            >
+              {busy === "submit" ? "Заказываем…" : "Заказать"}
+            </Button>
+            <Button variant="secondary" isDisabled={submitting || !effectiveVersion} onPress={saveDraft}>
+              {busy === "draft" ? "Сохраняем…" : "Сохранить черновик"}
+            </Button>
+          </>
+        )}
         <Button variant="secondary" isDisabled={submitting} onPress={() => navigate(-1)}>
           Отмена
         </Button>

@@ -24,6 +24,19 @@ type chartMeta struct {
 	Name        string `yaml:"name"`
 	Version     string `yaml:"version"`
 	Description string `yaml:"description"`
+	Icon        string `yaml:"icon"`
+	Maintainers []struct {
+		Name string `yaml:"name"`
+	} `yaml:"maintainers"`
+}
+
+// author returns the first maintainer's name (Chart.yaml), used as the author of
+// an auto-discovered publication. Empty when the chart has no maintainers.
+func (m chartMeta) author() string {
+	if len(m.Maintainers) > 0 {
+		return m.Maintainers[0].Name
+	}
+	return ""
 }
 
 // seedEmbeddedCharts registers every embedded chart so it is orderable exactly
@@ -75,7 +88,7 @@ func (f *Fake) seedEmbeddedCharts() {
 			digest := "sha256:" + hex.EncodeToString(h.Sum(nil))
 
 			f.add(&fakeChart{
-				chart: models.Chart{Project: proj.Name(), Name: m.Name, Description: m.Description},
+				chart: models.Chart{Project: proj.Name(), Name: m.Name, Description: m.Description, IconURL: m.Icon, Author: m.author()},
 				versions: map[string]*fakeVersion{
 					m.Version: {
 						v: models.ChartVersion{

@@ -7,6 +7,14 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: idp
+networking:
+  # Pin the API server to a fixed host port. Without this kind picks a random
+  # ephemeral port, which on Windows can land inside a WinNAT/Hyper-V reserved
+  # dynamic range after a host restart — Docker then can't republish it and
+  # kubectl dies with WSAEACCES ("…in a way forbidden by its access
+  # permissions"). 6443 is well clear of the reserved ranges.
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443
 nodes:
   # Pinned to v1.33.7 (kind v0.31's tested image): the default v1.35.0 node fails
   # to bring up the kubelet on Docker Desktop / WSL2 ("required cgroups disabled").

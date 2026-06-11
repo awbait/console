@@ -1,4 +1,5 @@
 import { Link, useParams } from "react-router-dom";
+import { IconPlus, IconShoppingCart } from "@tabler/icons-react";
 import { OrdersTable } from "../components/OrdersTable";
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
 
@@ -39,7 +40,19 @@ export function ProductPage() {
       orderDisabledReason={orderDisabledReason}
       emptyHint={
         orderTo ? (
-          <>Заказов {label} пока нет. Нажмите «Заказать».</>
+          <div className="flex flex-col items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+              <IconShoppingCart size={24} stroke={1.6} />
+            </span>
+            <p>Заказов пока нет</p>
+            <Link
+              to={orderTo}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface px-3 py-1.5 font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <IconPlus size={16} stroke={1.7} className="text-slate-400" />
+              Заказать
+            </Link>
+          </div>
         ) : orderDisabledReason ? (
           <>{orderDisabledReason}. Заказ недоступен, пока view не согласована.</>
         ) : undefined
