@@ -186,7 +186,7 @@ function conditionalRequired(schema: Schema, value: Values, root: Schema): strin
 }
 
 // seedDefaults builds an initial value for a schema from const/default.
-function seedDefaults(node: Schema, root: Schema): unknown {
+export function seedDefaults(node: Schema, root: Schema): unknown {
   const s = deref(node, root);
   if ("const" in s) return s.const;
   if ("default" in s) return s.default;

@@ -13,7 +13,7 @@ import {
 import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import { api, HttpError } from "../../api/client";
 import { useAsync } from "../../hooks/useAsync";
-import { SchemaForm, pruneEmpty, collectErrors, type View } from "../../form/SchemaForm";
+import { SchemaForm, pruneEmpty, collectErrors, seedDefaults, type View } from "../../form/SchemaForm";
 import { Button, ErrorBox, Hint, Spinner } from "../ui";
 import { ConfirmDialog } from "../ConfirmDialog";
 import type { OrderRequest, ViewDocument, ViewTab } from "../../api/types";
@@ -339,10 +339,13 @@ function ItemModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    setItem(initial ? structuredClone(initial) : {});
+    // A new item is seeded with the schema's const/default values (e.g. route
+    // kind=HTTPRoute), so the value matches what the form shows and the table
+    // reads, instead of staying undefined until the user touches each field.
+    setItem(initial ? structuredClone(initial) : ((seedDefaults(itemSchema, itemSchema) as Values) ?? {}));
     setShowErrors(false);
     setErr(null);
-  }, [isOpen, initial]);
+  }, [isOpen, initial, itemSchema]);
 
   // Dynamic enums (e.g. listener names for parentRefs[].sectionName) are injected
   // from the order's full values before the form renders and validates.
