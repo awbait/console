@@ -4,7 +4,9 @@
 //   tabs    - product tabs (list tables); each names an array (items pointer) and
 //             the form (a view id) used to add/edit one element, plus ui:table.
 //   actions - placement of form-views into a "Действия" menu (info or tab:<id>).
-// Dynamic enums, save-time auto-fill and computed columns are still TODO.
+// A tab may also declare dynamic enums (applyEnums) and computed lookup columns
+// (computeCell). Save-time auto-fill of hidden fields is the chart's job, not the
+// portal's, so there is no prepare/onSave step here.
 import { deref, type View } from "../../form/SchemaForm";
 import type { ViewDocument, ViewTab } from "../../api/types";
 

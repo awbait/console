@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider, createBrowserRouter, Navigate } from "react-router-dom";
 import "./index.css";
 import { Layout } from "./components/Layout";
+import { ThemeProvider } from "./app/ThemeContext";
+import { ToastProvider } from "./app/ToastContext";
 import { UserProvider } from "./auth/UserContext";
 import { TeamProvider } from "./app/TeamContext";
 import { CatalogProvider } from "./app/CatalogContext";
@@ -30,6 +32,7 @@ const router = createBrowserRouter([
       { path: "admin/publications", element: <AdminPublicationsPage /> },
       { path: "requests", element: <RequestsPage /> },
       { path: "requests/:id/edit", element: <OrderPage /> },
+      { path: "requests/:id/upgrade", element: <OrderPage upgrade /> },
       { path: "products/:project/:name", element: <ProductPage /> },
       { path: "requests/:id", element: <RequestDetailPage /> },
       { path: "applications", element: <ApplicationsPage /> },
@@ -40,12 +43,16 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <UserProvider>
-      <TeamProvider>
-        <CatalogProvider>
-          <RouterProvider router={router} />
-        </CatalogProvider>
-      </TeamProvider>
-    </UserProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <UserProvider>
+          <TeamProvider>
+            <CatalogProvider>
+              <RouterProvider router={router} />
+            </CatalogProvider>
+          </TeamProvider>
+        </UserProvider>
+      </ToastProvider>
+    </ThemeProvider>
   </StrictMode>,
 );
