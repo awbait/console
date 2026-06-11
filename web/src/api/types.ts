@@ -151,6 +151,14 @@ export interface PublicationSummary {
   status: PublicationStatus;
   published: boolean; // есть действующая approved-view
   has_order_view: boolean; // approved-view содержит views.order (форма заказа)
+  // «Благословлённая» версия чарта: до неё view проверен — заказы с версией ниже
+  // можно обновлять до неё.
+  approved_view_version?: string;
+  // Описание чарта на момент согласования (каталог показывает его, не живое).
+  approved_description?: string;
+  // Иконка чарта на момент согласования (каталог/профиль показывают её, не живую).
+  // Пусто — иконки у согласованной версии нет.
+  approved_icon_url?: string;
 }
 
 // Чарт каталога: Harbor-данные + оверлей публикации (может отсутствовать).
@@ -178,11 +186,62 @@ export interface CatalogResponse {
   charts: CatalogChart[];
 }
 
+// Вычисляемая колонка через join по ссылке: собрать ключи keys из элемента
+// (сегмент "*" перебирает массив), найти в массиве in строки где row[match]
+// равно ключу, взять row[get]; значения уникальны и склеиваются. Пример:
+// hostname маршрута берётся из listener'а, на который он ссылается по sectionName.
+export interface ViewColumnLookup {
+  keys: string;
+  in: string;
+  match: string;
+  get: string;
+}
+
+// Колонка таблицы списочной вкладки. Либо path — путь к полю внутри элемента
+// массива ("name" или "parentRefs/0/sectionName"), либо lookup — вычисляемое
+// значение. label — заголовок (по умолчанию path).
+export interface ViewTableColumn {
+  path?: string;
+  label?: string;
+  lookup?: ViewColumnLookup;
+}
+
+// Правило динамического enum: наполнить enum поля элемента из соседнего массива
+// полных values заказа. at — JSON pointer внутри элемента до поля-селектора
+// (числовой сегмент = элемент массива); from — JSON pointer на массив-источник в
+// values; value — имя поля строки источника, дающее значение опции. Пример:
+// parentRefs[].sectionName выбирается из имён listener'ов этого Gateway.
+export interface ViewEnumRule {
+  at: string;
+  from: string;
+  value: string;
+}
+
+// Вкладка продукта: таблица-список. items — JSON pointer на массив в values
+// заказа; form — id формы из views для добавления/редактирования одного элемента;
+// ui:table — колонки таблицы; enums — динамические enum'ы формы элемента.
+export interface ViewTab {
+  id: string;
+  title?: string;
+  items: string;
+  form: string;
+  // Текст пункта «Добавить ...» в кнопке «Действия» вкладки (по умолчанию
+  // "Добавить <title>").
+  addLabel?: string;
+  "ui:table"?: ViewTableColumn[];
+  enums?: ViewEnumRule[];
+}
+
 // View-документ публикации чарта (бывший /schemas/{chart}.ui.json, теперь в БД,
-// отдаётся бэкендом). views.* — презентационные проекции поверх values.schema.json
-// (order/routes/listeners/resources, см. SchemaForm.View).
+// отдаётся бэкендом). Три раздела:
+//   views   — библиотека форм (проекции поверх values.schema.json), включая
+//             обязательную "order" (форма заказа). Сам по себе view не вкладка.
+//   tabs    — вкладки продукта (таблицы-списки), каждая ссылается на массив и форму.
+//   actions — размещение форм-view в кнопке «Действия» (info или tab:<id>).
 export interface ViewDocument {
   views?: Record<string, any>;
+  tabs?: ViewTab[];
+  actions?: { view: string; in: string; label?: string }[];
 }
 
 // Полная публикация (GET/PATCH /publications/*).
@@ -201,6 +260,10 @@ export interface ChartPublication {
   draft_owner_team?: string;
   view_json?: ViewDocument | null; // черновик
   approved_view_json?: ViewDocument | null; // активная согласованная версия
+  // Версия чарта, под которую согласован активный view («благословлённая»):
+  // если в Harbor вышла новее — автору пора обновить view.
+  approved_view_version?: string;
+  approved_icon_url?: string;
   reviewed_by?: string;
   review_comment?: string;
   version: number;

@@ -1,49 +1,32 @@
 {
-  "$comment": "Presentation projections over the ingress-gateway chart's values.schema.json. The chart's schema stays the single source of truth for validation; views only pick which fields to render and add per-field UI hints. They never copy field definitions.",
+  "$comment": "Presentation document for the ingress-gateway chart. Three sections: views (form projections over values.schema.json, including the required order form), tabs (product list tables), actions (forms placed into the Действия menu). The chart's schema stays the single source of truth for validation; views only pick fields.",
   "views": {
     "order": {
-      "$comment": "Первичный заказ: naming-теги + ровно один Gateway, без xroutes. Роуты добавляются позже в карточке заказа (вид routes) через PATCH того же values.",
+      "$comment": "Первичный заказ: naming-теги + ровно один Gateway, без xroutes.",
       "identity": "/gateways/0/name",
       "include": ["naming", "gateways"],
       "overrides": {
         "gateways": {
           "ui:widget": "single",
           "title": "Gateway",
-          "ui:view": {
-            "exclude": ["hpa"]
-          }
+          "ui:view": { "exclude": ["hpa"] }
         }
       }
     },
-    "routes": {
-      "$comment": "Редактор роутов в карточке уже созданного гейтвея. include, список xroutes того же инстанса; overrides.xroutes.ui:view, презентация одного маршрута: enabled всегда true (скрыт), parentRefs[].gateway подставляется автоматически (скрыт), hostnames скрыт целиком, чарт сам выводит hostname из listener'а, на который ссылается route через parentRefs[].sectionName (если у listener'а есть hostname, подставит, нет, оставит пустым). sectionName рендерится селектором из listener'ов (опции наполняются в UI на лету).",
-      "include": ["xroutes"],
-      "overrides": {
-        "xroutes": {
-          "ui:view": {
-            "exclude": ["enabled", "hostnames"],
-            "overrides": {
-              "parentRefs": {
-                "ui:view": { "exclude": ["gateway"] }
-              }
-            }
-          }
-        }
-      }
+    "listener": {
+      "$comment": "Форма одного listener'а Gateway (все поля элемента)."
     },
-    "listeners": {
-      "$comment": "Редактор listener'ов Gateway (gateways[0].listeners) в карточке. Последний удалить нельзя (minItems:1 в схеме).",
-      "include": ["gateways"],
+    "route": {
+      "$comment": "Форма одного route'а: enabled всегда true (скрыт), parentRefs[].gateway подставляется автоматически (скрыт), hostnames скрыт (чарт выводит его из listener'а через parentRefs[].sectionName).",
+      "exclude": ["enabled", "hostnames"],
       "overrides": {
-        "gateways": {
-          "ui:widget": "single",
-          "title": "Gateway",
-          "ui:view": { "include": ["listeners"] }
+        "parentRefs": {
+          "ui:view": { "exclude": ["gateway"] }
         }
       }
     },
     "resources": {
-      "$comment": "Правка ресурсов istio-proxy у Gateway (gateways[0].resources) из карточки заказа. Скрытое в форме заказа поле resources здесь раскрывается.",
+      "$comment": "Форма ресурсов istio-proxy у Gateway (gateways[0].resources), скрытых в форме заказа.",
       "include": ["gateways"],
       "overrides": {
         "gateways": {
@@ -56,5 +39,38 @@
         }
       }
     }
-  }
+  },
+  "tabs": [
+    {
+      "id": "listeners",
+      "title": "Слушатели",
+      "items": "/gateways/0/listeners",
+      "form": "listener",
+      "ui:table": [
+        { "path": "name", "label": "Имя" },
+        { "path": "port", "label": "Порт" },
+        { "path": "protocol", "label": "Протокол" },
+        { "path": "hostname", "label": "Hostname" },
+        { "path": "tlsMode", "label": "TLS" }
+      ]
+    },
+    {
+      "id": "routes",
+      "title": "Маршруты",
+      "items": "/xroutes",
+      "form": "route",
+      "$comment": "enums: sectionName выбирается из имён listener'ов этого Gateway. ui:table Hostnames вычисляется join'ом: по sectionName маршрута берётся hostname соответствующего listener'а (так же, как hostname выводит сам чарт).",
+      "enums": [
+        { "at": "/parentRefs/0/sectionName", "from": "/gateways/0/listeners", "value": "name" }
+      ],
+      "ui:table": [
+        { "path": "name", "label": "Имя" },
+        { "path": "kind", "label": "Тип" },
+        { "label": "Hostnames", "lookup": { "keys": "/parentRefs/*/sectionName", "in": "/gateways/0/listeners", "match": "name", "get": "hostname" } }
+      ]
+    }
+  ],
+  "actions": [
+    { "view": "resources", "in": "info", "label": "Редактировать ресурсы (CPU/память)" }
+  ]
 }

@@ -165,6 +165,110 @@ func TestNestedIncludeValid(t *testing.T) {
 	}
 }
 
+// Секция tabs: вкладки-таблицы (items + form + ui:table).
+func TestTabsValid(t *testing.T) {
+	doc := `{"views":{"order":{},"listener":{}},"tabs":[
+		{"id":"listeners","title":"Слушатели","items":"/gateways/0/listeners","form":"listener",
+		 "ui:table":[{"path":"name","label":"Имя"},{"path":"port"}]}
+	]}`
+	if issues := views.Validate([]byte(doc), nil); len(issues) > 0 {
+		t.Fatalf("valid tabs, got %+v", issues)
+	}
+}
+
+func TestTabsIssues(t *testing.T) {
+	// База: одна форма listener в views, вкладку дополняем в каждом кейсе.
+	cases := []struct{ name, doc, path, msg string }{
+		{"not array", `{"views":{"order":{}},"tabs":{}}`, "/tabs", "массивом"},
+		{"id missing", `{"views":{"order":{},"listener":{}},"tabs":[{"items":"/x","form":"listener"}]}`, "/tabs/0/id", `Укажите "id"`},
+		{"id reserved", `{"views":{"order":{},"listener":{}},"tabs":[{"id":"info","items":"/x","form":"listener"}]}`, "/tabs/0/id", "зарезервирован"},
+		{"id dup", `{"views":{"order":{},"listener":{}},"tabs":[{"id":"a","items":"/x","form":"listener"},{"id":"a","items":"/y","form":"listener"}]}`, "/tabs/1/id", "уже есть"},
+		{"items missing", `{"views":{"order":{},"listener":{}},"tabs":[{"id":"a","form":"listener"}]}`, "/tabs/0/items", `Укажите "items"`},
+		{"form missing", `{"views":{"order":{}},"tabs":[{"id":"a","items":"/x"}]}`, "/tabs/0/form", `Укажите "form"`},
+		{"form order", `{"views":{"order":{}},"tabs":[{"id":"a","items":"/x","form":"order"}]}`, "/tabs/0/form", "форма заказа"},
+		{"form unknown", `{"views":{"order":{}},"tabs":[{"id":"a","items":"/x","form":"nope"}]}`, "/tabs/0/form", "нет в блоке"},
+		{"ui:table not array", `{"views":{"order":{},"listener":{}},"tabs":[{"id":"a","items":"/x","form":"listener","ui:table":{}}]}`, "/tabs/0/ui:table", "массивом"},
+		{"ui:table path missing", `{"views":{"order":{},"listener":{}},"tabs":[{"id":"a","items":"/x","form":"listener","ui:table":[{"label":"Имя"}]}]}`, "/tabs/0/ui:table/0/path", `Укажите "path"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			issues := views.Validate([]byte(c.doc), nil)
+			if !hasIssue(issues, c.path, c.msg) {
+				t.Fatalf("want issue %q at %q, got %+v", c.msg, c.path, issues)
+			}
+		})
+	}
+}
+
+// enums (динамические enum'ы) + lookup-колонки: валидный документ против схемы.
+func TestTabsEnumsLookupValid(t *testing.T) {
+	doc := `{"views":{"order":{},"route":{}},"tabs":[
+		{"id":"routes","items":"/xroutes","form":"route",
+		 "enums":[{"at":"/parentRefs/0/sectionName","from":"/gateways/0/listeners","value":"name"}],
+		 "ui:table":[{"path":"name","label":"Имя"},
+			{"label":"Hostnames","lookup":{"keys":"/parentRefs/*/sectionName","in":"/gateways/0/listeners","match":"name","get":"hostname"}}]}
+	]}`
+	if issues := views.Validate([]byte(doc), []byte(schema)); len(issues) > 0 {
+		t.Fatalf("valid enums/lookup, got %+v", issues)
+	}
+}
+
+func TestTabsEnumsLookupIssues(t *testing.T) {
+	base := func(tab string) string { return `{"views":{"order":{},"route":{}},"tabs":[` + tab + `]}` }
+	cases := []struct{ name, doc, path, msg string }{
+		{"enums not array", base(`{"id":"a","items":"/xroutes","form":"route","enums":{}}`), "/tabs/0/enums", "массивом"},
+		{"enum at missing", base(`{"id":"a","items":"/xroutes","form":"route","enums":[{"from":"/gateways/0/listeners","value":"name"}]}`), "/tabs/0/enums/0/at", `Укажите "at"`},
+		{"enum value missing", base(`{"id":"a","items":"/xroutes","form":"route","enums":[{"at":"/parentRefs/0/sectionName","from":"/gateways/0/listeners"}]}`), "/tabs/0/enums/0/value", `Укажите "value"`},
+		{"enum unknown key", base(`{"id":"a","items":"/xroutes","form":"route","enums":[{"at":"/parentRefs/0/sectionName","from":"/gateways/0/listeners","value":"name","oops":1}]}`), "/tabs/0/enums/0/oops", "Лишнее поле"},
+		{"enum from not resolve", base(`{"id":"a","items":"/xroutes","form":"route","enums":[{"at":"/parentRefs/0/sectionName","from":"/nope","value":"name"}]}`), "/tabs/0/enums/0/from", "не находит"},
+		{"lookup not object", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"label":"H","lookup":[]}]}`), "/tabs/0/ui:table/0/lookup", "объектом"},
+		{"lookup get missing", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"label":"H","lookup":{"keys":"/parentRefs/*/sectionName","in":"/gateways/0/listeners","match":"name"}}]}`), "/tabs/0/ui:table/0/lookup/get", `Укажите "get"`},
+		{"lookup column no label", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"lookup":{"keys":"/k","in":"/gateways/0/listeners","match":"name","get":"hostname"}}]}`), "/tabs/0/ui:table/0/label", "вычисляемой колонки"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			issues := views.Validate([]byte(c.doc), []byte(schema))
+			if !hasIssue(issues, c.path, c.msg) {
+				t.Fatalf("want issue %q at %q, got %+v", c.msg, c.path, issues)
+			}
+		})
+	}
+}
+
+// Секция actions: размещение формы-view в «Действия» (info и вкладка из tabs).
+func TestActionsValid(t *testing.T) {
+	doc := `{"views":{"order":{},"resources":{},"listener":{}},
+		"tabs":[{"id":"listeners","items":"/x","form":"listener"}],
+		"actions":[
+			{"view":"resources","in":"info","label":"Редактировать ресурсы"},
+			{"view":"resources","in":"tab:listeners"}
+		]}`
+	if issues := views.Validate([]byte(doc), nil); len(issues) > 0 {
+		t.Fatalf("valid actions, got %+v", issues)
+	}
+}
+
+func TestActionsIssues(t *testing.T) {
+	cases := []struct{ name, doc, path, msg string }{
+		{"not array", `{"views":{"order":{}},"actions":{}}`, "/actions", "массивом"},
+		{"view missing", `{"views":{"order":{}},"actions":[{"in":"info"}]}`, "/actions/0/view", `Укажите "view"`},
+		{"view order", `{"views":{"order":{}},"actions":[{"view":"order","in":"info"}]}`, "/actions/0/view", "форма заказа"},
+		{"view unknown", `{"views":{"order":{}},"actions":[{"view":"nope","in":"info"}]}`, "/actions/0/view", "нет в блоке"},
+		{"in missing", `{"views":{"order":{},"resources":{}},"actions":[{"view":"resources"}]}`, "/actions/0/in", `Укажите "in"`},
+		{"in unknown", `{"views":{"order":{},"resources":{}},"actions":[{"view":"resources","in":"foo"}]}`, "/actions/0/in", "Неизвестное размещение"},
+		{"tab missing", `{"views":{"order":{},"resources":{}},"actions":[{"view":"resources","in":"tab:nope"}]}`, "/actions/0/in", "tabs"},
+		{"label not string", `{"views":{"order":{},"resources":{}},"actions":[{"view":"resources","in":"info","label":1}]}`, "/actions/0/label", "строкой"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			issues := views.Validate([]byte(c.doc), nil)
+			if !hasIssue(issues, c.path, c.msg) {
+				t.Fatalf("want issue %q at %q, got %+v", c.msg, c.path, issues)
+			}
+		})
+	}
+}
+
 // Без схемы (чарт без values.schema.json) кросс-проверки молчат.
 func TestNoSchemaSkipsCrossChecks(t *testing.T) {
 	doc := `{"views":{"order":{"identity":"/whatever/0/x","include":["anything"]}}}`

@@ -8,6 +8,9 @@ import {
   Heading,
   ListBox,
   ListBoxItem,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Modal,
   ModalOverlay,
   Popover,
@@ -17,24 +20,42 @@ import {
   TabList,
   TabPanel,
   Tabs,
+  Tooltip,
+  TooltipTrigger,
 } from "react-aria-components";
 import {
   IconAlertCircle,
   IconArrowNarrowRight,
+  IconCategory,
   IconCheck,
   IconChevronDown,
   IconClock,
   IconHelpCircle,
+  IconInfoCircle,
+  IconPencil,
+  IconTag,
+  IconUser,
+  IconUsersGroup,
   IconX,
 } from "@tabler/icons-react";
 import { api, HttpError } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { useUser, canModify } from "../auth/UserContext";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
+import { useTheme } from "../app/ThemeContext";
+import { useToast } from "../app/ToastContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Button, Card, ErrorBox, Select, Spinner, TextField } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, Select, Spinner, TextField } from "../components/ui";
 import { SchemaForm, type View } from "../form/SchemaForm";
-import type { ChartPublication, PublicationStatus, ViewDocument, ViewIssue } from "../api/types";
+import {
+  actionViews,
+  computeCell,
+  getAt,
+  productTabs,
+  resolveTab,
+  type ActionPlacement,
+} from "../components/products/genericView";
+import type { ChartPublication, PublicationStatus, ViewDocument, ViewIssue, ViewTab } from "../api/types";
 
 type Values = Record<string, unknown>;
 
@@ -49,11 +70,11 @@ const VIEW_TEMPLATE = `{
 }
 `;
 
-const STATUS_LABELS: Record<PublicationStatus, { label: string; cls: string }> = {
-  DRAFT: { label: "Черновик", cls: "bg-gray-100 text-gray-600" },
-  PENDING: { label: "На согласовании", cls: "bg-amber-50 text-amber-700" },
-  APPROVED: { label: "Согласовано", cls: "bg-emerald-50 text-emerald-700" },
-  REJECTED: { label: "Отклонено", cls: "bg-red-50 text-red-700" },
+const STATUS_LABELS: Record<PublicationStatus, { label: string; cls: string; Icon: typeof IconClock }> = {
+  DRAFT: { label: "Черновик", cls: "bg-gray-100 text-gray-600", Icon: IconPencil },
+  PENDING: { label: "На согласовании", cls: "bg-amber-50 text-amber-700", Icon: IconClock },
+  APPROVED: { label: "Согласовано", cls: "bg-emerald-50 text-emerald-700", Icon: IconCheck },
+  REJECTED: { label: "Отклонено", cls: "bg-red-50 text-red-700", Icon: IconAlertCircle },
 };
 
 // Управление публикацией чарта: метаданные (категория, владелец) + конструктор
@@ -76,11 +97,15 @@ export function ChartManagePage() {
     [project, name],
   );
 
-  if (pubLoading) return <Spinner />;
-  if (pubError) return <ErrorBox error={pubError} />;
+  // Полноэкранный спиннер/ошибка — только на первичной загрузке (data ещё нет).
+  // На фоновом перезапросе (reload после смены категории/владельца) useAsync
+  // держит прежний pub, поэтому ManagePublication остаётся смонтированным и не
+  // теряет незасохранённый черновик view.schema.json в редакторе.
+  if (pubLoading && !pub) return <Spinner />;
+  if (pubError && !pub) return <ErrorBox error={pubError} />;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <Breadcrumbs
         items={[
           { label: "Чарты", to: "/catalog" },
@@ -186,6 +211,9 @@ function RegisterCard({
 function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () => void }) {
   const { user } = useUser();
   const { categories, reload: reloadCatalog } = useCatalog();
+  const { theme } = useTheme();
+  // Monaco живёт вне Tailwind-токенов: подбираем его тему под тему портала.
+  const monacoTheme = theme === "light" ? "light" : "vs-dark";
   const project = pub.chart_project;
   const name = pub.chart_name;
 
@@ -209,6 +237,52 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "save" | "submit" | "approve" | "reject" | "withdraw">(null);
   const [rejectComment, setRejectComment] = useState("");
+  // Модалка «вышла новая версия» показывается при входе на страницу (когда
+  // viewOutdated станет известен) и до первого закрытия.
+  const [outdatedDismissed, setOutdatedDismissed] = useState(false);
+  const { success, error } = useToast();
+  // Отклонённый черновик: при входе на страницу один раз показываем причину тостом.
+  const firedReject = useRef(false);
+  useEffect(() => {
+    if (firedReject.current) return;
+    if (pub.status === "REJECTED" && pub.review_comment) {
+      firedReject.current = true;
+      error(`Причина: ${pub.review_comment}`, { title: "Отклонено" });
+    }
+  }, [error, pub.status, pub.review_comment]);
+
+  // Перетаскиваемый разделитель между панелью схем и предпросмотром: доля левой
+  // панели в % (применяется только на lg, где панели бок о бок). Тянем за
+  // разделитель — меняется ширина обеих.
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [splitPct, setSplitPct] = useState(50);
+  const splitDragging = useRef(false);
+  function onSplitDown(e: React.PointerEvent) {
+    splitDragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const el = splitRef.current;
+      if (!splitDragging.current || !el) return;
+      const r = el.getBoundingClientRect();
+      setSplitPct(Math.min(75, Math.max(25, ((e.clientX - r.left) / r.width) * 100)));
+    }
+    function onUp() {
+      if (!splitDragging.current) return;
+      splitDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
 
   // Live-валидация: локальный JSON.parse, сразу, серверная (формат + сверка со
   // схемой чарта), с дебаунсом.
@@ -237,7 +311,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     return () => clearTimeout(debounce.current);
   }, [parsed, pub.id]);
 
-  async function onSave(): Promise<boolean> {
+  async function onSave(notify = false): Promise<boolean> {
     if (!parsed) {
       setErr("Исправьте синтаксис JSON перед сохранением.");
       return false;
@@ -248,6 +322,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
       await api.updatePublication(pub.id, { view: parsed });
       reload();
       reloadCatalog();
+      if (notify) success("Черновик сохранён");
       return true;
     } catch (e) {
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
@@ -276,6 +351,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     try {
       await api.submitPublication(pub.id);
       reload();
+      success("Изменения отправлены на согласование");
     } catch (e) {
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
     } finally {
@@ -330,36 +406,85 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
   const ownerOptions = [
     ...new Set([...(user?.teams ?? []), pub.owner_team, pub.draft_owner_team].filter(Boolean) as string[]),
   ];
-  // Несогласованная смена метаданных: предложения, ждущие approve.
+  // Несогласованная смена метаданных: предложения, ждущие approve (показываются
+  // админу в карточке согласования).
   const proposals: { label: string; from: string; to: string }[] = [];
   if (pub.draft_category_id)
     proposals.push({ label: "Категория", from: categoryLabel, to: catLabel(pub.draft_category_id) });
   if (pub.draft_owner_team)
     proposals.push({ label: "Владелец", from: pub.owner_team, to: pub.draft_owner_team });
 
+  // В Harbor вышла версия новее той, под которую согласован активный view, —
+  // автору пора обновить view под новую схему.
+  const viewOutdated =
+    !!pub.approved_view_json &&
+    !!pub.approved_view_version &&
+    !!version &&
+    version !== pub.approved_view_version;
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Управление: {chartLabel(name)}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Chip className={st.cls}>{st.label}</Chip>
+            {/* При статусе «Согласовано» показываем только «Опубликовано» (статус-чип
+                его бы дублировал). В остальных статусах показываем статус черновика. */}
+            {pub.status !== "APPROVED" && (
+              <span className="group/status relative inline-flex">
+                <Chip className={st.cls}>
+                  <st.Icon size={13} stroke={1.8} />
+                  {st.label}
+                </Chip>
+                {pub.status === "REJECTED" && pub.review_comment && (
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none invisible absolute bottom-full left-0 z-50 mb-1.5 w-max max-w-xs rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-xs font-normal text-slate-700 opacity-0 shadow-lg transition-opacity duration-150 group-hover/status:visible group-hover/status:opacity-100"
+                  >
+                    Причина: {pub.review_comment}
+                  </span>
+                )}
+              </span>
+            )}
+            {/* Действующая согласованная форма заказа. При «Согласовано» это
+                единственный «зелёный» чип; при черновике/ревью/отклонении показывает,
+                что старая форма заказа всё ещё работает. */}
+            {pub.approved_view_json && (
+              <Chip className="bg-emerald-50 text-emerald-700">
+                <IconCheck size={12} stroke={2.5} />
+                Опубликовано
+              </Chip>
+            )}
             <Chip className="bg-slate-100 text-slate-600">
-              {project}/{name}
-              {version && <span className="text-slate-400">v{version}</span>}
+              <IconTag size={13} stroke={1.8} className="text-slate-400" />
+              <span className="text-slate-400">Версия:</span>
+              {/* В управлении (и только тут) показываем, что в Harbor вышла новая
+                  версия: согласованная -> новая, иначе просто текущая. */}
+              {viewOutdated ? (
+                <span className="inline-flex items-center gap-1">
+                  v{pub.approved_view_version}
+                  <IconArrowNarrowRight size={14} stroke={1.8} className="text-amber-600" />
+                  <span className="text-amber-600">v{version}</span>
+                </span>
+              ) : (
+                version && <span>v{version}</span>
+              )}
             </Chip>
             {editable ? (
               <ChipSelect
                 label="Категория"
+                icon={<IconCategory size={13} stroke={1.8} className="text-slate-400" />}
                 value={pub.draft_category_id || pub.category_id}
                 pending={!!pub.draft_category_id}
                 options={categories.map((c) => ({ id: c.id, label: c.label }))}
                 onChange={(id) => onMetaChange({ category_id: id })}
+                info="Категория изменится только после согласования"
               />
             ) : pub.draft_category_id ? (
               <ProposalChip label="Категория" from={categoryLabel} to={catLabel(pub.draft_category_id)} />
             ) : (
               <Chip className="bg-slate-100 text-slate-600">
+                <IconCategory size={13} stroke={1.8} className="text-slate-400" />
                 <span className="text-slate-400">Категория:</span>
                 {categoryLabel}
               </Chip>
@@ -367,43 +492,34 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
             {editable && ownerOptions.length > 1 ? (
               <ChipSelect
                 label="Владелец"
+                icon={<IconUsersGroup size={13} stroke={1.8} className="text-slate-400" />}
                 value={pub.draft_owner_team || pub.owner_team}
                 pending={!!pub.draft_owner_team}
                 options={ownerOptions.map((t) => ({ id: t, label: t }))}
                 onChange={(t) => onMetaChange({ owner_team: t })}
+                info="Владелец изменится только после согласования"
               />
             ) : pub.draft_owner_team ? (
               <ProposalChip label="Владелец" from={pub.owner_team} to={pub.draft_owner_team} />
             ) : (
               <Chip className="bg-brand-50 text-brand-700">
+                <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
                 <span className="text-brand-400">Владелец:</span>
                 {pub.owner_team}
               </Chip>
             )}
             {pub.created_by_name && (
               <Chip className="bg-slate-100 text-slate-600">
+                <IconUser size={13} stroke={1.8} className="text-slate-400" />
                 <span className="text-slate-400">Автор:</span>
                 {pub.created_by_name}
               </Chip>
             )}
-            {pub.approved_view_json && (
-              <Chip className="bg-emerald-50 text-emerald-700">
-                <IconCheck size={12} stroke={2.5} />
-                view опубликована
-              </Chip>
-            )}
           </div>
-          {editable && proposals.length > 0 && (
-            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-700">
-              <IconClock size={13} stroke={1.8} className="shrink-0 text-amber-500" />
-              Смена {proposals.map((p) => p.label.toLowerCase()).join(" / ")} применится только после
-              согласования — отправьте на согласование.
-            </p>
-          )}
         </div>
         {editable && (
           <div className="flex shrink-0 gap-2">
-            <Button isDisabled={busy !== null} onPress={onSave}>
+            <Button isDisabled={busy !== null} onPress={() => onSave(true)}>
               Сохранить черновик
             </Button>
             <Button
@@ -417,12 +533,37 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
         )}
       </div>
 
-      {pub.status === "REJECTED" && pub.review_comment && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p className="font-medium">Отклонено{pub.reviewed_by ? ` (${pub.reviewed_by})` : ""}</p>
-          <p className="mt-0.5">{pub.review_comment}</p>
-        </div>
-      )}
+      {/* О новой версии чарта сообщаем модалкой при входе (один раз, до закрытия),
+          а не постоянным баннером. */}
+      <ModalOverlay
+        isOpen={viewOutdated && !outdatedDismissed}
+        onOpenChange={(open) => !open && setOutdatedDismissed(true)}
+        isDismissable
+        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
+      >
+        <Modal className="w-full max-w-lg rounded-lg border border-slate-200 bg-surface shadow-xl">
+          <Dialog className="outline-none">
+            {({ close }) => (
+              <div className="flex flex-col items-center gap-3 p-5 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                  <IconAlertCircle size={26} stroke={1.8} />
+                </span>
+                <Heading slot="title" className="text-base font-semibold text-slate-800">
+                  Доступна новая версия чарта
+                </Heading>
+                <p className="text-sm text-slate-600">
+                  Сейчас заказы работают на согласованной версии{" "}
+                  <span className="font-medium text-slate-800">{pub.approved_view_version}</span>. В
+                  Harbor вышла <span className="font-medium text-slate-800">{version}</span>. Чтобы
+                  открыть обновление заказов до неё, обновите view под новую схему (вкладка
+                  «values.schema.json») и отправьте на согласование.
+                </p>
+                <Button onPress={close}>Понятно</Button>
+              </div>
+            )}
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
       {pending && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span>Черновик на согласовании у администратора, правки заморожены до решения.</span>
@@ -454,6 +595,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
               <DiffEditor
                 height="280px"
                 language="json"
+                theme={monacoTheme}
                 original={JSON.stringify(pub.approved_view_json, null, 2)}
                 modified={JSON.stringify(pub.view_json ?? {}, null, 2)}
                 options={{ readOnly: true, renderSideBySide: true, minimap: { enabled: false }, fontSize: 12 }}
@@ -482,68 +624,86 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
         </Card>
       )}
 
-      {/* Конструктор: слева документ (+ схема чарта рядом, read-only), справа предпросмотр. */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card className="flex flex-col gap-2">
-          <Tabs>
+      {/* Конструктор: слева документ (+ схема чарта рядом, read-only), справа предпросмотр.
+          Растягивается на всю свободную высоту страницы (без внешнего скролла): редактор
+          и предпросмотр заполняют колонку, скролл — только внутренний. Между панелями —
+          перетаскиваемый разделитель (на lg), доля левой панели = --split. */}
+      <div
+        ref={splitRef}
+        className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0"
+        style={{ ["--split" as string]: `${splitPct}%` } as React.CSSProperties}
+      >
+        <Card className="flex min-h-0 flex-col gap-2 lg:min-w-0 lg:shrink-0 lg:basis-[var(--split)]">
+          <Tabs className="flex min-h-0 flex-1 flex-col">
             <TabList aria-label="Документы" className="flex gap-1 border-b border-gray-200">
               <EditorTab id="view">view.schema.json</EditorTab>
               <EditorTab id="schema">values.schema.json</EditorTab>
             </TabList>
-            <TabPanel id="view" className="flex flex-col gap-2 pt-3 outline-none">
-              <FormatHelp />
-              <div className="overflow-hidden rounded-md border border-slate-200">
+            <TabPanel id="view" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
+              <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
                 <Editor
-                  height="480px"
+                  height="100%"
                   defaultLanguage="json"
+                  theme={monacoTheme}
                   value={text}
                   onChange={(v) => setText(v ?? "")}
                   options={{
                     minimap: { enabled: false },
                     fontSize: 13,
                     automaticLayout: true,
+                    wordWrap: "on",
                     readOnly: !editable,
                   }}
                 />
               </div>
-              {syntaxErr ? (
-                <p className="text-xs text-red-600">Синтаксис: {syntaxErr}</p>
-              ) : issues.length > 0 ? (
-                <ul className="flex flex-col gap-1.5 rounded-md border border-red-100 bg-red-50/50 p-2 text-xs">
-                  {issues.map((i, idx) => (
-                    <li key={idx} className="flex items-start gap-1.5 text-red-700">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  {syntaxErr ? (
+                    <div className="flex items-start gap-1.5 rounded-md border border-red-100 bg-red-50/50 p-2 text-xs text-red-700">
                       <IconAlertCircle size={14} stroke={1.8} className="mt-px shrink-0 text-red-500" />
-                      <span>
-                        {i.path && (
-                          <code className="mr-1 rounded bg-white px-1 py-px font-mono text-[11px] text-red-600 ring-1 ring-red-200">
-                            {i.path}
-                          </code>
-                        )}
-                        {i.message}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="flex items-center gap-1.5 text-xs text-emerald-600">
-                  <IconCheck size={14} stroke={2} />
-                  Документ валиден.
-                </p>
-              )}
+                      <span>Синтаксис JSON: {syntaxErr}</span>
+                    </div>
+                  ) : issues.length > 0 ? (
+                    <ul className="flex flex-col gap-1.5 rounded-md border border-red-100 bg-red-50/50 p-2 text-xs">
+                      {issues.map((i, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5 text-red-700">
+                          <IconAlertCircle size={14} stroke={1.8} className="mt-px shrink-0 text-red-500" />
+                          <span>
+                            {i.path && (
+                              <code className="mr-1 rounded bg-surface px-1 py-px font-mono text-[11px] text-red-600 ring-1 ring-red-200">
+                                {i.path}
+                              </code>
+                            )}
+                            {i.message}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="flex items-center gap-1.5 rounded-md border border-emerald-100 bg-emerald-50/50 p-2 text-xs text-emerald-700">
+                      <IconCheck size={14} stroke={2} className="shrink-0 text-emerald-500" />
+                      Документ валиден
+                    </div>
+                  )}
+                </div>
+                <FormatHelp />
+              </div>
             </TabPanel>
             {/* Схема чарта, источник полей для include/exclude/overrides; только чтение. */}
-            <TabPanel id="schema" className="flex flex-col gap-2 pt-3 outline-none">
+            <TabPanel id="schema" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
               {schema ? (
                 <>
-                  <div className="overflow-hidden rounded-md border border-slate-200">
+                  <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
                     <Editor
-                      height="480px"
+                      height="100%"
                       defaultLanguage="json"
+                      theme={monacoTheme}
                       value={JSON.stringify(schema, null, 2)}
                       options={{
                         minimap: { enabled: false },
                         fontSize: 13,
                         automaticLayout: true,
+                        wordWrap: "on",
                         readOnly: true,
                         domReadOnly: true,
                       }}
@@ -561,8 +721,16 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           </Tabs>
         </Card>
 
-        <Card className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-slate-800">Предпросмотр</h2>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={onSplitDown}
+          className="group hidden shrink-0 cursor-col-resize touch-none items-stretch justify-center px-1.5 lg:flex"
+        >
+          <div className="w-1 rounded-full bg-slate-200 transition-colors group-hover:bg-brand-400" />
+        </div>
+
+        <Card className="flex min-h-0 flex-col gap-2 lg:min-w-0 lg:flex-1">
           {!schema ? (
             <p className="text-sm text-gray-500">
               Схема values.schema.json недоступна, предпросмотр невозможен.
@@ -572,22 +740,13 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           ) : (
             <PreviewPane
               schema={schema as Record<string, any>}
-              views={parsed!.views!}
+              doc={parsed!}
               label={chartLabel(name)}
             />
           )}
         </Card>
       </div>
     </div>
-  );
-}
-
-// Chip, единый стиль бейджей шапки.
-function Chip({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${className}`}>
-      {children}
-    </span>
   );
 }
 
@@ -610,16 +769,20 @@ function ProposalChip({ label, from, to }: { label: string; from: string; to: st
 // выбранное значение — предложение, оно станет активным только после согласования.
 function ChipSelect({
   label,
+  icon,
   value,
   options,
   onChange,
   pending = false,
+  info,
 }: {
   label: string;
+  icon?: React.ReactNode;
   value: string;
   options: { id: string; label: string }[];
   onChange: (id: string) => void;
   pending?: boolean;
+  info?: string;
 }) {
   const tone = pending
     ? "bg-amber-50 text-amber-700 hover:bg-amber-100 data-[pressed]:bg-amber-100"
@@ -634,12 +797,25 @@ function ChipSelect({
       <AriaButton
         className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${tone}`}
       >
+        {!pending && icon}
+        {pending && (
+          <span className="group/clock relative inline-flex">
+            <IconClock size={12} stroke={2} className="text-amber-500" aria-hidden />
+            {info && (
+              <span
+                role="tooltip"
+                className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-1.5 w-max max-w-xs -translate-x-1/2 rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-xs font-normal text-slate-700 opacity-0 shadow-lg transition-opacity duration-150 group-hover/clock:visible group-hover/clock:opacity-100"
+              >
+                {info}
+              </span>
+            )}
+          </span>
+        )}
         <span className={`font-normal ${pending ? "text-amber-500" : "text-slate-400"}`}>{label}:</span>
         <SelectValue />
-        {pending && <IconClock size={12} stroke={2} className="text-amber-500" aria-hidden />}
         <IconChevronDown size={12} stroke={2} className={pending ? "text-amber-500" : "text-slate-400"} aria-hidden />
       </AriaButton>
-      <Popover className="min-w-[var(--trigger-width)] rounded-md border border-slate-200 bg-white shadow-lg entering:animate-in entering:fade-in">
+      <Popover className="min-w-[var(--trigger-width)] rounded-md border border-slate-200 bg-surface shadow-lg entering:animate-in entering:fade-in">
         <ListBox className="max-h-60 overflow-auto p-1 outline-none">
           {options.map((o) => (
             <ListBoxItem
@@ -656,14 +832,48 @@ function ChipSelect({
   );
 }
 
-function EditorTab({ id, children }: { id: string; children: React.ReactNode }) {
+function EditorTab({
+  id,
+  info,
+  children,
+}: {
+  id: string;
+  info?: string;
+  children: React.ReactNode;
+}) {
   return (
     <Tab
       id={id}
       className="-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-sm font-medium text-gray-500 outline-none transition-colors hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
     >
-      {children}
+      <span className="inline-flex items-center gap-1.5">
+        {children}
+        {info && <InfoHint text={info} />}
+      </span>
     </Tab>
+  );
+}
+
+// Иконка-подсказка: маленькая «i», показывает короткий текст в тултипе по
+// наведению/фокусу. excludeFromTabOrder, чтобы не мешать навигации стрелками
+// (например, по табам, рядом с которыми она стоит).
+function InfoHint({ text }: { text: string }) {
+  return (
+    <TooltipTrigger delay={150} closeDelay={0}>
+      <AriaButton
+        excludeFromTabOrder
+        aria-label={text}
+        className="inline-flex items-center text-slate-400 outline-none transition-colors hover:text-brand-600 focus-visible:text-brand-600"
+      >
+        <IconInfoCircle size={15} stroke={1.8} />
+      </AriaButton>
+      <Tooltip
+        offset={6}
+        className="max-w-xs rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-xs text-slate-700 shadow-lg entering:animate-in entering:fade-in entering:zoom-in-95"
+      >
+        {text}
+      </Tooltip>
+    </TooltipTrigger>
   );
 }
 
@@ -671,15 +881,15 @@ function EditorTab({ id, children }: { id: string; children: React.ReactNode }) 
 function FormatHelp() {
   return (
     <DialogTrigger>
-      <AriaButton className="inline-flex w-fit items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 outline-none transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500">
+      <AriaButton className="inline-flex h-[34px] w-fit shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-600 outline-none transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500">
         <IconHelpCircle size={14} className="text-slate-400" />
-        Как заполнять view.schema.json
+        Как заполнять
       </AriaButton>
       <ModalOverlay
         isDismissable
         className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-16 entering:animate-in entering:fade-in"
       >
-        <Modal className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow-xl">
+        <Modal className="w-full max-w-2xl rounded-lg border border-slate-200 bg-surface shadow-xl">
           <Dialog className="outline-none">
             {({ close }) => (
               <div className="flex max-h-[80vh] flex-col gap-3 p-4">
@@ -696,32 +906,54 @@ function FormatHelp() {
                   </AriaButton>
                 </div>
                 <div className="overflow-y-auto text-xs leading-relaxed text-slate-600">
+                  <p className="mb-1.5">
+                    Документ из трёх разделов: <b>views</b> (формы), <b>tabs</b> (вкладки-таблицы), <b>actions</b>{" "}
+                    (пункты меню «Действия»).
+                  </p>
                   <ul className="flex list-disc flex-col gap-1.5 pl-4">
                     <li>
-                      Документ: <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"views": { ... }}'}</code>.
-                      View <b>order</b> обязательна: это форма нового заказа, она же даёт пункт в левом меню.
-                      Остальные views (routes, listeners, resources, ...) становятся вкладками страницы
-                      заказанного продукта.
+                      <b>views</b>: библиотека форм (проекций поверх values.schema.json). View <b>order</b>{" "}
+                      обязательна: это форма нового заказа. Прочие views это формы элементов вкладок или формы
+                      для «Действий». Сам по себе view не вкладка и не пункт меню.
                     </li>
                     <li>
-                      <b>include</b> / <b>exclude</b>: какие поля схемы показать или скрыть. Имена берутся из
-                      values.schema.json (вкладка рядом).
+                      <b>tabs</b>: вкладки продукта, каждая это таблица-список. Поля вкладки: <b>id</b>,{" "}
+                      <b>title</b> (заголовок), <b>items</b> (JSON pointer на массив в values, например{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/gateways/0/listeners"</code>),{" "}
+                      <b>form</b> (id формы элемента из views для добавления/изменения) и <b>ui:table</b>{" "}
+                      (колонки:{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'[{"path":"name","label":"Имя"}]'}</code>).
+                      Без <b>ui:table</b> вкладка покажет заглушку «не сконфигурировано».
                     </li>
                     <li>
-                      <b>overrides</b>: настройка конкретного поля. <b>title</b> переопределяет подпись,{" "}
-                      <b>ui:view</b>: вложенная проекция для объекта или элемента массива.
+                      <b>enums</b> (необязательно): динамические списки в форме элемента. Правило{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"at":"/parentRefs/0/sectionName","from":"/gateways/0/listeners","value":"name"}'}</code>{" "}
+                      наполняет enum поля <b>at</b> значениями <b>value</b> из массива <b>from</b> в values заказа.
                     </li>
                     <li>
-                      <b>ui:widget</b>: "single" рендерит массив как один объект, "hidden" скрывает поле,
-                      "edit" раскрывает поле, скрытое в схеме чарта (override перебивает ui:widget схемы).
+                      <b>lookup</b>-колонка (необязательно): вычисляемое значение через join по ссылке вместо{" "}
+                      <b>path</b>:{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"label":"Hostnames","lookup":{"keys":"/parentRefs/*/sectionName","in":"/gateways/0/listeners","match":"name","get":"hostname"}}'}</code>.
+                      Собирает <b>keys</b> из элемента (<b>*</b> перебирает массив), ищет в <b>in</b> строки где{" "}
+                      <b>match</b> равен ключу, берёт <b>get</b>.
                     </li>
                     <li>
-                      <b>identity</b>: JSON pointer на поле, из которого берётся имя сервиса, например{" "}
+                      <b>actions</b>: кладёт форму-view пунктом в меню «Действия». Элемент:{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"view":"...","in":"info","label":"..."}'}</code>.{" "}
+                      <b>in</b> = <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"info"</code>{" "}
+                      (меню вкладки «Общая информация») или{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'"tab:<id>"'}</code>{" "}
+                      (меню вкладки из <b>tabs</b>). <b>label</b> задаёт текст пункта.
+                    </li>
+                    <li>
+                      <b>include</b> / <b>exclude</b>: какие поля показать или скрыть. <b>overrides</b>: настройка
+                      поля (<b>title</b>, <b>ui:view</b> вложенная проекция). <b>ui:widget</b>: "single" массив как
+                      один объект, "hidden" скрыть, "edit" раскрыть скрытое в схеме.
+                    </li>
+                    <li>
+                      <b>identity</b>: JSON pointer на поле с именем сервиса, например{" "}
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/gateways/0/name"</code>.
-                    </li>
-                    <li>
-                      Подписи и описания полей форма берёт из <b>title</b> / <b>description</b> в
-                      values.schema.json; чтобы поправить текст, меняйте схему в чарте или title в overrides.
+                      Подписи полей форма берёт из <b>title</b> / <b>description</b> в values.schema.json.
                     </li>
                   </ul>
                   <pre className="mt-3 overflow-x-auto rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
@@ -731,15 +963,41 @@ function FormatHelp() {
       "identity": "/gateways/0/name",
       "include": ["naming", "gateways"],
       "overrides": {
-        "gateways": {
-          "ui:widget": "single",
-          "title": "Gateway",
-          "ui:view": { "exclude": ["hpa"] }
-        }
+        "gateways": { "ui:widget": "single", "ui:view": { "exclude": ["hpa"] } }
       }
     },
-    "routes": { "include": ["xroutes"] }
-  }
+    "listener": {},
+    "route": { "exclude": ["enabled", "hostnames"] },
+    "resources": { "include": ["gateways"] }
+  },
+  "tabs": [
+    {
+      "id": "listeners",
+      "title": "Слушатели",
+      "items": "/gateways/0/listeners",
+      "form": "listener",
+      "ui:table": [
+        { "path": "name", "label": "Имя" },
+        { "path": "port", "label": "Порт" }
+      ]
+    },
+    {
+      "id": "routes",
+      "title": "Маршруты",
+      "items": "/xroutes",
+      "form": "route",
+      "enums": [
+        { "at": "/parentRefs/0/sectionName", "from": "/gateways/0/listeners", "value": "name" }
+      ],
+      "ui:table": [
+        { "path": "name", "label": "Имя" },
+        { "label": "Hostnames", "lookup": { "keys": "/parentRefs/*/sectionName", "in": "/gateways/0/listeners", "match": "name", "get": "hostname" } }
+      ]
+    }
+  ],
+  "actions": [
+    { "view": "resources", "in": "info", "label": "Редактировать ресурсы" }
+  ]
 }`}
                   </pre>
                 </div>
@@ -762,53 +1020,43 @@ function readPointer(v: unknown, ptr: string): string {
   return typeof cur === "string" ? cur : "";
 }
 
-// Человеческие подписи вкладок мока для известных view.
-const VIEW_TAB_LABELS: Record<string, string> = {
-  routes: "Маршруты",
-  listeners: "Слушатели",
-  resources: "Ресурсы",
-};
-
-function PreviewBadge({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-md border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-      {children}
-    </p>
-  );
-}
 
 // Предпросмотр: полноценная форма нового заказа (view "order") и кликабельный
 // мок страницы заказанного продукта. Всё рендерится реальным SchemaForm по
 // реальной схеме чарта; значения локальные, никуда не отправляются.
 function PreviewPane({
   schema,
-  views,
+  doc,
   label,
 }: {
   schema: Record<string, any>;
-  views: Record<string, View & { identity?: string }>;
+  doc: ViewDocument;
   label: string;
 }) {
   // Значения формы заказа шарятся с моком продукта: заполнил форму, открыл
   // вкладку продукта и видишь свой заказ.
   const [orderValues, setOrderValues] = useState<Values>({});
   return (
-    <Tabs>
+    <Tabs className="flex min-h-0 flex-1 flex-col">
       <TabList aria-label="Предпросмотр" className="flex gap-1 border-b border-gray-200">
-        <EditorTab id="order">Форма заказа</EditorTab>
-        <EditorTab id="product">Страница продукта</EditorTab>
+        <EditorTab id="order" info="Предпросмотр формы нового заказа">
+          Форма заказа
+        </EditorTab>
+        <EditorTab id="product" info="Предпросмотр страницы заказанного продукта">
+          Страница продукта
+        </EditorTab>
       </TabList>
-      <TabPanel id="order" className="pt-3 outline-none">
+      <TabPanel id="order" className="flex min-h-0 flex-1 flex-col pt-3 outline-none">
         <OrderFormPreview
           schema={schema}
-          view={views.order}
+          view={doc.views?.order as (View & { identity?: string }) | undefined}
           label={label}
           values={orderValues}
           onChange={setOrderValues}
         />
       </TabPanel>
-      <TabPanel id="product" className="pt-3 outline-none">
-        <ProductPageMock schema={schema} views={views} label={label} orderValues={orderValues} />
+      <TabPanel id="product" className="flex min-h-0 flex-1 flex-col pt-3 outline-none">
+        <ProductPageMock schema={schema} doc={doc} label={label} orderValues={orderValues} />
       </TabPanel>
     </Tabs>
   );
@@ -838,12 +1086,8 @@ function OrderFormPreview({
   const identity = view.identity;
   const identityName = identity ? readPointer(values, identity) : "";
   return (
-    <div className="flex flex-col gap-3">
-      <PreviewBadge>
-        Предпросмотр формы нового заказа (view "order"). Значения локальные, никуда не
-        отправляются.
-      </PreviewBadge>
-      <div className="flex max-h-[460px] flex-col gap-3 overflow-y-auto pr-1">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
         <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
           {identity ? (
             <p className="text-sm text-gray-600">
@@ -877,30 +1121,27 @@ function OrderFormPreview({
   );
 }
 
-// Мок страницы заказанного продукта: шапка с псевдостатусом и вкладки,
-// сгенерированные из views документа (кроме order). Можно пощёлкать.
+// Мок страницы заказанного продукта: шапка с псевдостатусом, вкладки из tabs
+// (таблицы по ui:table) и кнопки «Действия» из actions. Раскладка строится тем
+// же движком, что и реальная страница продукта; значения берутся из формы заказа.
 function ProductPageMock({
   schema,
-  views,
+  doc,
   label,
   orderValues,
 }: {
   schema: Record<string, any>;
-  views: Record<string, View & { identity?: string }>;
+  doc: ViewDocument;
   label: string;
   orderValues: Values;
 }) {
-  const productViews = Object.keys(views).filter((n) => n !== "order");
-  const [vals, setVals] = useState<Record<string, Values>>({});
-  const identity = views.order?.identity;
+  const tabs = productTabs(doc);
+  const infoActions = actionViews(doc, "info");
+  const identity = (doc.views?.order as { identity?: string } | undefined)?.identity;
   const serviceName = (identity && readPointer(orderValues, identity)) || "demo-service";
   return (
-    <div className="flex flex-col gap-3">
-      <PreviewBadge>
-        Мок страницы заказанного продукта: вкладки построены из views документа. Данные
-        локальные.
-      </PreviewBadge>
-      <div className="max-h-[460px] overflow-y-auto rounded-md border border-slate-200 p-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 p-3">
         <div className="flex items-center justify-between gap-2">
           <div>
             <p className="text-xs text-slate-400">{label}</p>
@@ -914,35 +1155,142 @@ function ProductPageMock({
         <Tabs className="mt-2">
           <TabList aria-label="Вкладки продукта" className="flex gap-1 border-b border-gray-200">
             <EditorTab id="__info">Общая информация</EditorTab>
-            {productViews.map((n) => (
-              <EditorTab key={n} id={n}>
-                {VIEW_TAB_LABELS[n] ?? n}
+            {tabs.map((t) => (
+              <EditorTab key={t.id} id={t.id}>
+                {t.title ?? t.id}
               </EditorTab>
             ))}
           </TabList>
           <TabPanel id="__info" className="pt-3 outline-none">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <MockField label="Сервис" value={serviceName} />
-              <MockField label="Статус" value="HEALTHY" />
-              <MockField label="Кластер" value="in-cluster" />
-              <MockField label="Namespace" value={serviceName} />
-              <MockField label="Команда" value="team" />
-              <MockField label="ArgoCD App" value={`team-${serviceName}`} />
+            <div className="flex flex-col gap-3">
+              {infoActions.length > 0 && (
+                <div className="flex justify-end">
+                  <MockActions actions={infoActions} />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <MockField label="Сервис" value={serviceName} />
+                <MockField label="Статус" value="HEALTHY" />
+                <MockField label="Кластер" value="in-cluster" />
+                <MockField label="Namespace" value={serviceName} />
+                <MockField label="Команда" value="team" />
+                <MockField label="ArgoCD App" value={`team-${serviceName}`} />
+              </div>
             </div>
           </TabPanel>
-          {productViews.map((n) => (
-            <TabPanel key={n} id={n} className="pt-3 outline-none">
-              <SchemaForm
-                schema={schema}
-                view={views[n]}
-                value={vals[n] ?? orderValues}
-                onChange={(v) => setVals((prev) => ({ ...prev, [n]: v }))}
-              />
+          {tabs.map((t) => (
+            <TabPanel key={t.id} id={t.id} className="pt-3 outline-none">
+              <MockTabTable schema={schema} doc={doc} tab={t} orderValues={orderValues} />
             </TabPanel>
           ))}
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// MockTabTable previews one tab as the real product page would: a table by
+// ui:table over the order form's values, with a "Действия" button (Добавить +
+// any actions placed on this tab). Read-only - it shows the layout, not CRUD.
+function MockTabTable({
+  schema,
+  doc,
+  tab,
+  orderValues,
+}: {
+  schema: Record<string, any>;
+  doc: ViewDocument;
+  tab: ViewTab;
+  orderValues: Values;
+}) {
+  const resolved = resolveTab(schema, tab, doc);
+  const label = tab.title ?? tab.id;
+  const extra = actionViews(doc, `tab:${tab.id}`);
+  if (!resolved) {
+    return <MockStub>Вкладка «{label}» не сконфигурирована: проверьте «items» и «form».</MockStub>;
+  }
+  if (resolved.columns.length === 0) {
+    return <MockStub>Таблица «{label}» не сконфигурирована: добавьте «ui:table» (колонки).</MockStub>;
+  }
+  const items: Values[] = Array.isArray(getAt(orderValues, resolved.itemsPath))
+    ? getAt(orderValues, resolved.itemsPath)
+    : [];
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-end gap-2">
+        <MockActions actions={extra} addLabel={tab.addLabel ?? `Добавить ${label}`} />
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-slate-500">Пока пусто.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase tracking-wide text-slate-400">
+            <tr>
+              {resolved.columns.map((c) => (
+                <th key={c.label} className="py-1 pr-4 font-medium">
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, i) => (
+              <tr key={i} className="border-t border-slate-100">
+                {resolved.columns.map((c, ci) => {
+                  const v = computeCell(it, orderValues, c);
+                  const text = v == null || v === "" ? "-" : Array.isArray(v) ? (v.length ? v.join(", ") : "-") : String(v);
+                  return (
+                    <td
+                      key={c.label}
+                      className={`py-1.5 pr-4 ${ci === 0 ? "font-medium text-slate-800" : "text-slate-600"}`}
+                    >
+                      {text}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// MockActions renders a non-functional "Действия" button + menu, so the preview
+// shows which items the real page would offer.
+function MockActions({ actions, addLabel }: { actions: ActionPlacement[]; addLabel?: string }) {
+  if (!addLabel && actions.length === 0) return null;
+  const item = "cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50";
+  return (
+    <MenuTrigger>
+      <AriaButton className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-brand-200 bg-surface px-3 py-1.5 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500">
+        Действия
+      </AriaButton>
+      <Popover className="min-w-56 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu className="outline-none">
+          {addLabel && (
+            <MenuItem id="__add" className={item}>
+              {addLabel}
+            </MenuItem>
+          )}
+          {actions.map((a) => (
+            <MenuItem key={a.view} id={a.view} className={item}>
+              {a.label ?? `Редактировать ${a.view}`}
+            </MenuItem>
+          ))}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
+  );
+}
+
+function MockStub({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-1.5 text-sm text-amber-600">
+      <IconInfoCircle size={16} stroke={1.8} className="mt-0.5 shrink-0" />
+      <span>{children}</span>
+    </p>
   );
 }
 
