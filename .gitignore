@@ -13,6 +13,7 @@
 node_modules/
 web/dist/
 web/.vite/
+web/*.tsbuildinfo
 *.log
 
 # Helm packaging artifacts
@@ -23,3 +24,9 @@ web/.vite/
 .vscode/
 *.swp
 .DS_Store
+
+# Claude local settings (skills are tracked)
+.claude/settings.local.json
+
+# Docs: work in progress, not tracked for now
+/docs/
