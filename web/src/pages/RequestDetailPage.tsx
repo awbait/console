@@ -3,7 +3,7 @@
 // document (genericView/GenericProductTabs), so it is chart-agnostic - no per-chart
 // code. Presentational pieces live in ./requestDetailParts.
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   IconArrowUpCircle,
   IconCheck,
@@ -14,17 +14,18 @@ import {
   IconTrash,
   IconX,
 } from "@tabler/icons-react";
+import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { api, HttpError } from "../api/client";
 import { useAsync } from "../hooks/useAsync";
 import { canModify, useUser } from "../auth/UserContext";
-import { Card, ErrorBox, Spinner } from "../components/ui";
+import { Button, Card, ErrorBox, Select, Spinner } from "../components/ui";
 import { NotFound } from "../components/NotFound";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ProductIcon } from "../components/icons";
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
-import { isNewer } from "../lib/semver";
+import { upgradeTargets } from "../lib/semver";
 import { DetailActions, fmtDateTime, Meta, ProductView } from "./requestDetailParts";
 import type { ViewDocument } from "../api/types";
 
@@ -50,6 +51,17 @@ export function RequestDetailPage() {
   const [savingName, setSavingName] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // «Доступно обновление» показываем один раз на заказ: в localStorage храним
+  // версию, на которой нудж закрыли крестиком; при новой целевой версии покажем
+  // снова. Ключ по id заказа (id доступен сразу, до загрузки данных).
+  const [upgradeDismissed, setUpgradeDismissed] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`order-upgrade-nudge:${id}`);
+    } catch {
+      return null;
+    }
+  });
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (editingName) nameInputRef.current?.focus();
@@ -86,13 +98,28 @@ export function RequestDetailPage() {
   const isDraft = r.status === "DRAFT";
   const driftMissing = r.drifted && /отсутству/i.test(r.drift_detail ?? "");
 
-  const pub = findCatalogChart(charts, r.chart_project, r.chart_name)?.publication;
+  const catalogChart = findCatalogChart(charts, r.chart_project, r.chart_name);
+  const pub = catalogChart?.publication;
   const liveStatus = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"].includes(r.status);
-  const upgradeTo =
-    pub?.approved_view_version && isNewer(pub.approved_view_version, r.chart_version)
-      ? pub.approved_view_version
-      : null;
-  const canUpgrade = modifiable && !isDraft && liveStatus && !!upgradeTo && !r.drifted;
+  // Допустимые версии апгрейда: выше текущей и не выше согласованной автором.
+  // Единственный источник правды (им же валидируется ?to= на странице заказа).
+  const upgradeVersions = upgradeTargets(
+    catalogChart?.versions ?? [],
+    r.chart_version,
+    pub?.approved_view_version,
+  );
+  const upgradeTo = upgradeVersions[0] ?? null; // рекомендуемая (согласованная) версия
+  const canUpgrade = modifiable && !isDraft && liveStatus && upgradeVersions.length > 0 && !r.drifted;
+  const showUpgradeNudge = canUpgrade && upgradeDismissed !== upgradeTo;
+
+  function dismissUpgradeNudge() {
+    setUpgradeDismissed(upgradeTo);
+    try {
+      if (upgradeTo) localStorage.setItem(`order-upgrade-nudge:${id}`, upgradeTo);
+    } catch {
+      /* нет localStorage - переживём, просто не запомним показ */
+    }
+  }
 
   async function onConfirmDelete() {
     await api.deleteRequest(id);
@@ -199,25 +226,34 @@ export function RequestDetailPage() {
             ))}
         </div>
       )}
-      {canUpgrade && (
+      {showUpgradeNudge && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
           <div className="flex items-start gap-2">
             <IconArrowUpCircle size={18} stroke={1.8} className="mt-0.5 shrink-0 text-brand-600" />
             <div>
-              <p className="font-medium">Доступно обновление: версия {upgradeTo}</p>
+              <p className="font-medium">Доступно обновление продукта до версии {upgradeTo}</p>
               <p className="mt-0.5 text-brand-700">
                 Заказ развёрнут на версии {r.chart_version}. Автор согласовал форму для {upgradeTo} - откройте форму
                 на новой версии, проверьте значения и обновите.
               </p>
             </div>
           </div>
-          <Link
-            to={`/requests/${id}/upgrade?to=${encodeURIComponent(upgradeTo!)}`}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-on-accent outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-          >
-            <IconArrowUpCircle size={14} stroke={1.8} />
-            Обновить до {upgradeTo}
-          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              onClick={() => setUpgradeOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-on-accent outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <IconArrowUpCircle size={14} stroke={1.8} />
+              Обновить
+            </button>
+            <button
+              onClick={dismissUpgradeNudge}
+              aria-label="Скрыть"
+              className="rounded-md p-1 text-brand-400 outline-none hover:bg-brand-100 hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <IconX size={16} stroke={2} />
+            </button>
+          </div>
         </div>
       )}
       <div className="flex items-start justify-between gap-3">
@@ -275,8 +311,10 @@ export function RequestDetailPage() {
           isDraft={isDraft}
           onContinue={isDraft && modifiable ? () => navigate(`/requests/${r.id}/edit`) : undefined}
           onSubmit={isDraft && modifiable ? onSubmit : undefined}
+          onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
           onSync={!isDraft && user?.role === "admin" ? onSync : undefined}
           onDelete={modifiable ? () => setConfirmDelete(true) : undefined}
+          notify={canUpgrade}
         />
       </div>
 
@@ -295,6 +333,14 @@ export function RequestDetailPage() {
           )
         }
         onConfirm={onConfirmDelete}
+      />
+
+      <UpgradeDialog
+        isOpen={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        currentVersion={r.chart_version}
+        versions={upgradeVersions}
+        onConfirm={(to) => navigate(`/requests/${r.id}/upgrade?to=${encodeURIComponent(to)}`)}
       />
 
       <Card className="grid grid-cols-3 gap-4">
@@ -329,5 +375,77 @@ export function RequestDetailPage() {
         }
       />
     </div>
+  );
+}
+
+// UpgradeDialog lets the user pick the target version for an upgrade. Only the
+// allowed versions (newer than current, up to the author-approved one) are
+// offered, so it is impossible to open an upgrade to a missing/lower version.
+function UpgradeDialog({
+  isOpen,
+  onOpenChange,
+  currentVersion,
+  versions,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentVersion: string;
+  versions: string[];
+  onConfirm: (to: string) => void;
+}) {
+  // Default to the newest allowed version (the author-approved one).
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (isOpen) setSelected(versions[0] ?? null);
+  }, [isOpen, versions]);
+
+  return (
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      isDismissable
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
+    >
+      <Modal className="w-full max-w-md rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
+        <Dialog className="outline-none">
+          {({ close }) => (
+            <div className="flex flex-col gap-4 p-5">
+              <div>
+                <Heading slot="title" className="text-base font-semibold text-gray-900">
+                  Обновление продукта
+                </Heading>
+                <p className="mt-1 text-sm text-gray-600">
+                  Текущая версия: <span className="font-medium text-gray-800">{currentVersion}</span>.
+                  Выберите версию для обновления (доступны только версии выше текущей).
+                </p>
+              </div>
+              <Select
+                label="Версия"
+                isRequired
+                selectedKey={selected}
+                onSelectionChange={(k) => setSelected(k as string)}
+                options={versions.map((v) => ({ id: v, label: v }))}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={close}
+                  className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+                >
+                  Отмена
+                </button>
+                <Button
+                  variant="primary"
+                  isDisabled={!selected}
+                  onPress={() => selected && onConfirm(selected)}
+                >
+                  Обновить
+                </Button>
+              </div>
+            </div>
+          )}
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

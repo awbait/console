@@ -27,3 +27,17 @@ export function compareSemver(a: string, b: string): number {
 export function isNewer(candidate: string, current: string): boolean {
   return !!candidate && !!current && compareSemver(candidate, current) > 0;
 }
+
+// upgradeTargets возвращает версии чарта, до которых заказу на версии current
+// разрешено обновиться: строго новее current и не выше approved (версии, под
+// которую автор согласовал форму, - дальше форма не гарантирована). Список
+// отсортирован от новой к старой; пустой, если апгрейд недоступен. Это
+// единственный источник допустимых версий апгрейда (и для UI, и для проверки
+// ?to= на странице заказа), чтобы нельзя было открыть обновление до
+// несуществующей/недопустимой версии.
+export function upgradeTargets(versions: string[], current: string, approved?: string): string[] {
+  if (!approved || !isNewer(approved, current)) return [];
+  return versions
+    .filter((v) => isNewer(v, current) && !isNewer(v, approved))
+    .sort((a, b) => compareSemver(b, a));
+}
