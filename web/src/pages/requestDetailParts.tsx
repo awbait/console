@@ -109,21 +109,29 @@ export function DetailActions({
   onContinue,
   onSubmit,
   onSync,
+  onUpgrade,
   onDelete,
+  notify = false,
 }: {
   isDraft: boolean;
   onContinue?: () => void;
   onSubmit?: () => void;
   onSync?: () => void;
+  onUpgrade?: () => void;
   onDelete?: () => void;
+  // Show a notification dot on the trigger (e.g. an upgrade is available).
+  notify?: boolean;
 }) {
-  if (!onContinue && !onSubmit && !onSync && !onDelete) return null;
+  if (!onContinue && !onSubmit && !onSync && !onUpgrade && !onDelete) return null;
   const item = "cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50";
   return (
     <MenuTrigger>
-      <AriaButton className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-brand-200 bg-surface px-3 py-1.5 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500">
+      <AriaButton className="relative inline-flex shrink-0 items-center gap-1.5 rounded-md border border-brand-200 bg-surface px-3 py-1.5 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500">
         <IconDotsVertical size={16} stroke={1.8} className="text-brand-600" />
         Действия
+        {notify && (
+          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-surface" />
+        )}
       </AriaButton>
       <Popover className="min-w-48 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
         <Menu
@@ -132,6 +140,7 @@ export function DetailActions({
             if (key === "continue") onContinue?.();
             else if (key === "submit") onSubmit?.();
             else if (key === "sync") onSync?.();
+            else if (key === "upgrade") onUpgrade?.();
             else if (key === "delete") onDelete?.();
           }}
         >
@@ -143,6 +152,11 @@ export function DetailActions({
           {onSubmit && (
             <MenuItem id="submit" className={item}>
               Заказать
+            </MenuItem>
+          )}
+          {onUpgrade && (
+            <MenuItem id="upgrade" className={item}>
+              Обновить
             </MenuItem>
           )}
           {onSync && (

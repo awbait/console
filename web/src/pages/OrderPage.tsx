@@ -7,10 +7,11 @@ import { useUser } from "../auth/UserContext";
 import { useTeam } from "../app/TeamContext";
 import { Button, Card, ErrorBox, Spinner } from "../components/ui";
 import { FormErrors } from "../components/FormErrors";
+import { NotFound } from "../components/NotFound";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
-import { chartLabel } from "../app/CatalogContext";
-import { isNewer } from "../lib/semver";
+import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { isNewer, upgradeTargets } from "../lib/semver";
 import type { ChangelogEntry, FieldError } from "../api/types";
 import { pruneEmpty, collectErrors } from "../form/SchemaForm";
 
@@ -44,6 +45,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const { user } = useUser();
   // Team is chosen globally (topbar); the order form doesn't ask for it.
   const { team: activeTeam } = useTeam();
+  const { charts, loading: catalogLoading } = useCatalog();
 
   // In edit mode, load the draft we're continuing. Its chart coordinates and
   // pinned version drive the rest of the page.
@@ -81,9 +83,17 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // that, a field's error shows only once it's been touched.
   const [showErrors, setShowErrors] = useState(false);
 
-  // Upgrade: целевая (новая) версия. Draft: закреплённая версия. Новый заказ:
-  // последняя версия чарта.
-  const targetVersion = upgrade ? upgradeToParam || chart?.latest_version || "" : "";
+  // Upgrade: целевая версия строго из ?to= (без подмены на latest, иначе можно
+  // было бы «обновиться» на произвольную версию). Draft: закреплённая версия.
+  // Новый заказ: последняя версия чарта.
+  const targetVersion = upgrade ? upgradeToParam : "";
+  // Допустимые версии апгрейда для этого заказа (выше текущей, не выше
+  // согласованной). По ним валидируем ?to=, чтобы нельзя было открыть форму на
+  // несуществующей/недопустимой версии.
+  const approvedVersion = findCatalogChart(charts, project, name)?.publication?.approved_view_version;
+  const allowedUpgrades = upgrade
+    ? upgradeTargets(chart?.versions ?? [], draft?.chart_version ?? "", approvedVersion)
+    : [];
   const effectiveVersion = upgrade
     ? targetVersion || null
     : editing
@@ -158,6 +168,22 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   if (chartLoading) return <Spinner />;
   if (chartErr) return <ErrorBox error={chartErr} />;
   if (!chart) return null;
+
+  // Upgrade guard: ждём каталог (источник допустимых версий), затем сверяем ?to=.
+  // Недопустимая/несуществующая целевая версия не открывает форму обновления.
+  if (upgrade) {
+    if (catalogLoading) return <Spinner />;
+    if (!targetVersion || !allowedUpgrades.includes(targetVersion)) {
+      return (
+        <NotFound
+          title="Обновление недоступно"
+          message="Этой версии для обновления не существует или она не разрешена. Доступны только версии выше текущей, согласованные автором."
+          backTo={id ? `/requests/${id}` : "/requests"}
+          backLabel="К заказу"
+        />
+      );
+    }
+  }
 
   if (!user || user.teams.length === 0) {
     return (
