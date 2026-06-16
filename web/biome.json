@@ -1,0 +1,52 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "useButtonType": "info",
+        "useSemanticElements": "info",
+        "useFocusableInteractive": "info",
+        "useAriaPropsSupportedByRole": "info",
+        "useAriaPropsForRole": "info",
+        "useAltText": "info",
+        "noSvgWithoutTitle": "info"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noArrayIndexKey": "info",
+        "noAssignInExpressions": "info",
+        "noUnknownAtRules": "off",
+        "useIterableCallbackReturn": "info",
+        "noImplicitAnyLet": "info"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useTemplate": "off"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "info"
+      },
+      "complexity": {
+        "useOptionalChain": "info"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  }
+}
