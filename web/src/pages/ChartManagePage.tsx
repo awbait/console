@@ -461,7 +461,6 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
                   >
                     <st.Icon size={13} stroke={1.8} />
                     {st.label}
-                    <IconInfoCircle size={12} stroke={1.8} className="opacity-70" />
                   </AriaButton>
                   <ModalOverlay
                     isDismissable
