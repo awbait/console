@@ -162,7 +162,7 @@ deployments/
   docker-compose.upstreams.yml  - оверлей с реальным GitLab CE (для KinD-стенда)
   keycloak/ gitlab/             - realm-импорт и сид GitLab
   kind/                         - реальный e2e-стенд (KinD + Argo CD + Harbor), Windows
-  scripts/                      - хост-хелперы (run-oidc, dev-web, reset-state, seed-import)
+  scripts/                      - хост-хелперы (run-oidc, reset-state, seed-import)
 internal/harbor/charts/ - минимальная тест-фикстура чарта (НЕ деплоится)
 ```
 
