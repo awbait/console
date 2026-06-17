@@ -35,10 +35,17 @@ if ($exists) {
 
 # helm --wait already gates on workloads being Ready; now confirm the API answers
 # healthy through the published NodePort before the next steps push/create.
-Write-Host "[harbor] waiting for API health on https://host.docker.internal:8084 ..."
+# Probe over the loopback (127.0.0.1), NOT host.docker.internal: the NodePort is
+# published to the host's 127.0.0.1:8084, while host.docker.internal only
+# resolves host-side on Docker Desktop setups that write it into the host hosts
+# file. Where it does not resolve, curl returns code 000 even though Harbor is up
+# on localhost. /api/v2.0/health is unauthenticated, so it does not hit the OCI
+# token realm (which is pinned to externalURL=host.docker.internal); -k skips the
+# self-signed cert / CN mismatch.
+Write-Host "[harbor] waiting for API health on https://127.0.0.1:8084 ..."
 $healthy = $false
 for ($i = 1; $i -le 30; $i++) {
-    $status = (curl.exe -sk -o NUL -w "%{http_code}" https://host.docker.internal:8084/api/v2.0/health)
+    $status = (curl.exe -sk -o NUL -w "%{http_code}" https://127.0.0.1:8084/api/v2.0/health)
     if ($status -eq "200") { $healthy = $true; break }
     Start-Sleep -Seconds 4
 }

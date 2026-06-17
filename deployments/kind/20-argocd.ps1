@@ -17,10 +17,25 @@ kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - | 
 # deliberately and re-test; keep in sync with the version the stand was verified on.
 $argoVersion = "v3.4.3"
 Write-Host "[argocd] installing manifests ($argoVersion)..."
+# Download the manifests and repoint the only AWS ECR Public image (argocd-redis)
+# to Docker Hub before applying: some networks have no access to public.ecr.aws.
+# public.ecr.aws/docker/library/<x> is just a Docker Hub mirror, so stripping the
+# prefix yields the identical image (e.g. redis:8.2.3-alpine) from docker.io. The
+# argocd (quay.io) and dex (ghcr.io) images are left untouched.
+$manifestUrl = "https://raw.githubusercontent.com/argoproj/argo-cd/$argoVersion/manifests/install.yaml"
+$manifest = curl.exe -fsSL $manifestUrl
+if ($LASTEXITCODE -ne 0) { throw "failed to download argocd manifests ($argoVersion)" }
+$manifest = $manifest -replace 'public\.ecr\.aws/docker/library/', ''
+$manifestFile = New-TemporaryFile
+# Write UTF-8 without BOM: Set-Content -Encoding utf8 on PS 5.1 prepends a BOM that
+# kubectl's YAML parser can choke on. curl.exe captured $manifest as a line array.
+[System.IO.File]::WriteAllLines($manifestFile.FullName, $manifest, (New-Object System.Text.UTF8Encoding($false)))
 # Server-side apply: the applicationsets CRD is too large for client-side apply
 # (the last-applied annotation exceeds the 256 KB metadata limit).
-kubectl apply -n argocd --server-side --force-conflicts -f "https://raw.githubusercontent.com/argoproj/argo-cd/$argoVersion/manifests/install.yaml" | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "argocd install failed" }
+kubectl apply -n argocd --server-side --force-conflicts -f $manifestFile | Out-Host
+$applyExit = $LASTEXITCODE
+Remove-Item $manifestFile -ErrorAction SilentlyContinue
+if ($applyExit -ne 0) { throw "argocd install failed" }
 
 # Serve plain HTTP (the Go client connects over http://host.docker.internal:8083).
 $p1 = Patch-File '{"data":{"server.insecure":"true"}}'
