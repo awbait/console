@@ -112,6 +112,7 @@ export function OrderValuesCard({
   errors,
   showErrors = false,
   lockReadOnly = false,
+  lockedPaths,
 }: {
   schema: JSONSchema | null;
   view?: View;
@@ -125,6 +126,8 @@ export function OrderValuesCard({
   showErrors?: boolean;
   // Lock ui:readOnly fields (set on edit/upgrade of a live order).
   lockReadOnly?: boolean;
+  // Always-locked field paths (e.g. the deploy identity on upgrade).
+  lockedPaths?: string[];
 }) {
   const { theme } = useTheme();
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
@@ -158,6 +161,7 @@ export function OrderValuesCard({
             errors={errors}
             showErrors={showErrors}
             lockReadOnly={lockReadOnly}
+            lockedPaths={lockedPaths}
           />
         ) : (
           <p className="text-sm text-gray-500">No schema for this version - switch to Raw YAML.</p>

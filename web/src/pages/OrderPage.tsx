@@ -448,6 +448,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         errors={clientErrors}
         showErrors={showErrors}
         lockReadOnly={upgrade}
+        lockedPaths={upgrade && identity ? [identity] : undefined}
       />
 
       {/* На обновлении даём редактировать и остальные секции (вкладки + действия),
