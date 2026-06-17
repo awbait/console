@@ -24,7 +24,7 @@
   - Сообщение - короткое, в нижнем регистре, событийного стиля и **стабильное** (без подстановки значений): `"order transition"`, `"http request"`, `"reconcile ok"`. Переменные данные - только в атрибутах (так логи остаются grep-friendly).
   - Используй канонические ключи атрибутов из doc-комментария `logger.go` (`request_id`, `order_id`, `publication_id`, `chart`, `from`/`to`, `actor`, `reconciler`, `duration_ms`, `err`), не плоди синонимы. `request_id` - это HTTP-корреляция (chi), id заказа - это `order_id`.
   - Уровни: `Debug` - детальный поток (тики reconcile, переходы FSM, шумные эндпоинты `/health`/`/ready`/`/metrics`); `Info` - заметные бизнес-события; `Warn` - ожидаемые/восстановимые ошибки; `Error` - сбои, требующие внимания.
-- **Метрики - префикс `console_`, конвенции Prometheus** (базовые единицы в секундах, суффикс `_total` у счётчиков), регистрация через `promauto` в `internal/observability/metrics.go`. Значимый сигнал отражай и на дашборде Grafana (`deployments/grafana/dashboards/idp.json`).
+- **Метрики - префикс `console_`, конвенции Prometheus** (базовые единицы в секундах, суффикс `_total` у счётчиков), регистрация через `promauto` в `internal/observability/metrics.go`. Значимый сигнал отражай и на дашборде Grafana (`deployments/grafana/dashboards/console.json`).
 
 ## Git workflow
 
