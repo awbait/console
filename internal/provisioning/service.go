@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"time"
 
@@ -43,6 +44,16 @@ type Service struct {
 	// autoMerge makes the poller merge open portal MRs itself (no human gate).
 	// Convenient for local/demo against real GitLab; off in production.
 	autoMerge bool
+	// Log is the structured logger; wired by main. Nil-safe via logger().
+	Log *slog.Logger
+}
+
+// logger returns the configured logger, or the default if none was wired (tests).
+func (s *Service) logger() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.Default()
 }
 
 // New builds a provisioning service.
@@ -646,6 +657,8 @@ func (s *Service) transition(ctx context.Context, r *models.Request, to models.R
 	}
 	s.event(ctx, r, actor, "status_changed", from, to)
 	s.publishStatus(r.ID, string(to))
+	s.logger().Debug("order transition",
+		"order_id", r.ID, "from", from, "to", to, "actor", actor)
 	return nil
 }
 

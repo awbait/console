@@ -145,7 +145,9 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	bus := events.New()
 	catalogSvc := catalog.New(hb, c)
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
+	provSvc.Log = observability.Component(log, "provisioning")
 	pubsSvc := publications.New(st, catalogSvc)
+	pubsSvc.Log = observability.Component(log, "publications")
 	statusSvc := status.New(argo)
 
 	// --- auth ---
@@ -176,13 +178,13 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			categoryID: publications.DefaultDiscoveryCategory,
 		}))
 	}
-	poller := status.NewPoller(cfg.StatusPollInterval, log, reconcilers...)
+	poller := status.NewPoller(cfg.StatusPollInterval, observability.Component(log, "poller"), reconcilers...)
 	go poller.Run(ctx)
 
 	// --- HTTP ---
 	srv := &api.Server{
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc, Status: statusSvc,
-		Store: st, Cache: c, Bus: bus, Log: log, ArgoCDURL: cfg.ArgoCDURL,
+		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo,
 		System: api.SystemInfo{
 			HarborMode:   string(cfg.HarborMode),

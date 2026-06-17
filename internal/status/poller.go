@@ -66,9 +66,12 @@ func (p *Poller) tick(ctx context.Context) {
 		name := nameOf(r)
 		start := time.Now()
 		err := r.Reconcile(ctx)
-		observability.ObserveReconcile(name, time.Since(start), err)
+		dur := time.Since(start)
+		observability.ObserveReconcile(name, dur, err)
 		if err != nil {
 			p.log.Warn("reconcile failed", "reconciler", name, "err", err)
+			continue
 		}
+		p.log.Debug("reconcile ok", "reconciler", name, "duration_ms", dur.Milliseconds())
 	}
 }

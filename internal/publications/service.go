@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -65,10 +66,20 @@ type SchemaSource interface {
 type Service struct {
 	store   store.Store
 	schemas SchemaSource
+	// Log is the structured logger; wired by main. Nil-safe via logger().
+	Log *slog.Logger
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
 	return &Service{store: st, schemas: schemas}
+}
+
+// logger returns the configured logger, or the default if none was wired (tests).
+func (s *Service) logger() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.Default()
 }
 
 func newID() string { return uuid.Must(uuid.NewV7()).String() }
@@ -380,6 +391,8 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 		payload = applied
 	}
 	s.addEvent(ctx, p.ID, u, event, from, to, payload)
+	s.logger().Debug("publication review",
+		"publication_id", p.ID, "chart", p.ChartName, "from", from, "to", to, "actor", u.Subject)
 	return p, nil
 }
 

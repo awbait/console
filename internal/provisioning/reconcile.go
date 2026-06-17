@@ -17,6 +17,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.logger().Debug("reconcile sweep", "active", len(active))
 	for _, r := range active {
 		s.reconcileOne(ctx, r)
 	}
@@ -143,4 +144,5 @@ func (s *Service) markDeleted(ctx context.Context, r *models.Request) {
 	}
 	s.event(ctx, r, "system", "deleted", models.StatusDeleteMRMerged, models.StatusDeleted)
 	s.publishStatus(r.ID, string(models.StatusDeleted))
+	s.logger().Debug("order deleted", "order_id", r.ID)
 }
