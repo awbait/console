@@ -41,8 +41,10 @@ run-oidc:
 	go run ./cmd/portal
 
 # Frontend dev server (Vite) on :5173 with live reload; proxies /api -> :8080.
+# --host binds all interfaces (incl. IPv4); without it Vite is IPv6-only, which
+# breaks clients that resolve localhost to 127.0.0.1.
 web:
-	cd web && bun install && bun run dev
+	cd web && bun install && bun run dev --host
 
 test:
 	go test ./...
