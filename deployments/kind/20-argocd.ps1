@@ -13,10 +13,13 @@ function Patch-File([string]$json) {
 }
 
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f - | Out-Host
-Write-Host "[argocd] installing manifests (stable)..."
+# Pinned for reproducibility (the `stable` branch is a moving target). Bump
+# deliberately and re-test; keep in sync with the version the stand was verified on.
+$argoVersion = "v3.4.3"
+Write-Host "[argocd] installing manifests ($argoVersion)..."
 # Server-side apply: the applicationsets CRD is too large for client-side apply
 # (the last-applied annotation exceeds the 256 KB metadata limit).
-kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml | Out-Host
+kubectl apply -n argocd --server-side --force-conflicts -f "https://raw.githubusercontent.com/argoproj/argo-cd/$argoVersion/manifests/install.yaml" | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "argocd install failed" }
 
 # Serve plain HTTP (the Go client connects over http://host.docker.internal:8083).

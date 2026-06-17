@@ -78,9 +78,9 @@ down:
 	docker compose -f deployments/docker-compose.yml down -v
 
 # Same stack but with a real GitLab CE + real Argo CD (the KinD stand).
-# Bring the stand up first (`make stand-up`) and put ARGOCD_TOKEN in
-# deployments/.env. After GitLab is healthy, run `make gitlab-seed` once.
-# Detached (GitLab boots for minutes): watch with `docker compose ps` / logs.
+# Bring the stand up first (`make stand-up`); it writes ARGOCD_TOKEN into
+# deployments/.env automatically. After GitLab is healthy, run `make gitlab-seed`
+# once. Detached (GitLab boots for minutes): watch with `docker compose ps` / logs.
 up-upstreams:
 	docker compose --env-file deployments/.env -f deployments/docker-compose.yml -f deployments/docker-compose.upstreams.yml up --build -d
 
@@ -95,8 +95,8 @@ docker:
 	docker build -t idp-portal:dev .
 
 # --- Local e2e stand: KinD + Argo CD + Harbor (Windows/PowerShell) ---
-# Full bring-up; prints ARGOCD_TOKEN at the end. Put it in deployments/.env,
-# then `make up-upstreams` + `make gitlab-seed`. See deployments/kind/README.md.
+# Full bring-up; writes ARGOCD_TOKEN into deployments/.env at the end, then run
+# `make up-upstreams` + `make gitlab-seed`. See deployments/kind/README.md.
 stand-up:
 	powershell -ExecutionPolicy Bypass -File deployments/kind/up.ps1
 

@@ -23,10 +23,12 @@ helm repo update istio | Out-Host
 # istio/base keeps its CRDs in files/crd-all.gen.yaml (NOT exposed via
 # `helm show crds`). Pull + untar, then apply only that file - no validating
 # webhook/RBAC, so resources apply even without an Istio control plane.
+# Pinned; must match the istiod version installed by 35-istio.ps1.
+$istioVersion = "1.30.1"
 $tmp = Join-Path $env:TEMP "idp-istio-base"
 if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
 New-Item -ItemType Directory -Path $tmp | Out-Null
-helm pull istio/base --untar --untardir $tmp | Out-Host
+helm pull istio/base --version $istioVersion --untar --untardir $tmp | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "helm pull istio/base failed" }
 kubectl apply --server-side -f (Join-Path $tmp "base\files\crd-all.gen.yaml") | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "istio CRD apply failed" }

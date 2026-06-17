@@ -9,11 +9,13 @@
 $ErrorActionPreference = "Stop"
 
 # --- istiod (CRDs already installed by 30-crds.ps1; base release not required) ---
+# Pinned for reproducibility; must match the istio/base CRDs in 30-crds.ps1.
+$istioVersion = "1.30.1"
 helm repo add istio https://istio-release.storage.googleapis.com/charts | Out-Host
 helm repo update istio | Out-Host
 kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f - | Out-Host
-Write-Host "[istio] installing istiod..."
-helm upgrade --install istiod istio/istiod -n istio-system --wait --timeout 5m | Out-Host
+Write-Host "[istio] installing istiod $istioVersion..."
+helm upgrade --install istiod istio/istiod --version $istioVersion -n istio-system --wait --timeout 5m | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "istiod install failed" }
 
 # --- MetalLB (gives LoadBalancer Services an address in KinD) ---
