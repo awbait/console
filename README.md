@@ -109,6 +109,51 @@ make down       # остановить + снести volume'ы
 | http://localhost:8080 | Backend (`/health`, `/ready`, `/metrics`) |
 | http://localhost:8081 | Keycloak (`admin` / `admin`) |
 
+## Наблюдаемость (Prometheus + Grafana)
+
+Portal отдаёт метрики в формате Prometheus на `/metrics`. Поднять стек мониторинга
+(работает вместе с `make run`):
+
+```sh
+make obs        # Prometheus на :9090, Grafana на :3000 (anonymous, дашборд "IDP Platform")
+```
+
+Grafana с автоподключённым datasource и дашбордом - открыть **http://localhost:3000**
+(раздел Dashboards -> IDP -> IDP Platform). Prometheus скрейпит portal как на хосте
+(`make run`), так и в полном стеке (`make up`).
+
+Прикладные метрики (префикс `console_`):
+
+| Метрика | Тип | Лейблы | Смысл |
+|---|---|---|---|
+| `console_component_up` | gauge | `component`, `kind`, `mode` | доступность компонента платформы (1/0), как на `/api/v1/status` |
+| `console_component_probe_duration_seconds` | histogram | `component` | латентность health-пробы |
+| `console_component_last_probe_timestamp_seconds` | gauge | `component` | время последней пробы (детект зависшего рефрешера) |
+| `console_orders` | gauge | `status` | число заказов в каждом статусе lifecycle |
+| `console_reconcile_runs_total` | counter | `reconciler`, `result` | тики фонового reconcile (ok/error) |
+| `console_reconcile_duration_seconds` | histogram | `reconciler` | длительность тика reconcile |
+| `console_reconcile_last_success_timestamp_seconds` | gauge | `reconciler` | время последнего успешного тика |
+
+Gauge'и обновляются в фоне с интервалом `STATUS_POLL_INTERVAL`. Помимо них `/metrics`
+отдаёт стандартные Go/process-метрики.
+
+### Логи
+
+Структурный лог (`log/slog`) в stdout. Формат - `LOG_FORMAT` (`json` по умолчанию, `text`
+для dev), уровень - `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, по умолчанию `info`).
+`LOG_LEVEL=debug` включает детальный трейс: HTTP-запросы, тики reconcile, переходы FSM
+заказов и согласований публикаций.
+
+Каждая строка несёт `component=` (api, provisioning, publications, poller, ...), так что
+видно, откуда лог. Сообщения стабильные и событийного стиля, переменные - в атрибутах
+(`order_id`, `request_id`, `from`/`to`, `duration_ms`, ...). Конвенция целиком - в
+doc-комментарии `internal/observability/logger.go`. Пример (`LOG_FORMAT=text`):
+
+```
+level=INFO  msg="http request" component=api method=GET path=/api/v1/status status=200 duration_ms=0 request_id=...
+level=DEBUG msg="order transition" component=provisioning order_id=... from=MR_MERGED to=DEPLOYING actor=system
+```
+
 ## Опционально: реальный e2e-стенд (KinD)
 
 Полный стек с реальными GitLab CE + Harbor + Argo CD поднимается отдельным

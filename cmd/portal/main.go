@@ -145,7 +145,9 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	bus := events.New()
 	catalogSvc := catalog.New(hb, c)
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
+	provSvc.Log = observability.Component(log, "provisioning")
 	pubsSvc := publications.New(st, catalogSvc)
+	pubsSvc.Log = observability.Component(log, "publications")
 	statusSvc := status.New(argo)
 
 	// --- auth ---
@@ -157,32 +159,32 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// --- poller (single replica, in-process) ---
 	var reconcilers []status.Reconciler
 	if argoFake != nil {
-		reconcilers = append(reconcilers, argoFake) // materialise apps from "git"
+		reconcilers = append(reconcilers, status.Named("argocd-fake", argoFake)) // materialise apps from "git"
 	}
-	reconcilers = append(reconcilers, provSvc) // advance order states
+	reconcilers = append(reconcilers, status.Named("provisioning", provSvc)) // advance order states
 	if cfg.DriftDetection {
-		reconcilers = append(reconcilers, driftReconciler{provSvc}) // flag Git-side drift
+		reconcilers = append(reconcilers, status.Named("drift", driftReconciler{provSvc})) // flag Git-side drift
 	}
 	if cfg.ImportDiscovery {
-		reconcilers = append(reconcilers, importReconciler{provSvc}) // adopt Git-created apps
+		reconcilers = append(reconcilers, status.Named("import", importReconciler{provSvc})) // adopt Git-created apps
 	}
 	if cfg.CatalogAutodiscover {
 		ownerTeam := "platform-admins"
 		if len(cfg.AdminGroups) > 0 {
 			ownerTeam = cfg.AdminGroups[0]
 		}
-		reconcilers = append(reconcilers, discoveryReconciler{
+		reconcilers = append(reconcilers, status.Named("catalog-discovery", discoveryReconciler{
 			pubs: pubsSvc, cat: catalogSvc, ownerTeam: ownerTeam,
 			categoryID: publications.DefaultDiscoveryCategory,
-		})
+		}))
 	}
-	poller := status.NewPoller(cfg.StatusPollInterval, log, reconcilers...)
+	poller := status.NewPoller(cfg.StatusPollInterval, observability.Component(log, "poller"), reconcilers...)
 	go poller.Run(ctx)
 
 	// --- HTTP ---
 	srv := &api.Server{
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc, Status: statusSvc,
-		Store: st, Cache: c, Bus: bus, Log: log, ArgoCDURL: cfg.ArgoCDURL,
+		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo,
 		System: api.SystemInfo{
 			HarborMode:   string(cfg.HarborMode),
@@ -197,6 +199,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			OIDCIssuer:   cfg.OIDCIssuer,
 		},
 	}
+	// Refresh platform-status and order gauges in-process (single replica),
+	// reusing the poller interval. promhttp at /metrics exposes the result.
+	go srv.RunMetricsRefresher(ctx, cfg.StatusPollInterval)
+
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,
 		Handler:           srv.Router(),

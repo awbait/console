@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -48,6 +49,7 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Use(s.requestLogger)
 
 	// public
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -122,6 +124,39 @@ func (s *Server) Router() http.Handler {
 	})
 
 	return r
+}
+
+// logger returns the configured logger, or the default if none was wired (tests).
+func (s *Server) logger() *slog.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return slog.Default()
+}
+
+// requestLogger logs one line per HTTP request with method, path, status, size
+// and latency. Liveness/scrape endpoints (/health, /ready, /metrics) log at
+// debug so routine polling does not drown the log; everything else logs at info.
+func (s *Server) requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		start := time.Now()
+		next.ServeHTTP(ww, r)
+
+		level := slog.LevelInfo
+		switch r.URL.Path {
+		case "/health", "/ready", "/metrics":
+			level = slog.LevelDebug
+		}
+		s.logger().LogAttrs(r.Context(), level, "http request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Int("status", ww.Status()),
+			slog.Int("bytes", ww.BytesWritten()),
+			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+	})
 }
 
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
