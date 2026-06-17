@@ -35,6 +35,9 @@ const ValidationCtx = createContext<Validation>({
 // descendants too.
 const LockActiveCtx = createContext<boolean>(false);
 const LockedCtx = createContext<boolean>(false);
+// Locked field paths (JSON pointers) regardless of ui:readOnly - used to lock the
+// deploy identity field on edit/upgrade, since it must never change once set.
+const LockedPathsCtx = createContext<Set<string>>(new Set());
 const isReadOnly = (s: Schema) => s["ui:readOnly"] === true;
 
 function emptyVal(v: unknown): boolean {
@@ -248,6 +251,7 @@ export function SchemaForm({
   errors,
   showErrors,
   lockReadOnly = false,
+  lockedPaths,
 }: {
   schema: Schema;
   value: Values;
@@ -258,7 +262,10 @@ export function SchemaForm({
   // Honor ui:readOnly fields as disabled (set on edit/upgrade of a live order;
   // leave false on the create form so the field can be set once).
   lockReadOnly?: boolean;
+  // Always-locked field paths (JSON pointers), e.g. the deploy identity on upgrade.
+  lockedPaths?: string[];
 }) {
+  const lockedSet = useMemo(() => new Set(lockedPaths ?? []), [lockedPaths]);
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const mark = useCallback(
     (p: string) => setTouched((t) => (t.has(p) ? t : new Set(t).add(p))),
@@ -276,7 +283,9 @@ export function SchemaForm({
   return (
     <ValidationCtx.Provider value={validation}>
       <LockActiveCtx.Provider value={lockReadOnly}>
-        <ObjectFields schema={s} root={root} value={value} onChange={onChange} view={view} path="" />
+        <LockedPathsCtx.Provider value={lockedSet}>
+          <ObjectFields schema={s} root={root} value={value} onChange={onChange} view={view} path="" />
+        </LockedPathsCtx.Provider>
       </LockActiveCtx.Provider>
     </ValidationCtx.Provider>
   );
@@ -362,11 +371,13 @@ function Field({
   const validation = useContext(ValidationCtx);
   const lockActive = useContext(LockActiveCtx);
   const ancestorLocked = useContext(LockedCtx);
+  const lockedPaths = useContext(LockedPathsCtx);
   const s = deref(schema, root);
   if (isHidden(s)) return null;
-  // Locked = inside a locked subtree, or this field is ui:readOnly and the form
-  // honors it (edit/upgrade). Locked objects/arrays lock their whole subtree.
-  const locked = ancestorLocked || (lockActive && isReadOnly(s));
+  // Locked = inside a locked subtree, an always-locked path (e.g. identity), or a
+  // ui:readOnly field on a form that honors it (edit/upgrade). Locked
+  // objects/arrays lock their whole subtree.
+  const locked = ancestorLocked || lockedPaths.has(path) || (lockActive && isReadOnly(s));
   const label = s.title ?? name;
   const desc = s.description as string | undefined;
   // Inline error for leaf fields: shown once touched or after a submit attempt.
