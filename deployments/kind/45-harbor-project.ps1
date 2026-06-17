@@ -12,10 +12,11 @@ $body = "{`"project_name`":`"$Project`",`"metadata`":{`"public`":`"true`"}}"
 # writes - right after a (re)install the core rolls and POST returns a transient
 # 422/5xx until it's truly ready. So: each round first GET the project (reads come
 # up earlier than writes - this makes idempotent re-runs succeed instantly), and
-# only POST when it's absent. A freshly installed core can take ~3 min before it
-# accepts project writes (422 until then), so retry generously (~300s).
+# only POST when it's absent. A freshly installed core can take several minutes
+# before it accepts project writes (422 until then) - longer on a loaded host - so
+# retry generously (~600s).
 $done = $false
-for ($i = 1; $i -le 60; $i++) {
+for ($i = 1; $i -le 120; $i++) {
     $existing = (curl.exe -sk -u "admin:Harbor12345" "$base/projects?name=$Project")
     if ($existing -match "`"name`":`"$Project`"") {
         Write-Host "[harbor] project '$Project' present - ok."; $done = $true; break

@@ -23,8 +23,10 @@ if ($exists) {
     helm repo add harbor https://helm.goharbor.io 2>&1 | Out-Host
     helm repo update harbor | Out-Host
 
-    Write-Host "[harbor] installing release 'harbor' (ns harbor)..."
-    helm install harbor harbor/harbor `
+    # Pinned for reproducibility (helm install without --version pulls latest).
+    $harborVersion = "1.19.1"
+    Write-Host "[harbor] installing release 'harbor' $harborVersion (ns harbor)..."
+    helm install harbor harbor/harbor --version $harborVersion `
         --namespace harbor --create-namespace `
         -f "$PSScriptRoot\harbor-values.yaml" `
         --timeout 10m --wait | Out-Host
