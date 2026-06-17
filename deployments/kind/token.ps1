@@ -7,7 +7,10 @@
 # previous run), the script resets argocd-secret to the pinned bcrypt hash and
 # restarts argocd-server. Dev stand only - do not reuse anywhere real.
 $ErrorActionPreference = "Stop"
-$base = "http://host.docker.internal:8083"
+# Loopback host-side: argocd-server is published on 127.0.0.1:8083 (NodePort
+# 30083, plain HTTP). host.docker.internal may not resolve from the host shell on
+# some Docker setups; the portal container still reaches Argo via host.docker.internal.
+$base = "http://127.0.0.1:8083"
 $adminPw = "admin12345"
 # bcrypt("admin12345"), cost 10 ($2y -> $2a for Argo's Go bcrypt).
 $adminHash = '$2a$10$akBT/2LHQ5YGbwoEdOxpk.uKfkxTHUmLnYwRxa6mpXo5LKc18X3X2'

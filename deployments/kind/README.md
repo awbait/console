@@ -156,6 +156,20 @@ http://host.docker.internal:8083, Harbor - https://host.docker.internal:8084
    kubelet на Docker Desktop/WSL2 (`required cgroups disabled`).
 5. **Установка Argo - server-side apply** (`--server-side --force-conflicts`): CRD
    `applicationsets` слишком велик для client-side apply (аннотация > 256 КБ).
+   Манифест перед apply скачивается и патчится: единственный образ из `public.ecr.aws`
+   (`argocd-redis`) перенаправляется на Docker Hub (`redis:*-alpine`), т.к. в части
+   сетей нет доступа к AWS ECR Public. Образы argocd (quay.io) и dex (ghcr.io) не трогаются.
+6. **`host.docker.internal` со стороны хоста** - host-side проверки в скриптах
+   (`40-harbor.ps1` health, `45-harbor-project.ps1`, `token.ps1`) ходят на
+   `127.0.0.1`, а не на `host.docker.internal`: NodePort'ы опубликованы на loopback
+   хоста, а `host.docker.internal` резолвится host-side только если Docker Desktop
+   прописал его в hosts-файл. Если нет - `curl` к `host.docker.internal:8084` даёт
+   `code 000`, хотя Harbor жив на `localhost:8084`. Push чартов (`50-charts.ps1`)
+   при этом всё равно требует резолва `host.docker.internal` host-side: OCI-push
+   по token-realm редиректит на `externalURL` (= `host.docker.internal:8084`). Если
+   нужен chart-seed на такой машине - добавь строку `127.0.0.1 host.docker.internal`
+   в `C:\Windows\System32\drivers\etc\hosts` (от админа). Рантайм портала (контейнер)
+   `host.docker.internal` резолвит сам через Docker, hosts-файл хоста ему не нужен.
 
 ## Про `kind: Application` vs `kind: ApplicationSet`
 

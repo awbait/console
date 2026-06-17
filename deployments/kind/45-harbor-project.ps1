@@ -4,7 +4,10 @@
 param([string]$Project = "platform")
 $ErrorActionPreference = "Stop"
 
-$base = "https://host.docker.internal:8084/api/v2.0"
+# Use the loopback host-side (not host.docker.internal, which may not resolve from
+# the host shell). This is Harbor's core API with HTTP Basic auth - it does not go
+# through the OCI token realm - so 127.0.0.1 works; -k skips the self-signed cert.
+$base = "https://127.0.0.1:8084/api/v2.0"
 # metadata.public as a string is Harbor's canonical form across 2.x.
 $body = "{`"project_name`":`"$Project`",`"metadata`":{`"public`":`"true`"}}"
 
