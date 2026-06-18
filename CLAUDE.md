@@ -10,7 +10,7 @@
 
 ## Фронтенд
 
-- **Пакетный менеджер для `web/` - только `bun`, не `npm`/`npx`.** Используй `bun install`, `bun run <script>`, `bunx <tool>`. Лок-файл - `bun.lock` (в репозитории; `package-lock.json` не держим). Так же настроены lefthook (`bun run typecheck`, `bunx biome`) и `web/Dockerfile` (`oven/bun`).
+- **Пакетный менеджер для `web/` - только `bun`, не `npm`/`npx`.** Используй `bun install`, `bun run <script>`, `bunx <tool>`. Лок-файл - `bun.lock` (в репозитории; `package-lock.json` не держим). Так же настроены lefthook (`bun run typecheck`, `bunx biome`) и сборка SPA в корневом `Dockerfile` (стейдж `oven/bun`, бандл вшивается в portal через `go:embed`, см. `internal/spa`).
 
 ## Конфигурация
 

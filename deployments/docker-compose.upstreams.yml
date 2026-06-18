@@ -3,7 +3,7 @@
 # deployments/kind/). Bring the stand up FIRST (`make stand-up`) - it writes
 # ARGOCD_TOKEN into deployments/.env. Then pick a variant:
 #
-#   make up-upstreams         # ALL in Docker, incl. portal + web (SPA :8088)
+#   make up-upstreams         # ALL in Docker; portal serves API + SPA (:8080)
 #   make up-upstreams-infra   # only GitLab + Postgres + Valkey + Keycloak;
 #                             # run portal + web locally for hot reload (SPA :5173)
 #   make gitlab-seed          # once GitLab reports healthy (either variant)

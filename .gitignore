@@ -16,6 +16,11 @@ web/.vite/
 web/*.tsbuildinfo
 *.log
 
+# Embedded SPA: only the placeholder is tracked; real assets are injected at
+# image build time (see Dockerfile), never committed.
+internal/spa/dist/*
+!internal/spa/dist/index.html
+
 # Helm packaging artifacts
 *.tgz
 

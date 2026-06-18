@@ -17,6 +17,7 @@ import (
 	"console/internal/harbor"
 	"console/internal/provisioning"
 	"console/internal/publications"
+	"console/internal/spa"
 	"console/internal/status"
 	"console/internal/store"
 )
@@ -122,6 +123,16 @@ func (s *Server) Router() http.Handler {
 			r.Get("/applications/{name}/events", s.handleAppEvents)
 		})
 	})
+
+	// SPA: serve the embedded frontend for everything not matched above (assets +
+	// client-side routes). Registered last so /health, /metrics and /api win.
+	if dist, err := spa.FS(); err != nil {
+		s.logger().Error("spa assets unavailable", "err", err)
+	} else if h, herr := spaHandler(dist); herr != nil {
+		s.logger().Error("spa handler init failed", "err", herr)
+	} else {
+		r.Handle("/*", h)
+	}
 
 	return r
 }

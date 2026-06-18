@@ -1,0 +1,10 @@
+.git
+.github
+# Frontend build artifacts and deps (the image rebuilds the SPA from source).
+web/node_modules
+web/dist
+web/.vite
+# Go test/build leftovers and editor noise.
+*.exe
+.vscode
+.idea

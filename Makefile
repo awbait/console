@@ -75,9 +75,10 @@ tidy:
 cover:
 	go test -cover ./internal/...
 
-# Full containerized stack: infra + portal + web all in Docker (fake upstreams,
-# dev-auth). For a no-source run/demo; for development prefer the dev loop above
-# (make infra + run + web). SPA on http://localhost:8088.
+# Full containerized stack: infra + portal all in Docker (fake upstreams,
+# dev-auth). The portal serves the API and the embedded SPA. For a no-source
+# run/demo; for development prefer the dev loop above (make infra + run + web).
+# Open http://localhost:8080.
 up:
 	docker compose -f deployments/docker-compose.yml up --build
 
@@ -91,8 +92,8 @@ down:
 # once. Detached (GitLab boots for minutes): watch with `docker compose ps` / logs.
 #
 # Two variants:
-#  - up-upstreams: EVERYTHING in Docker, incl. portal + web (no-source run/demo).
-#    SPA on http://localhost:8088.
+#  - up-upstreams: EVERYTHING in Docker, incl. portal (API + SPA; no-source
+#    run/demo). Open http://localhost:8080.
 #  - up-upstreams-infra: only the backing services (GitLab + Postgres + Valkey +
 #    Keycloak); run portal + web locally for hot reload
 #    (deployments/scripts/run-oidc.ps1 -RealGitlab, plus `make web`). SPA on :5173.
