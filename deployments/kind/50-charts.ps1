@@ -12,7 +12,14 @@
 # populate Harbor separately.
 param(
     [string]$ChartsDir = $env:STAND_CHARTS_DIR,
-    [string]$HarborHost = "host.docker.internal:8084",
+    # Host-side address of the published Harbor port. Use loopback, NOT
+    # host.docker.internal: the latter is the gateway containers use to reach the
+    # host, and on some Docker Desktop backends (WSL2/Hyper-V) the published KinD
+    # port is not reachable through it from the host shell - so login/push/DELETE
+    # here fail. 127.0.0.1 always hits the published port. This is the same reason
+    # 45-harbor-project.ps1 talks to the core API over 127.0.0.1. The OCI token
+    # realm stays host.docker.internal (Harbor's externalURL) and resolves fine.
+    [string]$HarborHost = "127.0.0.1:8084",
     [string]$Project = "platform",
     [string]$HarborUser = "admin",
     [string]$HarborPass = "Harbor12345"
