@@ -65,9 +65,10 @@ ApplicationSet (`deployments/kind/applicationset.yaml`) **хардкодит**
 
 ## 5. OIDC внутри Docker
 
-- [ ] Сейчас compose-портал в `AUTH_MODE=dev`, а OIDC-флоу гоняется хостовым
-  `run-oidc.ps1` (нужен единый issuer для браузера и портала). Для честного OIDC
-  внутри Docker - общий hostname/issuer (`host.docker.internal` или внешний домен).
+- [x] Снято: dev-режим как способ запуска убран (остался только тестовой
+  заглушкой `internal/auth/dev.go`). Портал запускается на хосте с OIDC
+  (`run-oidc.ps1` / `make run-oidc`); compose-портала больше нет. Честный OIDC
+  целиком внутри Docker (общий issuer) пока не нужен.
 
 ## 6. Вебхуки вместо поллинга (опционально)
 

@@ -1,17 +1,12 @@
-# Opt-in overlay for the real-upstreams flow: adds a real GitLab CE and points the
-# portal at the REAL Argo CD + Harbor from the local KinD stand (see
-# deployments/kind/). Bring the stand up FIRST (`make stand-up`) - it writes
-# ARGOCD_TOKEN into deployments/.env. Then pick a variant:
+# Opt-in overlay for the real-upstreams flow: adds a real GitLab CE alongside the
+# backing services. The portal runs on the HOST (OIDC) against the REAL Argo CD +
+# Harbor from the local KinD stand (see deployments/kind/). Bring the stand up
+# FIRST (`make stand-up`) - it writes ARGOCD_TOKEN into deployments/.env. Then:
 #
-#   make up-upstreams         # ALL in Docker; portal serves API + SPA (:8080)
-#   make up-upstreams-infra   # only GitLab + Postgres + Valkey + Keycloak;
-#                             # run portal + web locally for hot reload (SPA :5173)
-#   make gitlab-seed          # once GitLab reports healthy (either variant)
-#
-# Local run (the -infra variant): deployments/scripts/run-oidc.ps1 -RealGitlab
-# (portal in real mode, reads ARGOCD_TOKEN from .env) plus `make web`. The portal
-# service override below is what the all-Docker variant uses; the local run sets
-# the same vars via env (URLs go through the published host ports).
+#   make up-upstreams-infra   # GitLab + Postgres + Valkey + Keycloak in Docker
+#   make gitlab-seed          # once GitLab reports healthy
+#   deployments/scripts/run-oidc.ps1 -RealGitlab   # portal on the host (OIDC)
+#   make web                  # SPA on :5173
 #
 # GitLab is heavy (~4 GB RAM, ~3-5 min to boot). It uses external_url
 # host.docker.internal:8929 so the SAME repoURL resolves from the host browser
@@ -52,36 +47,9 @@ services:
       retries: 20
       start_period: 300s
 
-  portal:
-    extra_hosts:
-      # reach GitLab (published 8929) and the KinD Argo NodePort (8083) on the host
-      - "host.docker.internal:host-gateway"
-    environment:
-      # real GitLab client at the shared hostname + seeded token
-      GITLAB_MODE: real
-      GITLAB_URL: http://host.docker.internal:8929
-      GITLAB_TOKEN: glpat-localdev0123456789abcd
-      GITLAB_AUTO_MERGE: "true"   # poller merges portal MRs itself (no human gate)
-      # real Argo CD client against the KinD stand (token from `make stand-up`)
-      ARGOCD_MODE: real
-      ARGOCD_URL: http://host.docker.internal:8083
-      ARGOCD_TOKEN: ${ARGOCD_TOKEN}   # from deployments/.env; portal fails fast at startup if empty
-      ARGOCD_PROJECT: portal-managed
-      # real Harbor from the KinD stand (NodePort 8084, self-signed TLS); the
-      # catalog now reads charts/schema from Harbor instead of the in-memory fake
-      HARBOR_MODE: real
-      HARBOR_URL: https://host.docker.internal:8084
-      HARBOR_INSECURE_TLS: "true"
-      HARBOR_PROJECTS: platform   # only project with charts on the stand (managed-services is absent → 401)
-      CHART_REGISTRY: host.docker.internal:8084  # OCI base for the chart source in application.yaml (same host as HARBOR_URL)
-      STATUS_POLL_INTERVAL: 10s   # faster status feedback for the demo
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-      gitlab:
-        condition: service_healthy
+  # The portal is not a compose service - it runs on the host with OIDC and the
+  # real-upstream URLs (GitLab :8929, Harbor :8084, Argo :8083 via the published
+  # host ports). See deployments/scripts/run-oidc.ps1 -RealGitlab.
 
 volumes:
   gitlab-config:

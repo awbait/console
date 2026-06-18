@@ -21,10 +21,10 @@ $ErrorActionPreference = "Stop"
 # Repo root = two levels up (deployments/scripts/ -> deployments/ -> repo).
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
-# Free :8080 and make sure Keycloak is running.
+# Make sure Keycloak is running (the portal is not a compose service - it runs
+# here on the host, so there is nothing on :8080 to stop).
 Push-Location (Join-Path $root "deployments")
 try {
-  docker compose stop portal | Out-Null
   docker compose up -d keycloak | Out-Null
 } finally {
   Pop-Location
