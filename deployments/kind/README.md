@@ -7,7 +7,7 @@
 (`DEPLOYING` -> `Progressing`/`HEALTHY`).
 
 Это опциональный тяжёлый режим. Для повседневной разработки достаточно dev-loop из
-корневого [`README.md`](../../README.md) (`make infra` + `make run` + `make web`,
+корневого [`README.md`](../../README.md) (`make infra` + `make run-oidc` + `make web`,
 fake-upstream'ы). Стенд нужен, только когда надо прогнать настоящий GitOps на
 реальных GitLab/Harbor/Argo CD.
 
@@ -51,20 +51,13 @@ $env:STAND_CHARTS_DIR = "D:\path\to\charts"
 make stand-up
 ```
 
-**Шаг 2 - поднять стек.** Два варианта (выбери один):
+**Шаг 2 - поднять бэкенд-сервисы.** В Docker только GitLab + Postgres + Valkey +
+Keycloak; portal и web запускаем из исходников (шаг 5):
+```powershell
+make up-upstreams-infra
+```
 
-- **Вариант A - всё в Docker** (portal + web в контейнерах; no-source запуск/демо):
-  ```powershell
-  make up-upstreams
-  ```
-- **Вариант B - portal + web локально** (хотрелоад): в Docker только бэкенд-сервисы
-  (GitLab + Postgres + Valkey + Keycloak), а portal и web запускаем из исходников
-  (шаг 5):
-  ```powershell
-  make up-upstreams-infra
-  ```
-
-В обоих GitLab тяжёлый (~4 ГБ, грузится 3-5 мин), стартует detached.
+GitLab тяжёлый (~4 ГБ, грузится 3-5 мин), стартует detached.
 
 **Шаг 3 - дождаться, пока GitLab healthy** (без этого `gitlab-seed` упадёт):
 ```powershell
@@ -89,18 +82,14 @@ powershell -ExecutionPolicy Bypass -File deployments/scripts/run-oidc.ps1 -RealG
 # терминал 2 - frontend (Vite, live-reload)
 make web
 ```
-(Для варианта A портал уже в контейнере, этот шаг пропускаешь.)
-
-Готово. Открыть портал: **вариант A - http://localhost:8080**, **вариант B -
-http://localhost:5173**. Проверка полной петли - раздел
-[«e2e-проверка»](#e2e-проверка) ниже.
+Готово. Открыть портал: **http://localhost:5173** -> «Войти через Keycloak».
+Проверка полной петли - раздел [«e2e-проверка»](#e2e-проверка) ниже.
 
 ### Доступы
 
 | Что | URL | Логин |
 |---|---|---|
-| Портал - вариант A (в Docker, dev-auth) | http://localhost:8080 | dev-пользователь (AUTH_MODE=dev) |
-| Портал SPA - вариант B (локально, Vite) | http://localhost:5173 | Keycloak OIDC: `alice`/`alice`, `padmin`/`padmin`, `support`/`support`, `security`/`security` |
+| Портал (SPA, Vite) | http://localhost:5173 | Keycloak OIDC: `alice`/`alice`, `padmin`/`padmin`, `support`/`support`, `security`/`security` |
 | Backend portal | http://localhost:8080 | `/health`, `/ready`, `/metrics` |
 | Argo CD | http://127.0.0.1:8083 | `admin` / `admin12345` |
 | Harbor | https://127.0.0.1:8084 | `admin` / `Harbor12345` |
@@ -196,12 +185,8 @@ MetalLB (LoadBalancer-IP), без них Gateway не станет `Programmed`,
 3. Чарт в реестре: `helm pull oci://host.docker.internal:8084/platform/ingress-gateway --version 3.1.0 --insecure-skip-tls-verify`
    (или Harbor API: `curl -sk https://127.0.0.1:8084/api/v2.0/projects/platform/repositories`).
 4. Argo API: `curl -H "Authorization: Bearer $env:ARGOCD_TOKEN" http://127.0.0.1:8083/api/v1/version`.
-5. Заказ (dev-auth, команда `core`; тело `values` - см. конвенцию чарта):
-   ```bash
-   curl -X POST http://localhost:8080/api/v1/requests -H 'Content-Type: application/json' \
-     -H 'X-Dev-Sub: alice' -H 'X-Dev-Teams: core' -H 'X-Dev-Role: member' \
-     -d '{"chart":"platform/ingress-gateway","version":"3.1.0","team":"core","service_name":"demo-gw","values":{...}}'
-   ```
+5. Закажи сервис через UI (http://localhost:5173, войдя как `alice`): чарт
+   `platform/ingress-gateway` 3.1.0, команда `core`, имя сервиса `demo-gw`.
    -> `status: MR_CREATED`, `argocd_app_name: core-demo-gw`.
 6. MR авто-мёржится поллером -> `MR_MERGED`.
 7. SCM-provider находит репо (<=60с) и создаёт directory-app `repo-<chart>-<hash>`;

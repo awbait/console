@@ -7,8 +7,9 @@ import (
 	"console/pkg/models"
 )
 
-// Dev is a no-Keycloak authenticator for local runs and tests. The user can be
-// overridden per-request with headers:
+// Dev is a no-Keycloak authenticator used ONLY by tests (the binary always uses
+// OIDC; see cmd/portal buildAuth). The user can be overridden per-request with
+// headers:
 //
 //	X-Dev-Sub, X-Dev-Name, X-Dev-Teams (csv),
 //	X-Dev-Role (auditor|member|support|security|admin)

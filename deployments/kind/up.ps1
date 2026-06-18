@@ -1,7 +1,7 @@
 # Orchestrate the full KinD + Argo CD + OCI-registry stand bring-up.
 # token.ps1 (last step) writes ARGOCD_TOKEN straight into deployments/.env, so
 # after this finishes just run:
-#   make up-upstreams   (real GitLab + portal in real mode)
+#   make up-upstreams-infra   (real GitLab + portal in real mode)
 #   make gitlab-seed    (once GitLab is healthy)
 # See the e2e checklist in deployments/kind/README.md.
 $ErrorActionPreference = "Stop"
@@ -23,4 +23,4 @@ Write-Host ""
 Write-Host "==================== STAND READY ===================="
 & "$PSScriptRoot\token.ps1"
 Write-Host ""
-Write-Host "Next: 'make up-upstreams' (GitLab + portal in real mode), then 'make gitlab-seed'."
+Write-Host "Next: 'make up-upstreams-infra' (GitLab + portal in real mode), then 'make gitlab-seed'."

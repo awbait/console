@@ -51,39 +51,15 @@ services:
     ports:
       - "8081:8080"
 
-  portal:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
-    environment:
-      HTTP_PORT: "8080"
-      # storage backends
-      STORE: postgres
-      CACHE: redis
-      DATABASE_URL: postgres://portal:portal@postgres:5432/portal?sslmode=disable
-      REDIS_URL: redis://valkey:6379/0
-      # upstreams: explicit fakes for this zero-infra dev stack (built-in default
-      # is now "real"; the upstreams overlay sets real + URLs/tokens).
-      HARBOR_MODE: fake
-      GITLAB_MODE: fake
-      ARGOCD_MODE: fake
-      # auth: dev mode (no Keycloak); user via X-Dev-* headers
-      AUTH_MODE: dev
-      STATUS_POLL_INTERVAL: 5s
-      LOG_FORMAT: text
-    # Portal serves both the API and the embedded SPA on :8080 (open it directly).
-    ports:
-      - "8080:8080"
+  # The portal is NOT a compose service: it runs from source on the host with
+  # OIDC against this Keycloak (see deployments/scripts/run-oidc.ps1 or
+  # `make run-oidc`). This file provides the backing infra only. Dev-auth (the
+  # no-Keycloak mode) is kept solely as a test stub (internal/auth/dev.go).
 
   # --- Observability (optional): `make obs` starts just these two. ---
-  # Prometheus scrapes the portal's /metrics (host-run via `make run`, or the
-  # `portal` service in the full stack). host-gateway lets the container reach a
-  # host-run portal at host.docker.internal on Linux too.
+  # Prometheus scrapes the portal's /metrics (host-run via `make run-oidc`).
+  # host-gateway lets the container reach a host-run portal at
+  # host.docker.internal on Linux too.
   prometheus:
     image: prom/prometheus:v2.54.1
     extra_hosts:

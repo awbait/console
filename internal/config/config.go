@@ -34,8 +34,9 @@ type Config struct {
 	Store string `env:"STORE" envDefault:"memory"`
 	Cache string `env:"CACHE" envDefault:"memory"`
 
-	// Auth: "oidc"|"dev". dev mode injects a static user (no Keycloak).
-	AuthMode       string        `env:"AUTH_MODE" envDefault:"dev"`
+	// Auth: must be "oidc" (the only runtime mode). The no-Keycloak "dev" mode is
+	// a test stub only and is rejected at startup.
+	AuthMode       string        `env:"AUTH_MODE" envDefault:"oidc"`
 	OIDCIssuer     string        `env:"OIDC_ISSUER"`
 	OIDCClientID   string        `env:"OIDC_CLIENT_ID"`
 	OIDCSecret     string        `env:"OIDC_CLIENT_SECRET"`

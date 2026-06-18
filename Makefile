@@ -1,13 +1,13 @@
-.PHONY: build run run-oidc web infra obs test vet lint tidy cover hooks up down docker \
-	up-upstreams up-upstreams-infra down-upstreams gitlab-seed \
+.PHONY: build run-oidc web infra obs test vet lint tidy cover hooks down docker \
+	up-upstreams-infra down-upstreams gitlab-seed \
 	stand-up stand-down stand-charts stand-appset stand-token stand-reset seed-import
 
 build:
 	go build ./...
 
 # === Local dev loop: infra in Docker, portal + web from source (live reload) ===
-# Typical: `make infra` once, then `make run` (or `make run-oidc`) and `make web`
-# in separate terminals. Open http://localhost:5173.
+# Typical: `make infra` once, then `make run-oidc` and `make web` in separate
+# terminals. Open http://localhost:5173 and log in via Keycloak.
 
 # Infra only: Postgres + Valkey + Keycloak. The portal and SPA run from source
 # (targets below) so backend/frontend changes hot-reload.
@@ -15,16 +15,10 @@ infra:
 	docker compose -f deployments/docker-compose.yml up -d postgres valkey keycloak
 
 # Observability: Prometheus (scrapes the portal's /metrics) + Grafana with the
-# IDP dashboard auto-provisioned. Works with the host-run portal (`make run`).
+# IDP dashboard auto-provisioned. Works with the host-run portal (`make run-oidc`).
 # Prometheus on http://localhost:9090, Grafana on http://localhost:3000.
 obs:
 	docker compose -f deployments/docker-compose.yml up -d prometheus grafana
-
-# Backend, zero-infra: in-memory store/cache, fake upstreams, dev-auth (no
-# Keycloak needed). Fastest inner loop; state is lost on restart. Pair with `make web`.
-run:
-	HARBOR_MODE=fake GITLAB_MODE=fake ARGOCD_MODE=fake \
-	go run ./cmd/portal
 
 # Backend against the compose infra with real Keycloak login (run `make infra`
 # first). Postgres + Valkey so orders/sessions persist across restarts. Browser
@@ -39,7 +33,7 @@ run-oidc:
 	OIDC_ISSUER=http://localhost:8081/realms/internal \
 	OIDC_CLIENT_ID=portal \
 	OIDC_CLIENT_SECRET=portal-secret \
-	OIDC_REDIRECT_URL=http://localhost:8080/api/v1/auth/callback \
+	OIDC_REDIRECT_URL=http://localhost:5173/api/v1/auth/callback \
 	OIDC_POST_LOGIN_REDIRECT=http://localhost:5173/ \
 	OIDC_POST_LOGOUT_REDIRECT=http://localhost:5173/ \
 	OIDC_SCOPES=openid,profile,email \
@@ -75,31 +69,17 @@ tidy:
 cover:
 	go test -cover ./internal/...
 
-# Full containerized stack: infra + portal all in Docker (fake upstreams,
-# dev-auth). The portal serves the API and the embedded SPA. For a no-source
-# run/demo; for development prefer the dev loop above (make infra + run + web).
-# Open http://localhost:8080.
-up:
-	docker compose -f deployments/docker-compose.yml up --build
-
-# Tear down the stack and its volumes (also removes `make infra` containers/data).
+# Tear down the infra stack and its volumes (also removes `make infra` data).
 down:
 	docker compose -f deployments/docker-compose.yml down -v
 
-# Real-upstreams stack with a real GitLab CE + the KinD stand's Argo CD/Harbor.
-# Bring the stand up first (`make stand-up`); it writes ARGOCD_TOKEN into
-# deployments/.env automatically. After GitLab is healthy, run `make gitlab-seed`
-# once. Detached (GitLab boots for minutes): watch with `docker compose ps` / logs.
-#
-# Two variants:
-#  - up-upstreams: EVERYTHING in Docker, incl. portal (API + SPA; no-source
-#    run/demo). Open http://localhost:8080.
-#  - up-upstreams-infra: only the backing services (GitLab + Postgres + Valkey +
-#    Keycloak); run portal + web locally for hot reload
-#    (deployments/scripts/run-oidc.ps1 -RealGitlab, plus `make web`). SPA on :5173.
-up-upstreams:
-	docker compose --env-file deployments/.env -f deployments/docker-compose.yml -f deployments/docker-compose.upstreams.yml up --build -d
-
+# Real-upstreams backing services: a real GitLab CE + the KinD stand's Argo
+# CD/Harbor. Bring the stand up first (`make stand-up`); it writes ARGOCD_TOKEN
+# into deployments/.env automatically. After GitLab is healthy, run
+# `make gitlab-seed` once (GitLab boots for minutes; watch with `docker compose ps`).
+# This starts only the backing services (GitLab + Postgres + Valkey + Keycloak);
+# run the portal on the host with OIDC via
+# `deployments/scripts/run-oidc.ps1 -RealGitlab`, plus `make web`. SPA on :5173.
 up-upstreams-infra:
 	docker compose --env-file deployments/.env -f deployments/docker-compose.yml -f deployments/docker-compose.upstreams.yml up -d postgres valkey keycloak gitlab
 
@@ -111,7 +91,7 @@ gitlab-seed:
 	docker compose -f deployments/docker-compose.yml -f deployments/docker-compose.upstreams.yml exec -T gitlab gitlab-rails runner /seed.rb
 
 docker:
-	docker build -t idp-portal:dev .
+	docker build -t console:dev .
 
 # --- Local e2e stand: KinD + Argo CD + Harbor (Windows/PowerShell) ---
 # Full bring-up; writes ARGOCD_TOKEN into deployments/.env at the end, then run

@@ -62,7 +62,7 @@ $hdr = @{ Authorization = "Bearer $tokSess" }
 $tok = Invoke-RestMethod -Method Post -Uri "$base/api/v1/account/admin/token" `
     -Headers $hdr -ContentType "application/json" -Body "{}"
 
-# Write the token straight into deployments/.env (consumed by `make up-upstreams`)
+# Write the token straight into deployments/.env (consumed by `make up-upstreams-infra`)
 # so there is no manual copy step. Upsert the ARGOCD_TOKEN line, keep the rest.
 $envPath = Join-Path $PSScriptRoot "..\.env"
 $tokenLine = "ARGOCD_TOKEN=$($tok.token)"
@@ -70,10 +70,10 @@ if (Test-Path $envPath) {
     $kept = @(Get-Content $envPath | Where-Object { $_ -notmatch '^\s*ARGOCD_TOKEN\s*=' })
     Set-Content -Path $envPath -Value ($kept + $tokenLine) -Encoding ascii
 } else {
-    $header = "# Local stand secrets for ``make up-upstreams``. Regenerate with ``make stand-token``."
+    $header = "# Local stand secrets for ``make up-upstreams-infra``. Regenerate with ``make stand-token``."
     Set-Content -Path $envPath -Value @($header, $tokenLine) -Encoding ascii
 }
 
 Write-Host ""
 Write-Host "ARGOCD_TOKEN written to deployments/.env (admin password: $pw)"
-Write-Host "[token] Next: 'make up-upstreams' then 'make gitlab-seed'."
+Write-Host "[token] Next: 'make up-upstreams-infra' then 'make gitlab-seed'."

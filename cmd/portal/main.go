@@ -270,8 +270,10 @@ func backendName(configured, match, fallback string) string {
 }
 
 func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache) (auth.Authenticator, error) {
+	// OIDC is the only runtime authenticator. The no-Keycloak Dev authenticator
+	// (internal/auth/dev.go) is a test stub and is never wired into the binary.
 	if cfg.AuthMode != "oidc" {
-		return auth.NewDev(), nil
+		return nil, fmt.Errorf("AUTH_MODE must be \"oidc\" (dev auth is test-only); got %q", cfg.AuthMode)
 	}
 	sessions := auth.NewSessionStore(c, cfg.SessionTTL)
 	rbac := auth.RBAC{
