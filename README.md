@@ -119,8 +119,7 @@ make down       # остановить + снести volume'ы
 
 | URL | Что |
 |---|---|
-| http://localhost:8088 | Frontend (SPA), nginx, проксирует `/api` |
-| http://localhost:8080 | Backend (`/health`, `/ready`, `/metrics`) |
+| http://localhost:8080 | Портал: SPA + API (`/health`, `/ready`, `/metrics`) |
 | http://localhost:8081 | Keycloak (`admin` / `admin`) |
 
 ## Наблюдаемость (Prometheus + Grafana)
@@ -175,7 +174,7 @@ KinD-стендом. Он тяжёлый (GitLab ~4 ГБ ОЗУ) и **тольк
 Порядок: `make stand-up` (KinD + Argo CD + Harbor), затем стек апстримов в одном из
 двух вариантов:
 
-- `make up-upstreams` - всё в Docker, включая portal + web (SPA на :8088);
+- `make up-upstreams` - всё в Docker; portal отдаёт API и SPA (на :8080);
 - `make up-upstreams-infra` - в Docker только бэкенд-сервисы (GitLab + Postgres +
   Valkey + Keycloak), а portal + web запускаются локально для хотрелоада
   (`run-oidc.ps1 -RealGitlab` + `make web`, SPA на :5173).

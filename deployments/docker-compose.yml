@@ -76,18 +76,9 @@ services:
       AUTH_MODE: dev
       STATUS_POLL_INTERVAL: 5s
       LOG_FORMAT: text
+    # Portal serves both the API and the embedded SPA on :8080 (open it directly).
     ports:
       - "8080:8080"
-
-  # Frontend SPA served by nginx; proxies /api -> portal and injects dev-auth.
-  web:
-    build:
-      context: ../web
-      dockerfile: Dockerfile
-    depends_on:
-      - portal
-    ports:
-      - "8088:80"
 
   # --- Observability (optional): `make obs` starts just these two. ---
   # Prometheus scrapes the portal's /metrics (host-run via `make run`, or the
