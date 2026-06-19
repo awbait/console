@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   images:
+    name: image (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
