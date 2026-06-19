@@ -121,8 +121,8 @@ export function AboutPage() {
               {hasBuild && (
                 <Section title="Сборка">
                   <Card className="flex flex-col gap-2">
-                    {info.commit && <Row label="Коммит" value={info.commit} />}
-                    {info.build_date && <Row label="Дата сборки" value={info.build_date} />}
+                    {info.commit && <Row label="Коммит" value={info.commit} mono />}
+                    {info.build_date && <Row label="Дата сборки" value={fmtDate(info.build_date)} />}
                   </Card>
                 </Section>
               )}
@@ -151,13 +151,27 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-sm text-slate-500">{label}</span>
-      <span className="break-all font-mono text-sm text-slate-800">{value}</span>
+      <span className={`break-all text-sm text-slate-800 ${mono ? "font-mono" : ""}`}>{value}</span>
     </div>
   );
+}
+
+// fmtDate renders an RFC3339 build timestamp in the local, human-readable form;
+// falls back to the raw value if it does not parse.
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function LinkCard({
