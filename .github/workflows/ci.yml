@@ -132,7 +132,7 @@ jobs:
     steps:
       - name: Verify upstream results
         run: |
-          results='${{ join(needs.*.result, ",") }}'
+          results='${{ join(needs.*.result, ',') }}'
           echo "upstream results: $results"
           case "$results" in
             *failure*|*cancelled*) echo "a required job did not pass"; exit 1;;
