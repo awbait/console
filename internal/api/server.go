@@ -71,6 +71,9 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/auth/me", s.handleMe)
 
+			// portal version + useful links ("About" page); informational, any role
+			r.Get("/info", s.handleAbout)
+
 			// system status (integrations + storage health)
 			r.Get("/status", s.handleSystemStatus)
 

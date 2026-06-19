@@ -17,6 +17,7 @@ import type {
   UpdateOrderBody,
   User,
   SystemStatus,
+  AboutInfo,
   ViewDocument,
   ViewIssue,
 } from "./types";
@@ -167,6 +168,9 @@ export const api = {
 
   // system status (integrations + storage health)
   getSystemStatus: () => req<SystemStatus>("GET", "/status"),
+
+  // about: portal version + useful links
+  getAbout: () => req<AboutInfo>("GET", "/info"),
 };
 
 function enc(s: string) {
