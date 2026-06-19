@@ -3,6 +3,9 @@
   "enabled": true,
   "sslRequired": "none",
   "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 28800,
   "clients": [
     {
       "clientId": "portal",
