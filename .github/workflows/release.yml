@@ -1,0 +1,78 @@
+name: Release
+
+# Tags + GitHub Release creation, driven by merging a `release/vX.Y.Z` PR into
+# main (the flow enforced by the git-workflow skill). It resolves the version
+# from the branch name, checks it against the top CHANGELOG section, then pushes
+# an annotated tag and publishes a Release with the changelog notes.
+#
+# The tag is pushed with a GitHub App token (not GITHUB_TOKEN) on purpose: a tag
+# pushed with GITHUB_TOKEN does NOT trigger other workflows, and we need it to
+# trigger publish.yml. Provision a GitHub App with `contents: write` and store
+# its credentials as the RELEASE_APP_ID / RELEASE_APP_PRIVATE_KEY secrets.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          branch='${{ github.event.pull_request.head.ref }}'
+          version="${branch#release/}"
+          case "$version" in
+            v[0-9]*) ;;
+            *) echo "branch '$branch' is not release/vX.Y.Z"; exit 1;;
+          esac
+          if ! head -n 20 CHANGELOG.md | grep -q "## \[${version#v}\]"; then
+            echo "CHANGELOG.md top section does not match $version"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog notes
+        run: |
+          version='${{ steps.ver.outputs.version }}'
+          awk -v v="${version#v}" '
+            $0 ~ "^## \\[" v "\\]" { flag=1; next }
+            /^## \[/ { flag=0 }
+            flag { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          echo "--- release notes ---"; cat RELEASE_NOTES.md
+
+      - name: Create and push tag
+        run: |
+          version='${{ steps.ver.outputs.version }}'
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -a "$version" -m "Release $version"
+          git push origin "$version"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          version='${{ steps.ver.outputs.version }}'
+          gh release create "$version" --title "$version" --notes-file RELEASE_NOTES.md

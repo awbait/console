@@ -1,0 +1,140 @@
+name: CI
+
+# PR/main validation gate. Mirrors the lefthook pre-push hook so a push made
+# with --no-verify is still caught here. Path filters keep frontend-only PRs
+# from running Go jobs and vice versa; the final `ci` job is the single status
+# check to require in branch protection (it stays green when jobs are skipped).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      web: ${{ steps.filter.outputs.web }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'collector/go.mod'
+              - 'collector/go.sum'
+              - '.golangci.yml'
+              - '.env.example'
+            web:
+              - 'web/**'
+            docker:
+              - 'Dockerfile'
+              - 'collector/Dockerfile'
+              - '.dockerignore'
+              - '**/*.go'
+              - 'web/**'
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: root
+            dir: .
+          - name: collector
+            dir: collector
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.sum
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: ${{ matrix.dir }}
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Lint
+        run: bunx biome lint ./src --diagnostic-level=error
+      - name: Build
+        run: bun run build
+
+  docker:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build portal image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          cache-from: type=gha,scope=portal
+          cache-to: type=gha,mode=max,scope=portal
+      - name: Build collector image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: collector
+          file: collector/Dockerfile
+          push: false
+          cache-from: type=gha,scope=collector
+          cache-to: type=gha,mode=max,scope=collector
+
+  # Single required status check. Stays green when upstream jobs are skipped
+  # (path filters), fails if any of them failed or was cancelled.
+  ci:
+    needs: [backend, web, docker]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify upstream results
+        run: |
+          results='${{ join(needs.*.result, ',') }}'
+          echo "upstream results: $results"
+          case "$results" in
+            *failure*|*cancelled*) echo "a required job did not pass"; exit 1;;
+          esac
+          echo "all required jobs passed"
