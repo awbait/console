@@ -98,8 +98,15 @@ down-upstreams:
 gitlab-seed:
 	docker compose -f deployments/docker-compose.yml -f deployments/docker-compose.upstreams.yml exec -T gitlab gitlab-rails runner /seed.rb
 
+# .dockerignore excludes .git, so the toolchain can't VCS-stamp inside the build;
+# pass version/commit/date (resolved from the host's git) as build args instead.
+# Release pipelines should likewise pass --build-arg VERSION=<tag>.
 docker:
-	docker build -t console:dev .
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg DATE=$(DATE) \
+		-t console:dev .
 
 # --- Local e2e stand: KinD + Argo CD + Harbor (Windows/PowerShell) ---
 # Full bring-up; writes ARGOCD_TOKEN into deployments/.env at the end, then run
