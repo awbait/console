@@ -55,6 +55,9 @@ jobs:
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
+    # Without an explicit name, GitHub labels matrix jobs with every value
+    # ("backend (root, .)"); pin it to the readable module name.
+    name: backend (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
