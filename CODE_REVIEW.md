@@ -13,7 +13,7 @@
 | C2 | Critical | api/catalog | Обход allowlist чартов (BOLA) по прямому URL - RESOLVED |
 | H1 | High | api | Паника при старте / небезопасный `Secure`-флаг cookie из `PublicURL[:5]` - RESOLVED |
 | H2 | High | auth | Не проверяется OIDC `nonce` - RESOLVED |
-| H3 | High | store | Нет транзакций «переход заказа + аудит/MR»; ошибка `AddEvent` глушится |
+| H3 | High | store | Нет транзакций «переход заказа + аудит/MR»; ошибка `AddEvent` глушится - RESOLVED |
 | H4 | High | harbor | Скачанный blob чарта не сверяется с дайджестом - RESOLVED |
 | M1 | Medium | auth | Нет защиты от накопления/фиксации сессий, нет отзыва |
 | M2 | Medium | auth | Silent-refresh не перевычисляет роли (залипание отозванных прав) - RESOLVED |
@@ -79,12 +79,14 @@
 
 Исправлено: `Login` генерирует `nonce`, кладёт в короткоживущую HttpOnly-cookie `oauth_nonce` и добавляет `oidc.Nonce(nonce)` в `AuthCodeURL`. `Callback` сверяет `idToken.Nonce` с cookie (mismatch -> 400) и гасит cookie. Тест `TestOIDCLoginSetsNonce`.
 
-### H3. Нет транзакций «переход заказа + аудит/MR»; ошибка `AddEvent` глушится
+### H3. Нет транзакций «переход заказа + аудит/MR»; ошибка `AddEvent` глушится [RESOLVED]
 Файлы: `internal/provisioning/service.go:435-438,714-748`, `internal/store/store.go`
 
 `UpdateRequest` и последующие `AddEvent`/`AddMR` - отдельные вызовы store без единой транзакции; интерфейс `Store` вообще не предоставляет транзакционного скоупа. При сбое между шагами заказ может сменить статус, а аудит/MR - не сохраниться. В `event()` (service.go:746) ошибка игнорируется (`_ =`), то есть аудит-запись может молча потеряться.
 
 Рекомендация: ввести транзакционный метод в порт (`Tx(ctx, func(Store) error)`) и оборачивать связки «переход статуса + событие» в одну транзакцию; как минимум - логировать ошибку `AddEvent` (Warn/Error), а не глушить.
+
+Исправлено: в порт `Store` добавлен `Tx(ctx, func(Store) error)`. `Postgres` переведён на внутренний интерфейс `querier` (pool либо `pgx.Tx`), `Tx` гоняет колбэк в одной транзакции с commit/rollback; `Memory` реализует `Tx` как прогон по тому же стору (для тестов, без отката). `transition` оборачивает `UpdateRequest` + `AddEvent` в `Tx` - атомарно. `event()` (одиночный аудит после уже совершённого действия) больше не глушит ошибку, а логирует Warn. Тесты: `TestPostgresTxAtomicity` (rollback+commit на реальном Postgres, скип без `STORE_TEST_URL`).
 
 ### H4. Скачанный blob чарта не сверяется с дайджестом [RESOLVED]
 Файл: `internal/harbor/client.go:409-424` (`fetchBlob`), `:359`

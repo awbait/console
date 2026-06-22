@@ -264,6 +264,13 @@ func (m *Memory) ListEvents(ctx context.Context, requestID string) ([]*models.Re
 	return out, nil
 }
 
+// Tx runs fn against the same in-memory store. It is NOT a real transaction:
+// the memory backend has no rollback, so a mid-fn failure leaves earlier writes
+// applied. Adequate for tests/local; the production Postgres store is atomic.
+func (m *Memory) Tx(ctx context.Context, fn func(Store) error) error {
+	return fn(m)
+}
+
 func (m *Memory) Ping(ctx context.Context) error { return nil }
 func (m *Memory) Close()                          {}
 

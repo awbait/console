@@ -733,10 +733,18 @@ func (s *Service) transition(ctx context.Context, r *models.Request, to models.R
 		return fmt.Errorf("invalid transition %s -> %s", from, to)
 	}
 	r.Status = to
-	if err := s.store.UpdateRequest(ctx, r); err != nil {
+	// Persist the status change and its audit event atomically: a failure between
+	// them must not leave a transitioned order with no audit trail.
+	if err := s.store.Tx(ctx, func(tx store.Store) error {
+		if err := tx.UpdateRequest(ctx, r); err != nil {
+			return err
+		}
+		return tx.AddEvent(ctx, &models.RequestEvent{
+			RequestID: r.ID, Actor: actor, EventType: "status_changed", FromStatus: from, ToStatus: to,
+		})
+	}); err != nil {
 		return err
 	}
-	s.event(ctx, r, actor, "status_changed", from, to)
 	s.publishStatus(r.ID, string(to))
 	s.logger().Debug("order transition",
 		"order_id", r.ID, "from", from, "to", to, "actor", actor)
@@ -751,8 +759,14 @@ func (s *Service) publishStatus(id, status string) {
 	s.bus.Publish(events.Event{Topic: "requests", Type: "status_changed", Data: data})
 }
 
+// event records a standalone audit entry for an action that has already been
+// committed (create, rename, delete, ...). A failure here must not fail the
+// action, but it is no longer swallowed silently: losing an audit row is logged
+// at Warn so it is visible. Transitions use Tx (above) for atomicity instead.
 func (s *Service) event(ctx context.Context, r *models.Request, actor, typ string, from, to models.RequestStatus) {
-	_ = s.store.AddEvent(ctx, &models.RequestEvent{
+	if err := s.store.AddEvent(ctx, &models.RequestEvent{
 		RequestID: r.ID, Actor: actor, EventType: typ, FromStatus: from, ToStatus: to,
-	})
+	}); err != nil {
+		s.logger().Warn("audit event not recorded", "order_id", r.ID, "event_type", typ, "err", err)
+	}
 }

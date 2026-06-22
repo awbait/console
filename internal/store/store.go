@@ -66,6 +66,11 @@ type Store interface {
 	AddPublicationEvent(ctx context.Context, e *models.PublicationEvent) error
 	ListPublicationEvents(ctx context.Context, publicationID string) ([]*models.PublicationEvent, error)
 
+	// Tx runs fn within a single transaction: every store call on the Store given
+	// to fn commits or rolls back atomically. Used to keep a status transition and
+	// its audit event from half-applying.
+	Tx(ctx context.Context, fn func(Store) error) error
+
 	Ping(ctx context.Context) error
 	Close()
 }

@@ -13,9 +13,19 @@ import (
 	"console/pkg/models"
 )
 
-// Postgres is the production Store backed by pgx.
+// querier is the subset of *pgxpool.Pool and pgx.Tx the store uses, so every
+// method runs either directly on the pool or inside a transaction (see Tx).
+type querier interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// Postgres is the production Store backed by pgx. Queries go through db (the pool
+// in normal use, a transaction inside Tx); pool is kept for Ping/Close/Begin.
 type Postgres struct {
 	pool *pgxpool.Pool
+	db   querier
 }
 
 var _ Store = (*Postgres)(nil)
@@ -41,7 +51,22 @@ func NewPostgres(ctx context.Context, url string, maxConns int32) (*Postgres, er
 		pool.Close()
 		return nil, err
 	}
-	return &Postgres{pool: pool}, nil
+	return &Postgres{pool: pool, db: pool}, nil
+}
+
+// Tx runs fn inside a single database transaction. All store calls made on the
+// Store passed to fn share the transaction and commit or roll back atomically,
+// so couplings like "status transition + audit event" cannot half-apply.
+func (p *Postgres) Tx(ctx context.Context, fn func(Store) error) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
+	if err := fn(&Postgres{pool: p.pool, db: tx}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func isUniqueViolation(err error) bool {
@@ -61,7 +86,7 @@ func (p *Postgres) CreateRequest(ctx context.Context, r *models.Request) error {
 	if r.Version == 0 {
 		r.Version = 1
 	}
-	_, err := p.pool.Exec(ctx, `
+	_, err := p.db.Exec(ctx, `
 		INSERT INTO requests
 		(id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
 		 service_name, display_name, cluster, namespace, values_yaml, status, argocd_app_name, version, imported, resource_identity)
@@ -93,7 +118,7 @@ func scanRequest(row pgx.Row) (*models.Request, error) {
 }
 
 func (p *Postgres) GetRequest(ctx context.Context, id string) (*models.Request, error) {
-	return scanRequest(p.pool.QueryRow(ctx, `SELECT `+reqCols+` FROM requests WHERE id=$1`, id))
+	return scanRequest(p.db.QueryRow(ctx, `SELECT `+reqCols+` FROM requests WHERE id=$1`, id))
 }
 
 func (p *Postgres) ListRequests(ctx context.Context, f RequestFilter) ([]*models.Request, error) {
@@ -119,7 +144,7 @@ func (p *Postgres) ListRequests(ctx context.Context, f RequestFilter) ([]*models
 	}
 	q += " ORDER BY created_at DESC"
 
-	rows, err := p.pool.Query(ctx, q, args...)
+	rows, err := p.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +161,7 @@ func (p *Postgres) ListRequests(ctx context.Context, f RequestFilter) ([]*models
 }
 
 func (p *Postgres) UpdateRequest(ctx context.Context, r *models.Request) error {
-	tag, err := p.pool.Exec(ctx, `
+	tag, err := p.db.Exec(ctx, `
 		UPDATE requests SET
 		  chart_version=$1, values_yaml=$2, status=$3, argocd_app_name=$4, display_name=$5,
 		  service_name=$6, cluster=$7, namespace=$8, resource_identity=$9, deleted_at=$10, version=version+1, updated_at=NOW()
@@ -164,7 +189,7 @@ func (p *Postgres) UpdateRequest(ctx context.Context, r *models.Request) error {
 // or updated_at - drift is a system-observed signal, not a user edit, so it must
 // not collide with optimistic locking on concurrent edits.
 func (p *Postgres) SetDrift(ctx context.Context, id string, drifted bool, detail string) error {
-	tag, err := p.pool.Exec(ctx, `UPDATE requests SET drifted=$1, drift_detail=$2 WHERE id=$3`,
+	tag, err := p.db.Exec(ctx, `UPDATE requests SET drifted=$1, drift_detail=$2 WHERE id=$3`,
 		drifted, detail, id)
 	if err != nil {
 		return err
@@ -176,7 +201,7 @@ func (p *Postgres) SetDrift(ctx context.Context, id string, drifted bool, detail
 }
 
 func (p *Postgres) ListActive(ctx context.Context) ([]*models.Request, error) {
-	rows, err := p.pool.Query(ctx, `SELECT `+reqCols+`
+	rows, err := p.db.Query(ctx, `SELECT `+reqCols+`
 		FROM requests
 		WHERE deleted_at IS NULL AND status NOT IN ('DELETED','MR_CLOSED')`)
 	if err != nil {
@@ -195,7 +220,7 @@ func (p *Postgres) ListActive(ctx context.Context) ([]*models.Request, error) {
 }
 
 func (p *Postgres) AddMR(ctx context.Context, mr *models.RequestMR) error {
-	_, err := p.pool.Exec(ctx, `
+	_, err := p.db.Exec(ctx, `
 		INSERT INTO request_mrs (id, request_id, gitlab_project_id, mr_iid, mr_url, mr_status, action)
 		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 		mr.ID, mr.RequestID, mr.GitLabProjectID, mr.MRIID, mr.MRURL, mr.Status, mr.Action)
@@ -203,7 +228,7 @@ func (p *Postgres) AddMR(ctx context.Context, mr *models.RequestMR) error {
 }
 
 func (p *Postgres) UpdateMR(ctx context.Context, mr *models.RequestMR) error {
-	tag, err := p.pool.Exec(ctx, `UPDATE request_mrs SET mr_status=$1 WHERE id=$2`, mr.Status, mr.ID)
+	tag, err := p.db.Exec(ctx, `UPDATE request_mrs SET mr_status=$1 WHERE id=$2`, mr.Status, mr.ID)
 	if err != nil {
 		return err
 	}
@@ -229,7 +254,7 @@ func scanMR(row pgx.Row) (*models.RequestMR, error) {
 const mrCols = `id, request_id, gitlab_project_id, mr_iid, mr_url, mr_status, action, created_at`
 
 func (p *Postgres) ListMRs(ctx context.Context, requestID string) ([]*models.RequestMR, error) {
-	rows, err := p.pool.Query(ctx, `SELECT `+mrCols+` FROM request_mrs WHERE request_id=$1 ORDER BY created_at`, requestID)
+	rows, err := p.db.Query(ctx, `SELECT `+mrCols+` FROM request_mrs WHERE request_id=$1 ORDER BY created_at`, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +271,7 @@ func (p *Postgres) ListMRs(ctx context.Context, requestID string) ([]*models.Req
 }
 
 func (p *Postgres) GetOpenMR(ctx context.Context, requestID string) (*models.RequestMR, error) {
-	return scanMR(p.pool.QueryRow(ctx, `SELECT `+mrCols+`
+	return scanMR(p.db.QueryRow(ctx, `SELECT `+mrCols+`
 		FROM request_mrs WHERE request_id=$1 AND mr_status='opened'
 		ORDER BY created_at DESC LIMIT 1`, requestID))
 }
@@ -260,7 +285,7 @@ func (p *Postgres) AddEvent(ctx context.Context, e *models.RequestEvent) error {
 		}
 		payload = b
 	}
-	return p.pool.QueryRow(ctx, `
+	return p.db.QueryRow(ctx, `
 		INSERT INTO request_events (request_id, actor, event_type, from_status, to_status, payload)
 		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at`,
 		e.RequestID, nullStr(e.Actor), e.EventType, nullStatus(e.FromStatus), nullStatus(e.ToStatus), payload).
@@ -268,7 +293,7 @@ func (p *Postgres) AddEvent(ctx context.Context, e *models.RequestEvent) error {
 }
 
 func (p *Postgres) ListEvents(ctx context.Context, requestID string) ([]*models.RequestEvent, error) {
-	rows, err := p.pool.Query(ctx, `
+	rows, err := p.db.Query(ctx, `
 		SELECT id, request_id, COALESCE(actor,''), event_type, COALESCE(from_status,''),
 		       COALESCE(to_status,''), payload, created_at
 		FROM request_events WHERE request_id=$1 ORDER BY created_at, id`, requestID)
