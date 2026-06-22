@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
@@ -253,7 +254,11 @@ func (p *Postgres) GetOpenMR(ctx context.Context, requestID string) (*models.Req
 func (p *Postgres) AddEvent(ctx context.Context, e *models.RequestEvent) error {
 	var payload []byte
 	if e.Payload != nil {
-		payload, _ = json.Marshal(e.Payload)
+		b, err := json.Marshal(e.Payload)
+		if err != nil {
+			return fmt.Errorf("marshal event payload: %w", err)
+		}
+		payload = b
 	}
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO request_events (request_id, actor, event_type, from_status, to_status, payload)

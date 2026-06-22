@@ -32,6 +32,12 @@ func nameOf(r Reconciler) string {
 	return "unknown"
 }
 
+// reconcileTimeout is a per-reconciler safety net so a wedged DB query or
+// upstream call (background paths carry no request deadline) cannot tie up a
+// connection forever and block every later reconciler. Generous: normal ticks
+// finish in milliseconds to seconds.
+const reconcileTimeout = 5 * time.Minute
+
 // Poller runs the reconcilers on an interval. MVP is single-replica, so this
 // runs in-process with no leader election (see spec techdebt note).
 type Poller struct {
@@ -69,7 +75,9 @@ func (p *Poller) tick(ctx context.Context) {
 	for _, r := range p.reconcilers {
 		name := nameOf(r)
 		start := time.Now()
-		err := r.Reconcile(ctx)
+		rctx, cancel := context.WithTimeout(ctx, reconcileTimeout)
+		err := r.Reconcile(rctx)
+		cancel()
 		dur := time.Since(start)
 		observability.ObserveReconcile(name, dur, err)
 
