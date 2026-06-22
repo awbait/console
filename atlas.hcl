@@ -1,7 +1,7 @@
 # Atlas configuration (https://atlasgo.io).
 #
 # The migration directory internal/store/migrations is OWNED by Atlas tooling:
-# authoring, atlas.sum integrity, and the `atlas migrate lint` CI gate. The
+# authoring, atlas.sum integrity, and the `atlas migrate validate` CI gate. The
 # portal applies the very same files in-process at startup (internal/store/
 # migrate.go), so the Atlas CLI is a dev/CI tool only - it is NOT shipped in the
 # runtime image, and migrations are NOT applied with `atlas migrate apply` in
@@ -15,8 +15,8 @@
 # Common commands (all need Docker for the ephemeral dev database):
 #   atlas migrate diff <name> --env local   # author a migration from a schema diff
 #   atlas migrate hash        --env local   # rehash atlas.sum after a manual edit
-#   atlas migrate lint        --env local --git-base origin/main   # CI/pre-push gate
-#   atlas migrate validate    --env local   # verify atlas.sum matches the files
+#   atlas migrate validate    --env local   # CI/pre-push gate (integrity + replay)
+#   atlas migrate lint        --env local --git-base origin/main   # Pro-only since v0.38
 
 env "local" {
   # Versioned migration directory, shared with the in-process runner.

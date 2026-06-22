@@ -78,7 +78,10 @@ jobs:
       - name: Test
         run: go test ./...
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        # v8 installs golangci-lint v2 (matches the repo's v2 .golangci.yml and
+        # is built with a Go new enough for the go1.26 module). v6 pinned the
+        # last v1 release, which both rejects go1.26 and ignores the v2 config.
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           working-directory: ${{ matrix.dir }}
@@ -109,13 +112,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0 # atlas migrate lint --git-base needs history
       - uses: ariga/setup-atlas@v0
-      - name: Lint migrations (integrity + destructive changes)
-        # Ephemeral dev database via docker:// (Docker is preinstalled on the
-        # runner). Compares new migrations against origin/main.
-        run: atlas migrate lint --env local --git-base origin/main
+      - name: Validate migrations (integrity + replay)
+        # Verifies atlas.sum matches the files and the directory replays cleanly
+        # on an ephemeral dev database (docker:// - Docker is preinstalled on the
+        # runner). `atlas migrate lint` is Atlas Pro since v0.38; `validate`
+        # stays in the OSS CLI and needs no login.
+        run: atlas migrate validate --env local
 
   docker:
     needs: changes

@@ -31,10 +31,13 @@ atlas migrate hash --env local
 # ...or generate from a schema diff:
 atlas migrate diff <name> --env local
 
-# Verify integrity and lint for destructive changes (also run in CI / pre-push):
+# Verify integrity + clean replay (the enforced gate in CI and pre-push):
 atlas migrate validate --env local
+
+# Optional destructive-change analysis (Atlas Pro since v0.38; needs `atlas login`):
 atlas migrate lint --env local --git-base origin/main
 ```
 
-After any manual edit you **must** run `atlas migrate hash`, or both the CI gate
-and the runtime `migrate.Validate` check will reject the directory.
+After any manual edit you **must** run `atlas migrate hash`, or both the
+`atlas migrate validate` gate and the runtime `migrate.Validate` check will
+reject the directory.
