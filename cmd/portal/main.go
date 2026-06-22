@@ -313,6 +313,7 @@ func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache) (auth.Aut
 		Scopes:       cfg.OIDCScopes,
 		CookieName:   cfg.SessionCookie,
 		Secure:       cfg.CookieSecure,
+		SessionTTL:   cfg.SessionTTL,
 		PostLogin:    cfg.OIDCPostLogin,
 		PostLogout:   cfg.OIDCPostLogout,
 	}, sessions, rbac)

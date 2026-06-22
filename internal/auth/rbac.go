@@ -14,7 +14,8 @@ import (
 type RBAC struct {
 	AdminGroups []string
 	// SupportGroups / SecurityGroups map to the support / security roles the same
-	// way AdminGroups maps to admin (full path or any segment).
+	// way AdminGroups maps to admin: by the group's FULL path (no segment match),
+	// so a nested subgroup cannot escalate to a privileged role.
 	SupportGroups  []string
 	SecurityGroups []string
 	// TeamPrefix matches against EACH path segment of a group (not just the last),
@@ -67,23 +68,20 @@ func groupSet(groups []string) map[string]struct{} {
 	return s
 }
 
-// inGroupSet reports whether a token group matches a configured set, either as
-// the full (slash-stripped) path or as any single path segment. So a group
-// configured as "platform-admins" matches a token group at any depth
-// (e.g. "/org/platform-admins/sub").
+// inGroupSet reports whether a token group matches a configured privileged group
+// by its FULL path (leading slash stripped only). Privileged roles (admin/
+// support/security) deliberately do NOT match on an arbitrary path segment:
+// otherwise a user who can create or be placed in a nested subgroup whose name
+// equals a privileged group (e.g. "/myteam/platform-admins/x") would escalate.
+// Configure the exact group path (e.g. "platform-admins" or "org/platform-admins").
+// Team mapping keeps the looser any-segment match (teamFor), where the required
+// prefix already scopes it.
 func inGroupSet(group string, set map[string]struct{}) bool {
 	if len(set) == 0 {
 		return false
 	}
-	if _, ok := set[normalizeGroup(group)]; ok {
-		return true
-	}
-	for _, seg := range segments(group) {
-		if _, ok := set[seg]; ok {
-			return true
-		}
-	}
-	return false
+	_, ok := set[normalizeGroup(group)]
+	return ok
 }
 
 // BuildUser derives the portal user (teams + role) from OIDC claims. Exactly one

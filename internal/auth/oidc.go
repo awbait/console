@@ -24,6 +24,7 @@ type OIDC struct {
 	rbac       RBAC
 	cookieName string
 	secure     bool
+	sessionTTL time.Duration // session cookie MaxAge, aligned with the server session
 	postLogin  string
 	postLogout string
 	endSession string // Keycloak end_session_endpoint (RP-initiated logout)
@@ -40,6 +41,10 @@ type OIDCConfig struct {
 	Scopes       []string
 	CookieName   string
 	Secure       bool
+	// SessionTTL sets the session cookie MaxAge so its lifetime matches the
+	// server-side session (instead of a browser-session cookie that outlives or
+	// underlives it).
+	SessionTTL time.Duration
 	// Where to send the browser after a successful login (default "/").
 	PostLogin string
 	// Where to send the browser after logout. Must be registered as a valid
@@ -73,6 +78,7 @@ func NewOIDC(ctx context.Context, c OIDCConfig, sessions *SessionStore, rbac RBA
 		rbac:       rbac,
 		cookieName: c.CookieName,
 		secure:     c.Secure,
+		sessionTTL: c.SessionTTL,
 		postLogin:  cmp.Or(c.PostLogin, "/"),
 		postLogout: cmp.Or(c.PostLogout, c.PostLogin, "/"),
 		endSession: disc.EndSession,
@@ -198,9 +204,14 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session error", http.StatusInternalServerError)
 		return
 	}
+	// SameSite=Strict on the session cookie: it is never needed on a cross-site
+	// top-level navigation (the OAuth callback only sets it, the oauth_* cookies
+	// that must survive the Keycloak redirect stay Lax). Strict also defeats the
+	// cross-site forced-logout (the cookie is not sent to a third-party-initiated
+	// GET /logout). MaxAge aligns the cookie lifetime with the server session.
 	http.SetCookie(w, &http.Cookie{
 		Name: o.cookieName, Value: id, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode,
+		Secure: o.secure, SameSite: http.SameSiteStrictMode, MaxAge: int(o.sessionTTL.Seconds()),
 	})
 	dest := o.postLogin
 	if c, err := r.Cookie("oauth_return"); err == nil && c.Value != "" {
@@ -281,7 +292,7 @@ func (o *OIDC) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: o.cookieName, Value: "", Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		Secure: o.secure, SameSite: http.SameSiteStrictMode, MaxAge: -1,
 	})
 	if o.endSession == "" {
 		http.Redirect(w, r, o.postLogout, http.StatusFound)
