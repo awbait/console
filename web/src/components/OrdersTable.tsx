@@ -22,6 +22,7 @@ import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
+import { attachSseLogger } from "../lib/sse";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ProductIcon } from "./icons";
 import { StatusBadge, StatusDot } from "./StatusBadge";
@@ -71,6 +72,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // reconnect. One-way server->client - SSE, not WebSockets.
   useEffect(() => {
     const es = new EventSource("/api/v1/requests/events");
+    attachSseLogger(es, "orders");
     es.addEventListener("status_changed", () => reload());
     return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
