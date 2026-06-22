@@ -27,6 +27,10 @@ type Config struct {
 	// Server
 	HTTPPort  string `env:"HTTP_PORT" envDefault:"8080"`
 	PublicURL string `env:"PUBLIC_URL" envDefault:"http://localhost:8080"`
+	// CookieSecure sets the Secure flag on the session cookie. Defaults to true
+	// (production runs over HTTPS, and localhost is a secure context even on
+	// http). Set to false only for a non-localhost plain-HTTP setup.
+	CookieSecure bool `env:"COOKIE_SECURE" envDefault:"true"`
 
 	// Upstream modes. Default to "real" so a misconfigured deployment fails loudly
 	// (missing URL/token) instead of silently serving fakes. "fake" is opt-in -

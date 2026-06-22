@@ -11,7 +11,7 @@
 |----|-------------|------------|------|
 | C1 | Critical | auth | `SESSION_SECRET` объявлен, но не используется: токены лежат в Redis в plaintext - RESOLVED |
 | C2 | Critical | api/catalog | Обход allowlist чартов (BOLA) по прямому URL - RESOLVED |
-| H1 | High | api | Паника при старте / небезопасный `Secure`-флаг cookie из `PublicURL[:5]` |
+| H1 | High | api | Паника при старте / небезопасный `Secure`-флаг cookie из `PublicURL[:5]` - RESOLVED |
 | H2 | High | auth | Не проверяется OIDC `nonce` |
 | H3 | High | store | Нет транзакций «переход заказа + аудит/MR»; ошибка `AddEvent` глушится |
 | H4 | High | harbor | Скачанный blob чарта не сверяется с дайджестом |
@@ -59,7 +59,7 @@
 
 ## High
 
-### H1. Паника при старте / небезопасный `Secure`-флаг cookie
+### H1. Паника при старте / небезопасный `Secure`-флаг cookie [RESOLVED]
 Файл: `cmd/portal/main.go:299` - `Secure: cfg.PublicURL[:5] == "https"`
 
 Два дефекта в одной строке:
@@ -67,6 +67,8 @@
 2. Хрупкая логика: при TLS-терминации на ingress частый кейс `PUBLIC_URL=http://...` даст `Secure=false`, и session-cookie уйдёт по HTTP - тихий небезопасный дефолт.
 
 Рекомендация: `strings.HasPrefix(cfg.PublicURL, "https://")` или `url.Parse` с проверкой `Scheme`. Сделать `Secure` явно конфигурируемым (`COOKIE_SECURE`, дефолт `true`).
+
+Исправлено: добавлен явный `COOKIE_SECURE` (`config.CookieSecure`, дефолт `true`), `Secure` берётся из него вместо хрупкого среза `cfg.PublicURL[:5]`. Паника на коротком `PUBLIC_URL` устранена, дефолт безопасный (production - HTTPS; localhost - secure context даже по http). `.env.example` обновлён.
 
 ### H2. Не проверяется OIDC `nonce`
 Файл: `internal/auth/oidc.go:64,126-169`
