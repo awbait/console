@@ -31,6 +31,10 @@ try {
 }
 
 $env:AUTH_MODE = "oidc"
+# Non-default session-encryption key: the portal refuses to start in oidc mode
+# while SESSION_SECRET equals the built-in default. Fixed local-dev value (NOT a
+# real secret) so sessions survive restarts on the stand.
+$env:SESSION_SECRET = "dev-local-session-key-not-for-production"
 $env:OIDC_ISSUER = "http://${BindHost}:8081/realms/internal"
 $env:OIDC_CLIENT_ID = "portal"
 $env:OIDC_CLIENT_SECRET = "portal-secret"

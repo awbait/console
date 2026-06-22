@@ -38,6 +38,7 @@ run-oidc:
 	DATABASE_URL=postgres://portal:portal@localhost:5432/portal?sslmode=disable \
 	REDIS_URL=redis://localhost:6379/0 \
 	AUTH_MODE=oidc \
+	SESSION_SECRET=dev-local-session-key-not-for-production \
 	OIDC_ISSUER=http://localhost:8081/realms/internal \
 	OIDC_CLIENT_ID=portal \
 	OIDC_CLIENT_SECRET=portal-secret \
