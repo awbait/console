@@ -30,6 +30,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Button, Card, Select, Spinner } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { upgradeTargets } from "../lib/semver";
+import { attachSseLogger } from "../lib/sse";
 import { DetailActions, fmtDateTime, Meta, ProductView } from "./requestDetailParts";
 
 export function RequestDetailPage() {
@@ -74,6 +75,7 @@ export function RequestDetailPage() {
 
   useEffect(() => {
     const es = new EventSource(`/api/v1/requests/${encodeURIComponent(id)}/events`);
+    attachSseLogger(es, "order");
     const onChange = () => reload();
     es.addEventListener("status_changed", onChange);
     return () => {

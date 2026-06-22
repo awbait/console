@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { IconAlertCircle, IconCheck, IconX } from "@tabler/icons-react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 // Global toasts: success/error notifications in the bottom-right corner with
 // auto-dismiss. Any page calls useToast().success(...) / .error(...).
@@ -34,8 +34,16 @@ const DEFAULT_DURATION: Record<ToastTone, number> = { success: 3500, error: 8000
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
+  // Pending auto-dismiss timers, keyed by toast id, so a manual dismiss (or
+  // unmount) can cancel the timer instead of letting it fire on a gone toast.
+  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timers.current.delete(id);
+    }
     setToasts((ts) => ts.filter((t) => t.id !== id));
   }, []);
 
@@ -44,10 +52,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       const id = ++nextId.current;
       setToasts((ts) => [...ts, { id, tone, text, title: opts?.title }]);
       const duration = opts?.duration ?? DEFAULT_DURATION[tone];
-      if (duration > 0) setTimeout(() => dismiss(id), duration);
+      if (duration > 0) timers.current.set(id, setTimeout(() => dismiss(id), duration));
     },
     [dismiss],
   );
+
+  // Cancel any still-pending timers when the provider unmounts.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending.values()) clearTimeout(timer);
+      pending.clear();
+    };
+  }, []);
 
   const api = useMemo<ToastApi>(
     () => ({
