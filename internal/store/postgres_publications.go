@@ -1,10 +1,10 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-
-	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -184,7 +184,11 @@ func (p *Postgres) UpdatePublication(ctx context.Context, pub *models.ChartPubli
 func (p *Postgres) AddPublicationEvent(ctx context.Context, e *models.PublicationEvent) error {
 	var payload []byte
 	if e.Payload != nil {
-		payload, _ = json.Marshal(e.Payload)
+		b, err := json.Marshal(e.Payload)
+		if err != nil {
+			return fmt.Errorf("marshal publication event payload: %w", err)
+		}
+		payload = b
 	}
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO publication_events (publication_id, actor, event_type, from_status, to_status, payload)

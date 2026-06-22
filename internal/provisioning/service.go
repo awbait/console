@@ -231,6 +231,12 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if cluster == "" {
 		cluster = s.defaultCluster
 	}
+	// Cluster lands in commit paths ({cluster}/{service}) and the rendered
+	// application.yaml destination; validate it like service_name so it cannot
+	// carry "../" or newlines into Git paths/manifests.
+	if !nameRe.MatchString(cluster) || len(cluster) > 63 {
+		return nil, &ValidationError{Message: "cluster must be a valid Kubernetes name"}
+	}
 	namespace := in.Namespace
 	if namespace == "" {
 		namespace = in.ServiceName
@@ -415,6 +421,9 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		r.DisplayName = in.DisplayName
 	}
 	if in.Cluster != "" {
+		if !nameRe.MatchString(in.Cluster) || len(in.Cluster) > 63 {
+			return nil, &ValidationError{Message: "cluster must be a valid Kubernetes name"}
+		}
 		r.Cluster = in.Cluster
 	}
 	if in.Namespace != "" {
