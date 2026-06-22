@@ -55,17 +55,21 @@ jobs:
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    # Without an explicit name, GitHub labels matrix jobs with every value
-    # ("backend (root, .)"); pin it to the readable module name.
-    name: backend (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # `module` is the base dimension, so the auto job name is just
+      # "backend (root)"/"backend (collector)". `dir` is attached via include, so
+      # it stays out of the name (no "root, ." default). A custom name: with a
+      # ${{ matrix.* }} expression is avoided on purpose: GitHub renders it raw
+      # ("backend (${{ matrix.name }})") for skipped jobs when the path filter
+      # gates this job out.
       matrix:
+        module: [root, collector]
         include:
-          - name: root
+          - module: root
             dir: .
-          - name: collector
+          - module: collector
             dir: collector
     defaults:
       run:
