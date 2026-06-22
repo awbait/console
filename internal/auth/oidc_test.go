@@ -22,14 +22,20 @@ func TestOIDCLoginSetsNonce(t *testing.T) {
 	rec := httptest.NewRecorder()
 	o.Login(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/login", nil))
 
-	var nonceCookie string
+	var nonceCookie, verifierCookie string
 	for _, ck := range rec.Result().Cookies() {
-		if ck.Name == "oauth_nonce" {
+		switch ck.Name {
+		case "oauth_nonce":
 			nonceCookie = ck.Value
+		case "oauth_verifier":
+			verifierCookie = ck.Value
 		}
 	}
 	if nonceCookie == "" {
 		t.Fatal("oauth_nonce cookie not set")
+	}
+	if verifierCookie == "" {
+		t.Fatal("oauth_verifier (PKCE) cookie not set")
 	}
 	loc, err := url.Parse(rec.Header().Get("Location"))
 	if err != nil {
@@ -37,6 +43,10 @@ func TestOIDCLoginSetsNonce(t *testing.T) {
 	}
 	if got := loc.Query().Get("nonce"); got != nonceCookie {
 		t.Fatalf("nonce param = %q, want cookie value %q", got, nonceCookie)
+	}
+	// PKCE: the auth URL must carry an S256 challenge (not the raw verifier).
+	if loc.Query().Get("code_challenge") == "" || loc.Query().Get("code_challenge_method") != "S256" {
+		t.Fatalf("missing PKCE S256 challenge in auth URL: %s", loc.RawQuery)
 	}
 }
 

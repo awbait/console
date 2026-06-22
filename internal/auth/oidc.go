@@ -14,7 +14,7 @@ import (
 	"console/pkg/models"
 )
 
-// OIDC authenticates via Keycloak Authorization Code flow (PKCE-ready) and keeps
+// OIDC authenticates via Keycloak Authorization Code flow (with PKCE) and keeps
 // server-side sessions in Redis. Access tokens are silently refreshed.
 type OIDC struct {
 	provider   *oidc.Provider
@@ -154,6 +154,14 @@ func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
 		Name: "oauth_nonce", Value: nonce, Path: "/", HttpOnly: true,
 		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
 	})
+	// PKCE: bind the auth code to this client via a one-time verifier (defence in
+	// depth even for a confidential client). The verifier is kept in a short-lived
+	// HttpOnly cookie; only its S256 challenge goes to the IdP.
+	verifier := oauth2.GenerateVerifier()
+	http.SetCookie(w, &http.Cookie{
+		Name: "oauth_verifier", Value: verifier, Path: "/", HttpOnly: true,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
+	})
 	// Remember where to return after callback. Base64-encoded so arbitrary path
 	// characters survive cookie sanitization; validated again on the way back.
 	if rt := safeReturnTo(r.URL.Query().Get("return_to")); rt != "" {
@@ -162,7 +170,9 @@ func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
 			Path: "/", HttpOnly: true, Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
 		})
 	}
-	http.Redirect(w, r, o.oauth.AuthCodeURL(state, oidc.Nonce(nonce)), http.StatusFound)
+	http.Redirect(w, r,
+		o.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)),
+		http.StatusFound)
 }
 
 func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +182,16 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid state", http.StatusBadRequest)
 		return
 	}
-	oauth2Token, err := o.oauth.Exchange(ctx, r.URL.Query().Get("code"))
+	// Complete PKCE: send the verifier from the cookie set in Login. Cleared after.
+	var exchangeOpts []oauth2.AuthCodeOption
+	if vc, verr := r.Cookie("oauth_verifier"); verr == nil && vc.Value != "" {
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(vc.Value))
+		http.SetCookie(w, &http.Cookie{
+			Name: "oauth_verifier", Value: "", Path: "/", HttpOnly: true,
+			Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		})
+	}
+	oauth2Token, err := o.oauth.Exchange(ctx, r.URL.Query().Get("code"), exchangeOpts...)
 	if err != nil {
 		http.Error(w, "token exchange failed", http.StatusBadGateway)
 		return
