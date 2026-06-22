@@ -10,7 +10,7 @@
 | ID | Серьёзность | Подсистема | Суть |
 |----|-------------|------------|------|
 | C1 | Critical | auth | `SESSION_SECRET` объявлен, но не используется: токены лежат в Redis в plaintext |
-| C2 | Critical | api/catalog | Обход allowlist чартов (BOLA) по прямому URL |
+| C2 | Critical | api/catalog | Обход allowlist чартов (BOLA) по прямому URL - RESOLVED |
 | H1 | High | api | Паника при старте / небезопасный `Secure`-флаг cookie из `PublicURL[:5]` |
 | H2 | High | auth | Не проверяется OIDC `nonce` |
 | H3 | High | store | Нет транзакций «переход заказа + аудит/MR»; ошибка `AddEvent` глушится |
@@ -25,7 +25,7 @@
 | M8 | Medium | api | Утечка сырых ошибок апстрима на `/ready` и `charts/check` |
 | M9 | Medium | harbor/provisioning | SSRF/инъекция пути в Harbor URL через импортированные манифесты |
 | M10 | Medium | provisioning | Path traversal: `Cluster` не валидируется и попадает в git-пути/манифесты |
-| M11 | Medium | store | Нет advisory-lock - гонка миграций между репликами |
+| M11 | Medium | store | Нет advisory-lock - гонка миграций между репликами - RESOLVED |
 | M12 | Medium | store | Нет страховочных таймаутов на фоновых путях к БД |
 | M13 | Medium | store | Игнор ошибки `json.Marshal` payload аудита |
 | M14 | Medium | provisioning | `HARBOR_INSECURE_TLS=true` в dev-скрипте, риск протечь в прод |
@@ -44,12 +44,14 @@
 
 Рекомендация: либо реально шифровать значение сессии (AES-GCM/secretbox на ключе из `SESSION_SECRET`) перед `cache.Set` и расшифровывать в `Get`, либо убрать вводящую в заблуждение переменную и зафиксировать в доке требование к изоляции/TLS Redis. Не оставлять небезопасный дефолт, который ни на что не влияет.
 
-### C2. Обход allowlist чартов (BOLA) по прямому URL
-Файлы: `internal/api/handlers_catalog.go:21-91` -> `internal/catalog/service.go:62-109`
+### C2. Обход allowlist чартов (BOLA) по прямому URL [RESOLVED]
+Файлы: `internal/api/handlers_catalog.go`, `internal/catalog/service.go`
 
 `ListCharts` (service.go:47) фильтрует выдачу через `VisibleTo` (allowlist `AllowedTeams` + admin). Но `GetChart`/`GetVersion`/`GetValues`/`GetReadme`/`GetSchema`/`GetChangelog` НЕ принимают пользователя и НЕ вызывают `VisibleTo`, а хендлеры (`handleGetChart` и далее) вызывают их без `auth.UserFrom`. Подтверждено фикстурой `internal/harbor/fake.go`: чарт `platform/redis` ограничен командой `core`. Любой аутентифицированный пользователь не из `core`, зная путь, прочитает описание, версии, `values.yaml`, `values.schema.json`, README и changelog в обход allowlist. Чарт не виден в списке, но доступен напрямую.
 
 Рекомендация: пробрасывать `auth.UserFrom(r.Context())` в эти методы и проверять `VisibleTo` (как уже сделано в `handleCatalog`, handlers_catalog.go:12). Возвращать 404 (не 403), чтобы не раскрывать существование чарта.
+
+Исправлено: добавлен `catalog.Service.Authorize(ctx, user, project, name)` - грузит чарт и проверяет `VisibleTo`, при скрытом чарте возвращает `ErrNotFound` (404, не 403, чтобы не раскрывать существование). Все 7 контентных эндпоинтов каталога (`GetChart`/`GetVersion`/`GetValues`/`GetReadme`/`GetSchema`/`GetChangelog`/`AggregatedChangelog`) гейтятся хелпером `authorizeChart` перед чтением. Общие методы сервиса не трогаются (их используют системные потоки: рендер provisioning, глобальный каталог публикаций). Регрессионный тест `TestHTTPChartAllowlistBypass`.
 
 ---
 
