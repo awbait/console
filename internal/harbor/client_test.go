@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -12,6 +14,8 @@ import (
 	"path"
 	"strings"
 	"testing"
+
+	"console/pkg/models"
 )
 
 // buildChartTgz packs the vendored ingress-gateway chart into a Helm-style .tgz
@@ -54,7 +58,10 @@ func buildChartTgz(t *testing.T) []byte {
 // API plus the OCI distribution endpoints (with a bearer-token challenge).
 func harborStub(t *testing.T, tgz []byte) *httptest.Server {
 	t.Helper()
-	const layerDigest = "sha256:layer1"
+	// The client verifies the blob against this digest, so it must be the real
+	// sha256 of the served tgz.
+	sum := sha256.Sum256(tgz)
+	layerDigest := "sha256:" + hex.EncodeToString(sum[:])
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/v2.0/health", func(w http.ResponseWriter, r *http.Request) {
@@ -166,6 +173,33 @@ func TestClientCatalogAndChartFiles(t *testing.T) {
 	c.mu.Unlock()
 	if !cached {
 		t.Fatalf("expected extracted files cached by manifest digest")
+	}
+}
+
+func TestVerifyDigest(t *testing.T) {
+	body := []byte("hello chart")
+	sum := sha256.Sum256(body)
+	good := "sha256:" + hex.EncodeToString(sum[:])
+
+	if err := verifyDigest(good, body); err != nil {
+		t.Fatalf("matching digest rejected: %v", err)
+	}
+	if err := verifyDigest("sha256:"+strings.Repeat("0", 64), body); err == nil {
+		t.Fatal("mismatched digest accepted")
+	}
+	if err := verifyDigest("md5:abc", body); err == nil {
+		t.Fatal("unsupported algorithm accepted")
+	}
+}
+
+// TestPullFilesRejectsTraversal ensures a chart name that could escape the
+// /v2/{project}/{name} path is refused before any registry call (M9).
+func TestPullFilesRejectsTraversal(t *testing.T) {
+	c := NewClient("https://harbor.invalid", "", "", []string{"platform"}, false, 0)
+	for _, name := range []string{"../evil", "a/b", "name@host", "UPPER"} {
+		if _, err := c.GetValues(context.Background(), "platform", name, "1.0.0"); err != models.ErrNotFound {
+			t.Errorf("name %q: want ErrNotFound, got %v", name, err)
+		}
 	}
 }
 

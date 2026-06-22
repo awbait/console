@@ -93,6 +93,12 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		if cfg.HarborURL == "" {
 			return errors.New("HARBOR_MODE=real requires HARBOR_URL")
 		}
+		if cfg.HarborInsecureTLS {
+			// Legitimate for the local self-signed stand, dangerous in production
+			// (disables cert verification, incl. the robot-cred Basic exchange).
+			// Log loudly so it cannot leak into a real deployment unnoticed.
+			log.Warn("HARBOR_INSECURE_TLS enabled: Harbor TLS verification is OFF (local stand only, never in production)")
+		}
 		hb = harbor.NewClient(cfg.HarborURL, cfg.HarborRobotUser, cfg.HarborRobotToken,
 			cfg.HarborProjects, cfg.HarborInsecureTLS, cfg.HarborTimeout)
 	default:
