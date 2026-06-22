@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +24,13 @@ import (
 
 	"console/pkg/models"
 )
+
+// repoComponentRe validates a single OCI repository path component (a Harbor
+// project or chart name) before it is interpolated raw into a /v2/ registry URL.
+// It blocks path traversal and host injection ("../", "@", "/", ":") via names
+// that, unlike the REST API paths, are not url.PathEscape'd. Mirrors the OCI
+// lowercase component grammar.
+var repoComponentRe = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*$`)
 
 // Client is the real Harbor implementation of Port. Catalog metadata (projects,
 // repositories, artifacts/versions) comes from the Harbor API v2.0; the per-chart
@@ -327,6 +337,14 @@ func (c *Client) file(ctx context.Context, project, name, version, filename stri
 // returns its top-level files keyed by base name. Results are cached by manifest
 // digest.
 func (c *Client) pullFiles(ctx context.Context, project, name, version string) (map[string][]byte, error) {
+	// project/name are interpolated raw into the OCI registry URL below (the REST
+	// API paths escape them, the /v2/ path does not). Reject anything that is not
+	// a plain repository component so a manifest-derived name cannot traverse out
+	// of /v2/{project}/{name} or inject a host. An invalid name cannot name a real
+	// chart, so this reads as "not found".
+	if !repoComponentRe.MatchString(project) || !repoComponentRe.MatchString(name) {
+		return nil, models.ErrNotFound
+	}
 	repo := project + "/" + name
 
 	manifest, digest, err := c.fetchManifest(ctx, repo, version)
@@ -420,7 +438,31 @@ func (c *Client) fetchBlob(ctx context.Context, repo, digest string) ([]byte, er
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		return nil, &apiError{status: resp.StatusCode, body: strings.TrimSpace(string(data))}
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return nil, err
+	}
+	// Content-addressable integrity: the blob must hash to the digest from the
+	// manifest. Without this a compromised/spoofed registry could serve an
+	// arbitrary tgz that the portal would extract and trust (also catches
+	// truncation at the 64 MiB read cap).
+	if err := verifyDigest(digest, body); err != nil {
+		return nil, fmt.Errorf("harbor: blob %s: %w", repo, err)
+	}
+	return body, nil
+}
+
+// verifyDigest checks that body hashes to the given OCI digest ("sha256:<hex>").
+func verifyDigest(digest string, body []byte) error {
+	algo, want, ok := strings.Cut(digest, ":")
+	if !ok || algo != "sha256" {
+		return fmt.Errorf("unsupported blob digest %q", digest)
+	}
+	sum := sha256.Sum256(body)
+	if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, want) {
+		return fmt.Errorf("digest mismatch: want %s, got sha256:%s", digest, got)
+	}
+	return nil
 }
 
 // registryGet issues an OCI distribution GET, negotiating a bearer token on 401
