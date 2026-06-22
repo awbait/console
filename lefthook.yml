@@ -30,3 +30,10 @@ pre-push:
       root: "web/"
       glob: "*.{ts,tsx,css,json}"
       run: bunx biome lint ./src --diagnostic-level=error
+    # Atlas migration gate: verifies atlas.sum integrity and that the directory
+    # replays cleanly on a throwaway dev database. Only runs when migration
+    # files change. Needs the Atlas CLI (https://atlasgo.io) and Docker.
+    # (`atlas migrate lint` is Atlas Pro since v0.38; `validate` stays OSS.)
+    migrate-validate:
+      glob: "internal/store/migrations/*.sql"
+      run: atlas migrate validate --env local

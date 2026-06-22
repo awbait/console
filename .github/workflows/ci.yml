@@ -25,6 +25,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       web: ${{ steps.filter.outputs.web }}
       docker: ${{ steps.filter.outputs.docker }}
+      migrations: ${{ steps.filter.outputs.migrations }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v4
@@ -41,6 +42,9 @@ jobs:
               - '.env.example'
             web:
               - 'web/**'
+            migrations:
+              - 'internal/store/migrations/**'
+              - 'atlas.hcl'
             docker:
               - 'Dockerfile'
               - 'collector/Dockerfile'
@@ -74,7 +78,10 @@ jobs:
       - name: Test
         run: go test ./...
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        # v8 installs golangci-lint v2 (matches the repo's v2 .golangci.yml and
+        # is built with a Go new enough for the go1.26 module). v6 pinned the
+        # last v1 release, which both rejects go1.26 and ignores the v2 config.
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           working-directory: ${{ matrix.dir }}
@@ -98,6 +105,20 @@ jobs:
         run: bunx biome lint ./src --diagnostic-level=error
       - name: Build
         run: bun run build
+
+  migrations:
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ariga/setup-atlas@v0
+      - name: Validate migrations (integrity + replay)
+        # Verifies atlas.sum matches the files and the directory replays cleanly
+        # on an ephemeral dev database (docker:// - Docker is preinstalled on the
+        # runner). `atlas migrate lint` is Atlas Pro since v0.38; `validate`
+        # stays in the OSS CLI and needs no login.
+        run: atlas migrate validate --env local
 
   docker:
     needs: changes
@@ -126,7 +147,7 @@ jobs:
   # Single required status check. Stays green when upstream jobs are skipped
   # (path filters), fails if any of them failed or was cancelled.
   ci:
-    needs: [backend, web, docker]
+    needs: [backend, web, migrations, docker]
     if: always()
     runs-on: ubuntu-latest
     steps:
