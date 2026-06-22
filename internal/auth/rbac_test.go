@@ -81,16 +81,29 @@ func TestBuildUser(t *testing.T) {
 		}
 	})
 
-	t.Run("prefixed segment anywhere in path (external IdP)", func(t *testing.T) {
-		// The team segment may sit in the MIDDLE of a nested path, and the admin
-		// group at any depth - both must still resolve.
+	t.Run("team segment anywhere, but privileged group needs full path (M3)", func(t *testing.T) {
+		// The team segment may sit in the MIDDLE of a nested path (external IdP).
+		// A privileged group, however, must match the FULL path: a nested
+		// "/org/platform-admins/sub" must NOT grant admin, or anyone able to create
+		// such a subgroup would escalate.
 		u := r.BuildUser("s4", "", "dave", "Dave",
 			[]string{"/group/group/team-core/group", "/org/platform-admins/sub"})
 		if !u.InTeam("core") {
 			t.Fatalf("mid-path team not derived: %+v", u.Teams)
 		}
-		if u.Role != models.RoleAdmin {
-			t.Fatalf("nested admin group should grant admin, got %s", u.Role)
+		if u.IsAdmin() {
+			t.Fatalf("nested admin segment must NOT grant admin (escalation)")
+		}
+		if u.Role != models.RoleMember {
+			t.Fatalf("want member (from team), got %s", u.Role)
+		}
+	})
+
+	t.Run("privileged group matches exact full path", func(t *testing.T) {
+		// Leading slash is stripped, so the Keycloak group path "/platform-admins"
+		// matches the configured "platform-admins"; a deeper path does not.
+		if u := r.BuildUser("s10", "", "p", "P", []string{"/platform-admins"}); u.Role != models.RoleAdmin {
+			t.Fatalf("full-path admin not granted, got %s", u.Role)
 		}
 	})
 
