@@ -40,7 +40,7 @@ import {
   ModalOverlay,
   Popover,
 } from "react-aria-components";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { CatalogChart } from "../api/types";
 import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
@@ -98,6 +98,7 @@ export function Layout() {
   const { user, loading, unauthenticated } = useUser();
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   // On a request detail/edit route the URL doesn't say which product it is, so
   // fetch the order and map its chart - that chart's sidebar item then lights
@@ -192,6 +193,7 @@ export function Layout() {
   // dynamic product taxonomy instead.
   const sectionNav =
     activeSection === "security" ? securitySectionNav : activeSection === "admin" ? adminSectionNav : null;
+  const currentSection = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800">
@@ -233,23 +235,41 @@ export function Layout() {
               })}
             </nav>
           ) : (
+            /* dropdown: section labels don't fit as a pill row once there are
+               three of them, so switch via a menu showing the active section */
             <div className="px-3 pt-3">
-              <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-                {availableSections.map((s) => {
-                  const Icon = s.Icon;
-                  return (
-                    <Link
-                      key={s.id}
-                      to={s.home}
-                      aria-current={activeSection === s.id ? "page" : undefined}
-                      className="flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-sm font-medium text-slate-500 outline-none hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-surface aria-[current=page]:text-brand-700 aria-[current=page]:shadow-sm"
-                    >
-                      <Icon size={16} stroke={1.7} />
-                      {s.label}
-                    </Link>
-                  );
-                })}
-              </div>
+              <MenuTrigger>
+                <Button className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50">
+                  <span className="flex items-center gap-2">
+                    <currentSection.Icon size={18} stroke={1.7} className="text-brand-600" />
+                    {currentSection.label}
+                  </span>
+                  <IconChevronDown
+                    size={16}
+                    className="text-slate-400 transition-transform duration-200 group-data-[pressed]:rotate-180"
+                  />
+                </Button>
+                <Popover className="w-[var(--trigger-width)] rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+                  <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
+                    {availableSections.map((s) => {
+                      const Icon = s.Icon;
+                      return (
+                        <MenuItem
+                          key={s.id}
+                          id={s.home}
+                          className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Icon size={18} stroke={1.7} className="text-slate-500" />
+                            {s.label}
+                          </span>
+                          {activeSection === s.id && <IconCheck size={15} className="text-brand-600" />}
+                        </MenuItem>
+                      );
+                    })}
+                  </Menu>
+                </Popover>
+              </MenuTrigger>
             </div>
           ))}
 
