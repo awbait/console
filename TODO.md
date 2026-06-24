@@ -247,7 +247,14 @@ ApplicationSet (`deployments/kind/applicationset.yaml`) **хардкодит**
   удалены. Тот же фолбэк в каталоге и на странице чарта.
 - [ ] Поиск / фильтр в каталоге чартов.
 - [ ] Дифф values при апдейте заказа.
-- [ ] Ленивая загрузка Monaco (бандл ~544 КБ).
+- [x] Monaco: оказалось, ядро не в бандле - `@monaco-editor/loader` тянет его с
+  jsdelivr CDN в рантайме (уже лениво, только при монтировании редактора). Вместо
+  ленивости сделан self-host: `min/vs` отдаётся с нашего origin (`/monaco/vs`),
+  `loader.config({ paths })` в `src/lib/monaco.ts`, копирование - инлайн vite-плагин
+  (dev middleware + `cpSync` в `dist` на сборке). Убирает зависимость от внешнего
+  CDN в закрытом контуре. JS-бандл не меняется (остаётся 1063 КБ, монолит).
+- [ ] Code splitting фронта: бандл - один монолитный чанк 1063 КБ (316 КБ gzip),
+  без route-level lazy и vendor manualChunks. Отдельная задача.
 - [x] «Applications» (`/applications`) - роут удалён вместе со страницей, мёртвым
   `listApplications`/`Application` и осиротевшим `HealthBadge`. Бэкенд-эндпоинты
   `/applications*` остались (используются тестами), чистить отдельным PR.
