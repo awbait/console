@@ -861,9 +861,14 @@ function AddCategory({ busy, run }: { busy: boolean; run: (fn: () => Promise<unk
         aria-label="Идентификатор (slug)"
         className="w-32 shrink-0 rounded-md border border-slate-200 bg-transparent px-2 py-1 font-mono text-[11px] text-slate-600 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
       />
-      <Button variant="primary" isDisabled={!canAdd} onPress={add}>
-        <IconPlus size={16} stroke={1.8} /> Добавить
-      </Button>
+      <AriaButton
+        isDisabled={!canAdd}
+        onPress={add}
+        aria-label="Добавить категорию"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-on-accent outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-40"
+      >
+        <IconPlus size={18} stroke={1.9} />
+      </AriaButton>
     </div>
   );
 }
