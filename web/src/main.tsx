@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
 import "./index.css";
+import "./lib/monaco";
 import { CatalogProvider } from "./app/CatalogContext";
 import { TeamProvider } from "./app/TeamContext";
 import { ThemeProvider } from "./app/ThemeContext";

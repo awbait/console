@@ -8,6 +8,7 @@
         "@monaco-editor/react": "^4.6.0",
         "@tabler/icons-react": "^3.44.0",
         "js-yaml": "^4.1.0",
+        "monaco-editor": "^0.55.1",
         "react": "^19.0.0",
         "react-aria-components": "^1.5.0",
         "react-dom": "^19.0.0",
