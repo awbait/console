@@ -412,20 +412,10 @@ export function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* TOPBAR */}
       <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-surface px-4">
-        <OrgSelector />
+        {/* The team/project selector is a platform concept; hide it in the admin
+            and security sections, which are not scoped to a team. */}
+        {activeSection === "platform" ? <OrgSelector /> : <span />}
         <div className="flex items-center gap-1">
-          {/* System status is a platform-admin tool only. */}
-          {user.role === "admin" && (
-            <Link
-              to="/admin/status"
-              aria-label="Статус системы"
-              title="Статус системы"
-              aria-current={pathname.startsWith("/admin/status") ? "page" : undefined}
-              className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-            >
-              <IconActivity size={20} stroke={1.7} />
-            </Link>
-          )}
           <ThemeMenu />
           <Link
             to="/docs"
