@@ -5,7 +5,7 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import { IconChevronRight, IconTrash, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronRight, IconTrash, IconX } from "@tabler/icons-react";
 import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
 
 type Schema = Record<string, any>;
@@ -100,7 +100,8 @@ function walkErrors(
       // form shows the default selected and it's applied on submit, so don't flag.
       const hasDefault = "default" in child || "const" in child;
       if (required.has(k) && emptyVal(cv) && !hasDefault) {
-        out.set(cpath, "Обязательное поле");
+        // A required empty array needs an element added, not a value typed in.
+        out.set(cpath, child.type === "array" ? "Добавьте хотя бы один элемент" : "Обязательное поле");
         continue;
       }
       if (cv === undefined) continue;
@@ -176,6 +177,13 @@ export function deref(node: Schema | undefined, root: Schema): Schema {
 }
 
 const isHidden = (s: Schema) => s["ui:widget"] === "hidden";
+
+// fieldAnchorId maps a field's JSON-pointer path to a stable DOM id, so the error
+// summary can scroll/focus the offending field. Pointers are unique within a form
+// and getElementById tolerates the "/" characters they contain.
+export function fieldAnchorId(path: string): string {
+  return `ff${path}`;
+}
 
 export function orderedKeys(s: Schema): string[] {
   const props = s.properties ? Object.keys(s.properties) : [];
@@ -344,17 +352,24 @@ function ObjectFields({
         const node = view?.overrides?.[k]
           ? { ...schema.properties[k], ...view.overrides[k] }
           : schema.properties[k];
+        // Skip hidden fields here so their empty anchor wrapper doesn't add a
+        // phantom gap (Field would render null for them anyway).
+        if (isHidden(deref(node, root))) return null;
+        const childPath = `${path}/${k}`;
         return (
-          <Field
-            key={k}
-            name={k}
-            schema={node}
-            root={root}
-            required={required.has(k)}
-            value={value?.[k]}
-            onChange={(v) => set(k, v)}
-            path={`${path}/${k}`}
-          />
+          // Anchor by path so the error summary can scroll to and focus this field;
+          // scroll-mt keeps it clear of the sticky header when targeted.
+          <div key={k} id={fieldAnchorId(childPath)} className="scroll-mt-24">
+            <Field
+              name={k}
+              schema={node}
+              root={root}
+              required={required.has(k)}
+              value={value?.[k]}
+              onChange={(v) => set(k, v)}
+              path={childPath}
+            />
+          </div>
         );
       })}
     </div>
@@ -588,8 +603,20 @@ function ArrayField({
   path?: string;
 }) {
   const locked = useContext(LockedCtx);
+  const validation = useContext(ValidationCtx);
   const items: unknown[] = Array.isArray(value) ? value : [];
   const itemSchema = deref(schema.items ?? {}, root);
+  // Number of currently visible errors inside an item's subtree (the item path or
+  // any descendant). A collapsed card uses this to flag that it hides invalid or
+  // unfilled required fields, which the user otherwise cannot see until expanding.
+  const itemErrorCount = (i: number): number => {
+    const prefix = `${path}/${i}`;
+    let n = 0;
+    for (const ep of validation.errors.keys()) {
+      if ((ep === prefix || ep.startsWith(`${prefix}/`)) && (validation.showAll || validation.touched.has(ep))) n++;
+    }
+    return n;
+  };
   const isObjectItem = itemSchema.type === "object" && itemSchema.properties;
   const minItems = typeof schema.minItems === "number" ? schema.minItems : 0;
   // Can't remove below the schema minimum, and not at all when the array is locked.
@@ -602,15 +629,52 @@ function ArrayField({
     update(items.filter((_, idx) => idx !== i));
   };
 
+  // The array's own error (e.g. an empty required array, or minItems): shown once
+  // a submit was attempted (showAll) or the field was touched. For a required
+  // empty array the message tells the user to add an element, not to "fill" it.
+  const arrErr =
+    validation.showAll || validation.touched.has(path) ? validation.errors.get(path) : undefined;
+
+  // Item cards are collapsed by default, but auto-expand (and stay open) once a
+  // submit attempt reveals errors inside them, so hidden invalid/required fields
+  // are not stuck behind a closed disclosure. Toggling afterwards is honored.
+  const [expandOverride, setExpandOverride] = useState<Record<number, boolean>>({});
+  useEffect(() => {
+    if (!validation.showAll) return;
+    setExpandOverride((prev) => {
+      let next = prev;
+      items.forEach((_, i) => {
+        if (next[i] === undefined && itemErrorCount(i) > 0) {
+          if (next === prev) next = { ...prev };
+          next[i] = true;
+        }
+      });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validation.showAll, validation.errors, validation.touched, items.length]);
+
   return (
     <Section label={schema.title ?? name} desc={schema.description} required={required}>
       <div className="flex flex-col gap-2">
-        {items.length === 0 && <p className="text-xs text-gray-400">Нет элементов.</p>}
+        {items.length === 0 && (
+          <p className={`text-xs ${arrErr ? "font-medium text-red-600" : "text-gray-400"}`}>
+            {arrErr ?? "Нет элементов."}
+          </p>
+        )}
 
-        {items.map((it, i) =>
-          isObjectItem ? (
-            // Collapsible card with a one-line summary; collapsed by default.
-            <Disclosure key={i} className="group rounded-md border border-gray-200 bg-surface">
+        {items.map((it, i) => {
+          const errCount = isObjectItem ? itemErrorCount(i) : 0;
+          return isObjectItem ? (
+            // Collapsible card with a one-line summary; collapsed by default. A red
+            // border + error badge flags items whose (possibly required) fields are
+            // invalid while the card is collapsed, so the problem is not hidden.
+            <Disclosure
+              key={i}
+              isExpanded={expandOverride[i] ?? false}
+              onExpandedChange={(e) => setExpandOverride((o) => ({ ...o, [i]: e }))}
+              className={`group rounded-md border bg-surface ${errCount > 0 ? "border-red-300" : "border-gray-200"}`}
+            >
               <div className="flex items-center gap-1 pr-1.5">
                 <Heading className="min-w-0 flex-1">
                   <AriaButton
@@ -624,6 +688,13 @@ function ArrayField({
                     <span className="truncate text-gray-800">
                       {summarize(itemSchema, it, root) || `Элемент ${i + 1}`}
                     </span>
+                    {errCount > 0 && (
+                      // Hidden once expanded: the inline field errors are then visible.
+                      <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 group-data-[expanded]:hidden">
+                        <IconAlertTriangle size={12} stroke={2} />
+                        {errCount}
+                      </span>
+                    )}
                   </AriaButton>
                 </Heading>
                 <Hint text={noRemove ? removeHint : "Удалить"}>
@@ -653,7 +724,7 @@ function ArrayField({
           ) : (
             // Primitive item: a single label-less control + a remove button,
             // vertically centered so the button lines up with the input.
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} id={fieldAnchorId(`${path}/${i}`)} className="flex scroll-mt-24 items-center gap-2">
               <div className="flex-1">
                 <Field
                   name={`${name}[${i}]`}
@@ -677,8 +748,8 @@ function ArrayField({
                 </Button>
               </Hint>
             </div>
-          ),
-        )}
+          );
+        })}
 
         {!locked && (
           <div>

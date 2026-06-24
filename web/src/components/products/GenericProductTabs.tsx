@@ -17,6 +17,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { SchemaForm, pruneEmpty, collectErrors, seedDefaults, type View } from "../../form/SchemaForm";
 import { Button, Hint, Spinner } from "../ui";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { FormErrors } from "../FormErrors";
 import type { OrderRequest, ViewDocument, ViewTab } from "../../api/types";
 import {
   actionViews,
@@ -464,6 +465,16 @@ function ItemModal({
                   showErrors={showErrors}
                   lockReadOnly={initial !== null}
                 />
+                {showErrors && errors.size > 0 && (
+                  <div className="mt-3">
+                    <FormErrors
+                      message="Заполните обязательные поля, отмеченные красным."
+                      fieldErrors={errors}
+                      schema={schema}
+                      view={view}
+                    />
+                  </div>
+                )}
                 {err && <p className="mt-3 text-xs text-red-600">{err}</p>}
               </div>
               <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
@@ -580,16 +591,30 @@ function ViewFormModal({
   const loading = !schemaProp && fetched.loading;
   const error = schemaProp ? null : fetched.error;
   const [value, setValue] = useState<Values>({});
+  const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Client-side validation against the schema (honoring the view), like the order
+  // form and the list-item modal, so invalid/required fields are caught before the
+  // PATCH and surfaced inline plus in the summary below.
+  const errors = useMemo(
+    () => (schema ? collectErrors(schema, value, view) : new Map<string, string>()),
+    [schema, value, view],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setValue(parseValues(request.values_yaml));
+    setShowErrors(false);
     setErr(null);
   }, [isOpen, request.values_yaml]);
 
   async function save() {
+    if (errors.size > 0) {
+      setShowErrors(true);
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {
@@ -631,9 +656,27 @@ function ViewFormModal({
                 ) : error ? (
                   <SchemaLoadError request={request} error={error} />
                 ) : schema ? (
-                  <SchemaForm schema={schema} value={value} onChange={setValue} view={view} lockReadOnly />
+                  <SchemaForm
+                    schema={schema}
+                    value={value}
+                    onChange={setValue}
+                    view={view}
+                    errors={errors}
+                    showErrors={showErrors}
+                    lockReadOnly
+                  />
                 ) : (
                   <p className="text-sm text-gray-500">Нет схемы.</p>
+                )}
+                {showErrors && errors.size > 0 && (
+                  <div className="mt-3">
+                    <FormErrors
+                      message="Заполните обязательные поля, отмеченные красным."
+                      fieldErrors={errors}
+                      schema={schema ?? undefined}
+                      view={view}
+                    />
+                  </div>
                 )}
                 {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
               </div>
