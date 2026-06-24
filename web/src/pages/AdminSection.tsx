@@ -34,7 +34,7 @@ import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
-import { Button, ErrorBox, Spinner, TextField } from "../components/ui";
+import { Button, ErrorBox, Spinner } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 
 // ---------------------------------------------------------------------------
@@ -801,38 +801,69 @@ function DeleteCategoryButton({
   );
 }
 
-// AddCategory: id + label form; new categories land at the end (admin drags to
-// place) with a default icon, then editable inline.
+// slugify derives a url-safe id from a label (latin letters/digits only). For a
+// non-latin label it yields "", so the admin types the slug explicitly.
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// AddCategory: a single inline row matching the list style. The slug is
+// auto-suggested from the name until the admin edits it; new categories land at
+// the end with the chosen icon, then are editable inline above.
 function AddCategory({ busy, run }: { busy: boolean; run: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const [id, setId] = useState("");
   const [label, setLabel] = useState("");
-  const canAdd = !busy && !!id.trim() && !!label.trim();
+  const [slug, setSlug] = useState("");
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [icon, setIcon] = useState("box");
+  const id = (slugTouched ? slug : slugify(label)).trim();
+  const canAdd = !busy && !!label.trim() && !!id;
+
+  function reset() {
+    setLabel("");
+    setSlug("");
+    setSlugTouched(false);
+    setIcon("box");
+  }
+  function add() {
+    if (!canAdd) return;
+    run(() => api.createCategory({ id, label: label.trim(), sort: 999, icon })).then(reset);
+  }
+
   return (
-    <div className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
-        <IconPlus size={16} stroke={1.8} className="text-slate-400" />
-        Добавить категорию
-      </h2>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="w-44">
-          <TextField label="ID (slug)" value={id} onChange={setId} />
-        </div>
-        <div className="min-w-48 flex-1">
-          <TextField label="Название" value={label} onChange={setLabel} />
-        </div>
-        <Button
-          variant="primary"
-          isDisabled={!canAdd}
-          onPress={() =>
-            run(() => api.createCategory({ id: id.trim(), label: label.trim(), sort: 999, icon: "box" })).then(() => {
-              setId("");
-              setLabel("");
-            })
-          }
-        >
-          <IconPlus size={16} stroke={1.8} /> Добавить
-        </Button>
-      </div>
+    <div className="flex items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-surface px-3 py-2.5">
+      <span className="h-7 w-7 shrink-0" aria-hidden />
+      <IconPicker value={icon} disabled={busy} onPick={setIcon} />
+      <input
+        value={label}
+        disabled={busy}
+        onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") add();
+        }}
+        placeholder="Название новой категории"
+        aria-label="Название новой категории"
+        className="min-w-0 flex-1 rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+      />
+      <input
+        value={slugTouched ? slug : id}
+        disabled={busy}
+        onChange={(e) => {
+          setSlug(e.target.value);
+          setSlugTouched(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") add();
+        }}
+        placeholder="slug"
+        aria-label="Идентификатор (slug)"
+        className="w-32 shrink-0 rounded-md border border-slate-200 bg-transparent px-2 py-1 font-mono text-[11px] text-slate-600 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+      />
+      <Button variant="primary" isDisabled={!canAdd} onPress={add}>
+        <IconPlus size={16} stroke={1.8} /> Добавить
+      </Button>
     </div>
   );
 }
