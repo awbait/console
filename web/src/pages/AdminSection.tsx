@@ -819,7 +819,10 @@ function AddCategory({ busy, run }: { busy: boolean; run: (fn: () => Promise<unk
   const [slugTouched, setSlugTouched] = useState(false);
   const [icon, setIcon] = useState("box");
   const id = (slugTouched ? slug : slugify(label)).trim();
-  const canAdd = !busy && !!label.trim() && !!id;
+  // Slug must be a url-safe id: lowercase latin, digits, single dashes.
+  const slugValid = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id);
+  const slugBad = slugTouched && !!slug.trim() && !slugValid;
+  const canAdd = !busy && !!label.trim() && slugValid;
 
   function reset() {
     setLabel("");
@@ -833,42 +836,53 @@ function AddCategory({ busy, run }: { busy: boolean; run: (fn: () => Promise<unk
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-surface px-3 py-2.5">
-      <span className="h-7 w-7 shrink-0" aria-hidden />
-      <IconPicker value={icon} disabled={busy} onPick={setIcon} />
-      <input
-        value={label}
-        disabled={busy}
-        onChange={(e) => setLabel(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") add();
-        }}
-        placeholder="Название новой категории"
-        aria-label="Название новой категории"
-        className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-transparent px-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
-      />
-      <input
-        value={slugTouched ? slug : id}
-        disabled={busy}
-        onChange={(e) => {
-          setSlug(e.target.value);
-          setSlugTouched(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") add();
-        }}
-        placeholder="slug"
-        aria-label="Идентификатор (slug)"
-        className="h-9 w-32 shrink-0 rounded-md border border-slate-200 bg-transparent px-2.5 font-mono text-[11px] text-slate-600 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
-      />
-      <AriaButton
-        isDisabled={!canAdd}
-        onPress={add}
-        aria-label="Добавить категорию"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-on-accent outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-40"
-      >
-        <IconPlus size={18} stroke={1.9} />
-      </AriaButton>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-surface px-3 py-2.5">
+        <span className="h-7 w-7 shrink-0" aria-hidden />
+        <IconPicker value={icon} disabled={busy} onPick={setIcon} />
+        <input
+          value={label}
+          disabled={busy}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+          placeholder="Название новой категории"
+          aria-label="Название новой категории"
+          className="min-w-0 flex-1 rounded-md border border-slate-200 bg-transparent px-2.5 py-1 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+        />
+        <input
+          value={slugTouched ? slug : id}
+          disabled={busy}
+          onChange={(e) => {
+            setSlug(e.target.value);
+            setSlugTouched(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") add();
+          }}
+          placeholder="slug"
+          aria-label="Идентификатор (slug)"
+          className={`w-32 shrink-0 rounded-md border bg-transparent px-2.5 py-1 font-mono text-[11px] text-slate-600 outline-none placeholder:text-slate-400 focus:ring-1 disabled:opacity-50 ${
+            slugBad
+              ? "border-red-400 focus:border-red-500 focus:ring-red-500"
+              : "border-slate-200 focus:border-brand-500 focus:ring-brand-500"
+          }`}
+        />
+        <AriaButton
+          isDisabled={!canAdd}
+          onPress={add}
+          aria-label="Добавить категорию"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-600 text-on-accent outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-40"
+        >
+          <IconPlus size={16} stroke={2} />
+        </AriaButton>
+      </div>
+      {slugBad && (
+        <p className="pl-[4.75rem] text-xs text-red-600">
+          Slug: только строчные латинские буквы, цифры и дефис.
+        </p>
+      )}
     </div>
   );
 }
