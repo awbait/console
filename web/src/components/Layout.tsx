@@ -1,20 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
-import {
-  Button,
-  Dialog,
-  DialogTrigger,
-  Disclosure,
-  DisclosureGroup,
-  DisclosurePanel,
-  Heading,
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  Modal,
-  ModalOverlay,
-  Popover,
-} from "react-aria-components";
 import {
   IconActivity,
   IconBell,
@@ -34,18 +17,37 @@ import {
   IconPackages,
   IconPalette,
   IconScan,
+  IconSettings,
   IconShieldCheck,
   IconShieldLock,
+  IconTags,
   IconUser,
   IconUsersGroup,
 } from "@tabler/icons-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Button,
+  Dialog,
+  DialogTrigger,
+  Disclosure,
+  DisclosureGroup,
+  DisclosurePanel,
+  Heading,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Modal,
+  ModalOverlay,
+  Popover,
+} from "react-aria-components";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api/client";
-import { useAsync } from "../hooks/useAsync";
-import { useUser } from "../auth/UserContext";
-import { useTeam } from "../app/TeamContext";
-import { THEMES, THEME_LABELS, useTheme, type Theme } from "../app/ThemeContext";
-import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import type { CatalogChart } from "../api/types";
+import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
+import { useTeam } from "../app/TeamContext";
+import { THEME_LABELS, THEMES, type Theme, useTheme } from "../app/ThemeContext";
+import { useUser } from "../auth/UserContext";
+import { useAsync } from "../hooks/useAsync";
 import { categoryIcon } from "./icons";
 import { Spinner } from "./ui";
 
@@ -54,25 +56,33 @@ const navItems = [
   { to: "/catalog", label: "Чарты", Icon: IconPackages },
 ];
 
-// Extra items for admins (publication approvals + categories).
-const adminNavItems = [{ to: "/admin/publications", label: "Публикации", Icon: IconChecklist }];
-
 // Top-level sidebar sections. The platform section is the default product
-// experience; the security (InfoSec) section swaps the lower nav for its own
-// pages. The switcher only appears when a role can see more than one section.
-type SectionId = "platform" | "security";
+// experience; the security (InfoSec) and admin sections swap the lower nav for
+// their own pages. The switcher only appears when a role can see more than one.
+type SectionId = "platform" | "admin" | "security";
 
 const SECTIONS: { id: SectionId; label: string; home: string; Icon: typeof IconBox }[] = [
   { id: "platform", label: "Платформа", home: "/catalog", Icon: IconLayoutGrid },
+  { id: "admin", label: "Админ", home: "/admin", Icon: IconSettings },
   { id: "security", label: "ИБ", home: "/security", Icon: IconShieldLock },
 ];
 
+type SectionNavItem = { to: string; label: string; Icon: typeof IconBox; exact?: boolean };
+
 // Lower-nav items of the security section. The overview matches its route
 // exactly so deeper pages don't also light it up.
-const securitySectionNav: { to: string; label: string; Icon: typeof IconBox; exact?: boolean }[] = [
+const securitySectionNav: SectionNavItem[] = [
   { to: "/security", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
   { to: "/security/policies", label: "Согласование политик", Icon: IconShieldCheck },
   { to: "/security/kyverno", label: "Kyverno UI", Icon: IconScan },
+];
+
+// Lower-nav items of the platform-admin section.
+const adminSectionNav: SectionNavItem[] = [
+  { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
+  { to: "/admin/approvals", label: "Согласование публикаций", Icon: IconChecklist },
+  { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
+  { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
 ];
 
 // Human-readable role labels for the profile menu.
@@ -162,16 +172,26 @@ export function Layout() {
   if (loading) return <Spinner />;
   if (unauthenticated || !user) return <LoginScreen />;
 
-  // Sections by role: security sees only its own section, admin sees both,
+  // Sections by role: security sees only its own section, admin sees all three,
   // everyone else only the platform section. The active section follows the URL,
   // clamped to what the role may actually see.
-  const availableSections = SECTIONS.filter((s) =>
-    s.id === "security" ? user.role === "security" || user.role === "admin" : user.role !== "security",
-  );
-  const pathSection: SectionId = pathname.startsWith("/security") ? "security" : "platform";
+  const availableSections = SECTIONS.filter((s) => {
+    if (s.id === "security") return user.role === "security" || user.role === "admin";
+    if (s.id === "admin") return user.role === "admin";
+    return user.role !== "security"; // platform
+  });
+  const pathSection: SectionId = pathname.startsWith("/security")
+    ? "security"
+    : pathname.startsWith("/admin")
+      ? "admin"
+      : "platform";
   const activeSection: SectionId = availableSections.some((s) => s.id === pathSection)
     ? pathSection
     : (availableSections[0]?.id ?? "platform");
+  // The active section's own flat nav (security/admin); platform renders the
+  // dynamic product taxonomy instead.
+  const sectionNav =
+    activeSection === "security" ? securitySectionNav : activeSection === "admin" ? adminSectionNav : null;
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-800">
@@ -233,11 +253,11 @@ export function Layout() {
             </div>
           ))}
 
-        {activeSection === "security" ? (
-          /* security section: its own flat nav, no product categories */
+        {sectionNav ? (
+          /* security/admin section: its own flat nav, no product categories */
           <nav className="px-2 py-3">
             <ul className="flex flex-col gap-0.5">
-              {securitySectionNav.map((n) => {
+              {sectionNav.map((n) => {
                 const Icon = n.Icon;
                 const active = n.exact ? pathname === n.to : navActive(n.to);
                 return (
@@ -261,7 +281,7 @@ export function Layout() {
             {/* flat group: Resources / Charts (active via navActive aria-current) */}
             <nav className="px-2 py-3">
               <ul className="flex flex-col gap-0.5">
-                {[...navItems, ...(user.role === "admin" ? adminNavItems : [])].map((n) => {
+                {navItems.map((n) => {
                   const Icon = n.Icon;
                   return (
                     <li key={n.to}>
@@ -377,10 +397,10 @@ export function Layout() {
           {/* System status is a platform-admin tool only. */}
           {user.role === "admin" && (
             <Link
-              to="/status"
+              to="/admin/status"
               aria-label="Статус системы"
               title="Статус системы"
-              aria-current={pathname.startsWith("/status") ? "page" : undefined}
+              aria-current={pathname.startsWith("/admin/status") ? "page" : undefined}
               className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
             >
               <IconActivity size={20} stroke={1.7} />

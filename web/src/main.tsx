@@ -1,32 +1,37 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider, createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
 import "./index.css";
-import { Layout } from "./components/Layout";
+import { CatalogProvider } from "./app/CatalogContext";
+import { TeamProvider } from "./app/TeamContext";
 import { ThemeProvider } from "./app/ThemeContext";
 import { ToastProvider } from "./app/ToastContext";
 import { UserProvider, useUser } from "./auth/UserContext";
-import { TeamProvider } from "./app/TeamContext";
-import { CatalogProvider } from "./app/CatalogContext";
+import { Layout } from "./components/Layout";
+import { NotFound } from "./components/NotFound";
+import { AboutPage } from "./pages/AboutPage";
+import {
+  AdminApprovalsPage,
+  AdminCategoriesPage,
+  AdminOverviewPage,
+  AdminSection,
+} from "./pages/AdminSection";
+import { ApplicationsPage } from "./pages/ApplicationsPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ChartDetailPage } from "./pages/ChartDetailPage";
-import { OrderPage } from "./pages/OrderPage";
-import { RequestsPage } from "./pages/RequestsPage";
-import { RequestDetailPage } from "./pages/RequestDetailPage";
-import { ApplicationsPage } from "./pages/ApplicationsPage";
-import { ProductPage } from "./pages/ProductPage";
 import { ChartManagePage } from "./pages/ChartManagePage";
-import { AdminPublicationsPage } from "./pages/AdminPublicationsPage";
+import { DocsPage } from "./pages/DocsPage";
+import { OrderPage } from "./pages/OrderPage";
+import { ProductPage } from "./pages/ProductPage";
+import { RequestDetailPage } from "./pages/RequestDetailPage";
+import { RequestsPage } from "./pages/RequestsPage";
 import {
-  SecuritySection,
-  SecurityOverviewPage,
-  PolicyApprovalPage,
   KyvernoPage,
+  PolicyApprovalPage,
+  SecurityOverviewPage,
+  SecuritySection,
 } from "./pages/SecuritySection";
 import { StatusPage } from "./pages/StatusPage";
-import { AboutPage } from "./pages/AboutPage";
-import { DocsPage } from "./pages/DocsPage";
-import { NotFound } from "./components/NotFound";
 
 // Role-aware landing: security users open their section by default; everyone
 // else lands on the catalog. Rendered inside Layout, which already gates on
@@ -62,6 +67,21 @@ const router = createBrowserRouter([
           { path: "kyverno", element: <KyvernoPage /> },
         ],
       },
+      // Platform-admin section: its own switcher section (like security), gated
+      // to the admin role. Status lives here now; /status and /admin/publications
+      // are kept as redirects so existing links/bookmarks don't break.
+      {
+        path: "admin",
+        element: <AdminSection />,
+        children: [
+          { index: true, element: <AdminOverviewPage /> },
+          { path: "approvals", element: <AdminApprovalsPage /> },
+          { path: "categories", element: <AdminCategoriesPage /> },
+          { path: "status", element: <StatusPage /> },
+          { path: "publications", element: <Navigate to="/admin/approvals" replace /> },
+        ],
+      },
+      { path: "status", element: <Navigate to="/admin/status" replace /> },
       // Platform (product) routes: blocked for the security role.
       {
         element: <PlatformOnly />,
@@ -70,14 +90,12 @@ const router = createBrowserRouter([
           { path: "catalog/:project/:name", element: <ChartDetailPage /> },
           { path: "catalog/:project/:name/order", element: <OrderPage /> },
           { path: "catalog/:project/:name/manage", element: <ChartManagePage /> },
-          { path: "admin/publications", element: <AdminPublicationsPage /> },
           { path: "requests", element: <RequestsPage /> },
           { path: "requests/:id/edit", element: <OrderPage /> },
           { path: "requests/:id/upgrade", element: <OrderPage upgrade /> },
           { path: "products/:project/:name", element: <ProductPage /> },
           { path: "requests/:id", element: <RequestDetailPage /> },
           { path: "applications", element: <ApplicationsPage /> },
-          { path: "status", element: <StatusPage /> },
         ],
       },
       { path: "*", element: <NotFound /> },
