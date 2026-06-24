@@ -470,6 +470,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         <FormErrors
           message={submitErr.message}
           details={submitErr.details}
+          fieldErrors={showErrors && clientErrors.size > 0 ? clientErrors : undefined}
           schema={schema ?? undefined}
           view={orderView}
         />
