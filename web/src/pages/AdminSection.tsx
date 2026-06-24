@@ -845,7 +845,7 @@ function AddCategory({ busy, run }: { busy: boolean; run: (fn: () => Promise<unk
         }}
         placeholder="Название новой категории"
         aria-label="Название новой категории"
-        className="min-w-0 flex-1 rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+        className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-transparent px-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
       />
       <input
         value={slugTouched ? slug : id}
@@ -859,7 +859,7 @@ function AddCategory({ busy, run }: { busy: boolean; run: (fn: () => Promise<unk
         }}
         placeholder="slug"
         aria-label="Идентификатор (slug)"
-        className="w-32 shrink-0 rounded-md border border-slate-200 bg-transparent px-2 py-1 font-mono text-[11px] text-slate-600 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+        className="h-9 w-32 shrink-0 rounded-md border border-slate-200 bg-transparent px-2.5 font-mono text-[11px] text-slate-600 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
       />
       <AriaButton
         isDisabled={!canAdd}
