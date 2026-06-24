@@ -1,7 +1,10 @@
 // Package views validates chart publication view documents: the format
-// structure (views.* with include/exclude/overrides/identity) and, when the
-// chart's values.schema.json is present, references to real schema fields. The
-// chart schema stays the single source of truth; a view only projects its fields.
+// structure (views.* with include/exclude/overrides/identity, plus optional
+// tabs/actions/defaults) and, when the chart's values.schema.json is present,
+// references to real schema fields. The chart schema stays the single source of
+// truth; a view only projects its fields. The "defaults" block additionally
+// lets a chart declare order-time values the portal stamps in (see Defaults /
+// ApplyDefaults in defaults.go).
 package views
 
 import (
@@ -42,10 +45,10 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	issues = append(issues, duplicateKeys(viewJSON)...)
 	for k := range doc {
 		switch k {
-		case "views", "tabs", "actions", "version", "$comment":
+		case "views", "tabs", "actions", "defaults", "version", "$comment":
 		default:
 			issues = append(issues, Issue{"/" + k,
-				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\" и \"version\"", k)})
+				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\" и \"version\"", k)})
 		}
 	}
 	viewsRaw, ok := doc["views"]
@@ -126,6 +129,43 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	// actions: placement of a view form in the "Actions" menu (info or tab:<id>).
 	if actionsRaw, ok := doc["actions"]; ok {
 		issues = append(issues, validateActions(actionsRaw, viewsMap, tabIDs)...)
+	}
+
+	// defaults: values the portal stamps into an order at create/update time.
+	if defaultsRaw, ok := doc["defaults"]; ok {
+		issues = append(issues, validateDefaults(defaultsRaw, schema)...)
+	}
+	return issues
+}
+
+// validateDefaults checks the "defaults" block: a map from a JSON pointer over
+// values to a scalar the portal stamps into an order (overwriting any submitted
+// value). Each key must be a JSON pointer that resolves in values.schema.json
+// (when the schema is known); each value must be a scalar.
+func validateDefaults(raw any, schema map[string]any) []Issue {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return []Issue{{"/defaults",
+			`Блок "defaults" должен быть объектом: {"/namespace/creator": "console"}`}}
+	}
+	var issues []Issue
+	for ptr, val := range m {
+		if !strings.HasPrefix(ptr, "/") {
+			issues = append(issues, Issue{"/defaults",
+				fmt.Sprintf("Ключ %q должен быть JSON pointer'ом, строкой вида \"/namespace/creator\"", ptr)})
+			continue
+		}
+		p := "/defaults" + ptr
+		switch val.(type) {
+		case map[string]any, []any:
+			issues = append(issues, Issue{p,
+				`Значение по умолчанию должно быть скаляром (строка/число/булево)`})
+			continue
+		}
+		if schema != nil && !pointerResolves(ptr, schema, schema) {
+			issues = append(issues, Issue{p,
+				fmt.Sprintf("Путь %q не находит поле в values.schema.json", ptr)})
+		}
 	}
 	return issues
 }

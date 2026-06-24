@@ -1,0 +1,18 @@
+{
+  "$comment": "Presentation document for the managed-namespace chart. The order form covers namespace, resource quotas and the optional subnet. The defaults block stamps namespace.creator=console at order time (the chart defaults it to lk for non-console deploys); the field is hidden in the form via the chart schema.",
+  "views": {
+    "order": {
+      "$comment": "identity = the namespace name: settable on create, locked on edit so the deploy identity cannot change.",
+      "identity": "/namespace/namespaceName",
+      "include": ["namespace", "resourceQuotas", "subnet"],
+      "overrides": {
+        "namespace": {
+          "ui:view": { "overrides": { "namespaceName": { "ui:readOnly": true } } }
+        }
+      }
+    }
+  },
+  "defaults": {
+    "/namespace/creator": "console"
+  }
+}

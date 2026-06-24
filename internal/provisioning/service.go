@@ -135,6 +135,19 @@ func (s *Service) resourceIdentity(ctx context.Context, chartProject, chartName,
 	return serviceName
 }
 
+// applyViewDefaults stamps order-time values declared in the chart's approved
+// view "defaults" block (JSON pointer -> value) into values, overwriting any
+// present value. It lets the portal record provenance or force fixed fields
+// (e.g. namespace.creator=console) without chart-specific code: the rule lives
+// in the chart's view document. A missing view/publication leaves values as-is.
+func (s *Service) applyViewDefaults(ctx context.Context, chartProject, chartName string, values map[string]any) map[string]any {
+	pub, err := s.store.GetPublicationByChart(ctx, chartProject, chartName)
+	if err != nil || pub == nil || len(pub.ApprovedViewJSON) == 0 {
+		return values
+	}
+	return views.ApplyDefaults(values, pub.ApprovedViewJSON)
+}
+
 // checkNamespaceIdentity returns a friendly ValidationError when another active
 // order of the same chart already deploys the same resource identity into the
 // same namespace+cluster. The DB partial unique index is the race-safe backstop;
@@ -580,6 +593,11 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	if values == nil {
 		values = map[string]any{}
 	}
+	// Stamp order-time values the chart declares in its view "defaults" block
+	// (e.g. namespace.creator=console). Applied before validation so the
+	// stamped values are schema-checked too. Chart-agnostic: the rule lives in
+	// the chart's view document, not here.
+	values = s.applyViewDefaults(ctx, project, name, values)
 	if !validate {
 		out, merr := yaml.Marshal(values)
 		if merr != nil {
