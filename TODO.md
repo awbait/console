@@ -185,7 +185,23 @@ ApplicationSet (`deployments/kind/applicationset.yaml`) **хардкодит**
   есть в конфиге, но не подключены. Приём вебхуков GitLab (MR merged) и Harbor
   (push чарта) дал бы мгновенную реакцию вместо тика поллера. Сюда же относится
   пункт «GitLab webhook» из ручного прохода и, возможно, причина «MR не смержился»
-  (отсутствие моментальной реакции на merge).
+  (отсутствие моментальной реакции на merge). Это канал **GitLab -> портал**.
+
+- [ ] **Нативный вебхук GitLab -> Argo CD** (отдельный канал от портального выше).
+  Сейчас Argo узнаёт об изменениях в git только поллингом: в стенде
+  `timeout.reconciliation` занижен до 30s (`deployments/kind/20-argocd.ps1`), что
+  на каждом `Application` (directory-app на репо + child-app на экземпляр) даёт
+  частые `git ls-remote`. Подключить встроенный эндпоинт `argocd-server`
+  `/api/webhook`:
+  - положить `webhook.gitlab.secret` в `argocd-secret`;
+  - завести webhook в GitLab **на уровне группы** `managed-services` (push, с этим
+    секретом) на эндпоинт `argocd-server`;
+  - (опц.) то же на `argocd-applicationset-controller` для ускорения генератора.
+  Нюанс: вебхук **рефрешит существующие** `Application`, но новые репо/экземпляры
+  по-прежнему обнаруживает SCM-генератор (листинг API). После подключения вернуть
+  `timeout.reconciliation` к 180s+ и поднять `requeueAfterSeconds` (60s) -
+  поллинг остаётся редкой подстраховкой. Для KinD проверить, что контейнер GitLab
+  достукивается до `argocd-server` (CoreDNS `host.docker.internal`).
 
 ### Горизонтальное масштабирование (техдолг, см. `docs/idp-spec.md`)
 
