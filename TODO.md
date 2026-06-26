@@ -182,14 +182,23 @@ ApplicationSet (`deployments/kind/applicationset.yaml`) **хардкодит**
 ### Вебхуки вместо поллинга
 
 - [x] `STATUS_UPDATE_MODE`, `HARBOR_WEBHOOK_SECRET`, `GITLAB_WEBHOOK_TOKEN`
-  подключены. При `STATUS_UPDATE_MODE=hybrid` портал принимает вебхуки GitLab
-  (`POST /api/v1/webhooks/gitlab`, MR merged/closed) и Harbor
-  (`POST /api/v1/webhooks/harbor`, push/delete artifact) и триггерит немедленный
-  reconcile-sweep поллера (`Poller.Trigger`) вместо ожидания тика. Поллинг
-  остаётся подстраховкой; вебхуки только ускоряют. Аутентификация shared-secret
-  (`X-Gitlab-Token` / `Authorization`, constant-time), маршруты регистрируются
-  только при заданном секрете. Метрика `console_webhooks_received_total`,
-  компонент логов `webhooks`, панель на дашборде. Это канал **GitLab -> портал**.
+  подключены. Портал принимает вебхуки GitLab (`POST /api/v1/webhooks/gitlab`,
+  MR merged/closed) и Harbor (`POST /api/v1/webhooks/harbor`, push/delete
+  artifact) и триггерит немедленный reconcile-sweep поллера (`Poller.Trigger`)
+  вместо ожидания тика. Два режима:
+  - `hybrid` (дефолт) - поллинг + вебхуки; поллинг остаётся подстраховкой, без
+    секретов вырождается в poll-only (локалка/fakes);
+  - `webhook` - только вебхуки, периодического поллинга нет (есть стартовый
+    sweep для догона после простоя). Требует `GITLAB_WEBHOOK_TOKEN` (иначе
+    жизненный цикл заказов не сдвинется), при старте громкий WARN: пропущенная
+    доставка не ретраится до рестарта.
+
+  Аутентификация shared-secret (`X-Gitlab-Token` / `Authorization`,
+  constant-time), маршруты регистрируются только при заданном секрете. Буфер
+  триггера на 1 коалесит всплеск событий в один полный idempotent sweep, при
+  триггере во время sweep гарантирован ещё один sweep после. Метрика
+  `console_webhooks_received_total`, компонент логов `webhooks`, панели на
+  дашборде. Это канал **GitLab -> портал**.
   - [ ] Опционально: точечный reconcile одного заказа по `(project, mr_iid)`
     вместо полного sweep (нужен reverse-lookup MR в сторе). Сейчас sweep
     идемпотентен и дёшев, поэтому отложено.

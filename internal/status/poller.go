@@ -145,17 +145,25 @@ func (p *Poller) Trigger(reason string) {
 	}
 }
 
-// Run blocks, ticking until the context is cancelled. It also reconciles once
-// immediately on start. Between ticks it also reacts to Trigger.
+// Run blocks, ticking until the context is cancelled. It always reconciles once
+// immediately on start (to catch up after downtime). With a positive interval it
+// then ticks periodically; with interval <= 0 (webhook-only mode) it does not
+// tick on its own and advances state only when Trigger fires.
 func (p *Poller) Run(ctx context.Context) {
-	t := time.NewTicker(p.interval)
-	defer t.Stop()
+	// A nil channel blocks forever in select, so interval <= 0 cleanly disables
+	// periodic ticking without a separate code path.
+	var tick <-chan time.Time
+	if p.interval > 0 {
+		t := time.NewTicker(p.interval)
+		defer t.Stop()
+		tick = t.C
+	}
 	p.tick(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-tick:
 			p.tick(ctx)
 		case reason := <-p.trigger:
 			p.log.Debug("reconcile triggered", "reason", reason)

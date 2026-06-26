@@ -140,6 +140,31 @@ func TestPollerTriggerRunsTick(t *testing.T) {
 	<-done
 }
 
+// TestPollerWebhookOnlyNoPeriodicTick: with interval <= 0 the poller runs the
+// startup sweep and reacts to Trigger, but never ticks on its own.
+func TestPollerWebhookOnlyNoPeriodicTick(t *testing.T) {
+	rec := &atomicReconciler{}
+	log := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelError}))
+	p := NewPoller(0, log, Named("x", rec)) // interval 0: webhook-only
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { p.Run(ctx); close(done) }()
+
+	waitFor(t, func() bool { return rec.calls.Load() == 1 }) // startup sweep only
+	// No ticker: give it room to (wrongly) fire, then assert it did not.
+	time.Sleep(50 * time.Millisecond)
+	if got := rec.calls.Load(); got != 1 {
+		t.Fatalf("webhook-only poller ticked on its own: calls=%d, want 1", got)
+	}
+	p.Trigger("webhook")
+	waitFor(t, func() bool { return rec.calls.Load() == 2 })
+
+	cancel()
+	<-done
+}
+
 // TestTriggerNonBlockingAndNilSafe: Trigger never blocks even with no consumer
 // (buffered, coalescing) and a nil poller is a no-op.
 func TestTriggerNonBlockingAndNilSafe(t *testing.T) {

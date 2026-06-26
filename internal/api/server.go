@@ -60,8 +60,9 @@ type Server struct {
 	// page (GET /api/v1/status). Optional: nil omits the reconcilers section.
 	Reconcilers reconcilerSnapshotter
 
-	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push) in the
-	// hybrid status mode. Optional: nil (polling mode) omits the webhook routes.
+	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push). Routes
+	// register per-source only when that source's secret is set; nil omits them
+	// entirely (e.g. tests).
 	Webhooks *webhooks.Handler
 
 	// sseStreams counts live SSE streams to enforce maxSSEStreams (zero value is
@@ -99,8 +100,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/auth/logout", s.Auth.Logout)
 
 		// upstream webhooks (machine-to-machine, authenticated by a shared secret
-		// in-handler, not by session): registered only in hybrid mode and only for
-		// sources whose secret is configured.
+		// in-handler, not by session): registered only for sources whose secret
+		// is configured.
 		if s.Webhooks != nil {
 			if s.Webhooks.GitLabEnabled() {
 				r.Post("/webhooks/gitlab", s.Webhooks.GitLab)
