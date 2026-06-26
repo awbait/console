@@ -62,6 +62,10 @@ if ($RealGitlab) {
   $env:GITLAB_TOKEN        = "glpat-localdev0123456789abcd"
   $env:GITLAB_AUTO_MERGE   = "true"   # poller merges portal MRs itself (no human gate)
   $env:STATUS_POLL_INTERVAL = "5s"    # snappier status progression for the demo
+  # Status freshness on the stand: hybrid (poll + webhooks). Default is already
+  # hybrid; set explicit so it is obvious. Do NOT use "webhook" here - Harbor
+  # webhooks cannot reach the host-run portal from a KinD pod (see kind/README.md).
+  $env:STATUS_UPDATE_MODE = "hybrid"
   # Webhook secrets (stand-fixed, NOT real) so STATUS_UPDATE_MODE=hybrid registers
   # the GitLab/Harbor webhook endpoints and the WARNs go away. Register a matching
   # GitLab group webhook to actually deliver events (see deployments/kind/README.md,
