@@ -181,11 +181,29 @@ ApplicationSet (`deployments/kind/applicationset.yaml`) **хардкодит**
 
 ### Вебхуки вместо поллинга
 
-- [ ] `STATUS_UPDATE_MODE`, `HARBOR_WEBHOOK_SECRET`, `GITLAB_WEBHOOK_TOKEN` уже
-  есть в конфиге, но не подключены. Приём вебхуков GitLab (MR merged) и Harbor
-  (push чарта) дал бы мгновенную реакцию вместо тика поллера. Сюда же относится
-  пункт «GitLab webhook» из ручного прохода и, возможно, причина «MR не смержился»
-  (отсутствие моментальной реакции на merge). Это канал **GitLab -> портал**.
+- [x] `STATUS_UPDATE_MODE`, `HARBOR_WEBHOOK_SECRET`, `GITLAB_WEBHOOK_TOKEN`
+  подключены. Портал принимает вебхуки GitLab (`POST /api/v1/webhooks/gitlab`,
+  MR merged/closed) и Harbor (`POST /api/v1/webhooks/harbor`, push/delete
+  artifact) и триггерит немедленный reconcile-sweep поллера (`Poller.Trigger`)
+  вместо ожидания тика. Два режима:
+  - `hybrid` (дефолт) - поллинг + вебхуки; поллинг остаётся подстраховкой, без
+    секретов вырождается в poll-only (локалка/fakes);
+  - `webhook` - только вебхуки, периодического поллинга нет (есть стартовый
+    sweep для догона после простоя). Требует `GITLAB_WEBHOOK_TOKEN` (иначе
+    жизненный цикл заказов не сдвинется), при старте громкий WARN: пропущенная
+    доставка не ретраится до рестарта.
+
+  Аутентификация shared-secret (`X-Gitlab-Token` / `Authorization`,
+  constant-time), маршруты регистрируются только при заданном секрете. Буфер
+  триггера на 1 коалесит всплеск событий в один полный idempotent sweep, при
+  триггере во время sweep гарантирован ещё один sweep после. Метрика
+  `console_webhooks_received_total`, компонент логов `webhooks`, панели на
+  дашборде. Это канал **GitLab -> портал**.
+  - [ ] Опционально: точечный reconcile одного заказа по `(project, mr_iid)`
+    вместо полного sweep (нужен reverse-lookup MR в сторе). Сейчас sweep
+    идемпотентен и дёшев, поэтому отложено.
+  - [ ] Опционально: канал C **ArgoCD -> портал** через `argocd-notifications`
+    (health/sync changed), чтобы ускорить переходы `Deploying -> Healthy/Degraded`.
 
 - [ ] **Нативный вебхук GitLab -> Argo CD** (отдельный канал от портального выше).
   Сейчас Argo узнаёт об изменениях в git только поллингом: в стенде

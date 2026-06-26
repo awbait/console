@@ -2,6 +2,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -13,6 +14,24 @@ type Mode string
 const (
 	ModeReal Mode = "real"
 	ModeFake Mode = "fake"
+)
+
+// Status update modes (STATUS_UPDATE_MODE) select how order and catalog state is
+// kept fresh:
+//   - hybrid (default): periodic reconcile PLUS inbound GitLab/Harbor webhooks
+//     that trigger an immediate sweep; the poll stays on as a safety net. With no
+//     webhook secrets set this degrades to poll-only, which is the right local /
+//     fakes behaviour (no webhook infra to point at the portal). STATUS_POLL_
+//     INTERVAL is the safety-net cadence; raise it once webhooks are wired.
+//   - webhook: webhooks only, no periodic poll. A startup sweep still runs (to
+//     catch up after downtime), but a missed/undelivered webhook is NOT retried
+//     until the next restart. Requires GITLAB_WEBHOOK_TOKEN (without it the order
+//     lifecycle would never advance). Use only with reliable webhook delivery.
+//
+// There is no poll-only mode: use hybrid without webhook secrets for that.
+const (
+	StatusModeHybrid  = "hybrid"
+	StatusModeWebhook = "webhook"
 )
 
 // DefaultSessionSecret is the insecure development default for SESSION_SECRET.
@@ -105,7 +124,7 @@ type Config struct {
 	// (the chart repoURL becomes "{ChartRegistry}/{chart_project}"). This is the
 	// Harbor OCI endpoint. Empty in fakes-only mode (the manifest is inert).
 	ChartRegistry      string        `env:"CHART_REGISTRY"`
-	StatusUpdateMode   string        `env:"STATUS_UPDATE_MODE" envDefault:"polling"`
+	StatusUpdateMode   string        `env:"STATUS_UPDATE_MODE" envDefault:"hybrid"`
 	StatusPollInterval time.Duration `env:"STATUS_POLL_INTERVAL" envDefault:"15s"`
 	// DriftDetection toggles the reverse-sync reconciler that flags orders whose
 	// committed Git state was changed outside the portal (read-only signal).
@@ -134,6 +153,12 @@ func Load() (*Config, error) {
 	cfg := &Config{}
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
+	}
+	switch cfg.StatusUpdateMode {
+	case StatusModeHybrid, StatusModeWebhook:
+	default:
+		return nil, fmt.Errorf("STATUS_UPDATE_MODE must be %q or %q, got %q",
+			StatusModeHybrid, StatusModeWebhook, cfg.StatusUpdateMode)
 	}
 	return cfg, nil
 }

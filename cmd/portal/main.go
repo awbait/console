@@ -27,6 +27,7 @@ import (
 	"console/internal/publications"
 	"console/internal/status"
 	"console/internal/store"
+	"console/internal/webhooks"
 	"console/pkg/models"
 )
 
@@ -191,18 +192,53 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			categoryID: publications.DefaultDiscoveryCategory,
 		}))
 	}
-	poller := status.NewPoller(cfg.StatusPollInterval, observability.Component(log, "poller"), reconcilers...)
+	// In webhook-only mode the poller does not tick on its own (interval <= 0):
+	// state advances solely on webhook-triggered sweeps, plus one startup sweep to
+	// catch up after downtime. In hybrid the poll keeps running as a safety net.
+	pollInterval := cfg.StatusPollInterval
+	if cfg.StatusUpdateMode == config.StatusModeWebhook {
+		pollInterval = 0
+	}
+	poller := status.NewPoller(pollInterval, observability.Component(log, "poller"), reconcilers...)
 	pollerDone := make(chan struct{})
 	go func() {
 		defer close(pollerDone)
 		poller.Run(ctx)
 	}()
 
+	// --- webhooks ---
+	// Both modes accept inbound GitLab/Harbor webhooks that trigger an immediate
+	// reconcile sweep. Routes register only for sources whose secret is set.
+	webhookHandler := webhooks.New(poller, observability.Component(log, "webhooks"),
+		cfg.GitLabWebhookToken, cfg.HarborWebhookKey)
+	switch cfg.StatusUpdateMode {
+	case config.StatusModeWebhook:
+		// No poll backstop here: GitLab webhook is the only thing that advances the
+		// order lifecycle, so a missing token would silently wedge every order.
+		if !webhookHandler.GitLabEnabled() {
+			return errors.New("STATUS_UPDATE_MODE=webhook requires GITLAB_WEBHOOK_TOKEN: " +
+				"without it the order lifecycle never advances (no periodic poll)")
+		}
+		log.Warn("webhook-only status mode: periodic poll disabled; a missed or undelivered " +
+			"webhook is NOT retried until restart - ensure reliable webhook delivery")
+		if cfg.CatalogAutodiscover && !webhookHandler.HarborEnabled() {
+			log.Warn("webhook-only status mode: HARBOR_WEBHOOK_SECRET not set; catalog autodiscovery " +
+				"will only run on the startup sweep")
+		}
+	case config.StatusModeHybrid:
+		if !webhookHandler.GitLabEnabled() {
+			log.Warn("hybrid status mode: GitLab webhook disabled (GITLAB_WEBHOOK_TOKEN not set), polling only for GitLab")
+		}
+		if !webhookHandler.HarborEnabled() {
+			log.Warn("hybrid status mode: Harbor webhook disabled (HARBOR_WEBHOOK_SECRET not set), polling only for Harbor")
+		}
+	}
+
 	// --- HTTP ---
 	srv := &api.Server{
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc, Status: statusSvc,
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
-		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller,
+		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
 		System: api.SystemInfo{
 			HarborMode:   string(cfg.HarborMode),
 			GitLabMode:   string(cfg.GitLabMode),
