@@ -157,17 +157,16 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   );
 }
 
-// Keep-a-Changelog section -> a neutral chip style. Intentionally NOT semantic
-// (no green "added" / red "removed"): the categories are differentiated only by
-// subtle shades of the grayscale families, so the log reads as informational
-// rather than good/bad.
+// Keep-a-Changelog section -> a chip style. Each category gets its own soft
+// (muted) tint so they're scannable, but the palette stays low-saturation rather
+// than loud semantic green/red.
 const CHANGELOG_SECTION_CLASS: Record<string, string> = {
-  added: "bg-slate-100 text-slate-700",
-  changed: "bg-stone-100 text-stone-700",
-  fixed: "bg-zinc-100 text-zinc-700",
-  removed: "bg-neutral-200 text-neutral-700",
-  deprecated: "bg-gray-100 text-gray-600",
-  security: "bg-slate-200 text-slate-700",
+  added: "bg-emerald-50 text-emerald-700",
+  changed: "bg-blue-50 text-blue-700",
+  fixed: "bg-violet-50 text-violet-700",
+  removed: "bg-rose-50 text-rose-700",
+  deprecated: "bg-amber-50 text-amber-700",
+  security: "bg-orange-50 text-orange-700",
 };
 
 function changelogSectionClass(section: string): string {
