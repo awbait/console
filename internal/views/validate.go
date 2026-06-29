@@ -457,7 +457,8 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 }
 
 // validateUITable checks the columns of a list tab: an array of objects. A column
-// sets either "path" (an element field name) or "lookup" (a value computed
+// sets either "path" (a slash path into the element; a "*" segment iterates the
+// array at that point, e.g. "from/*/namespace") or "lookup" (a value computed
 // through a join by reference). label is optional for a path column (defaults to
 // path) and required for a lookup column.
 func validateUITable(path string, raw any) []Issue {

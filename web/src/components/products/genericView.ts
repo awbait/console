@@ -155,7 +155,9 @@ function collectKeys(item: any, path: string): any[] {
 }
 
 // computeCell returns a column's display value for an item: a lookup column joins
-// against the order's full values, a plain column reads the item by path.
+// against the order's full values, a plain column reads the item by path. A path
+// with a "*" segment iterates the array at that point (e.g. "from/*/namespace"
+// over a list of peers) and returns the distinct collected values.
 export function computeCell(item: any, full: any, col: TableColumn): any {
   const lk = col.lookup;
   if (lk) {
@@ -167,7 +169,9 @@ export function computeCell(item: any, full: any, col: TableColumn): any {
       .filter((v) => v != null && v !== "");
     return [...new Set(vals)];
   }
-  return col.path != null ? cellValue(item, col.path) : undefined;
+  if (col.path == null) return undefined;
+  if (col.path.includes("*")) return [...new Set(collectKeys(item, col.path))];
+  return cellValue(item, col.path);
 }
 
 // A view placed into an actions menu, with an optional custom menu label.
