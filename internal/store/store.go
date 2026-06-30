@@ -66,6 +66,19 @@ type Store interface {
 	AddPublicationEvent(ctx context.Context, e *models.PublicationEvent) error
 	ListPublicationEvents(ctx context.Context, publicationID string) ([]*models.PublicationEvent, error)
 
+	// Publication versions (1:N under a publication). A version carries its own
+	// view document and approval status; orderable is the per-version allowlist.
+	ListVersions(ctx context.Context, publicationID string) ([]*models.PublicationVersion, error)
+	GetVersion(ctx context.Context, publicationID, chartVersion string) (*models.PublicationVersion, error)
+	// UpsertVersion creates the (publication_id, chart_version) row or updates the
+	// existing one (bumping its optimistic-lock version). It refreshes the passed
+	// struct's ID/Version/timestamps from the stored row.
+	UpsertVersion(ctx context.Context, v *models.PublicationVersion) error
+	// SetOrderable flips a single version's allowlist flag without a version bump.
+	SetOrderable(ctx context.Context, versionID string, orderable bool) error
+	// SetRecommended sets the publication's recommended_version (no version bump).
+	SetRecommended(ctx context.Context, publicationID, chartVersion string) error
+
 	// Tx runs fn within a single transaction: every store call on the Store given
 	// to fn commits or rolls back atomically. Used to keep a status transition and
 	// its audit event from half-applying.
