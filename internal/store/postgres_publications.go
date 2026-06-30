@@ -70,7 +70,8 @@ func (p *Postgres) ListCategories(ctx context.Context) ([]*models.Category, erro
 const pubCols = `id, chart_project, chart_name, category_id, owner_team,
 	created_by, created_by_name, status, view_json, approved_view_json,
 	COALESCE(reviewed_by,''), COALESCE(review_comment,''), version, created_at, updated_at,
-	draft_category_id, draft_owner_team, approved_view_version, approved_description, approved_icon_url`
+	draft_category_id, draft_owner_team, approved_view_version, approved_description, approved_icon_url,
+	recommended_version`
 
 func scanPublication(row pgx.Row) (*models.ChartPublication, error) {
 	var pub models.ChartPublication
@@ -79,7 +80,7 @@ func scanPublication(row pgx.Row) (*models.ChartPublication, error) {
 		&pub.CreatedBy, &pub.CreatedByName, &pub.Status, &view, &approved,
 		&pub.ReviewedBy, &pub.ReviewComment, &pub.Version, &pub.CreatedAt, &pub.UpdatedAt,
 		&pub.DraftCategoryID, &pub.DraftOwnerTeam, &pub.ApprovedViewVersion, &pub.ApprovedDescription,
-		&pub.ApprovedIconURL)
+		&pub.ApprovedIconURL, &pub.RecommendedVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, models.ErrNotFound
 	}
@@ -100,13 +101,13 @@ func (p *Postgres) CreatePublication(ctx context.Context, pub *models.ChartPubli
 		(id, chart_project, chart_name, category_id, owner_team, created_by, created_by_name,
 		 status, view_json, approved_view_json, reviewed_by, review_comment, version,
 		 draft_category_id, draft_owner_team, approved_view_version, approved_description,
-		 approved_icon_url)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		 approved_icon_url, recommended_version)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 		pub.ID, pub.ChartProject, pub.ChartName, pub.CategoryID, pub.OwnerTeam,
 		pub.CreatedBy, pub.CreatedByName, pub.Status, nullJSON(pub.ViewJSON),
 		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.Version,
 		pub.DraftCategoryID, pub.DraftOwnerTeam, pub.ApprovedViewVersion, pub.ApprovedDescription,
-		pub.ApprovedIconURL)
+		pub.ApprovedIconURL, pub.RecommendedVersion)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -161,13 +162,13 @@ func (p *Postgres) UpdatePublication(ctx context.Context, pub *models.ChartPubli
 		  category_id=$1, owner_team=$2, draft_category_id=$3, draft_owner_team=$4,
 		  status=$5, view_json=$6, approved_view_json=$7,
 		  reviewed_by=$8, review_comment=$9, approved_view_version=$10, approved_description=$11,
-		  approved_icon_url=$12,
+		  approved_icon_url=$12, recommended_version=$13,
 		  version=version+1, updated_at=NOW()
-		WHERE id=$13 AND version=$14`,
+		WHERE id=$14 AND version=$15`,
 		pub.CategoryID, pub.OwnerTeam, pub.DraftCategoryID, pub.DraftOwnerTeam,
 		pub.Status, nullJSON(pub.ViewJSON),
 		nullJSON(pub.ApprovedViewJSON), pub.ReviewedBy, pub.ReviewComment, pub.ApprovedViewVersion,
-		pub.ApprovedDescription, pub.ApprovedIconURL, pub.ID, pub.Version)
+		pub.ApprovedDescription, pub.ApprovedIconURL, pub.RecommendedVersion, pub.ID, pub.Version)
 	if err != nil {
 		return err
 	}
@@ -220,6 +221,105 @@ func (p *Postgres) ListPublicationEvents(ctx context.Context, publicationID stri
 		out = append(out, &e)
 	}
 	return out, rows.Err()
+}
+
+// --- publication versions ---
+
+const pubVersionCols = `id, publication_id, chart_version, view_json, approved_view_json,
+	status, orderable, approved_description, approved_icon_url,
+	COALESCE(reviewed_by,''), COALESCE(review_comment,''), version, created_at, updated_at`
+
+func scanPublicationVersion(row pgx.Row) (*models.PublicationVersion, error) {
+	var v models.PublicationVersion
+	var view, approved []byte
+	err := row.Scan(&v.ID, &v.PublicationID, &v.ChartVersion, &view, &approved,
+		&v.Status, &v.Orderable, &v.ApprovedDescription, &v.ApprovedIconURL,
+		&v.ReviewedBy, &v.ReviewComment, &v.Version, &v.CreatedAt, &v.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, models.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	v.ViewJSON = view
+	v.ApprovedViewJSON = approved
+	return &v, nil
+}
+
+func (p *Postgres) ListVersions(ctx context.Context, publicationID string) ([]*models.PublicationVersion, error) {
+	rows, err := p.db.Query(ctx,
+		`SELECT `+pubVersionCols+` FROM publication_versions WHERE publication_id=$1
+		 ORDER BY created_at, chart_version`, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.PublicationVersion
+	for rows.Next() {
+		v, err := scanPublicationVersion(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) GetVersion(ctx context.Context, publicationID, chartVersion string) (*models.PublicationVersion, error) {
+	return scanPublicationVersion(p.db.QueryRow(ctx,
+		`SELECT `+pubVersionCols+` FROM publication_versions WHERE publication_id=$1 AND chart_version=$2`,
+		publicationID, chartVersion))
+}
+
+// UpsertVersion requires v.ID set (the caller generates it, as for publications).
+func (p *Postgres) UpsertVersion(ctx context.Context, v *models.PublicationVersion) error {
+	// Insert the row, or update it in place keyed by (publication_id, chart_version);
+	// the optimistic-lock version is bumped on update. orderable is overwritten with
+	// the passed value, so callers load the current row before saving (the FSM does).
+	stored, err := scanPublicationVersion(p.db.QueryRow(ctx, `
+		INSERT INTO publication_versions
+		  (id, publication_id, chart_version, view_json, approved_view_json, status,
+		   orderable, approved_description, approved_icon_url, reviewed_by, review_comment, version)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1)
+		ON CONFLICT (publication_id, chart_version) DO UPDATE SET
+		  view_json=EXCLUDED.view_json, approved_view_json=EXCLUDED.approved_view_json,
+		  status=EXCLUDED.status, orderable=EXCLUDED.orderable,
+		  approved_description=EXCLUDED.approved_description, approved_icon_url=EXCLUDED.approved_icon_url,
+		  reviewed_by=EXCLUDED.reviewed_by, review_comment=EXCLUDED.review_comment,
+		  version=publication_versions.version+1, updated_at=NOW()
+		RETURNING `+pubVersionCols,
+		v.ID, v.PublicationID, v.ChartVersion, nullJSON(v.ViewJSON), nullJSON(v.ApprovedViewJSON),
+		v.Status, v.Orderable, v.ApprovedDescription, v.ApprovedIconURL, v.ReviewedBy, v.ReviewComment))
+	if err != nil {
+		return err
+	}
+	*v = *stored
+	return nil
+}
+
+func (p *Postgres) SetOrderable(ctx context.Context, versionID string, orderable bool) error {
+	tag, err := p.db.Exec(ctx,
+		`UPDATE publication_versions SET orderable=$1, updated_at=NOW() WHERE id=$2`, orderable, versionID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return models.ErrNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetRecommended(ctx context.Context, publicationID, chartVersion string) error {
+	tag, err := p.db.Exec(ctx,
+		`UPDATE chart_publications SET recommended_version=$1, updated_at=NOW() WHERE id=$2`,
+		chartVersion, publicationID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return models.ErrNotFound
+	}
+	return nil
 }
 
 // helpers

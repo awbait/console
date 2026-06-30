@@ -17,8 +17,9 @@ type Memory struct {
 	events    []*models.RequestEvent
 	eventSeq  int64
 	categories map[string]*models.Category
-	pubs       map[string]*models.ChartPublication
-	pubEvents  []*models.PublicationEvent
+	pubs        map[string]*models.ChartPublication
+	pubVersions map[string]*models.PublicationVersion // keyed by version ID
+	pubEvents   []*models.PublicationEvent
 	pubEventSeq int64
 	now       func() time.Time
 	lastStamp time.Time
@@ -31,9 +32,10 @@ func NewMemory() *Memory {
 	return &Memory{
 		requests:   map[string]*models.Request{},
 		mrs:        map[string]*models.RequestMR{},
-		categories: map[string]*models.Category{},
-		pubs:       map[string]*models.ChartPublication{},
-		now:        time.Now,
+		categories:  map[string]*models.Category{},
+		pubs:        map[string]*models.ChartPublication{},
+		pubVersions: map[string]*models.PublicationVersion{},
+		now:         time.Now,
 	}
 }
 

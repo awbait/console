@@ -168,3 +168,83 @@ func (m *Memory) ListPublicationEvents(ctx context.Context, publicationID string
 	}
 	return out, nil
 }
+
+// --- publication versions ---
+
+func (m *Memory) ListVersions(ctx context.Context, publicationID string) ([]*models.PublicationVersion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*models.PublicationVersion
+	for _, v := range m.pubVersions {
+		if v.PublicationID == publicationID {
+			out = append(out, clone(v))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return out[i].ChartVersion < out[j].ChartVersion
+	})
+	return out, nil
+}
+
+func (m *Memory) GetVersion(ctx context.Context, publicationID, chartVersion string) (*models.PublicationVersion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, v := range m.pubVersions {
+		if v.PublicationID == publicationID && v.ChartVersion == chartVersion {
+			return clone(v), nil
+		}
+	}
+	return nil, models.ErrNotFound
+}
+
+func (m *Memory) UpsertVersion(ctx context.Context, v *models.PublicationVersion) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.stamp()
+	for id, ex := range m.pubVersions {
+		if ex.PublicationID == v.PublicationID && ex.ChartVersion == v.ChartVersion {
+			v.ID = id
+			v.Version = ex.Version + 1
+			v.CreatedAt = ex.CreatedAt
+			v.UpdatedAt = now
+			m.pubVersions[id] = clone(v)
+			return nil
+		}
+	}
+	if v.Version == 0 {
+		v.Version = 1
+	}
+	if v.CreatedAt.IsZero() {
+		v.CreatedAt = now
+	}
+	v.UpdatedAt = now
+	m.pubVersions[v.ID] = clone(v)
+	return nil
+}
+
+func (m *Memory) SetOrderable(ctx context.Context, versionID string, orderable bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.pubVersions[versionID]
+	if !ok {
+		return models.ErrNotFound
+	}
+	v.Orderable = orderable
+	v.UpdatedAt = m.stamp()
+	return nil
+}
+
+func (m *Memory) SetRecommended(ctx context.Context, publicationID, chartVersion string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p, ok := m.pubs[publicationID]
+	if !ok {
+		return models.ErrNotFound
+	}
+	p.RecommendedVersion = chartVersion
+	p.UpdatedAt = m.stamp()
+	return nil
+}
