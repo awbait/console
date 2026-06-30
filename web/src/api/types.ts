@@ -171,6 +171,12 @@ export interface PublicationSummary {
   // "Blessed" chart version: the view is verified up to it - orders on a lower
   // version can be upgraded to it.
   approved_view_version?: string;
+  // Version served by default for new orders (owner's choice, or the highest
+  // orderable+APPROVED as a fall back). Empty when nothing is orderable yet.
+  recommended_version?: string;
+  // Versions available for ordering (allowlist), highest first. The catalog card
+  // shows the first as the main chip and the rest as "+N".
+  orderable_versions?: string[];
   // Chart description at approval time (catalog shows this, not the live one).
   approved_description?: string;
   // Chart icon at approval time (catalog/profile show this, not the live one).

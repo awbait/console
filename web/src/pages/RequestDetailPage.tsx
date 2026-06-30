@@ -31,7 +31,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Button, Card, Select, Spinner } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { safeHref } from "../lib/href";
-import { upgradeTargets } from "../lib/semver";
+import { upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";
 import { attachSseLogger } from "../lib/sse";
 import { DetailActions, fmtDateTime, Meta, ProductView } from "./requestDetailParts";
 
@@ -55,9 +55,9 @@ export function RequestDetailPage() {
   const { data: viewDoc } = useAsync<ViewDocument | null>(
     () =>
       data
-        ? api.getChartView(data.request.chart_project, data.request.chart_name)
+        ? api.getChartView(data.request.chart_project, data.request.chart_name, data.request.chart_version)
         : Promise.resolve(null),
-    [data?.request.chart_project, data?.request.chart_name],
+    [data?.request.chart_project, data?.request.chart_name, data?.request.chart_version],
   );
 
   const [editingName, setEditingName] = useState(false);
@@ -156,13 +156,13 @@ export function RequestDetailPage() {
   const catalogChart = findCatalogChart(charts, r.chart_project, r.chart_name);
   const pub = catalogChart?.publication;
   const liveStatus = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"].includes(r.status);
-  // Allowed upgrade versions: above current and not above the author-approved one.
-  // The single source of truth (it also validates ?to= on the order page).
-  const upgradeVersions = upgradeTargets(
-    catalogChart?.versions ?? [],
-    r.chart_version,
-    pub?.approved_view_version,
-  );
+  // Allowed upgrade versions (single source of truth; also validates ?to= on the
+  // order page): the orderable allowlist newer than current for multi-version
+  // publications, with a fall back to the legacy approved-version heuristic.
+  const upgradeVersions =
+    pub?.orderable_versions && pub.orderable_versions.length > 0
+      ? upgradeTargetsFromAllowlist(pub.orderable_versions, r.chart_version)
+      : upgradeTargets(catalogChart?.versions ?? [], r.chart_version, pub?.approved_view_version);
   const upgradeTo = upgradeVersions[0] ?? null; // recommended (approved) version
   const canUpgrade =
     editable && !isDraft && liveStatus && upgradeVersions.length > 0 && !r.drifted && !openMR;

@@ -3,10 +3,10 @@
 // OrderMetaCard (display name / service name / cluster / namespace + summary)
 // and OrderValuesCard (Form/Raw YAML toggle over the schema-driven form).
 import Editor from "@monaco-editor/react";
-import { Card, TextField } from "./ui";
+import type { JSONSchema } from "../api/types";
 import { useTheme } from "../app/ThemeContext";
 import { SchemaForm, type View } from "../form/SchemaForm";
-import type { JSONSchema } from "../api/types";
+import { Card, Select, TextField } from "./ui";
 
 type Values = Record<string, unknown>;
 
@@ -26,6 +26,9 @@ export function OrderMetaCard({
   team,
   version,
   latest = false,
+  versions,
+  onVersion,
+  recommendedVersion,
   identityName,
   showErrors = false,
 }: {
@@ -41,9 +44,15 @@ export function OrderMetaCard({
   team?: string;
   version?: string;
   latest?: boolean;
+  // Orderable versions (allowlist) and a setter: when more than one is offered a
+  // version dropdown is shown; otherwise the version is just printed below.
+  versions?: string[];
+  onVersion?: (v: string) => void;
+  recommendedVersion?: string;
   identityName?: string;
   showErrors?: boolean;
 }) {
+  const showVersionSelect = !!onVersion && !!versions && versions.length > 1;
   return (
     <Card className="flex flex-col gap-3">
       <TextField
@@ -81,10 +90,23 @@ export function OrderMetaCard({
         onChange={onNamespace}
         errorText={showErrors && !namespace ? "Обязательное поле" : undefined}
       />
+      {showVersionSelect && (
+        <Select
+          label="Версия"
+          description="Версия чарта для заказа."
+          selectedKey={version ?? null}
+          onSelectionChange={(v) => onVersion?.(v)}
+          options={(versions ?? []).map((v) => ({
+            id: v,
+            label: v === recommendedVersion ? `${v} (рекомендуемая)` : v,
+          }))}
+        />
+      )}
       <p className="text-xs text-gray-500">
         Команда <span className="font-medium text-gray-700">{team}</span> · версия{" "}
         <span className="font-medium text-gray-700">{version}</span>
         {latest && " (последняя)"}
+        {!showVersionSelect && version === recommendedVersion && recommendedVersion && " (рекомендуемая)"}
         {identity && (
           <>
             {" "}· идентификатор:{" "}
