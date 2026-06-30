@@ -14,6 +14,7 @@ import type {
   JSONSchema,
   OrderRequest,
   PublicationDetail,
+  PublicationVersion,
   RequestDetail,
   SystemStatus,
   UpdateOrderBody,
@@ -193,6 +194,34 @@ export const api = {
     req<ChartPublication>("POST", `/publications/${enc(id)}/approve`),
   rejectPublication: (id: string, comment: string) =>
     req<ChartPublication>("POST", `/publications/${enc(id)}/reject`, { comment }),
+
+  // publication versions (per-version view builder + approval FSM)
+  listVersions: (id: string, signal?: AbortSignal) =>
+    req<PublicationVersion[] | null>("GET", `/publications/${enc(id)}/versions`, undefined, signal).then(
+      (r) => r ?? [],
+    ),
+  saveVersionView: (id: string, version: string, view: ViewDocument) =>
+    req<PublicationVersion>("PUT", `/publications/${enc(id)}/versions/${enc(version)}`, { view }),
+  validateVersion: (id: string, version: string, view: ViewDocument) =>
+    req<{ issues: ViewIssue[] }>("POST", `/publications/${enc(id)}/versions/${enc(version)}/validate`, {
+      view,
+    }),
+  submitVersion: (id: string, version: string) =>
+    req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/submit`),
+  withdrawVersion: (id: string, version: string) =>
+    req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/withdraw`),
+  approveVersion: (id: string, version: string) =>
+    req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/approve`),
+  rejectVersion: (id: string, version: string, comment: string) =>
+    req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/reject`, {
+      comment,
+    }),
+  setVersionOrderable: (id: string, version: string, orderable: boolean) =>
+    req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/orderable`, {
+      orderable,
+    }),
+  setRecommendedVersion: (id: string, version: string) =>
+    req<void>("POST", `/publications/${enc(id)}/recommended`, { version }),
 
   // requests
   listRequests: (params?: Record<string, string>) =>

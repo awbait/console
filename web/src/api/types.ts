@@ -287,6 +287,27 @@ export interface ChartPublication {
   // if a newer one ships in Harbor - the author should update the view.
   approved_view_version?: string;
   approved_icon_url?: string;
+  // Version served by default for new orders (multi-version publications).
+  recommended_version?: string;
+  reviewed_by?: string;
+  review_comment?: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// One published version of a service (multi-version publications): its own view
+// document and approval status. orderable is the per-version allowlist flag.
+export interface PublicationVersion {
+  id: string;
+  publication_id: string;
+  chart_version: string;
+  view_json?: ViewDocument | null; // draft
+  approved_view_json?: ViewDocument | null; // approved view of this version
+  status: PublicationStatus;
+  orderable: boolean;
+  approved_description?: string;
+  approved_icon_url?: string;
   reviewed_by?: string;
   review_comment?: string;
   version: number;

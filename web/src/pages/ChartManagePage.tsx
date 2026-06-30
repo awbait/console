@@ -219,47 +219,68 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
   const project = pub.chart_project;
   const name = pub.chart_name;
 
-  // Chart schema (latest version), for the form preview.
+  // Chart versions (from Harbor) drive which version's view is edited.
   const { data: chart } = useAsync(() => api.getChart(project, name), [project, name]);
-  const version = chart?.latest_version ?? "";
+  const chartVersions = chart?.versions ?? [];
+
+  // Existing publication version rows (per-version view + approval status).
+  const { data: versions, reload: reloadVersions } = useAsync(() => api.listVersions(pub.id), [pub.id]);
+
+  // Selected chart version to edit; defaults to the latest once the chart loads.
+  const [selectedVersion, setSelectedVersion] = useState("");
+  useEffect(() => {
+    if (selectedVersion || !chart?.latest_version) return;
+    setSelectedVersion(chart.latest_version);
+  }, [selectedVersion, chart?.latest_version]);
+  const version = selectedVersion;
+
+  // The selected version's stored row (may not exist yet -> a fresh draft).
+  const cur = versions?.find((v) => v.chart_version === selectedVersion) ?? null;
+  const curStatus: PublicationStatus = cur?.status ?? "DRAFT";
+
+  // Chart schema of the selected version, for validation and the form preview.
   const { data: schema } = useAsync(
     () => (version ? api.getSchema(project, name, version) : Promise.resolve(null)),
     [project, name, version],
   );
 
-  const pending = pub.status === "PENDING";
+  const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);
   const editable = isOwner && !pending;
+  // Metadata (category/owner) keeps its own publication-level approval FSM,
+  // independent of the per-version view FSM: it is frozen only while the
+  // metadata change itself is under review (pub.status === PENDING).
+  const metaPending = pub.status === "PENDING";
+  const metaEditable = isOwner && !metaPending;
+  const hasMetaDraft = !!pub.draft_category_id || !!pub.draft_owner_team;
 
-  // View-document draft in the editor.
-  const [text, setText] = useState(() =>
-    pub.view_json ? JSON.stringify(pub.view_json, null, 2) : VIEW_TEMPLATE,
-  );
+  // View-document draft in the editor, (re)loaded when the selected version (or
+  // its stored row) arrives. A ref tracks what is loaded so a background refetch
+  // does not clobber unsaved edits for the same version.
+  const [text, setText] = useState(VIEW_TEMPLATE);
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedVersion || versions === null) return;
+    if (loadedFor.current === selectedVersion) return;
+    const row = versions.find((v) => v.chart_version === selectedVersion) ?? null;
+    const doc = row?.view_json ?? row?.approved_view_json ?? null;
+    setText(doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE);
+    loadedFor.current = selectedVersion;
+  }, [selectedVersion, versions]);
+
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "save" | "submit" | "withdraw">(null);
-  // The "new version is out" modal shows once per new version from Harbor: in
-  // localStorage we remember (per-user, per-chart) the version at which the user
-  // dismissed the modal; on the next version we show it again.
-  const seenKey = user ? `chart-version-nudge:${user.sub}:${project}/${name}` : null;
-  const [seenVersion, setSeenVersion] = useState<string | null>(null);
-  useEffect(() => {
-    if (!seenKey) return;
-    try {
-      setSeenVersion(localStorage.getItem(seenKey));
-    } catch {
-      /* localStorage unavailable - show the modal as usual */
-    }
-  }, [seenKey]);
+  const [busy, setBusy] = useState<
+    null | "save" | "submit" | "withdraw" | "orderable" | "recommend" | "meta"
+  >(null);
   const { success, error } = useToast();
-  // Rejected draft: on entering the page, show the reason once as a toast.
-  const firedReject = useRef(false);
+  // Rejected version: show the reason once as a toast when it is opened.
+  const firedReject = useRef<string | null>(null);
   useEffect(() => {
-    if (firedReject.current) return;
-    if (pub.status === "REJECTED" && pub.review_comment) {
-      firedReject.current = true;
-      error(`Причина: ${pub.review_comment}`, { title: "Отклонено" });
+    if (curStatus === "REJECTED" && cur?.review_comment && firedReject.current !== selectedVersion) {
+      firedReject.current = selectedVersion;
+      error(`Причина: ${cur.review_comment}`, { title: "Отклонено" });
     }
-  }, [error, pub.status, pub.review_comment]);
+  }, [error, curStatus, cur?.review_comment, selectedVersion]);
 
   // Draggable splitter between the schema panel and the preview: the left
   // panel's share in % (applied only on lg, where the panels sit side by side).
@@ -310,27 +331,28 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
   }, [text]);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
-    if (!parsed) return;
+    if (!parsed || !selectedVersion) return;
     clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
       api
-        .validatePublication(pub.id, parsed)
+        .validateVersion(pub.id, selectedVersion, parsed)
         .then((r) => setIssues(r.issues))
         .catch(() => {}); // validation, best effort, a network blip is fine
     }, 500);
     return () => clearTimeout(debounce.current);
-  }, [parsed, pub.id]);
+  }, [parsed, pub.id, selectedVersion]);
 
   async function onSave(notify = false): Promise<boolean> {
     if (!parsed) {
       setErr("Исправьте синтаксис JSON перед сохранением.");
       return false;
     }
+    if (!selectedVersion) return false;
     setBusy("save");
     setErr(null);
     try {
-      await api.updatePublication(pub.id, { view: parsed });
-      reload();
+      await api.saveVersionView(pub.id, selectedVersion, parsed);
+      reloadVersions();
       reloadCatalog();
       if (notify) success("Черновик сохранён");
       return true;
@@ -344,6 +366,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
 
   // Category/owner are edited in the header chips, but it is only a draft: the
   // live values (driving the catalog and permissions) change only after approval.
+  // This metadata FSM stays at the publication level, not per version.
   async function onMetaChange(patch: { category_id?: string; owner_team?: string }) {
     setErr(null);
     try {
@@ -359,9 +382,9 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     if (!(await onSave())) return;
     setBusy("submit");
     try {
-      await api.submitPublication(pub.id);
-      reload();
-      success("Изменения отправлены на согласование");
+      await api.submitVersion(pub.id, selectedVersion);
+      reloadVersions();
+      success("Версия отправлена на согласование");
     } catch (e) {
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
     } finally {
@@ -373,6 +396,35 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     setBusy("withdraw");
     setErr(null);
     try {
+      await api.withdrawVersion(pub.id, selectedVersion);
+      reloadVersions();
+    } catch (e) {
+      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Submit accumulated metadata changes (category/owner) for approval. This is
+  // the publication-level FSM, separate from the per-version view submit.
+  async function onSubmitMeta() {
+    setBusy("meta");
+    setErr(null);
+    try {
+      await api.submitPublication(pub.id);
+      reload();
+      success("Смена метаданных отправлена на согласование");
+    } catch (e) {
+      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onWithdrawMeta() {
+    setBusy("meta");
+    setErr(null);
+    try {
       await api.withdrawPublication(pub.id);
       reload();
     } catch (e) {
@@ -382,32 +434,57 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
     }
   }
 
-  const st = STATUS_LABELS[pub.status];
+  // Owner toggles whether the (approved) version is available for ordering.
+  async function onToggleOrderable() {
+    if (!cur) return;
+    setBusy("orderable");
+    setErr(null);
+    try {
+      await api.setVersionOrderable(pub.id, selectedVersion, !cur.orderable);
+      reloadVersions();
+      reloadCatalog();
+    } catch (e) {
+      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Owner marks the selected (orderable) version as the recommended default.
+  async function onSetRecommended() {
+    setBusy("recommend");
+    setErr(null);
+    try {
+      await api.setRecommendedVersion(pub.id, selectedVersion);
+      reload();
+      reloadCatalog();
+    } catch (e) {
+      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const st = STATUS_LABELS[curStatus];
   const viewNames = Object.keys(parsed?.views ?? {});
   const catLabel = (id: string) => categories.find((c) => c.id === id)?.label ?? id;
   const categoryLabel = catLabel(pub.category_id);
   const ownerOptions = [
     ...new Set([...(user?.teams ?? []), pub.owner_team, pub.draft_owner_team].filter(Boolean) as string[]),
   ];
-  // A version newer than the one the active view was approved for is out in
-  // Harbor: time for the author to update the view for the new schema.
-  const viewOutdated =
-    !!pub.approved_view_json &&
-    !!pub.approved_view_version &&
-    !!version &&
-    version !== pub.approved_view_version;
-  // Show the modal only if the user has not dismissed this version yet.
-  const showOutdated = viewOutdated && version !== seenVersion;
-  function dismissOutdated() {
-    setSeenVersion(version);
-    if (seenKey) {
-      try {
-        localStorage.setItem(seenKey, version);
-      } catch {
-        /* no localStorage - fine, we just won't remember the dismissal */
-      }
-    }
-  }
+  const recommended = pub.recommended_version ?? "";
+  const isRecommended = !!selectedVersion && recommended === selectedVersion;
+  const canToggleOrderable = isOwner && curStatus === "APPROVED" && !!cur?.approved_view_json;
+  const canRecommend = isOwner && !!cur?.orderable && curStatus === "APPROVED" && !isRecommended;
+  // Short status suffix for a version in the selector (e.g. "1.2.0 - согласовано").
+  const versionLabel = (v: string) => {
+    const row = versions?.find((x) => x.chart_version === v);
+    const parts: string[] = [v];
+    if (v === recommended) parts.push("рекомендуемая");
+    if (row?.orderable) parts.push("в каталоге");
+    else if (row) parts.push(STATUS_LABELS[row.status].label.toLowerCase());
+    return parts.length > 1 ? `${parts[0]} (${parts.slice(1).join(", ")})` : v;
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -415,76 +492,86 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
         <div>
           <h1 className="text-xl font-semibold">Управление: {chartLabel(name)}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {/* At status "Approved" show only "Published" (the status chip would
-                duplicate it). In other statuses show the draft status. */}
-            {pub.status !== "APPROVED" &&
-              (pub.status === "REJECTED" && pub.review_comment ? (
-                // The rejection chip is clickable: the reason shows in a modal.
-                <DialogTrigger>
-                  <AriaButton
-                    className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-brand-500 ${st.cls}`}
-                  >
-                    <st.Icon size={13} stroke={1.8} />
-                    {st.label}
-                  </AriaButton>
-                  <ModalOverlay
-                    isDismissable
-                    className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
-                  >
-                    <Modal className="w-full max-w-lg rounded-lg border border-slate-200 bg-surface shadow-xl">
-                      <Dialog className="outline-none">
-                        {({ close }) => (
-                          <div className="flex flex-col items-center gap-3 p-5 text-center">
-                            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500">
-                              <IconAlertCircle size={26} stroke={1.8} />
-                            </span>
-                            <Heading slot="title" className="text-base font-semibold text-slate-800">
-                              Публикация отклонена
-                            </Heading>
-                            <p className="text-sm text-slate-600">
-                              Администратор отклонил черновик. Причина:
-                            </p>
-                            <p className="w-full whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-700">
-                              {pub.review_comment}
-                            </p>
-                            <Button onPress={close}>Понятно</Button>
-                          </div>
-                        )}
-                      </Dialog>
-                    </Modal>
-                  </ModalOverlay>
-                </DialogTrigger>
-              ) : (
-                <Chip className={st.cls}>
+            {/* Version selector: which chart version's view is being edited. Each
+                option shows its per-version status (recommended / in catalog). */}
+            {chartVersions.length > 0 && (
+              <div className="w-56">
+                <Select
+                  label="Версия"
+                  hideLabel
+                  selectedKey={selectedVersion || null}
+                  onSelectionChange={setSelectedVersion}
+                  options={chartVersions.map((v) => ({ id: v, label: versionLabel(v) }))}
+                />
+              </div>
+            )}
+            {/* Per-version draft status. The rejection chip is clickable - the
+                reason shows in a modal. */}
+            {curStatus === "REJECTED" && cur?.review_comment ? (
+              <DialogTrigger>
+                <AriaButton
+                  className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-brand-500 ${st.cls}`}
+                >
                   <st.Icon size={13} stroke={1.8} />
                   {st.label}
-                </Chip>
-              ))}
-            {/* The active approved order form. At "Approved" it is the only
-                "green" chip; at draft/review/rejected it shows that the old
-                order form still works. */}
-            {pub.approved_view_json && (
-              <Chip className="bg-emerald-50 text-emerald-700">
-                <IconCheck size={12} stroke={2.5} />
-                Опубликовано
+                </AriaButton>
+                <ModalOverlay
+                  isDismissable
+                  className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
+                >
+                  <Modal className="w-full max-w-lg rounded-lg border border-slate-200 bg-surface shadow-xl">
+                    <Dialog className="outline-none">
+                      {({ close }) => (
+                        <div className="flex flex-col items-center gap-3 p-5 text-center">
+                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500">
+                            <IconAlertCircle size={26} stroke={1.8} />
+                          </span>
+                          <Heading slot="title" className="text-base font-semibold text-slate-800">
+                            Версия отклонена
+                          </Heading>
+                          <p className="text-sm text-slate-600">
+                            Администратор отклонил черновик версии. Причина:
+                          </p>
+                          <p className="w-full whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-700">
+                            {cur.review_comment}
+                          </p>
+                          <Button onPress={close}>Понятно</Button>
+                        </div>
+                      )}
+                    </Dialog>
+                  </Modal>
+                </ModalOverlay>
+              </DialogTrigger>
+            ) : (
+              <Chip className={st.cls}>
+                <st.Icon size={13} stroke={1.8} />
+                {st.label}
               </Chip>
             )}
-            <Chip className="bg-slate-100 text-slate-600">
-              <IconTag size={13} stroke={1.8} className="text-slate-400" />
-              <span className="text-slate-400">Версия:</span>
-              {/* In manage (and only here) we show that a new version is out in
-                  Harbor: approved -> new, otherwise just the current one. */}
-              {viewOutdated ? (
-                <span className="inline-flex items-center gap-1">
-                  v{pub.approved_view_version}
-                  <IconArrowNarrowRight size={14} stroke={1.8} className="text-amber-600" />
-                  <span className="text-amber-600">v{version}</span>
-                </span>
-              ) : (
-                version && <span>v{version}</span>
-              )}
-            </Chip>
-            {editable ? (
+            {/* Allowlist + recommended controls for an approved version. */}
+            {cur?.orderable && (
+              <Chip className="bg-emerald-50 text-emerald-700">
+                <IconCheck size={12} stroke={2.5} />
+                В каталоге
+              </Chip>
+            )}
+            {isRecommended && (
+              <Chip className="bg-brand-50 text-brand-700">
+                <IconTag size={12} stroke={2} />
+                Рекомендуемая
+              </Chip>
+            )}
+            {canToggleOrderable && (
+              <Button isDisabled={busy !== null} onPress={onToggleOrderable}>
+                {cur?.orderable ? "Убрать из каталога" : "Сделать доступной"}
+              </Button>
+            )}
+            {canRecommend && (
+              <Button isDisabled={busy !== null} onPress={onSetRecommended}>
+                Сделать рекомендуемой
+              </Button>
+            )}
+            {metaEditable ? (
               <ChipSelect
                 label="Категория"
                 icon={<IconCategory size={13} stroke={1.8} className="text-slate-400" />}
@@ -503,7 +590,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
                 {categoryLabel}
               </Chip>
             )}
-            {editable && ownerOptions.length > 1 ? (
+            {metaEditable && ownerOptions.length > 1 ? (
               <ChipSelect
                 label="Владелец"
                 icon={<IconUsersGroup size={13} stroke={1.8} className="text-slate-400" />}
@@ -547,46 +634,36 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
         )}
       </div>
 
-      {/* We announce a new chart version with a modal on entry (once, until
-          dismissed), not a persistent banner. */}
-      <ModalOverlay
-        isOpen={showOutdated}
-        onOpenChange={(open) => !open && dismissOutdated()}
-        isDismissable
-        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
-      >
-        <Modal className="w-full max-w-lg rounded-lg border border-slate-200 bg-surface shadow-xl">
-          <Dialog className="outline-none">
-            {({ close }) => (
-              <div className="flex flex-col items-center gap-3 p-5 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-500">
-                  <IconAlertCircle size={26} stroke={1.8} />
-                </span>
-                <Heading slot="title" className="text-base font-semibold text-slate-800">
-                  Доступна новая версия чарта
-                </Heading>
-                <p className="text-sm text-slate-600">
-                  Сейчас заказы работают на согласованной версии{" "}
-                  <span className="font-medium text-slate-800">{pub.approved_view_version}</span>. В
-                  Harbor вышла <span className="font-medium text-slate-800">{version}</span>. Чтобы
-                  открыть обновление заказов до неё, обновите view под новую схему (вкладка
-                  «values.schema.json») и отправьте на согласование.
-                </p>
-                <Button onPress={close}>Понятно</Button>
-              </div>
-            )}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
       {pending && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>Черновик на согласовании у администратора, правки заморожены до решения.</span>
+          <span>Версия {selectedVersion} на согласовании у администратора, правки заморожены до решения.</span>
           {isOwner && (
             <Button isDisabled={busy !== null} onPress={onWithdraw}>
               Отозвать для изменения
             </Button>
           )}
         </div>
+      )}
+      {/* Metadata (category/owner) change has its own approval flow. */}
+      {metaPending ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>Смена метаданных (категория/владелец) на согласовании у администратора.</span>
+          {isOwner && (
+            <Button isDisabled={busy !== null} onPress={onWithdrawMeta}>
+              Отозвать
+            </Button>
+          )}
+        </div>
+      ) : (
+        hasMetaDraft &&
+        isOwner && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <span>Есть несогласованные изменения метаданных (категория/владелец).</span>
+            <Button variant="primary" isDisabled={busy !== null} onPress={onSubmitMeta}>
+              Отправить метаданные на согласование
+            </Button>
+          </div>
+        )
       )}
       {err && <p className="text-sm text-red-600">{err}</p>}
 
