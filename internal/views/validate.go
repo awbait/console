@@ -228,7 +228,17 @@ func validateTabs(raw any, viewsMap, schema map[string]any) ([]Issue, map[string
 			}
 		}
 		if t, ok := m["ui:table"]; ok {
-			issues = append(issues, validateUITable(p+"/ui:table", t)...)
+			// Resolve the list element schema so column paths can be cross-checked
+			// against it (items points at the array; a column path is relative to
+			// one element). nil when the schema is absent or items is unresolved -
+			// then path checks are skipped, mirroring the other "cannot prove" cases.
+			var elem map[string]any
+			if schema != nil && strings.HasPrefix(items, "/") {
+				if arr := resolvePointerNode(items, schema, schema); arr != nil {
+					elem = itemNode(arr, schema)
+				}
+			}
+			issues = append(issues, validateUITable(p+"/ui:table", t, elem, schema)...)
 		}
 		if e, ok := m["enums"]; ok {
 			issues = append(issues, validateEnums(p+"/enums", e, schema)...)
@@ -461,7 +471,7 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 // array at that point, e.g. "from/*/namespace") or "lookup" (a value computed
 // through a join by reference). label is optional for a path column (defaults to
 // path) and required for a lookup column.
-func validateUITable(path string, raw any) []Issue {
+func validateUITable(path string, raw any, elem, root map[string]any) []Issue {
 	arr, ok := raw.([]any)
 	if !ok {
 		return []Issue{{path, `Поле "ui:table" должно быть массивом колонок: [{"path": "name", "label": "Имя"}]`}}
@@ -481,6 +491,9 @@ func validateUITable(path string, raw any) []Issue {
 			}
 		} else if s, ok := m["path"].(string); !ok || s == "" {
 			issues = append(issues, Issue{p + "/path", `Укажите "path": имя поля элемента, например "name", либо задайте "lookup"`})
+		} else if elem != nil && !tablePathResolves(s, elem, root) {
+			issues = append(issues, Issue{p + "/path",
+				fmt.Sprintf("Путь %q не находит поле в элементе списка (values.schema.json). Сверьтесь со вкладкой схемы", s)})
 		}
 		if l, ok := m["label"]; ok {
 			if _, ok := l.(string); !ok {
@@ -669,6 +682,41 @@ func pointerResolves(ptr string, node, root map[string]any) bool {
 			return true // schema not described further, do not blame
 		}
 		if isIndex(seg) {
+			if t, _ := cur["type"].(string); t != "" && t != "array" {
+				return false
+			}
+			items, _ := cur["items"].(map[string]any)
+			if items == nil {
+				return true
+			}
+			cur = deref(items, root)
+			continue
+		}
+		props := collectProperties(cur, root)
+		if props == nil {
+			return true // free-form object
+		}
+		next, ok := props[seg].(map[string]any)
+		if !ok {
+			return false
+		}
+		cur = deref(next, root)
+	}
+	return true
+}
+
+// tablePathResolves checks a ui:table column path against the list element
+// schema. Unlike a JSON pointer it has no leading slash and is relative to one
+// element; a "*" (or numeric) segment iterates the array at that point, e.g.
+// "from/*/namespace". Unknown/free-form parts count as a match, mirroring
+// pointerResolves: only a path we can prove wrong is flagged.
+func tablePathResolves(p string, elem, root map[string]any) bool {
+	cur := deref(elem, root)
+	for seg := range strings.SplitSeq(p, "/") {
+		if cur == nil {
+			return true // schema not described further, do not blame
+		}
+		if seg == "*" || isIndex(seg) {
 			if t, _ := cur["type"].(string); t != "" && t != "array" {
 				return false
 			}

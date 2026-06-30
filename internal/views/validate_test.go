@@ -209,7 +209,7 @@ func TestTabsEnumsLookupValid(t *testing.T) {
 	doc := `{"views":{"order":{"identity":"/gateways/0/name"},"route":{}},"tabs":[
 		{"id":"routes","items":"/xroutes","form":"route",
 		 "enums":[{"at":"/parentRefs/0/sectionName","from":"/gateways/0/listeners","value":"name"}],
-		 "ui:table":[{"path":"name","label":"Имя"},
+		 "ui:table":[{"path":"parentRefs/*/sectionName","label":"Секция"},
 			{"label":"Hostnames","lookup":{"keys":"/parentRefs/*/sectionName","in":"/gateways/0/listeners","match":"name","get":"hostname"}}]}
 	]}`
 	if issues := views.Validate([]byte(doc), []byte(schema)); len(issues) > 0 {
@@ -228,6 +228,7 @@ func TestTabsEnumsLookupIssues(t *testing.T) {
 		{"lookup not object", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"label":"H","lookup":[]}]}`), "/tabs/0/ui:table/0/lookup", "объектом"},
 		{"lookup get missing", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"label":"H","lookup":{"keys":"/parentRefs/*/sectionName","in":"/gateways/0/listeners","match":"name"}}]}`), "/tabs/0/ui:table/0/lookup/get", `Укажите "get"`},
 		{"lookup column no label", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"lookup":{"keys":"/k","in":"/gateways/0/listeners","match":"name","get":"hostname"}}]}`), "/tabs/0/ui:table/0/label", "вычисляемой колонки"},
+		{"path field unknown", base(`{"id":"a","items":"/xroutes","form":"route","ui:table":[{"path":"from/*/serviceAccount","label":"SA"}]}`), "/tabs/0/ui:table/0/path", "не находит поле в элементе"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
