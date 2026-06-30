@@ -153,10 +153,16 @@ export const api = {
       undefined,
       signal,
     ),
-  // Active approved chart view (view document from the publication). null -
-  // the chart has no approved view (form-based ordering is unavailable).
-  getChartView: (project: string, name: string, signal?: AbortSignal) =>
-    req<ViewDocument>("GET", `/charts/${enc(project)}/${enc(name)}/view`, undefined, signal).catch((e) => {
+  // Approved chart view (view document from the publication). With a version it
+  // returns that orderable version's view; without one, the default active view.
+  // null - no approved view for the request (form-based ordering unavailable).
+  getChartView: (project: string, name: string, version?: string, signal?: AbortSignal) =>
+    req<ViewDocument>(
+      "GET",
+      `/charts/${enc(project)}/${enc(name)}/view${version ? `?version=${enc(version)}` : ""}`,
+      undefined,
+      signal,
+    ).catch((e) => {
       if (e instanceof HttpError && e.status === 404) return null;
       throw e;
     }),

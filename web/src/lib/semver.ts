@@ -82,3 +82,12 @@ export function upgradeTargets(versions: string[], current: string, approved?: s
     .filter((v) => isNewer(v, current) && !isNewer(v, approved))
     .sort((a, b) => compareSemver(b, a));
 }
+
+// upgradeTargetsFromAllowlist returns the orderable versions an order on
+// `current` may upgrade to: the allowlisted (orderable+APPROVED) versions
+// strictly newer than current, newest first. This is the multi-version
+// replacement for upgradeTargets: the allowlist already bounds what the form is
+// approved for, so there is no separate "approved" ceiling.
+export function upgradeTargetsFromAllowlist(orderable: string[], current: string): string[] {
+  return orderable.filter((v) => isNewer(v, current)).sort((a, b) => compareSemver(b, a));
+}

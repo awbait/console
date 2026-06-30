@@ -20,7 +20,7 @@ import { actionViews, productTabs } from "../components/products/genericView";
 import { Button, Card, ErrorBox, Spinner } from "../components/ui";
 import { collectErrors, pruneEmpty } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
-import { isNewer, upgradeTargets } from "../lib/semver";
+import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";
 import { DetailTab } from "./requestDetailParts";
 
 type Values = Record<string, unknown>;
@@ -82,6 +82,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // ArgoCD destination: cluster (default in-cluster) + target namespace.
   const [cluster, setCluster] = useState("in-cluster");
   const [namespace, setNamespace] = useState("");
+  // New-order chart version: defaults to the recommended (or highest orderable)
+  // version once the catalog loads; the user can switch it (initialized below).
+  const [selectedVersion, setSelectedVersion] = useState("");
   const [mode, setMode] = useState<"form" | "raw">("form");
   const [values, setValues] = useState<Values>({});
   const [raw, setRaw] = useState("");
@@ -95,18 +98,33 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // could "upgrade" to an arbitrary version). Draft: the pinned version.
   // New order: the chart's latest version.
   const targetVersion = upgrade ? upgradeToParam : "";
-  // Allowed upgrade versions for this order (above current, not above the
-  // approved one). We validate ?to= against them so the form can't open on a
+  // Publication overlay: the allowlist of orderable versions + the recommended
+  // default (multi-version publications). Empty for legacy single-view charts.
+  const pub = findCatalogChart(charts, project, name)?.publication;
+  const orderableVersions = pub?.orderable_versions ?? [];
+  const recommendedVersion = pub?.recommended_version ?? "";
+  // Allowed upgrade versions for this order (newer than current). From the
+  // orderable allowlist when available, else the legacy approved-version
+  // heuristic. We validate ?to= against them so the form can't open on a
   // missing/disallowed version.
-  const approvedVersion = findCatalogChart(charts, project, name)?.publication?.approved_view_version;
-  const allowedUpgrades = upgrade
-    ? upgradeTargets(chart?.versions ?? [], draft?.chart_version ?? "", approvedVersion)
-    : [];
+  const allowedUpgrades = !upgrade
+    ? []
+    : orderableVersions.length > 0
+      ? upgradeTargetsFromAllowlist(orderableVersions, draft?.chart_version ?? "")
+      : upgradeTargets(chart?.versions ?? [], draft?.chart_version ?? "", pub?.approved_view_version);
   const effectiveVersion = upgrade
     ? targetVersion || null
     : editing
       ? draft?.chart_version ?? null
-      : chart?.latest_version ?? null;
+      : selectedVersion || null;
+
+  // Initialize the new-order version once the catalog/publication is known:
+  // recommended, else the highest orderable, else the chart's latest version.
+  useEffect(() => {
+    if (editing || upgrade || selectedVersion) return;
+    const def = recommendedVersion || orderableVersions[0] || chart?.latest_version || "";
+    if (def) setSelectedVersion(def);
+  }, [editing, upgrade, selectedVersion, recommendedVersion, orderableVersions, chart?.latest_version]);
 
   // Upgrade: the chart's CHANGELOG between the order's current version and the
   // target, so the changes are visible.
@@ -130,10 +148,13 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     async (signal) => {
       if (!project || !name || !effectiveVersion) return null;
       const schema = await api.getSchema(project, name, effectiveVersion, signal);
-      const ui = await api.getChartView(project, name, signal).catch(() => null);
+      // Request the view for the selected version only when it is an orderable
+      // version; otherwise (legacy charts) fall back to the default active view.
+      const viewVersion = orderableVersions.includes(effectiveVersion) ? effectiveVersion : undefined;
+      const ui = await api.getChartView(project, name, viewVersion, signal).catch(() => null);
       return { schema, doc: ui, view: ui?.views?.order };
     },
-    [project, name, effectiveVersion],
+    [project, name, effectiveVersion, orderableVersions.join(",")],
   );
   const schema = form?.schema ?? null;
   const orderView = form?.view;
@@ -441,7 +462,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           onNamespace={setNamespace}
           team={editing ? draft?.team : activeTeam ?? undefined}
           version={effectiveVersion ?? undefined}
-          latest={!editing}
+          latest={!editing && orderableVersions.length === 0}
+          versions={editing ? undefined : orderableVersions}
+          onVersion={editing ? undefined : setSelectedVersion}
+          recommendedVersion={recommendedVersion}
           identityName={identityName}
           showErrors={showErrors}
         />
