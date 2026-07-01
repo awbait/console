@@ -58,6 +58,11 @@ const STATUS_META: Record<PublicationStatus, { label: string; tone: Tone }> = {
   REJECTED: { label: "Отклонено", tone: "red" },
 };
 
+// Aggregate status for display/filtering: the raw status stays DRAFT while
+// approvals happen per version, so read the version-derived effective_status when
+// the backend provides it.
+const effStatus = (p: ChartPublication): PublicationStatus => p.effective_status ?? p.status;
+
 function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${TONE[tone]}`}>
@@ -137,8 +142,8 @@ export function AdminOverviewPage() {
   const pendingMeta = all.filter((p) => p.status === "PENDING");
   const pendingVersions = pendingVers ?? [];
   const pendingCount = pendingMeta.length + pendingVersions.length;
-  const published = all.filter((p) => !!p.approved_view_json).length;
-  const drafts = all.filter((p) => p.status === "DRAFT" || p.status === "REJECTED").length;
+  const published = all.filter((p) => effStatus(p) === "APPROVED").length;
+  const drafts = all.filter((p) => effStatus(p) === "DRAFT" || effStatus(p) === "REJECTED").length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -312,8 +317,8 @@ export function AdminApprovalsPage() {
 
   const all = pubs ?? [];
   const pendingVersions = pendingVers ?? [];
-  const count = (s: Filter) => (s === "ALL" ? all.length : all.filter((p) => p.status === s).length);
-  const rows = filter === "ALL" ? all : all.filter((p) => p.status === filter);
+  const count = (s: Filter) => (s === "ALL" ? all.length : all.filter((p) => effStatus(p) === s).length);
+  const rows = filter === "ALL" ? all : all.filter((p) => effStatus(p) === filter);
   const filters: { id: Filter; label: string }[] = [
     { id: "ALL", label: "Все" },
     { id: "PENDING", label: "Ожидают" },
@@ -406,8 +411,8 @@ export function AdminApprovalsPage() {
             </thead>
             <tbody>
               {rows.map((p) => {
-                const st = STATUS_META[p.status];
-                const isPending = p.status === "PENDING";
+                const st = STATUS_META[effStatus(p)];
+                const isPending = effStatus(p) === "PENDING";
                 return (
                   <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-3">
@@ -500,7 +505,7 @@ export function AdminApprovalDetailPage() {
     );
   }
 
-  const st = STATUS_META[pub.status];
+  const st = STATUS_META[effStatus(pub)];
   return (
     <div className="flex flex-col gap-5">
       {back}

@@ -440,14 +440,19 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		// degrades to the legacy single-view fields below.
 		recommended, orderable, _ := s.Pubs.CatalogVersions(ctx, p)
 		byChart[p.ChartProject+"/"+p.ChartName] = &publicationSummary{
-			ID:                  p.ID,
-			CategoryID:          p.CategoryID,
-			OwnerTeam:           p.OwnerTeam,
-			CreatedBy:           p.CreatedBy,
-			CreatedByName:       p.CreatedByName,
-			Status:              p.Status,
-			Published:           p.Published() || len(orderable) > 0,
-			HasOrderView:        hasOrderView(p.ApprovedViewJSON),
+			ID:            p.ID,
+			CategoryID:    p.CategoryID,
+			OwnerTeam:     p.OwnerTeam,
+			CreatedBy:     p.CreatedBy,
+			CreatedByName: p.CreatedByName,
+			Status:        p.EffectiveStatus,
+			Published:     p.Published() || len(orderable) > 0,
+			// An orderable version always carries an approved view with an "order"
+			// form (submit/save enforce ValidateStructure, which requires it), so
+			// any orderable version means the chart has an order form - without this
+			// a multi-version publication (empty legacy ApprovedViewJSON) would be
+			// hidden from the sidebar.
+			HasOrderView:        hasOrderView(p.ApprovedViewJSON) || len(orderable) > 0,
 			ApprovedViewVersion: p.ApprovedViewVersion,
 			ApprovedDescription: p.ApprovedDescription,
 			ApprovedIconURL:     p.ApprovedIconURL,

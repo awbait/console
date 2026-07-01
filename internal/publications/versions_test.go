@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"console/internal/publications"
+	"console/internal/store"
 	"console/pkg/models"
 )
 
@@ -155,6 +156,60 @@ func TestVersionsAreIndependent(t *testing.T) {
 	list, err := svc.ListVersions(ctx, p.ID)
 	if err != nil || len(list) != 2 {
 		t.Fatalf("want 2 versions, got %d (%v)", len(list), err)
+	}
+}
+
+// A publication whose metadata FSM never left DRAFT but that carries approved,
+// orderable versions must read as APPROVED (the reported bug: the admin list
+// showed "Черновик" and the sidebar hid the chart).
+func TestListEffectiveStatus(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	owner := member("core")
+	p := newPub(t, svc, owner, "ingress-gateway")
+	if p.Status != models.PubDraft {
+		t.Fatalf("fresh publication want DRAFT, got %s", p.Status)
+	}
+
+	publishVersion(t, svc, owner, p.ID, "1.0.0", viewV1)
+	publishVersion(t, svc, owner, p.ID, "2.0.0", viewV2)
+
+	list, err := svc.List(ctx, store.PublicationFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var got *models.ChartPublication
+	for _, pub := range list {
+		if pub.ID == p.ID {
+			got = pub
+		}
+	}
+	if got == nil {
+		t.Fatalf("publication not in list")
+	}
+	if got.Status != models.PubDraft {
+		t.Fatalf("raw status must stay DRAFT, got %s", got.Status)
+	}
+	if got.EffectiveStatus != models.PubApproved {
+		t.Fatalf("effective status want APPROVED, got %s", got.EffectiveStatus)
+	}
+
+	// A fresh version under review flips the effective status to PENDING so it
+	// surfaces in the admin queue, even though other versions stay published.
+	if _, err := svc.SaveVersionView(ctx, owner, p.ID, "3.0.0", viewV1); err != nil {
+		t.Fatalf("save v3: %v", err)
+	}
+	if _, err := svc.SubmitVersion(ctx, owner, p.ID, "3.0.0"); err != nil {
+		t.Fatalf("submit v3: %v", err)
+	}
+	list, err = svc.List(ctx, store.PublicationFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, pub := range list {
+		if pub.ID == p.ID && pub.EffectiveStatus != models.PubPending {
+			t.Fatalf("effective status with a pending version want PENDING, got %s", pub.EffectiveStatus)
+		}
 	}
 }
 
