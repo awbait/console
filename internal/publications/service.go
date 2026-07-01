@@ -14,10 +14,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/google/uuid"
 	"console/internal/store"
 	"console/internal/views"
 	"console/pkg/models"
+	"github.com/google/uuid"
 )
 
 var (
@@ -461,7 +461,20 @@ func (s *Service) GetByChart(ctx context.Context, project, name string) (*models
 }
 
 func (s *Service) List(ctx context.Context, f store.PublicationFilter) ([]*models.ChartPublication, error) {
-	return s.store.ListPublications(ctx, f)
+	pubs, err := s.store.ListPublications(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	// Fill in the effective (version-derived) status so callers do not read the
+	// legacy Status column, which stays DRAFT while approvals happen per version.
+	for _, p := range pubs {
+		vs, err := s.store.ListVersions(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		p.EffectiveStatus = models.DeriveStatus(p, vs)
+	}
+	return pubs, nil
 }
 
 func (s *Service) ListEvents(ctx context.Context, id string) ([]*models.PublicationEvent, error) {

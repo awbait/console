@@ -43,6 +43,11 @@ type ChartPublication struct {
 	CreatedBy     string            `json:"created_by"`
 	CreatedByName string            `json:"created_by_name"`
 	Status        PublicationStatus `json:"status"`
+	// EffectiveStatus is the aggregate approval status derived from the versions
+	// (see DeriveStatus). Computed at read time, never persisted: Status alone is
+	// misleading for multi-version publications. Empty unless the read path fills
+	// it in.
+	EffectiveStatus PublicationStatus `json:"effective_status,omitempty"`
 	// DraftCategoryID/DraftOwnerTeam is a proposed but not yet approved metadata
 	// change. Live values (CategoryID/OwnerTeam, used by the catalog and
 	// permissions) change only on approve; an empty string - no pending changes.
@@ -82,6 +87,39 @@ type ChartPublication struct {
 // PublicationVersion.Published). This single-view flag stays during the
 // transition while the approved_* columns are still read.
 func (p *ChartPublication) Published() bool { return len(p.ApprovedViewJSON) > 0 }
+
+// DeriveStatus computes a publication's effective (aggregate) status from its
+// versions. The DB Status column tracks only the metadata/legacy-view FSM, which
+// stays DRAFT while approvals happen per version, so the admin UI and catalog
+// must read this instead of Status directly.
+//
+// Precedence: a metadata change or any version under review -> PENDING (needs
+// admin action); otherwise any APPROVED version -> APPROVED; any REJECTED version
+// -> REJECTED; else the publication-level Status (DRAFT for a fresh publication,
+// or the legacy single-view status).
+func DeriveStatus(p *ChartPublication, versions []*PublicationVersion) PublicationStatus {
+	var hasApproved, hasRejected, hasPending bool
+	for _, v := range versions {
+		switch v.Status {
+		case PubApproved:
+			hasApproved = true
+		case PubRejected:
+			hasRejected = true
+		case PubPending:
+			hasPending = true
+		}
+	}
+	switch {
+	case p.Status == PubPending || hasPending:
+		return PubPending
+	case hasApproved:
+		return PubApproved
+	case hasRejected:
+		return PubRejected
+	default:
+		return p.Status
+	}
+}
 
 // PendingMeta reports whether there is an unapproved category/owner change.
 func (p *ChartPublication) PendingMeta() bool {

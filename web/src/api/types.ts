@@ -277,6 +277,11 @@ export interface ChartPublication {
   created_by: string;
   created_by_name: string;
   status: PublicationStatus;
+  // Aggregate approval status derived from the versions (multi-version
+  // publications): status alone stays DRAFT while approvals happen per version.
+  // Prefer this for display/filtering; status stays the raw metadata FSM (used by
+  // the metadata review flow). Absent on responses that do not compute it.
+  effective_status?: PublicationStatus;
   // Unapproved metadata change: live category_id/owner_team change only on
   // approve, until then the proposed values live here (empty - no edits).
   draft_category_id?: string;
