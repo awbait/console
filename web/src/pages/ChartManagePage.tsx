@@ -107,7 +107,7 @@ export function ChartManagePage() {
   if (pubError && !pub) return <ErrorBox error={pubError} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <Breadcrumbs
         items={[
           { label: "Чарты", to: "/catalog" },
