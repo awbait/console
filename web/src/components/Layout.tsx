@@ -467,9 +467,12 @@ export function Layout() {
             white block on the form). */}
         <main className="relative min-h-0 flex-1 overflow-y-auto p-6">
           {/* Constrain content width and center it: on wide screens rows don't
-              stretch full width. h-full keeps the height chain intact (pages
-              that stretch full height, e.g. the view builder). */}
-          <div className={`mx-auto h-full w-full ${fullBleed ? "" : "max-w-screen-xl"}`}>
+              stretch full width. flex-col + h-full keeps the height chain intact
+              for pages that stretch full height (e.g. the view builder): they use
+              flex-1 at their root instead of a fragile multi-level height:100%
+              chain. Short pages keep a single content-sized child pinned to the
+              top, unchanged. */}
+          <div className={`mx-auto flex h-full w-full flex-col ${fullBleed ? "" : "max-w-screen-xl"}`}>
             <Outlet />
           </div>
         </main>
