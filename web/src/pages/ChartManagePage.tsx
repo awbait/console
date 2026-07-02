@@ -1010,6 +1010,25 @@ function FormatHelp() {
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/gateways/0/name"</code>.
                       Подписи полей форма берёт из <b>title</b> / <b>description</b> в values.schema.json.
                     </li>
+                    <li>
+                      <b>namespace</b> (необязательно): откуда брать{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">destination.namespace</code> и
+                      показывать ли поле «Namespace» в форме. По умолчанию поле показывается и его ввод и есть
+                      namespace. Объект меняет источник:{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">
+                        {'{"source":"values","pointer":"/namespace/namespaceName","hideOrderField":true}'}
+                      </code>
+                      . <b>source</b>:{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"field"</code> (ввод в форме,
+                      по умолчанию),{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"values"</code> (из поля values
+                      по <b>pointer</b> - для чартов, что сами создают namespace),{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"fixed"</code> (константа{" "}
+                      <b>value</b> - для операторов и cluster-scoped). <b>hideOrderField: true</b> прячет поле
+                      «Namespace» (для values/fixed). Строка{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/namespace/namespaceName"</code>{" "}
+                      - устаревшая форма-зеркало: ввод «Namespace» копируется в это поле.
+                    </li>
                   </ul>
                   <pre className="mt-3 overflow-x-auto rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
                     {`{
