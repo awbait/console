@@ -671,15 +671,20 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           /admin/approvals/:project/:name. This page is the owner's editor. */}
 
       {/* Builder: the document on the left (+ chart schema alongside, read-only), preview on
-          the right. Stretches to all the page's free height (no outer scroll): the editor
-          and preview fill the column, scroll is internal only. Between the panels is a
-          draggable splitter (on lg), the left panel's share = --split. */}
+          the right. On lg the two panels sit side by side and the height lock engages
+          (flex-1 + min-h-0): they fill the page's free height and scroll internally, so the
+          page itself never scrolls. Below lg the panels stack; the lock is dropped (no
+          min-h-0/flex-1) so each keeps its natural height (editor min-h-[400px], preview the
+          full form) and the page scrolls normally - two 400px+ panels cannot be crammed into
+          a phone-height viewport, and crushing them (min-h-0) only made the editor unusable
+          and leaked overflow into the page. Between the panels is a draggable splitter (lg),
+          the left panel's share = --split. */}
       <div
         ref={splitRef}
-        className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0"
+        className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-0"
         style={{ ["--split" as string]: `${splitPct}%` } as React.CSSProperties}
       >
-        <Card className="flex min-h-0 flex-col gap-2 lg:min-w-0 lg:shrink-0 lg:basis-[var(--split)]">
+        <Card className="flex flex-col gap-2 lg:min-h-0 lg:min-w-0 lg:shrink-0 lg:basis-[var(--split)]">
           <Tabs className="flex min-h-0 flex-1 flex-col">
             <TabList aria-label="Документы" className="flex gap-1 border-b border-gray-200">
               <EditorTab id="view">view.schema.json</EditorTab>
@@ -776,7 +781,7 @@ function ManagePublication({ pub, reload }: { pub: ChartPublication; reload: () 
           <div className="w-1 rounded-full bg-slate-200 transition-colors group-hover:bg-brand-400" />
         </div>
 
-        <Card className="flex min-h-0 flex-col gap-2 lg:min-w-0 lg:flex-1">
+        <Card className="flex flex-col gap-2 lg:min-h-0 lg:min-w-0 lg:flex-1">
           {!schema ? (
             <p className="text-sm text-gray-500">
               Схема values.schema.json недоступна, предпросмотр невозможен.
@@ -1155,9 +1160,15 @@ function PreviewPane({
           Страница продукта
         </EditorTab>
       </TabList>
+      {/* relative: this scroll container is the containing block for react-aria's
+          absolutely-positioned hidden nodes (VisuallyHidden inside Select). Without
+          it they anchor to the nearest positioned ancestor (main) at their deep
+          static position and inflate main's scrollHeight - a phantom empty gap
+          below the side-by-side builder. Anchored here, they sit inside the panel's
+          own overflow-y-auto and add nothing to the page. */}
       <TabPanel
         id="order"
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 pt-3 outline-none"
+        className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 pt-3 outline-none"
       >
         {orderView ? (
           <>
@@ -1195,7 +1206,7 @@ function PreviewPane({
       </TabPanel>
       <TabPanel
         id="product"
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1 pt-3 outline-none"
+        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto pr-1 pt-3 outline-none"
       >
         <ProductPagePreview
           request={request}

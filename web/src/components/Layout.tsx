@@ -464,15 +464,18 @@ export function Layout() {
             makes it the containing block for react-aria's absolutely-positioned
             hidden nodes (VisuallyHidden/HiddenSelect) so they're clipped here
             instead of escaping to grow the document (whole-page scroll + phantom
-            white block on the form). */}
-        <main className="relative min-h-0 flex-1 overflow-y-auto p-6">
+            white block on the form). flex flex-col makes the wrapper below a flex
+            item so it takes its height via flex-1 (not a height:100% percentage,
+            which Chrome does not resolve against a flex-item main - the wrapper
+            then collapsed to content height and main scrolled). */}
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
           {/* Constrain content width and center it: on wide screens rows don't
-              stretch full width. flex-col + h-full keeps the height chain intact
-              for pages that stretch full height (e.g. the view builder): they use
-              flex-1 at their root instead of a fragile multi-level height:100%
-              chain. Short pages keep a single content-sized child pinned to the
-              top, unchanged. */}
-          <div className={`mx-auto flex h-full w-full flex-col ${fullBleed ? "" : "max-w-screen-xl"}`}>
+              stretch full width. flex-1 + min-h-0 gives full-height pages (e.g.
+              the view builder, which uses flex-1 at its root) a real bounded
+              height via flex, with no fragile height:100% chain. mx-auto centers
+              the max-width box on the cross axis. Short pages keep a single
+              content-sized child pinned to the top, unchanged. */}
+          <div className={`mx-auto flex min-h-0 w-full flex-1 flex-col ${fullBleed ? "" : "max-w-screen-xl"}`}>
             <Outlet />
           </div>
         </main>
