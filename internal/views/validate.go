@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -431,23 +432,35 @@ func validateView(path string, vm map[string]any, node, root map[string]any, top
 					fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", s)})
 			}
 		case "namespace":
-			// Binds the order's destination namespace to a values field: a chart
-			// that provisions its own namespace (managed-namespace) is rendered into
-			// the namespace it creates. The portal mirrors the namespace into it.
-			s, ok := v.(string)
-			if !ok || !strings.HasPrefix(s, "/") {
-				issues = append(issues, Issue{path + "/namespace",
-					`Поле "namespace" должно быть JSON pointer'ом, строкой вида "/namespace/namespaceName"`})
-				continue
-			}
+			// Declares where the order's ArgoCD destination namespace comes from.
+			// Two forms:
+			//   - string "/ptr": legacy mirror - the order namespace is copied into
+			//     that values field (a chart that provisions its own namespace, e.g.
+			//     managed-namespace, is rendered into the namespace it creates).
+			//   - object {source, pointer, value, hideOrderField}: source=field (the
+			//     form input), values (a values field the chart names itself by), or
+			//     fixed (a constant). source=values/fixed hides the form field.
 			if !top {
 				issues = append(issues, Issue{path + "/namespace",
 					`Поле "namespace" допустимо только на верхнем уровне view. Уберите его из ui:view`})
 				continue
 			}
-			if node != nil && !pointerResolves(s, node, root) {
+			switch nv := v.(type) {
+			case string:
+				if !strings.HasPrefix(nv, "/") {
+					issues = append(issues, Issue{path + "/namespace",
+						`Поле "namespace" должно быть JSON pointer'ом, строкой вида "/namespace/namespaceName"`})
+					continue
+				}
+				if node != nil && !pointerResolves(nv, node, root) {
+					issues = append(issues, Issue{path + "/namespace",
+						fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", nv)})
+				}
+			case map[string]any:
+				issues = append(issues, validateNamespaceRule(path, nv, node, root)...)
+			default:
 				issues = append(issues, Issue{path + "/namespace",
-					fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", s)})
+					`Поле "namespace" должно быть JSON pointer'ом или объектом {"source": "field|values|fixed", ...}`})
 			}
 		case "include", "exclude", "required":
 			checkFieldList(k)
@@ -817,4 +830,53 @@ func isIndex(s string) bool {
 		}
 	}
 	return true
+}
+
+// dns1123 is a permissive DNS-1123 label check for a fixed namespace value in a
+// view. The provisioning layer re-validates at order time (validNamespace); this
+// only catches typos in the view document early.
+var dns1123 = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+// validateNamespaceRule checks the object form of order.namespace:
+// {source, pointer, value, hideOrderField}. node/root are the chart schema, used
+// to confirm a source=values pointer resolves to a real field.
+func validateNamespaceRule(path string, m, node, root map[string]any) []Issue {
+	var issues []Issue
+	np := path + "/namespace"
+	source, _ := m["source"].(string)
+	if source == "" {
+		source = NamespaceSourceField
+	}
+	switch source {
+	case NamespaceSourceField:
+		// The form input; nothing else to validate.
+	case NamespaceSourceValues:
+		ptr, ok := m["pointer"].(string)
+		if !ok || !strings.HasPrefix(ptr, "/") {
+			issues = append(issues, Issue{np + "/pointer",
+				`Для source "values" нужен "pointer" - JSON pointer вида "/namespace/namespaceName"`})
+		} else if node != nil && !pointerResolves(ptr, node, root) {
+			issues = append(issues, Issue{np + "/pointer",
+				fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", ptr)})
+		}
+	case NamespaceSourceFixed:
+		val, ok := m["value"].(string)
+		if !ok || val == "" {
+			issues = append(issues, Issue{np + "/value",
+				`Для source "fixed" нужен непустой "value" - имя namespace`})
+		} else if len(val) > 63 || !dns1123.MatchString(val) {
+			issues = append(issues, Issue{np + "/value",
+				fmt.Sprintf("%q не является валидным именем namespace (a-z, 0-9, дефис)", val)})
+		}
+	default:
+		issues = append(issues, Issue{np + "/source",
+			`"source" должен быть "field", "values" или "fixed"`})
+	}
+	if hof, ok := m["hideOrderField"]; ok {
+		if _, isBool := hof.(bool); !isBool {
+			issues = append(issues, Issue{np + "/hideOrderField",
+				`"hideOrderField" должно быть булевым (true/false)`})
+		}
+	}
+	return issues
 }

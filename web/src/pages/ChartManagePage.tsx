@@ -54,6 +54,7 @@ import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
 import type { PersistValues } from "../components/products/GenericProductTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button, Card, Chip, ErrorBox, Select, Spinner, TextField } from "../components/ui";
+import { parseNamespaceDirective } from "../form/namespace";
 import { pruneEmpty, type View } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
 import { Meta, ProductView } from "./requestDetailParts";
@@ -1095,8 +1096,9 @@ function PreviewPane({
   version: string;
 }) {
   const { user } = useUser();
-  const orderView = doc.views?.order as (View & { identity?: string }) | undefined;
+  const orderView = doc.views?.order as (View & { identity?: string; namespace?: unknown }) | undefined;
   const identity = orderView?.identity;
+  const ns = parseNamespaceDirective(orderView?.namespace);
 
   // Order state: shared between the form and the product page (fill the form,
   // switch the tab and you see your order).
@@ -1182,6 +1184,7 @@ function PreviewPane({
               onCluster={setCluster}
               namespace={namespace}
               onNamespace={setNamespace}
+              hideNamespace={ns.hideField}
               team={team}
               version={version}
               latest

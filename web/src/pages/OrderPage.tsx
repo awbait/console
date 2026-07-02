@@ -18,6 +18,7 @@ import {
 } from "../components/products/GenericProductTabs";
 import { actionViews, productTabs } from "../components/products/genericView";
 import { Button, Card, ErrorBox, Spinner } from "../components/ui";
+import { parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
 import { collectErrors, pruneEmpty } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";
@@ -186,16 +187,20 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // (service_name). When set, we source the name from the form instead of a
   // separate "Service name" input - e.g. the gateway's own name field.
   const identity: string | undefined = orderView?.identity;
-  // A view may bind destination.namespace to a values field for a chart that
-  // provisions its own namespace (managed-namespace): the single "Namespace"
-  // input is mirrored into that field (which is hidden in the form), so the chart
-  // renders into the namespace it creates. The backend stamps the same field.
-  const nsBinding: string | undefined = orderView?.namespace;
-  // Values with the namespace binding applied - used for validation, identity and
+  // The namespace directive decides where destination.namespace comes from and
+  // whether the order form shows a Namespace input. Legacy string form ("/ptr")
+  // is a mirror: the Namespace input is copied into that (hidden) values field.
+  // Object form can source it from a values field or a fixed constant and hide
+  // the form field entirely. Mirrors internal/views/namespace.go.
+  const ns = useMemo(
+    () => parseNamespaceDirective((orderView as { namespace?: unknown } | undefined)?.namespace),
+    [orderView],
+  );
+  // Values with the legacy mirror applied - used for validation, identity and
   // submission so the bound (hidden) field is populated from the Namespace input.
   const effectiveValues = useMemo(
-    () => (nsBinding && namespace ? writePointer(values, nsBinding, namespace) : values),
-    [values, nsBinding, namespace],
+    () => (ns.mirrorPointer && namespace ? writePointer(values, ns.mirrorPointer, namespace) : values),
+    [values, ns.mirrorPointer, namespace],
   );
   const identityName = identity ? readPointer(effectiveValues, identity) : "";
 
@@ -278,7 +283,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
 
   // collectValues resolves the values + deploy identity from the active editor
   // (form or raw YAML); returns null and sets an error when invalid.
-  function collectValues(): { values: Values; svcName: string } | null {
+  function collectValues(): { values: Values; svcName: string; destNamespace: string } | null {
     let finalValues: Values = {};
     try {
       finalValues = mode === "raw" ? ((yaml.load(raw) as Values) ?? {}) : pruneEmpty(values);
@@ -286,11 +291,14 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       setSubmitErr({ message: "Невалидный YAML: " + (e as Error).message });
       return null;
     }
-    // Mirror the destination namespace into the bound (hidden) field so the sent
-    // values match what the backend stamps; covers raw mode too.
-    if (nsBinding && namespace) finalValues = writePointer(finalValues, nsBinding, namespace);
+    // Legacy mirror: copy the Namespace input into the bound (hidden) field so the
+    // sent values match what the backend stamps; covers raw mode too.
+    if (ns.mirrorPointer && namespace) finalValues = writePointer(finalValues, ns.mirrorPointer, namespace);
     const svcName = identity ? readPointer(finalValues, identity) : serviceName;
-    return { values: finalValues, svcName };
+    // Destination namespace: the form input (source=field), a values field
+    // (source=values), or a fixed constant. The backend recomputes the same way.
+    const destNamespace = resolveDestNamespace(ns, namespace, finalValues);
+    return { values: finalValues, svcName, destNamespace };
   }
 
   function fail(e: unknown) {
@@ -317,7 +325,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           service_name: c.svcName || undefined,
           display_name: displayName || undefined,
           cluster: cluster || undefined,
-          namespace: namespace || undefined,
+          namespace: c.destNamespace || undefined,
           values: c.values,
         });
       } else {
@@ -328,7 +336,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           service_name: c.svcName,
           display_name: displayName || undefined,
           cluster: cluster || undefined,
-          namespace: namespace || undefined,
+          namespace: c.destNamespace || undefined,
           values: c.values,
           draft: true,
         });
@@ -359,9 +367,13 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       setSubmitErr({ message: identity ? "Укажите идентификатор в форме" : "Укажите имя сервиса" });
       return;
     }
-    if (!cluster || !namespace) {
+    if (!cluster || !c.destNamespace) {
       setShowErrors(true);
-      setSubmitErr({ message: "Укажите кластер и namespace." });
+      setSubmitErr({
+        message: ns.hideField
+          ? "Не удалось определить namespace: заполните поле, из которого он берётся."
+          : "Укажите кластер и namespace.",
+      });
       return;
     }
     setBusy("submit");
@@ -373,7 +385,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           service_name: c.svcName,
           display_name: displayName || undefined,
           cluster,
-          namespace,
+          namespace: c.destNamespace,
           values: c.values,
         });
         req = await api.submitRequest(id!);
@@ -386,7 +398,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           service_name: c.svcName,
           display_name: displayName || undefined,
           cluster,
-          namespace,
+          namespace: c.destNamespace,
           values: c.values,
         });
       }
@@ -497,6 +509,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           onCluster={setCluster}
           namespace={namespace}
           onNamespace={setNamespace}
+          hideNamespace={ns.hideField}
           team={editing ? draft?.team : activeTeam ?? undefined}
           version={effectiveVersion ?? undefined}
           latest={!editing && orderableVersions.length === 0}
