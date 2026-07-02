@@ -135,6 +135,25 @@ Monaco). E2e проверен: заказ проходит цикл до HEALTHY
 - [ ] Карточка каталога: основной чип - рекомендуемая версия + «+N» (число
   остальных orderable), tooltip перечисляет (нужен бэкенд мультиверсий).
 
+#### Директива namespace в order-view (доделки)
+
+Реализовано (PR #114): объектная форма `namespace` в order-view - `source`
+`field`/`values`/`fixed` + `hideOrderField`; `destination.namespace` берётся из
+поля values, константы или ввода в форме; managed-namespace (seed) переведён на
+`source: values` + `hideOrderField`. Осталось:
+
+- [ ] **Ослабить обязательность `identity` в order-view**
+  (`internal/views/validate.go:77`), чтобы покрыть «тип 4»: чисто cluster-scoped
+  чарт вообще без поля-идентификатора (сейчас `identity` обязателен, поэтому
+  такой чарт директиву `namespace` завести не может). identity уже фолбэчит на
+  `service_name` в рантайме - валидацию можно ослабить.
+- [ ] **Обновить прод-публикацию `managed-namespace` в БД портала** на новую
+  форму (`source: values` + `hideOrderField`) через UI управления чартом и
+  переапрувить - seed (`internal/store/seed/namespace.view.json`) правит только
+  dev-стенд.
+- [ ] (Опц.) В форме заказа при скрытом поле «Namespace» показывать вычисленный
+  namespace хинтом («куда поедет деплой»), особенно для `source: fixed`.
+
 ### Формы
 
 - [ ] **Скрытые ошибки валидации в свёрнутых секциях.** Если required-поле
