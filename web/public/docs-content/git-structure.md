@@ -14,12 +14,12 @@ managed-services/                       группа managed-services
 ├── <team>/                             подгруппа команды
 │   ├── ingress-gateway/                репозиторий = управляемый сервис (чарт)
 │   │   └── <cluster>/                  кластер
-│   │       └── <namespace>-igw-<gw>/   папка экземпляра
+│   │       └── <namespace>-<instance>/ папка экземпляра
 │   │           ├── application.yaml
 │   │           └── values.yaml
 │   └── postgres/
 │       └── <cluster>/
-│           └── <service-name>/
+│           └── <namespace>-<instance>/
 │               ├── application.yaml
 │               └── values.yaml
 └── <team>/
@@ -30,7 +30,7 @@ managed-services/                       группа managed-services
 
 - **Подгруппа команды** - на каждую команду своя подгруппа, имя совпадает с названием команды.
 - **Репозиторий сервиса** - внутри подгруппы по репозиторию на каждый управляемый сервис; имя репозитория совпадает с именем сервиса (чарта), например `ingress-gateway`.
-- **Папка экземпляра** - внутри репозитория отдельная папка на каждый экземпляр, сгруппированная по кластеру: `<cluster>/<service-name>`. Группировка по кластеру разделяет экземпляры одного сервиса в разных кластерах.
+- **Папка экземпляра** - внутри репозитория отдельная папка на каждый экземпляр, сгруппированная по кластеру: `<cluster>/<namespace>-<instance>`. Имя папки - уникальное имя экземпляра; его начинают с namespace, чтобы имя не сталкивалось с другими экземплярами того же сервиса. Группировка по кластеру разделяет экземпляры одного сервиса в разных кластерах.
 
 ## Файлы экземпляра
 
@@ -50,7 +50,7 @@ managed-services/                       группа managed-services
 | Группа | `managed-services` | `managed-services` |
 | Подгруппа команды | `<team>` | `team-core` |
 | Репозиторий | `<service>` | `ingress-gateway` |
-| Папка экземпляра | `<cluster>/<service-name>` | `prod/payments-igw-public` |
+| Папка экземпляра | `<cluster>/<namespace>-<instance>` | `prod/payments-igw-public` |
 | Файлы | `application.yaml`, `values.yaml` | - |
 
 Дальше: [Архитектура и интеграции](architecture).
