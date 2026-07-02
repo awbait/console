@@ -23,6 +23,7 @@ export function OrderMetaCard({
   onCluster,
   namespace,
   onNamespace,
+  hideNamespace = false,
   team,
   version,
   latest = false,
@@ -41,6 +42,10 @@ export function OrderMetaCard({
   onCluster: (v: string) => void;
   namespace: string;
   onNamespace: (v: string) => void;
+  // Hide the Namespace input: the chart sources destination.namespace from its
+  // own values field or a fixed constant (view "namespace" directive), so there
+  // is nothing for the user to type.
+  hideNamespace?: boolean;
   team?: string;
   version?: string;
   latest?: boolean;
@@ -81,15 +86,17 @@ export function OrderMetaCard({
         onChange={onCluster}
         errorText={showErrors && !cluster ? "Обязательное поле" : undefined}
       />
-      <TextField
-        label="Namespace"
-        description="Namespace назначения в кластере (destination.namespace)."
-        isRequired
-        placeholder="my-namespace"
-        value={namespace}
-        onChange={onNamespace}
-        errorText={showErrors && !namespace ? "Обязательное поле" : undefined}
-      />
+      {!hideNamespace && (
+        <TextField
+          label="Namespace"
+          description="Namespace назначения в кластере (destination.namespace)."
+          isRequired
+          placeholder="my-namespace"
+          value={namespace}
+          onChange={onNamespace}
+          errorText={showErrors && !namespace ? "Обязательное поле" : undefined}
+        />
+      )}
       {showVersionSelect && (
         <Select
           label="Версия"

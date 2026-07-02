@@ -183,6 +183,25 @@ func (s *Service) resourceIdentity(ctx context.Context, chartProject, chartName,
 	return serviceName
 }
 
+// resolveNamespace computes an order's ArgoCD destination namespace from the
+// order version's approved view: the "namespace" directive decides the source
+// (the form field, a values field the chart names itself by, or a fixed
+// constant). ArgoCD always requires a destination namespace, so an empty result
+// falls back to serviceName - it is never blank. The result is validated as a
+// Kubernetes name. orderNamespace is the form input (source=field); values are
+// the order's values (source=values).
+func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName, version, orderNamespace, serviceName string, values map[string]any) (string, error) {
+	rule := views.OrderNamespaceRule(s.orderView(ctx, chartProject, chartName, version))
+	ns := views.ResolveDestinationNamespace(rule, orderNamespace, values)
+	if ns == "" {
+		ns = serviceName
+	}
+	if !validNamespace(ns) {
+		return "", &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
+	}
+	return ns, nil
+}
+
 // applyViewStamps stamps order-time values from the order version's approved
 // view into values: the "defaults" block (JSON pointer -> fixed value, e.g.
 // namespace.creator=console) and the "namespace" binding (mirrors the order's
@@ -286,12 +305,16 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err := s.ensureOrderable(ctx, in.ChartProject, in.ChartName, in.Version); err != nil {
 		return nil, err
 	}
-	namespace := in.Namespace
-	if namespace == "" {
-		namespace = in.ServiceName
+	// Destination namespace: the view's "namespace" directive picks the source
+	// (form field / values field / fixed). Falls back to service_name so it is
+	// never empty. Charts that self-provision or are cluster-scoped hide the form
+	// field and source it from values or a constant instead.
+	namespace, err := s.resolveNamespace(ctx, in.ChartProject, in.ChartName, in.Version, in.Namespace, in.ServiceName, in.Values)
+	if err != nil {
+		return nil, err
 	}
 	// A draft may hold incomplete values; defer schema validation to Submit.
-	// namespace is passed so a view "namespace" binding can mirror it into values.
+	// namespace is passed so a view "namespace" mirror can stamp it into values.
 	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft)
 	if err != nil {
 		return nil, err
@@ -502,12 +525,19 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		}
 		r.Cluster = in.Cluster
 	}
-	if in.Namespace != "" {
-		if !validNamespace(in.Namespace) {
-			return nil, &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
-		}
-		r.Namespace = in.Namespace
+	// Recompute the destination namespace from the (possibly changed) values and
+	// the view directive: a source=values/fixed chart has no form field, so it
+	// cannot come from in.Namespace. For source=field the form input wins, else
+	// the current value is kept.
+	orderNS := in.Namespace
+	if orderNS == "" {
+		orderNS = r.Namespace
 	}
+	ns, err := s.resolveNamespace(ctx, r.ChartProject, r.ChartName, r.ChartVersion, orderNS, r.ServiceName, in.Values)
+	if err != nil {
+		return nil, err
+	}
+	r.Namespace = ns
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false)
 	if err != nil {
 		return nil, err

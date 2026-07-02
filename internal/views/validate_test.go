@@ -102,6 +102,11 @@ func TestStructuralIssues(t *testing.T) {
 		{"order missing identity", `{"views":{"order":{"include":["x"]}}}`, "/views/order", "должна объявлять"},
 		{"identity nested", `{"views":{"order":{"overrides":{"x":{"ui:view":{"identity":"/a"}}}}}}`, "ui:view/identity", "верхнем уровне"},
 		{"namespace not pointer", `{"views":{"order":{"identity":"/a","namespace":"ns"}}}`, "/views/order/namespace", "pointer"},
+		{"namespace bad source", `{"views":{"order":{"identity":"/a","namespace":{"source":"bogus"}}}}`, "/views/order/namespace/source", "field"},
+		{"namespace values without pointer", `{"views":{"order":{"identity":"/a","namespace":{"source":"values"}}}}`, "/views/order/namespace/pointer", "pointer"},
+		{"namespace fixed without value", `{"views":{"order":{"identity":"/a","namespace":{"source":"fixed"}}}}`, "/views/order/namespace/value", "value"},
+		{"namespace fixed bad value", `{"views":{"order":{"identity":"/a","namespace":{"source":"fixed","value":"Bad_NS"}}}}`, "/views/order/namespace/value", "валидным"},
+		{"namespace hideOrderField not bool", `{"views":{"order":{"identity":"/a","namespace":{"source":"fixed","value":"ok","hideOrderField":"yes"}}}}`, "/views/order/namespace/hideOrderField", "булевым"},
 		{"namespace nested", `{"views":{"order":{"identity":"/a","overrides":{"x":{"ui:view":{"namespace":"/b"}}}}}}`, "ui:view/namespace", "верхнем уровне"},
 		{"namespace misplaced in override", `{"views":{"order":{"identity":"/a","overrides":{"x":{"namespace":"/b"}}}}}`, "/views/order/overrides/x/namespace", `внутрь "ui:view"`},
 		// view "order", exactly one.
