@@ -73,9 +73,9 @@ After finishing work on a branch:
    git push -u origin feat/my-feature
    ```
 2. Create a PR to main using `gh pr create`
-3. The **user reviews and merges** - Claude never merges PRsа визу 
+3. The **user reviews and merges** - Claude never merges PRs
 
-PR title should be concise (<70 chars). Body should summarize what changed and why.
+PR title must be in **English**, Conventional Commits format, concise (<70 chars): on squash-merge it becomes the commit message, so Cyrillic is not allowed there. The PR body may be in Russian and should summarize what changed and why.
 
 ## Releases
 
