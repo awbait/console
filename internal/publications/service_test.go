@@ -390,39 +390,41 @@ func TestAdopt(t *testing.T) {
 	}
 }
 
+// TestSeedIdempotent: a fresh installation gets exactly one bootstrap category
+// (the system auto-discovery bucket) and no publications; a repeat seed does
+// not overwrite admin edits.
 func TestSeedIdempotent(t *testing.T) {
 	ctx := context.Background()
 	st := store.NewMemory()
 
-	if err := store.SeedPublications(ctx, st); err != nil {
+	if err := store.SeedCategories(ctx, st); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	p, err := st.GetPublicationByChart(ctx, "platform", "ingress-gateway")
+	cats, err := st.ListCategories(ctx)
 	if err != nil {
-		t.Fatalf("seeded pub: %v", err)
+		t.Fatal(err)
 	}
-	if p.Status != models.PubApproved || p.RecommendedVersion == "" {
-		t.Fatalf("seed must be approved with a recommended version, got %s %q", p.Status, p.RecommendedVersion)
+	if len(cats) != 1 || cats[0].ID != "uncategorized" {
+		t.Fatalf("seed must create only uncategorized, got %+v", cats)
 	}
-	// The view lives on a published (orderable+APPROVED) version row.
-	v, err := st.GetVersion(ctx, p.ID, p.RecommendedVersion)
+	pubs, err := st.ListPublications(ctx, store.PublicationFilter{})
 	if err != nil {
-		t.Fatalf("seeded version: %v", err)
+		t.Fatal(err)
 	}
-	if !v.Published() {
-		t.Fatalf("seeded version must be published: %s orderable=%v", v.Status, v.Orderable)
+	if len(pubs) != 0 {
+		t.Fatalf("seed must create no publications, got %d", len(pubs))
 	}
 
 	// a repeat seed does not overwrite edits
-	p.CategoryID = "databases"
-	if err := st.UpdatePublication(ctx, p); err != nil {
+	cats[0].Label = "Прочее"
+	if err := st.UpdateCategory(ctx, cats[0]); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SeedPublications(ctx, st); err != nil {
+	if err := store.SeedCategories(ctx, st); err != nil {
 		t.Fatalf("re-seed: %v", err)
 	}
-	p2, _ := st.GetPublicationByChart(ctx, "platform", "ingress-gateway")
-	if p2.CategoryID != "databases" {
-		t.Fatalf("re-seed overwrote user edit: %s", p2.CategoryID)
+	cats2, _ := st.ListCategories(ctx)
+	if len(cats2) != 1 || cats2[0].Label != "Прочее" {
+		t.Fatalf("re-seed overwrote user edit: %+v", cats2)
 	}
 }

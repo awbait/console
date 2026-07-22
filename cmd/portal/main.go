@@ -80,9 +80,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}
 	defer st.Close()
 
-	// Base categories + approved ingress-gateway publication (idempotent).
-	if err := store.SeedPublications(ctx, st); err != nil {
-		return fmt.Errorf("seed publications: %w", err)
+	// Bootstrap categories: only the system auto-discovery bucket (idempotent).
+	// No publications are pre-seeded - services enter the catalog through
+	// registration or auto-discovery + adoption.
+	if err := store.SeedCategories(ctx, st); err != nil {
+		return fmt.Errorf("seed categories: %w", err)
 	}
 
 	// --- upstreams (Harbor, GitLab and ArgoCD each have a real client + a fake) ---
