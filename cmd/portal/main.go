@@ -162,6 +162,13 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	provSvc.Log = observability.Component(log, "provisioning")
 	pubsSvc := publications.New(st, catalogSvc)
 	pubsSvc.Log = observability.Component(log, "publications")
+	// The admin group owning auto-discovered drafts; also bounds which
+	// publications count as unclaimed for adoption.
+	discoveryOwner := "platform-admins"
+	if len(cfg.AdminGroups) > 0 {
+		discoveryOwner = cfg.AdminGroups[0]
+	}
+	pubsSvc.SetDiscoveryOwner(discoveryOwner)
 	statusSvc := status.New(argo)
 
 	// --- auth ---
@@ -183,12 +190,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		reconcilers = append(reconcilers, status.Named("import", importReconciler{provSvc})) // adopt Git-created apps
 	}
 	if cfg.CatalogAutodiscover {
-		ownerTeam := "platform-admins"
-		if len(cfg.AdminGroups) > 0 {
-			ownerTeam = cfg.AdminGroups[0]
-		}
 		reconcilers = append(reconcilers, status.Named("catalog-discovery", discoveryReconciler{
-			pubs: pubsSvc, cat: catalogSvc, ownerTeam: ownerTeam,
+			pubs: pubsSvc, cat: catalogSvc, ownerTeam: discoveryOwner,
 			categoryID: publications.DefaultDiscoveryCategory,
 		}))
 	}

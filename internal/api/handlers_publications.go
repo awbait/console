@@ -120,6 +120,29 @@ func (s *Server) handleCreatePublication(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusCreated, pub)
 }
 
+// adoptPubReq claims an unclaimed auto-discovered publication for a team.
+type adoptPubReq struct {
+	CategoryID string `json:"category_id"`
+	OwnerTeam  string `json:"owner_team"`
+}
+
+func (s *Server) handleAdoptPublication(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	var body adoptPubReq
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	pub, err := s.Pubs.Adopt(r.Context(), u, chi.URLParam(r, "id"), publications.AdoptInput{
+		CategoryID: body.CategoryID, OwnerTeam: body.OwnerTeam,
+	})
+	if err != nil {
+		writeDomainErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pub)
+}
+
 func (s *Server) handleGetPublication(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	pub, err := s.Pubs.Get(r.Context(), id)
