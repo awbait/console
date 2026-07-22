@@ -1,6 +1,6 @@
 import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import yaml from "js-yaml";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
   Dialog,
@@ -44,6 +44,14 @@ export type PersistValues = (values: Values) => Promise<void> | void;
 // generic fallback built from the view id.
 function actionLabel(a: ActionPlacement): string {
   return a.label ?? `Редактировать ${a.view}`;
+}
+
+// revealSummary scrolls a dialog's error summary into view after the next
+// paint (the summary may be mounted in the same tick that reveals it).
+function revealSummary(ref: React.RefObject<HTMLDivElement | null>) {
+  requestAnimationFrame(() =>
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+  );
 }
 
 function parseValues(valuesYaml: string): Values {
@@ -413,6 +421,7 @@ function ItemModal({
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<SubmitError | null>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -432,6 +441,10 @@ function ItemModal({
   async function save() {
     if (errors.size > 0) {
       setShowErrors(true);
+      // The save button lives in the fixed footer while the summary is at the
+      // bottom of the scrollable body: bring it into view, or a blocked save
+      // looks like a no-op when the user is scrolled up.
+      revealSummary(summaryRef);
       return;
     }
     setSaving(true);
@@ -440,6 +453,7 @@ function ItemModal({
       await onSave(pruneEmpty(item));
     } catch (e) {
       setErr(toSubmitError(e));
+      revealSummary(summaryRef);
     } finally {
       setSaving(false);
     }
@@ -480,7 +494,7 @@ function ItemModal({
                 {/* One error surface for both kinds: the client-side field
                     summary and the server (domain/422) error with its details. */}
                 {(err || (showErrors && errors.size > 0)) && (
-                  <div className="mt-3">
+                  <div ref={summaryRef} className="mt-3 scroll-mb-3">
                     <FormErrors
                       message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
                       details={err?.details}
@@ -608,6 +622,7 @@ function ViewFormModal({
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<SubmitError | null>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   // Client-side validation against the schema (honoring the view), like the order
   // form and the list-item modal, so invalid/required fields are caught before the
@@ -627,6 +642,7 @@ function ViewFormModal({
   async function save() {
     if (errors.size > 0) {
       setShowErrors(true);
+      revealSummary(summaryRef);
       return;
     }
     setSaving(true);
@@ -639,6 +655,7 @@ function ViewFormModal({
       onSaved();
     } catch (e) {
       setErr(toSubmitError(e));
+      revealSummary(summaryRef);
     } finally {
       setSaving(false);
     }
@@ -683,7 +700,7 @@ function ViewFormModal({
                   <p className="text-sm text-gray-500">Нет схемы.</p>
                 )}
                 {(err || (showErrors && errors.size > 0)) && (
-                  <div className="mt-3">
+                  <div ref={summaryRef} className="mt-3 scroll-mb-3">
                     <FormErrors
                       message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
                       details={err?.details}
