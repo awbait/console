@@ -49,7 +49,7 @@ import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
 import type { PersistValues } from "../components/products/GenericProductTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button, Card, Chip, ErrorBox, Spinner } from "../components/ui";
-import { parseNamespaceDirective } from "../form/namespace";
+import { parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
 import { pruneEmpty, type View } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
@@ -666,9 +666,11 @@ function FormatHelp() {
                       один объект, "hidden" скрыть, "edit" раскрыть скрытое в схеме.
                     </li>
                     <li>
-                      <b>identity</b>: JSON pointer на поле с именем сервиса, например{" "}
+                      <b>identity</b> (необязательно): JSON pointer на поле с именем сервиса, например{" "}
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/gateways/0/name"</code>.
-                      Подписи полей форма берёт из <b>title</b> / <b>description</b> в values.schema.json.
+                      Без него имя инстанса берётся из поля «Service name» формы заказа (подходит для
+                      cluster-scoped чартов без поля-идентификатора). Подписи полей форма берёт из{" "}
+                      <b>title</b> / <b>description</b> в values.schema.json.
                     </li>
                     <li>
                       <b>namespace</b> (необязательно): откуда брать{" "}
@@ -863,6 +865,7 @@ function PreviewPane({
               namespace={namespace}
               onNamespace={setNamespace}
               hideNamespace={ns.hideField}
+              namespaceHint={ns.hideField ? resolveDestNamespace(ns, namespace, values) : undefined}
               team={team}
               version={version}
               latest

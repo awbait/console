@@ -99,7 +99,6 @@ func TestStructuralIssues(t *testing.T) {
 		{"override key misplaced", `{"views":{"order":{"overrides":{"x":{"overrides":{"y":{"title":"z"}}}}}}}`, "/views/order/overrides/x/overrides", `внутрь "ui:view"`},
 		{"include key misplaced", `{"views":{"order":{"overrides":{"x":{"include":["y"]}}}}}`, "/views/order/overrides/x/include", `внутрь "ui:view"`},
 		{"identity not pointer", `{"views":{"order":{"identity":"gateways"}}}`, "/identity", "pointer"},
-		{"order missing identity", `{"views":{"order":{"include":["x"]}}}`, "/views/order", "должна объявлять"},
 		{"identity nested", `{"views":{"order":{"overrides":{"x":{"ui:view":{"identity":"/a"}}}}}}`, "ui:view/identity", "верхнем уровне"},
 		{"namespace not pointer", `{"views":{"order":{"identity":"/a","namespace":"ns"}}}`, "/views/order/namespace", "pointer"},
 		{"namespace bad source", `{"views":{"order":{"identity":"/a","namespace":{"source":"bogus"}}}}`, "/views/order/namespace/source", "field"},
@@ -120,6 +119,16 @@ func TestStructuralIssues(t *testing.T) {
 				t.Fatalf("want issue %q at %q, got %+v", c.msg, c.path, issues)
 			}
 		})
+	}
+}
+
+// A cluster-scoped chart may have no identifying field at all: an order view
+// without "identity" is valid (the portal falls back to service_name), so such
+// charts can still use the namespace directive.
+func TestOrderWithoutIdentityIsValid(t *testing.T) {
+	doc := `{"views":{"order":{"namespace":{"source":"fixed","value":"platform-system","hideOrderField":true}}}}`
+	if issues := views.Validate([]byte(doc), nil); len(issues) > 0 {
+		t.Fatalf("order view without identity must validate: %+v", issues)
 	}
 }
 

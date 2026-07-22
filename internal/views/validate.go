@@ -69,16 +69,12 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 		issues = append(issues, Issue{"",
 			`Не хватает view "order": это форма заказа, она обязательна и должна быть ровно одна`})
 	}
-	// The order view must declare "identity": it names the values field that
-	// identifies a deployed instance (e.g. /gateways/0/name). The portal keys
-	// per-namespace resource uniqueness on it, so without it two orders of one
-	// chart could collide on resource names in a namespace.
-	if ov, ok := viewsMap["order"].(map[string]any); ok {
-		if _, has := ov["identity"]; !has {
-			issues = append(issues, Issue{"/views/order",
-				`View "order" должна объявлять "identity": JSON pointer на поле-идентификатор инстанса, например "/gateways/0/name". По нему портал проверяет уникальность ресурсов в namespace`})
-		}
-	}
+	// "identity" in the order view is optional: it names the values field that
+	// identifies a deployed instance (e.g. /gateways/0/name) and keys the
+	// per-namespace resource uniqueness check. Without it the portal falls back
+	// to service_name (see provisioning.resourceIdentity), which covers charts
+	// that simply have no identifying field (e.g. cluster-scoped operators).
+	// When present it must be a valid pointer - checked in validateView.
 
 	var schema map[string]any
 	if len(schemaJSON) > 0 {
