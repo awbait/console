@@ -149,8 +149,13 @@ CREATE TABLE publication_versions (
 
 ### Техдолг после полного перехода
 
-- Удалить колонки `chart_publications.approved_view_json` / `approved_view_version`
-  / `approved_description` / `approved_icon_url` отдельной поздней миграцией, когда
-  все публикации переведены на версии и legacy-фолбэки больше не нужны. Заодно
-  убрать legacy-методы `ActiveView`/`Submit`/`Approve`/`Reject` уровня публикации
-  для view (метаданный FSM остаётся).
+- [x] Сделано (миграция `000015_drop_legacy_publication_view.sql`): удалены
+  колонки `chart_publications.view_json` / `approved_view_json` /
+  `approved_view_version` / `approved_description` / `approved_icon_url`
+  (со страховочным бэкфиллом в `publication_versions` перед удалением).
+  Убраны `ActiveView`/`ValidateView` и view-логика из `Submit`/`Approve`/
+  `Reject` уровня публикации - они теперь обслуживают только метаданный FSM.
+  Поля `approved_view_version`/`approved_description`/`approved_icon_url` в
+  каталожном `publicationSummary` остались, но вычисляются из строк версий
+  (старшая orderable и рекомендуемая соответственно). Seed создаёт публикацию
+  плюс строку версии.

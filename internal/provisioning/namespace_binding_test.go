@@ -2,31 +2,21 @@ package provisioning_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"console/internal/provisioning"
-	"console/pkg/models"
 
 	"gopkg.in/yaml.v3"
 )
 
-// seedNSBindingView registers an approved order view that binds the order's
-// destination namespace to a values pointer (managed-namespace style: the chart
-// provisions its own namespace and names it through that value).
-func seedNSBindingView(ctx context.Context, t *testing.T, s *stack, chart, nsPtr string) {
+// seedNSBindingView registers a published version (15.4.2, matching the orders
+// below) whose order view binds the order's destination namespace to a values
+// pointer (managed-namespace style: the chart provisions its own namespace and
+// names it through that value).
+func seedNSBindingView(_ context.Context, t *testing.T, s *stack, chart, nsPtr string) {
 	t.Helper()
-	view := json.RawMessage(`{"views":{"order":{"identity":"` + nsPtr + `","namespace":"` + nsPtr + `"}}}`)
-	p := &models.ChartPublication{
-		ID:               "pub-ns-" + chart,
-		ChartProject:     "platform",
-		ChartName:        chart,
-		Status:           models.PubApproved,
-		ApprovedViewJSON: view,
-	}
-	if err := s.st.CreatePublication(ctx, p); err != nil {
-		t.Fatalf("seed publication: %v", err)
-	}
+	view := []byte(`{"views":{"order":{"identity":"` + nsPtr + `","namespace":"` + nsPtr + `"}}}`)
+	seedVersionedPub(t, s, "platform", chart, "15.4.2", view)
 }
 
 // TestNamespaceBindingMirrorsIntoValues: a chart whose order view declares a
@@ -94,21 +84,12 @@ func TestNamespaceBindingFallsBackToServiceName(t *testing.T) {
 	}
 }
 
-// seedNSView registers an approved order view with a raw order block (object-form
-// namespace directive).
-func seedNSView(ctx context.Context, t *testing.T, s *stack, chart, orderJSON string) {
+// seedNSView registers a published version (15.4.2, matching the orders below)
+// whose order view carries a raw order block (object-form namespace directive).
+func seedNSView(_ context.Context, t *testing.T, s *stack, chart, orderJSON string) {
 	t.Helper()
-	view := json.RawMessage(`{"views":{"order":` + orderJSON + `}}`)
-	p := &models.ChartPublication{
-		ID:               "pub-ns-" + chart,
-		ChartProject:     "platform",
-		ChartName:        chart,
-		Status:           models.PubApproved,
-		ApprovedViewJSON: view,
-	}
-	if err := s.st.CreatePublication(ctx, p); err != nil {
-		t.Fatalf("seed publication: %v", err)
-	}
+	view := []byte(`{"views":{"order":` + orderJSON + `}}`)
+	seedVersionedPub(t, s, "platform", chart, "15.4.2", view)
 }
 
 // TestNamespaceSourceValues: a source=values directive sources destination

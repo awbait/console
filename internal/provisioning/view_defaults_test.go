@@ -2,7 +2,6 @@ package provisioning_test
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -19,13 +18,8 @@ func TestOrderAppliesViewDefaults(t *testing.T) {
 	s := newStack(t)
 	u := member("core")
 
-	view := json.RawMessage(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/auth/creator":"console"}}`)
-	if err := s.st.CreatePublication(ctx, &models.ChartPublication{
-		ID: "pub-pg-defaults", ChartProject: "platform", ChartName: "postgres",
-		Status: models.PubApproved, ApprovedViewJSON: view,
-	}); err != nil {
-		t.Fatalf("seed publication: %v", err)
-	}
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/auth/creator":"console"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
 
 	mk := func(service, ns string, values map[string]any) (*models.Request, error) {
 		return s.prov.Create(ctx, u, provisioning.CreateInput{

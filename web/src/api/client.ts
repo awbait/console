@@ -185,12 +185,8 @@ export const api = {
   // Claim an unclaimed auto-discovered publication for a team.
   adoptPublication: (id: string, body: { category_id: string; owner_team: string }) =>
     req<ChartPublication>("POST", `/publications/${enc(id)}/adopt`, body),
-  updatePublication: (
-    id: string,
-    body: { category_id?: string; owner_team?: string; view?: ViewDocument },
-  ) => req<ChartPublication>("PATCH", `/publications/${enc(id)}`, body),
-  validatePublication: (id: string, view: ViewDocument) =>
-    req<{ issues: ViewIssue[] }>("POST", `/publications/${enc(id)}/validate`, { view }),
+  updatePublication: (id: string, body: { category_id?: string; owner_team?: string }) =>
+    req<ChartPublication>("PATCH", `/publications/${enc(id)}`, body),
   submitPublication: (id: string) => req<ChartPublication>("POST", `/publications/${enc(id)}/submit`),
   withdrawPublication: (id: string) =>
     req<ChartPublication>("POST", `/publications/${enc(id)}/withdraw`),

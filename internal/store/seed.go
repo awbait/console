@@ -43,63 +43,87 @@ func SeedPublications(ctx context.Context, s Store) error {
 		}
 	}
 
-	for _, pub := range seedPublications() {
-		if err := seedPublication(ctx, s, pub); err != nil {
+	for _, sp := range seedPublications() {
+		if err := seedPublication(ctx, s, sp); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// seedPublication creates one approved publication unless it already exists.
-func seedPublication(ctx context.Context, s Store, pub *models.ChartPublication) error {
-	_, err := s.GetPublicationByChart(ctx, pub.ChartProject, pub.ChartName)
+// seedPub is one bootstrap publication together with its single approved,
+// orderable version row (view documents live on versions, not the publication).
+type seedPub struct {
+	pub     *models.ChartPublication
+	version *models.PublicationVersion
+}
+
+// seedPublication creates one approved publication (with its version row)
+// unless the publication already exists.
+func seedPublication(ctx context.Context, s Store, sp seedPub) error {
+	_, err := s.GetPublicationByChart(ctx, sp.pub.ChartProject, sp.pub.ChartName)
 	if err == nil {
 		return nil // already exists, do not overwrite admin edits
 	}
 	if !errors.Is(err, models.ErrNotFound) {
 		return err
 	}
-	if err := s.CreatePublication(ctx, pub); err != nil && !errors.Is(err, models.ErrConflict) {
+	if err := s.CreatePublication(ctx, sp.pub); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			return nil // race with another seeder - ok
+		}
 		return err
 	}
-	return nil
+	sp.version.PublicationID = sp.pub.ID
+	return s.UpsertVersion(ctx, sp.version)
 }
 
-// seedPublications returns the bootstrap publications. The ApprovedView* fields
-// are a snapshot shown in catalog/profile (not the live Harbor data); a newer
-// version in Harbor surfaces only in "Manage" as an available update.
-func seedPublications() []*models.ChartPublication {
-	return []*models.ChartPublication{
+// seedPublications returns the bootstrap publications. The version row's
+// Approved* fields are a snapshot shown in catalog/profile (not the live Harbor
+// data); a newer version in Harbor surfaces only in "Manage" as an available update.
+func seedPublications() []seedPub {
+	return []seedPub{
 		{
-			ID:                  uuid.Must(uuid.NewV7()).String(),
-			ChartProject:        "platform",
-			ChartName:           "ingress-gateway",
-			CategoryID:          "network",
-			OwnerTeam:           "core",
-			CreatedBy:           "seed",
-			CreatedByName:       "Seed",
-			Status:              models.PubApproved,
-			ViewJSON:            seedIngressView,
-			ApprovedViewJSON:    seedIngressView,
-			ApprovedViewVersion: "3.2.0",
-			ApprovedDescription: "Helm chart for Istio-based ingress gateway (Gateway API, routes, NetworkPolicy, AuthorizationPolicy, OIDC)",
-			ApprovedIconURL:     "",
+			pub: &models.ChartPublication{
+				ID:                 uuid.Must(uuid.NewV7()).String(),
+				ChartProject:       "platform",
+				ChartName:          "ingress-gateway",
+				CategoryID:         "network",
+				OwnerTeam:          "core",
+				CreatedBy:          "seed",
+				CreatedByName:      "Seed",
+				Status:             models.PubApproved,
+				RecommendedVersion: "3.2.0",
+			},
+			version: &models.PublicationVersion{
+				ID:                  uuid.Must(uuid.NewV7()).String(),
+				ChartVersion:        "3.2.0",
+				ApprovedViewJSON:    seedIngressView,
+				Status:              models.PubApproved,
+				Orderable:           true,
+				ApprovedDescription: "Helm chart for Istio-based ingress gateway (Gateway API, routes, NetworkPolicy, AuthorizationPolicy, OIDC)",
+			},
 		},
 		{
-			ID:                  uuid.Must(uuid.NewV7()).String(),
-			ChartProject:        "platform",
-			ChartName:           "managed-namespace",
-			CategoryID:          "network",
-			OwnerTeam:           "core",
-			CreatedBy:           "seed",
-			CreatedByName:       "Seed",
-			Status:              models.PubApproved,
-			ViewJSON:            seedNamespaceView,
-			ApprovedViewJSON:    seedNamespaceView,
-			ApprovedViewVersion: "1.1.0",
-			ApprovedDescription: "A Helm chart for providing namespace, resource quotas and subnet",
-			ApprovedIconURL:     "",
+			pub: &models.ChartPublication{
+				ID:                 uuid.Must(uuid.NewV7()).String(),
+				ChartProject:       "platform",
+				ChartName:          "managed-namespace",
+				CategoryID:         "network",
+				OwnerTeam:          "core",
+				CreatedBy:          "seed",
+				CreatedByName:      "Seed",
+				Status:             models.PubApproved,
+				RecommendedVersion: "1.1.0",
+			},
+			version: &models.PublicationVersion{
+				ID:                  uuid.Must(uuid.NewV7()).String(),
+				ChartVersion:        "1.1.0",
+				ApprovedViewJSON:    seedNamespaceView,
+				Status:              models.PubApproved,
+				Orderable:           true,
+				ApprovedDescription: "A Helm chart for providing namespace, resource quotas and subnet",
+			},
 		},
 	}
 }

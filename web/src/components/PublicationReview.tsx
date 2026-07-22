@@ -112,14 +112,10 @@ function ProposalChip({ label, from, to }: { label: string; from: string; to: st
 }
 
 // PublicationReview is the admin decision surface for a pending publication:
-// proposed metadata changes, the view-document diff (approved vs draft), and the
-// approve/reject controls. Extracted from the chart manage page so approval is a
-// dedicated admin screen rather than a card on the owner's editor.
+// the proposed metadata changes (category/owner) and the approve/reject
+// controls. Version view documents are reviewed per version (VersionReview).
 export function PublicationReview({ pub, onReviewed }: { pub: ChartPublication; onReviewed: () => void }) {
   const { categories } = useCatalog();
-  const { theme } = useTheme();
-  // Monaco lives outside Tailwind tokens: match its theme to the portal theme.
-  const monacoTheme = theme === "light" ? "light" : "vs-dark";
   const { success } = useToast();
   const navigate = useNavigate();
   const [busy, setBusy] = useState<null | "approve" | "reject">(null);
@@ -176,19 +172,8 @@ export function PublicationReview({ pub, onReviewed }: { pub: ChartPublication; 
           </div>
         </div>
       )}
-      {pub.approved_view_json ? (
-        <div className="overflow-hidden rounded-md border border-slate-200">
-          <DiffEditor
-            height="400px"
-            language="json"
-            theme={monacoTheme}
-            original={JSON.stringify(pub.approved_view_json, null, 2)}
-            modified={JSON.stringify(pub.view_json ?? {}, null, 2)}
-            options={{ readOnly: true, renderSideBySide: true, minimap: { enabled: false }, fontSize: 12 }}
-          />
-        </div>
-      ) : (
-        <p className="text-sm text-gray-500">Первая публикация view: действующей версии для сравнения нет.</p>
+      {proposals.length === 0 && (
+        <p className="text-sm text-gray-500">Нет ожидающих изменений метаданных.</p>
       )}
       <div className="flex items-end gap-2">
         <div className="flex-1">

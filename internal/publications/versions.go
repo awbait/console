@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
-	"strconv"
 	"strings"
 
 	"console/internal/observability"
@@ -18,11 +17,9 @@ import (
 // chart version is a PublicationVersion with its own view document and approval
 // FSM (DRAFT -> PENDING -> APPROVED | REJECTED). orderable is the owner-controlled
 // allowlist; recommended_version (on the publication) is the default for new
-// orders, with a fall back to the highest orderable+APPROVED version.
-//
-// These methods are additive: the legacy single-view methods on Service keep
-// working off the approved_* columns during the transition (see the design doc
-// docs/multi-version-publications.md).
+// orders, with a fall back to the highest orderable+APPROVED version. View
+// documents live only here: the publication itself carries no view (the legacy
+// single-view columns were dropped, see docs/multi-version-publications.md).
 
 // ListVersions returns all version rows of a publication (oldest first).
 func (s *Service) ListVersions(ctx context.Context, pubID string) ([]*models.PublicationVersion, error) {
@@ -278,13 +275,14 @@ func (s *Service) ValidateVersionView(ctx context.Context, pubID, chartVersion s
 }
 
 // CatalogVersions projects a publication's versions for the catalog: the
-// resolved recommended (default-served) chart version and the list of all
-// orderable+APPROVED versions, highest first (for the "+N" chip and tooltip).
-// Both are empty when the publication has no orderable versions yet.
-func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublication) (recommended string, orderable []string, err error) {
+// resolved recommended (default-served) version row - its description/icon
+// snapshots feed the catalog card - and the list of all orderable+APPROVED
+// versions, highest first (for the "+N" chip and tooltip). recommended is nil
+// and orderable empty when the publication has no orderable versions yet.
+func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublication) (recommended *models.PublicationVersion, orderable []string, err error) {
 	versions, err := s.store.ListVersions(ctx, p.ID)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	pub := make([]*models.PublicationVersion, 0, len(versions))
 	for _, v := range versions {
@@ -293,16 +291,13 @@ func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublicatio
 		}
 	}
 	sort.Slice(pub, func(i, j int) bool {
-		return compareChartVersions(pub[i].ChartVersion, pub[j].ChartVersion) > 0 // highest first
+		return models.CompareChartVersions(pub[i].ChartVersion, pub[j].ChartVersion) > 0 // highest first
 	})
 	orderable = make([]string, len(pub))
 	for i, v := range pub {
 		orderable[i] = v.ChartVersion
 	}
-	if v := resolveOrderableVersion(p, versions, ""); v != nil {
-		recommended = v.ChartVersion
-	}
-	return recommended, orderable, nil
+	return resolveOrderableVersion(p, versions, ""), orderable, nil
 }
 
 // ActiveViewVersion returns the approved view of an orderable version (for order
@@ -354,7 +349,7 @@ func resolveOrderableVersion(p *models.ChartPublication, versions []*models.Publ
 	}
 	// Fall back to the highest orderable+APPROVED version.
 	sort.Slice(published, func(i, j int) bool {
-		return compareChartVersions(published[i].ChartVersion, published[j].ChartVersion) < 0
+		return models.CompareChartVersions(published[i].ChartVersion, published[j].ChartVersion) < 0
 	})
 	return published[len(published)-1]
 }
@@ -408,34 +403,3 @@ func (s *Service) validateVersionView(ctx context.Context, p *models.ChartPublic
 	return views.Validate(view, schema)
 }
 
-// compareChartVersions orders Helm SemVer-ish versions by numeric major.minor.patch
-// (a leading "v" and any pre-release/build suffix are ignored for ordering). It is
-// a best-effort comparison for the recommended-version fall back; unparsable parts
-// compare as 0, with a lexicographic tie-break so the order stays deterministic.
-func compareChartVersions(a, b string) int {
-	pa, pb := splitVersion(a), splitVersion(b)
-	for i := range 3 {
-		if pa[i] != pb[i] {
-			if pa[i] < pb[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	return strings.Compare(a, b)
-}
-
-func splitVersion(v string) [3]int {
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	if i := strings.IndexAny(v, "-+"); i >= 0 {
-		v = v[:i]
-	}
-	var out [3]int
-	for i, part := range strings.SplitN(v, ".", 3) {
-		if i > 2 {
-			break
-		}
-		out[i], _ = strconv.Atoi(strings.TrimSpace(part))
-	}
-	return out
-}

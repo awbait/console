@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-// PublicationStatus is the lifecycle of a publication's view document draft.
-// "Published" (the order form is available) is determined by the presence of
-// ApprovedViewJSON, not by status: the approved version keeps working
-// while a new draft is under review.
+// PublicationStatus is the approval lifecycle shared by the publication-level
+// metadata FSM (category/owner changes) and the per-version view FSM.
+// "Published" (the order form is available) is a per-version property (see
+// PublicationVersion.Published), not a status of the publication itself.
 type PublicationStatus string
 
 const (
@@ -32,8 +32,8 @@ type Category struct {
 }
 
 // ChartPublication is portal metadata on top of a Harbor chart: category,
-// owner (owner_team manages, created_by, author) and the view document
-// (formerly web/public/schemas/<chart>.ui.json).
+// owner (owner_team manages, created_by, author). View documents live on the
+// publication's versions (PublicationVersion), one per published chart version.
 type ChartPublication struct {
 	ID            string            `json:"id"`
 	ChartProject  string            `json:"chart_project"`
@@ -53,22 +53,6 @@ type ChartPublication struct {
 	// permissions) change only on approve; an empty string - no pending changes.
 	DraftCategoryID string `json:"draft_category_id,omitempty"`
 	DraftOwnerTeam  string `json:"draft_owner_team,omitempty"`
-	// ViewJSON is the editable view document draft; ApprovedViewJSON is the
-	// active approved version (order forms are built from it).
-	ViewJSON         json.RawMessage `json:"view_json,omitempty"`
-	ApprovedViewJSON json.RawMessage `json:"approved_view_json,omitempty"`
-	// ApprovedViewVersion is the chart version (latest at approve time) the
-	// active view is approved for. The "blessed" version: up to it the view is
-	// checked, orders can be updated; newer in Harbor - the author should update the view.
-	ApprovedViewVersion string `json:"approved_view_version,omitempty"`
-	// ApprovedDescription is the chart description (from Chart.yaml/Harbor) at approve time.
-	// The catalog shows it, not the live one from Harbor: data is refreshed only after
-	// a new approval.
-	ApprovedDescription string `json:"approved_description,omitempty"`
-	// ApprovedIconURL is the chart icon (Chart.yaml icon) at approve time. The catalog and
-	// chart profile show it, not the live one from Harbor - otherwise a new version with a new
-	// icon would "leak" into the catalog before approval. Empty = no icon.
-	ApprovedIconURL string `json:"approved_icon_url,omitempty"`
 	// RecommendedVersion is the chart version the owner marks as recommended for
 	// new orders. Empty or pointing at a non-orderable version means "fall back
 	// to the highest orderable APPROVED version" (resolved at read time).
@@ -80,13 +64,6 @@ type ChartPublication struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 
-// Published reports whether the publication has an active approved view.
-//
-// Deprecated for multi-version: a service is "published" when at least one of
-// its PublicationVersion rows is orderable and APPROVED with an order view (see
-// PublicationVersion.Published). This single-view flag stays during the
-// transition while the approved_* columns are still read.
-func (p *ChartPublication) Published() bool { return len(p.ApprovedViewJSON) > 0 }
 
 // DeriveStatus computes a publication's effective (aggregate) status from its
 // versions. The DB Status column tracks only the metadata/legacy-view FSM, which

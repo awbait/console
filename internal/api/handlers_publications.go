@@ -74,9 +74,8 @@ type createPubReq struct {
 }
 
 type patchPubReq struct {
-	CategoryID *string         `json:"category_id"`
-	OwnerTeam  *string         `json:"owner_team"`
-	View       json.RawMessage `json:"view"` // view-document draft; null/absent = leave unchanged
+	CategoryID *string `json:"category_id"`
+	OwnerTeam  *string `json:"owner_team"`
 }
 
 type rejectPubReq struct {
@@ -165,36 +164,13 @@ func (s *Server) handlePatchPublication(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	pub, err := s.Pubs.Update(r.Context(), u, chi.URLParam(r, "id"), publications.UpdateInput{
-		CategoryID: body.CategoryID, OwnerTeam: body.OwnerTeam, View: body.View,
+		CategoryID: body.CategoryID, OwnerTeam: body.OwnerTeam,
 	})
 	if err != nil {
 		writeDomainErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
-}
-
-type validatePubReq struct {
-	View json.RawMessage `json:"view"`
-}
-
-// handleValidatePublication: live validation of a draft view from the builder.
-// Always returns 200 with a list of issues (empty = document is valid).
-func (s *Server) handleValidatePublication(w http.ResponseWriter, r *http.Request) {
-	var body validatePubReq
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.View) == 0 {
-		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
-		return
-	}
-	issues, err := s.Pubs.ValidateView(r.Context(), chi.URLParam(r, "id"), body.View)
-	if err != nil {
-		writeDomainErr(w, err)
-		return
-	}
-	if issues == nil {
-		issues = []views.Issue{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
 }
 
 func (s *Server) handleSubmitPublication(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +272,7 @@ func (s *Server) handleSaveVersionView(w http.ResponseWriter, r *http.Request) {
 // handleValidateVersion is a live builder check of a draft view against a
 // specific version's schema; always 200 with a list of issues (empty = valid).
 func (s *Server) handleValidateVersion(w http.ResponseWriter, r *http.Request) {
-	var body validatePubReq
+	var body saveVersionReq
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.View) == 0 {
 		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
 		return
@@ -458,30 +434,36 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	byChart := make(map[string]*publicationSummary, len(pubs))
 	for _, p := range pubs {
-		// Per-version allowlist projection (multi-version publications); empty for
-		// services that have no orderable versions yet. Best-effort: a lookup error
-		// degrades to the legacy single-view fields below.
+		// Per-version allowlist projection; empty for services that have no
+		// orderable versions yet. Best-effort: on a lookup error the publication
+		// shows as not published. An orderable version always carries an approved
+		// view with an "order" form (submit/save enforce ValidateStructure), so
+		// any orderable version means the chart has an order form.
 		recommended, orderable, _ := s.Pubs.CatalogVersions(ctx, p)
-		byChart[p.ChartProject+"/"+p.ChartName] = &publicationSummary{
-			ID:            p.ID,
-			CategoryID:    p.CategoryID,
-			OwnerTeam:     p.OwnerTeam,
-			CreatedBy:     p.CreatedBy,
-			CreatedByName: p.CreatedByName,
-			Status:        p.EffectiveStatus,
-			Published:     p.Published() || len(orderable) > 0,
-			// An orderable version always carries an approved view with an "order"
-			// form (submit/save enforce ValidateStructure, which requires it), so
-			// any orderable version means the chart has an order form - without this
-			// a multi-version publication (empty legacy ApprovedViewJSON) would be
-			// hidden from the sidebar.
-			HasOrderView:        hasOrderView(p.ApprovedViewJSON) || len(orderable) > 0,
-			ApprovedViewVersion: p.ApprovedViewVersion,
-			ApprovedDescription: p.ApprovedDescription,
-			ApprovedIconURL:     p.ApprovedIconURL,
-			RecommendedVersion:  recommended,
-			OrderableVersions:   orderable,
+		sum := &publicationSummary{
+			ID:                p.ID,
+			CategoryID:        p.CategoryID,
+			OwnerTeam:         p.OwnerTeam,
+			CreatedBy:         p.CreatedBy,
+			CreatedByName:     p.CreatedByName,
+			Status:            p.EffectiveStatus,
+			Published:         len(orderable) > 0,
+			HasOrderView:      len(orderable) > 0,
+			OrderableVersions: orderable,
 		}
+		if len(orderable) > 0 {
+			// The "blessed" version: the view is checked up to the highest
+			// orderable one, orders on a lower version can be upgraded.
+			sum.ApprovedViewVersion = orderable[0]
+		}
+		if recommended != nil {
+			// The catalog card shows the default-served version's snapshots
+			// (description/icon at approve time), not the live Harbor data.
+			sum.RecommendedVersion = recommended.ChartVersion
+			sum.ApprovedDescription = recommended.ApprovedDescription
+			sum.ApprovedIconURL = recommended.ApprovedIconURL
+		}
+		byChart[p.ChartProject+"/"+p.ChartName] = sum
 	}
 	out := make([]catalogChart, 0, len(charts))
 	listed := make(map[string]bool, len(charts))
@@ -553,36 +535,12 @@ func (s *Server) handleCheckChart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// hasOrderView reports whether the view-document contains the views.order
-// projection (used to build the order form and the left-menu item).
-func hasOrderView(view json.RawMessage) bool {
-	if len(view) == 0 {
-		return false
-	}
-	var doc struct {
-		Views map[string]json.RawMessage `json:"views"`
-	}
-	if err := json.Unmarshal(view, &doc); err != nil {
-		return false
-	}
-	_, ok := doc.Views["order"]
-	return ok
-}
-
 // handleGetChartView returns a chart's approved view. With ?version=X it returns
-// that orderable version's view (multi-version publications); without it, the
-// legacy single active approved view.
+// that orderable version's view; without it, the recommended version's view
+// (falling back to the highest orderable+APPROVED one).
 func (s *Server) handleGetChartView(w http.ResponseWriter, r *http.Request) {
 	project, name := chi.URLParam(r, "project"), chi.URLParam(r, "name")
-	var (
-		view []byte
-		err  error
-	)
-	if version := r.URL.Query().Get("version"); version != "" {
-		view, err = s.Pubs.ActiveViewVersion(r.Context(), project, name, version)
-	} else {
-		view, err = s.Pubs.ActiveView(r.Context(), project, name)
-	}
+	view, err := s.Pubs.ActiveViewVersion(r.Context(), project, name, r.URL.Query().Get("version"))
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not_found", "no approved view for chart")
