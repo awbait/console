@@ -46,6 +46,21 @@ function actionLabel(a: ActionPlacement): string {
   return a.label ?? `Редактировать ${a.view}`;
 }
 
+// rebaseFieldErrors re-roots server validation paths (absolute JSON pointers
+// into the full values document) onto the edited element, so a dialog's error
+// summary can resolve them against the element schema/view it renders. Errors
+// outside the edited element keep their absolute path.
+function rebaseFieldErrors(e: unknown, basePath: string): unknown {
+  if (e instanceof HttpError && e.details.length > 0) {
+    e.details = e.details.map((d) =>
+      d.path === basePath || d.path.startsWith(`${basePath}/`)
+        ? { ...d, path: d.path.slice(basePath.length) }
+        : d,
+    );
+  }
+  return e;
+}
+
 // revealSummary scrolls a dialog's error summary into view after the next
 // paint (the summary may be mounted in the same tick that reveals it).
 function revealSummary(ref: React.RefObject<HTMLDivElement | null>) {
@@ -239,8 +254,16 @@ function ListEditor({
     }
   }
   async function saveItem(item: Values) {
+    const idx = editIndex !== null ? editIndex : items.length;
     const next = editIndex !== null ? items.map((x, i) => (i === editIndex ? item : x)) : [...items, item];
-    await commit(next);
+    try {
+      await commit(next);
+    } catch (e) {
+      // Server validation paths point into the FULL values document, while the
+      // dialog renders the element's schema: re-root them onto the edited item
+      // so its error summary shows proper field breadcrumbs.
+      throw rebaseFieldErrors(e, `${target.itemsPath}/${idx}`);
+    }
     setAdding(false);
     setEditIndex(null);
   }
