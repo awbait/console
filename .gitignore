@@ -26,6 +26,9 @@ internal/spa/dist/*
 # Helm packaging artifacts
 *.tgz
 
+# Python bytecode (skill scripts)
+__pycache__/
+
 # Editors / OS
 .idea/
 .vscode/
@@ -40,3 +43,6 @@ internal/spa/dist/*
 
 # Separate charts repo dropped in here, tracked on its own
 /charts/
+
+# Local workspace with external charts and the console source mirror
+/charts-ext/
