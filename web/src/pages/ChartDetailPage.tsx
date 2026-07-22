@@ -2,6 +2,7 @@ import { IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-r
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -18,10 +19,13 @@ export function ChartDetailPage() {
   const { user } = useUser();
   const pub = findCatalogChart(catalogCharts, project, name)?.publication;
   // "Manage" for owners/admins; "Publish" (no publication yet) for any team
-  // member (they pick the owner team at registration).
+  // member (they pick the owner team at registration). An unclaimed
+  // auto-discovered publication is also open to team members - the manage page
+  // offers adopting it (take over ownership).
+  const hasTeam = user?.role === "admin" || (user?.teams?.length ?? 0) > 0;
   const manageable = pub
-    ? canModify(user, pub.owner_team)
-    : user?.role === "admin" || (user?.teams?.length ?? 0) > 0;
+    ? canModify(user, pub.owner_team) || (pub.created_by === AUTO_DISCOVERY_ACTOR && hasTeam)
+    : hasTeam;
 
   if (loading) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
@@ -80,7 +84,7 @@ export function ChartDetailPage() {
             {pub?.created_by_name && (
               <Chip className="bg-slate-100 text-slate-600">
                 <IconUser size={13} stroke={1.8} className="text-slate-400" />
-                <span className="text-slate-400">Автор:</span>
+                <span className="text-slate-400">{publisherLabel(pub.created_by)}:</span>
                 {pub.created_by_name}
               </Chip>
             )}

@@ -21,6 +21,7 @@ import {
 import { CatalogPage } from "./pages/CatalogPage";
 import { ChartDetailPage } from "./pages/ChartDetailPage";
 import { ChartManagePage } from "./pages/ChartManagePage";
+import { ChartVersionEditPage } from "./pages/ChartVersionEditPage";
 import { DocsPage } from "./pages/DocsPage";
 import { OrderPage } from "./pages/OrderPage";
 import { ProductPage } from "./pages/ProductPage";
@@ -105,6 +106,7 @@ const router = createBrowserRouter([
           { path: "catalog/:project/:name", element: <ChartDetailPage /> },
           { path: "catalog/:project/:name/order", element: <OrderPage /> },
           { path: "catalog/:project/:name/manage", element: <ChartManagePage /> },
+          { path: "catalog/:project/:name/manage/:version", element: <ChartVersionEditPage /> },
           { path: "requests", element: <RequestsPage /> },
           { path: "requests/:id/edit", element: <OrderPage /> },
           { path: "requests/:id/upgrade", element: <OrderPage upgrade /> },

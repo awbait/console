@@ -69,6 +69,10 @@ type SchemaSource interface {
 type Service struct {
 	store   store.Store
 	schemas SchemaSource
+	// discoveryOwner is the admin group that owns auto-discovered drafts (wired
+	// by main from config). Adoption is allowed only while a discovered
+	// publication still belongs to this group; empty relaxes the owner check.
+	discoveryOwner string
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
 }
@@ -76,6 +80,10 @@ type Service struct {
 func New(st store.Store, schemas SchemaSource) *Service {
 	return &Service{store: st, schemas: schemas}
 }
+
+// SetDiscoveryOwner wires the admin group owning auto-discovered drafts (from
+// config); it bounds which publications are considered unclaimed by Adopt.
+func (s *Service) SetDiscoveryOwner(team string) { s.discoveryOwner = team }
 
 // logger returns the configured logger, or the default if none was wired (tests).
 func (s *Service) logger() *slog.Logger {
@@ -412,6 +420,11 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 // DefaultDiscoveryCategory is the category for auto-discovered drafts (seed).
 const DefaultDiscoveryCategory = "uncategorized"
 
+// DiscoveryActor is the created_by marker of publications registered by the
+// background discovery reconciler (no real user). Such publications are
+// unclaimed and can be adopted by a team (see Adopt).
+const DiscoveryActor = "auto-discovery"
+
 // DiscoveredChart is a chart found in Harbor for auto-registration.
 type DiscoveredChart struct {
 	Project string
@@ -436,7 +449,7 @@ func (s *Service) EnsureDiscovered(ctx context.Context, charts []DiscoveredChart
 			ChartName:     c.Name,
 			CategoryID:    categoryID,
 			OwnerTeam:     ownerTeam,
-			CreatedBy:     "auto-discovery",
+			CreatedBy:     DiscoveryActor,
 			CreatedByName: c.Author, // empty if the chart has no maintainers
 			Status:        models.PubDraft,
 		}
@@ -446,10 +459,63 @@ func (s *Service) EnsureDiscovered(ctx context.Context, charts []DiscoveredChart
 			}
 			return err
 		}
-		s.addEvent(ctx, p.ID, &models.User{Subject: "auto-discovery"}, "discovered", "", p.Status,
+		s.addEvent(ctx, p.ID, &models.User{Subject: DiscoveryActor}, "discovered", "", p.Status,
 			map[string]any{"owner_team": ownerTeam, "author": c.Author})
 	}
 	return nil
+}
+
+// AdoptInput claims an auto-discovered draft: category + the new owner group.
+type AdoptInput struct {
+	CategoryID string
+	OwnerTeam  string
+}
+
+// Adopt claims an unclaimed auto-discovered publication for a team: a deferred
+// registration. The adopter picks category and owner group (own team; admin -
+// any, same rule as Create) and becomes the publisher (created_by), which also
+// makes the publication non-adoptable afterwards. Unclaimed = created by the
+// discovery reconciler and still owned by the discovery admin group.
+func (s *Service) Adopt(ctx context.Context, u *models.User, id string, in AdoptInput) (*models.ChartPublication, error) {
+	p, err := s.store.GetPublication(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if in.CategoryID == "" {
+		return nil, invalid("category_id is required")
+	}
+	if in.OwnerTeam == "" {
+		return nil, invalid("owner_team is required")
+	}
+	if !canManage(u, in.OwnerTeam) {
+		return nil, ErrForbidden
+	}
+	if p.CreatedBy != DiscoveryActor || (s.discoveryOwner != "" && p.OwnerTeam != s.discoveryOwner) {
+		return nil, conflict("публикацию уже сопровождает группа %s", p.OwnerTeam)
+	}
+	if p.Status == models.PubPending {
+		return nil, ErrPendingLocked
+	}
+	if err := s.checkCategory(ctx, in.CategoryID); err != nil {
+		return nil, err
+	}
+	from := p.OwnerTeam
+	p.CategoryID = in.CategoryID
+	p.OwnerTeam = in.OwnerTeam
+	p.DraftCategoryID = ""
+	p.DraftOwnerTeam = ""
+	p.CreatedBy = u.Subject
+	p.CreatedByName = u.Name
+	if err := s.store.UpdatePublication(ctx, p); err != nil {
+		return nil, err
+	}
+	s.addEvent(ctx, p.ID, u, "adopted", "", "", map[string]any{
+		"category_id": p.CategoryID, "owner_team": p.OwnerTeam, "prev_owner_team": from,
+	})
+	s.logger().Info("publication adopted",
+		"publication_id", p.ID, "chart", p.ChartName, "actor", u.Subject,
+		"from", from, "to", p.OwnerTeam)
+	return p, nil
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*models.ChartPublication, error) {

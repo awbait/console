@@ -158,6 +158,17 @@ export interface Category {
   system?: boolean; // built-in category that cannot be deleted (read-only)
 }
 
+// created_by stamped by the background auto-discovery reconciler. For such
+// publications created_by_name is the first maintainer from Chart.yaml, not a
+// portal user, so the UI labels the person differently.
+export const AUTO_DISCOVERY_ACTOR = "auto-discovery";
+
+// Chip label for created_by_name: a portal user registered the publication
+// ("Опубликовано"), or the name came from Chart.yaml maintainers ("Maintainer").
+export function publisherLabel(createdBy: string): string {
+  return createdBy === AUTO_DISCOVERY_ACTOR ? "Maintainer" : "Опубликовано";
+}
+
 // Lightweight publication projection in the /catalog response (without view-document bodies).
 export interface PublicationSummary {
   id: string;

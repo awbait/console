@@ -1,6 +1,7 @@
 import { IconArrowUpCircle, IconCircleCheckFilled } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 import type { CatalogChart } from "../api/types";
+import { publisherLabel } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
 import { canModify, useUser } from "../auth/UserContext";
@@ -190,7 +191,7 @@ function ChartCard({ chart: c, categoryLabel }: { chart: CatalogChart; categoryL
           )}
           {pub && (
             <span
-              title={`Владелец: ${pub.owner_team}${pub.created_by_name ? ` · Автор: ${pub.created_by_name}` : ""}`}
+              title={`Владелец: ${pub.owner_team}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
               className="rounded bg-brand-50 px-2 py-0.5 text-brand-700"
             >
               {pub.owner_team}

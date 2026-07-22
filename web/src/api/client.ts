@@ -182,6 +182,9 @@ export const api = {
   createPublication: (body: { chart: string; category_id: string; owner_team: string }) =>
     req<ChartPublication>("POST", "/publications", body),
   getPublication: (id: string) => req<PublicationDetail>("GET", `/publications/${enc(id)}`),
+  // Claim an unclaimed auto-discovered publication for a team.
+  adoptPublication: (id: string, body: { category_id: string; owner_team: string }) =>
+    req<ChartPublication>("POST", `/publications/${enc(id)}/adopt`, body),
   updatePublication: (
     id: string,
     body: { category_id?: string; owner_team?: string; view?: ViewDocument },

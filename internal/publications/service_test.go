@@ -382,6 +382,65 @@ func TestCategoriesRBAC(t *testing.T) {
 	}
 }
 
+func TestAdopt(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	svc.SetDiscoveryOwner("platform-admins")
+
+	// The discovery reconciler registers an unclaimed draft.
+	if err := svc.EnsureDiscovered(ctx, []publications.DiscoveredChart{
+		{Project: "platform", Name: "redis", Author: "Maintainer"},
+	}, "platform-admins", "network"); err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	p, err := st.GetPublicationByChart(ctx, "platform", "redis")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A team you are not a member of cannot be the adoption target.
+	if _, err := svc.Adopt(ctx, member("core"), p.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "other",
+	}); !errors.Is(err, publications.ErrForbidden) {
+		t.Fatalf("foreign team: want forbidden, got %v", err)
+	}
+
+	// A member adopts to their own team: owner/category go live, the adopter
+	// becomes the publisher.
+	p, err = svc.Adopt(ctx, member("core"), p.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "core",
+	})
+	if err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	if p.OwnerTeam != "core" || p.CategoryID != "network" {
+		t.Fatalf("owner/category = %s/%s, want core/network", p.OwnerTeam, p.CategoryID)
+	}
+	if p.CreatedBy != "u-member" || p.CreatedByName != "Member" {
+		t.Fatalf("publisher = %s/%s, want the adopter", p.CreatedBy, p.CreatedByName)
+	}
+
+	// Adopted once - cannot be claimed again.
+	if _, err := svc.Adopt(ctx, member("core", "other"), p.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "other",
+	}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("second adopt: want conflict, got %v", err)
+	}
+
+	// A manually registered publication is never adoptable.
+	manual, err := svc.Create(ctx, member("core"), publications.CreateInput{
+		ChartProject: "platform", ChartName: "pg", CategoryID: "network", OwnerTeam: "core",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Adopt(ctx, member("other"), manual.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "other",
+	}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("adopt manual: want conflict, got %v", err)
+	}
+}
+
 func TestSeedIdempotent(t *testing.T) {
 	ctx := context.Background()
 	st := store.NewMemory()
