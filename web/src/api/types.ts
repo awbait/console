@@ -297,13 +297,8 @@ export interface ChartPublication {
   // approve, until then the proposed values live here (empty - no edits).
   draft_category_id?: string;
   draft_owner_team?: string;
-  view_json?: ViewDocument | null; // draft
-  approved_view_json?: ViewDocument | null; // active approved version
-  // Chart version the active view is approved for (the "blessed" one):
-  // if a newer one ships in Harbor - the author should update the view.
-  approved_view_version?: string;
-  approved_icon_url?: string;
-  // Version served by default for new orders (multi-version publications).
+  // Version served by default for new orders. View documents live on the
+  // publication's versions (PublicationVersion), not on the publication.
   recommended_version?: string;
   reviewed_by?: string;
   review_comment?: string;

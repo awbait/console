@@ -149,7 +149,6 @@ func (s *Server) Router() http.Handler {
 			r.Get("/publications/{id}", s.handleGetPublication)
 			r.Patch("/publications/{id}", s.handlePatchPublication)
 			r.Post("/publications/{id}/adopt", s.handleAdoptPublication) // claim an auto-discovered draft
-			r.Post("/publications/{id}/validate", s.handleValidatePublication) // live check from the builder
 			r.Post("/publications/{id}/submit", s.handleSubmitPublication)
 			r.Post("/publications/{id}/withdraw", s.handleWithdrawPublication) // withdraw from approval
 			r.Post("/publications/{id}/approve", s.handleApprovePublication)   // admin

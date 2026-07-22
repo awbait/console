@@ -2,7 +2,6 @@ package provisioning_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,21 +9,13 @@ import (
 	"console/pkg/models"
 )
 
-// seedView registers an approved order view for platform/<chart> so the
-// provisioning layer can resolve the resource identity from order values.
-func seedView(ctx context.Context, t *testing.T, s *stack, chart, identityPtr string) {
+// seedView registers a published version (15.4.2, matching the orders below)
+// whose order view carries the identity pointer, so the provisioning layer can
+// resolve the resource identity from order values.
+func seedView(_ context.Context, t *testing.T, s *stack, chart, identityPtr string) {
 	t.Helper()
-	view := json.RawMessage(`{"views":{"order":{"identity":"` + identityPtr + `"}}}`)
-	p := &models.ChartPublication{
-		ID:               "pub-" + chart,
-		ChartProject:     "platform",
-		ChartName:        chart,
-		Status:           models.PubApproved,
-		ApprovedViewJSON: view,
-	}
-	if err := s.st.CreatePublication(ctx, p); err != nil {
-		t.Fatalf("seed publication: %v", err)
-	}
+	view := []byte(`{"views":{"order":{"identity":"` + identityPtr + `"}}}`)
+	seedVersionedPub(t, s, "platform", chart, "15.4.2", view)
 }
 
 func draft(db string) map[string]any {

@@ -116,9 +116,10 @@ func shortID() string { return uuid.NewString()[:8] }
 // index locality and roughly creation-sortable, unlike random v4.
 func newID() string { return uuid.Must(uuid.NewV7()).String() }
 
-// orderView returns the approved view to build an order of (chart, version) from:
-// the selected version's view for a multi-version publication, falling back to
-// the legacy single approved view during the transition. Nil when there is no
+// orderView returns the approved view to build an order of (chart, version)
+// from: the selected version's view, falling back to the highest published
+// version's view when the order's exact version has no row (e.g. an old order
+// on a version published before version management). Nil when there is no
 // published view (no publication, or nothing approved yet).
 func (s *Service) orderView(ctx context.Context, chartProject, chartName, version string) []byte {
 	pub, err := s.store.GetPublicationByChart(ctx, chartProject, chartName)
@@ -130,13 +131,26 @@ func (s *Service) orderView(ctx context.Context, chartProject, chartName, versio
 			return v.ApprovedViewJSON
 		}
 	}
-	return pub.ApprovedViewJSON // legacy single-view fallback
+	versions, lerr := s.store.ListVersions(ctx, pub.ID)
+	if lerr != nil {
+		return nil
+	}
+	var best *models.PublicationVersion
+	for _, v := range versions {
+		if v.Published() && (best == nil || models.CompareChartVersions(best.ChartVersion, v.ChartVersion) < 0) {
+			best = v
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	return best.ApprovedViewJSON
 }
 
 // ensureOrderable rejects an order whose version is not an orderable+APPROVED
-// version of a multi-version publication. Legacy single-view publications (still
-// carrying approved_view_json) and charts without a publication are not
-// restricted, so the guard is a no-op until a service is fully version-managed.
+// version of the publication. Charts without a publication, or publications
+// with nothing published at all, are not restricted, so the guard only bites
+// once a service has at least one orderable version.
 func (s *Service) ensureOrderable(ctx context.Context, chartProject, chartName, version string) error {
 	pub, err := s.store.GetPublicationByChart(ctx, chartProject, chartName)
 	if err != nil || pub == nil {
@@ -147,10 +161,6 @@ func (s *Service) ensureOrderable(ctx context.Context, chartProject, chartName, 
 			return nil // requested version is orderable+APPROVED
 		}
 	}
-	if len(pub.ApprovedViewJSON) > 0 {
-		return nil // legacy single-view publication: not restricted
-	}
-	// Version-managed publication with no legacy view: enforce the allowlist.
 	versions, lerr := s.store.ListVersions(ctx, pub.ID)
 	if lerr != nil {
 		return nil // best-effort; do not block on a store hiccup

@@ -31,9 +31,15 @@ func setup(t *testing.T) (*publications.Service, *store.Memory) {
 var viewV1 = json.RawMessage(`{"views":{"order":{"identity":"/gateways/0/name","include":["gateways"]}}}`)
 var viewV2 = json.RawMessage(`{"views":{"order":{"identity":"/gateways/0/name","include":["gateways","naming"]}}}`)
 
+// TestPublicationLifecycle drives the publication-level metadata FSM: propose a
+// category/owner change -> submit -> approve/reject. View documents live on
+// versions (versions_test.go); the publication itself carries no view.
 func TestPublicationLifecycle(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := setup(t)
+	svc, st := setup(t)
+	if err := st.CreateCategory(ctx, &models.Category{ID: "databases", Label: "Базы"}); err != nil {
+		t.Fatal(err)
+	}
 	owner := member("core")
 
 	p, err := svc.Create(ctx, owner, publications.CreateInput{
@@ -55,12 +61,11 @@ func TestPublicationLifecycle(t *testing.T) {
 		t.Fatalf("dup create: want conflict, got %v", err)
 	}
 
-	// view draft
-	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV1}); err != nil {
-		t.Fatalf("update view: %v", err)
+	// propose a category change; submit -> PENDING; edits frozen
+	to := "databases"
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &to}); err != nil {
+		t.Fatalf("propose category: %v", err)
 	}
-
-	// submit -> PENDING; edits frozen
 	p, err = svc.Submit(ctx, owner, p.ID)
 	if err != nil {
 		t.Fatalf("submit: %v", err)
@@ -68,14 +73,15 @@ func TestPublicationLifecycle(t *testing.T) {
 	if p.Status != models.PubPending {
 		t.Fatalf("want PENDING, got %s", p.Status)
 	}
-	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV2}); !errors.Is(err, publications.ErrPendingLocked) {
+	back := "network"
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &back}); !errors.Is(err, publications.ErrPendingLocked) {
 		t.Fatalf("update while pending: want ErrPendingLocked, got %v", err)
 	}
 	if _, err := svc.Submit(ctx, owner, p.ID); !errors.Is(err, models.ErrConflict) {
 		t.Fatalf("double submit: want conflict, got %v", err)
 	}
 
-	// approve, admin only
+	// approve, admin only; the draft goes live
 	if _, err := svc.Approve(ctx, owner, p.ID); !errors.Is(err, publications.ErrForbidden) {
 		t.Fatalf("member approve: want forbidden, got %v", err)
 	}
@@ -83,44 +89,36 @@ func TestPublicationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	if p.Status != models.PubApproved || !p.Published() {
-		t.Fatalf("want APPROVED+published, got %s published=%v", p.Status, p.Published())
-	}
-	if string(p.ApprovedViewJSON) != string(viewV1) {
-		t.Fatalf("approved view mismatch: %s", p.ApprovedViewJSON)
+	if p.Status != models.PubApproved || p.CategoryID != "databases" || p.DraftCategoryID != "" {
+		t.Fatalf("approve must apply the draft: %s live=%s draft=%q", p.Status, p.CategoryID, p.DraftCategoryID)
 	}
 
-	// active view is available
-	view, err := svc.ActiveView(ctx, "platform", "ingress-gateway")
-	if err != nil || string(view) != string(viewV1) {
-		t.Fatalf("active view: %v %s", err, view)
-	}
-
-	// new draft on top of approved -> submit -> reject: approved survives
-	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV2}); err != nil {
-		t.Fatalf("update v2: %v", err)
+	// next change -> submit -> reject: the live value survives
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &back}); err != nil {
+		t.Fatalf("propose again: %v", err)
 	}
 	if _, err := svc.Submit(ctx, owner, p.ID); err != nil {
-		t.Fatalf("submit v2: %v", err)
+		t.Fatalf("submit again: %v", err)
 	}
-	p, err = svc.Reject(ctx, admin(), p.ID, "наполните include")
+	p, err = svc.Reject(ctx, admin(), p.ID, "не та категория")
 	if err != nil {
 		t.Fatalf("reject: %v", err)
 	}
-	if p.Status != models.PubRejected || p.ReviewComment != "наполните include" {
+	if p.Status != models.PubRejected || p.ReviewComment != "не та категория" {
 		t.Fatalf("want REJECTED+comment, got %s %q", p.Status, p.ReviewComment)
 	}
-	if string(p.ApprovedViewJSON) != string(viewV1) {
-		t.Fatalf("approved view must survive reject: %s", p.ApprovedViewJSON)
+	if p.CategoryID != "databases" {
+		t.Fatalf("live category must survive reject: %s", p.CategoryID)
 	}
 
-	// edit after reject returns to DRAFT
-	p, err = svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV2})
+	// edit after reject (reverting the proposal clears the draft) returns to DRAFT
+	live := "databases"
+	p, err = svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &live})
 	if err != nil {
 		t.Fatalf("update after reject: %v", err)
 	}
-	if p.Status != models.PubDraft {
-		t.Fatalf("want DRAFT after edit, got %s", p.Status)
+	if p.Status != models.PubDraft || p.DraftCategoryID != "" {
+		t.Fatalf("want DRAFT with no draft after revert, got %s draft=%q", p.Status, p.DraftCategoryID)
 	}
 
 	// audit accumulated
@@ -132,7 +130,7 @@ func TestPublicationLifecycle(t *testing.T) {
 
 func TestWithdraw(t *testing.T) {
 	ctx := context.Background()
-	svc, _ := setup(t)
+	svc, st := setup(t)
 	owner := member("core")
 
 	p, err := svc.Create(ctx, owner, publications.CreateInput{
@@ -147,7 +145,11 @@ func TestWithdraw(t *testing.T) {
 		t.Fatalf("withdraw from draft: want conflict, got %v", err)
 	}
 
-	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV1}); err != nil {
+	if err := st.CreateCategory(ctx, &models.Category{ID: "databases", Label: "Базы"}); err != nil {
+		t.Fatal(err)
+	}
+	to := "databases"
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &to}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Submit(ctx, owner, p.ID); err != nil {
@@ -167,7 +169,8 @@ func TestWithdraw(t *testing.T) {
 	if p.Status != models.PubDraft {
 		t.Fatalf("want DRAFT after withdraw, got %s", p.Status)
 	}
-	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV2}); err != nil {
+	back := "network"
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &back}); err != nil {
 		t.Fatalf("edit after withdraw: %v", err)
 	}
 }
@@ -191,7 +194,7 @@ func TestCreateRBACAndValidation(t *testing.T) {
 		t.Fatalf("unknown category: want validation error, got %v", err)
 	}
 
-	// submit without view
+	// submit without any pending metadata change
 	p, err := svc.Create(ctx, member("core"), publications.CreateInput{
 		ChartProject: "platform", ChartName: "x", CategoryID: "network", OwnerTeam: "core",
 	})
@@ -199,14 +202,7 @@ func TestCreateRBACAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := svc.Submit(ctx, member("core"), p.ID); !errors.As(err, &ve) {
-		t.Fatalf("submit empty view: want validation error, got %v", err)
-	}
-
-	// invalid JSON in the draft
-	if _, err := svc.Update(ctx, member("core"), p.ID, publications.UpdateInput{
-		View: json.RawMessage(`{broken`),
-	}); !errors.As(err, &ve) {
-		t.Fatalf("broken view: want validation error, got %v", err)
+		t.Fatalf("submit without changes: want validation error, got %v", err)
 	}
 }
 
@@ -256,53 +252,6 @@ func TestOwnerTeamHandoff(t *testing.T) {
 	}
 	if p.OwnerTeam != "dbaas" || p.DraftOwnerTeam != "" {
 		t.Fatalf("handoff must apply on approve: owner=%s draft=%q", p.OwnerTeam, p.DraftOwnerTeam)
-	}
-}
-
-// fakeSchemas - schema/version source for testing the ApprovedViewVersion stamp.
-type fakeSchemas struct{ version string }
-
-func (f fakeSchemas) GetSchema(context.Context, string, string, string) ([]byte, error) {
-	return nil, nil
-}
-func (f fakeSchemas) LatestSchema(context.Context, string, string) ([]byte, error) { return nil, nil }
-func (f fakeSchemas) LatestVersion(context.Context, string, string) (string, error) {
-	return f.version, nil
-}
-func (f fakeSchemas) LatestDescription(context.Context, string, string) (string, error) {
-	return "", nil
-}
-func (f fakeSchemas) LatestIcon(context.Context, string, string) (string, error) {
-	return "", nil
-}
-
-func TestApproveStampsViewVersion(t *testing.T) {
-	ctx := context.Background()
-	st := store.NewMemory()
-	if err := st.CreateCategory(ctx, &models.Category{ID: "network", Label: "Сеть"}); err != nil {
-		t.Fatal(err)
-	}
-	svc := publications.New(st, fakeSchemas{version: "2.0.0"})
-	owner := member("core")
-
-	p, err := svc.Create(ctx, owner, publications.CreateInput{
-		ChartProject: "platform", ChartName: "ingress-gateway", CategoryID: "network", OwnerTeam: "core",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{View: viewV1}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := svc.Submit(ctx, owner, p.ID); err != nil {
-		t.Fatal(err)
-	}
-	p, err = svc.Approve(ctx, admin(), p.ID)
-	if err != nil {
-		t.Fatalf("approve: %v", err)
-	}
-	if p.ApprovedViewVersion != "2.0.0" {
-		t.Fatalf("approve must stamp view version: got %q", p.ApprovedViewVersion)
 	}
 }
 
@@ -452,8 +401,16 @@ func TestSeedIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seeded pub: %v", err)
 	}
-	if p.Status != models.PubApproved || !p.Published() {
-		t.Fatalf("seed must be approved+published, got %s", p.Status)
+	if p.Status != models.PubApproved || p.RecommendedVersion == "" {
+		t.Fatalf("seed must be approved with a recommended version, got %s %q", p.Status, p.RecommendedVersion)
+	}
+	// The view lives on a published (orderable+APPROVED) version row.
+	v, err := st.GetVersion(ctx, p.ID, p.RecommendedVersion)
+	if err != nil {
+		t.Fatalf("seeded version: %v", err)
+	}
+	if !v.Published() {
+		t.Fatalf("seeded version must be published: %s orderable=%v", v.Status, v.Orderable)
 	}
 
 	// a repeat seed does not overwrite edits

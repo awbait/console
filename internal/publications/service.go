@@ -1,14 +1,14 @@
 // Package publications implements "chart publications": portal catalog
-// metadata (category, owner) and the approval of view documents.
+// metadata (category, owner) and the approval of per-version view documents.
 //
-// View draft FSM: DRAFT -> PENDING -> APPROVED | REJECTED -> DRAFT (edit).
-// The approved version (ApprovedViewJSON) keeps serving order forms while a
-// new draft is under review.
+// Two FSMs share the DRAFT -> PENDING -> APPROVED | REJECTED -> DRAFT (edit)
+// shape: the publication-level metadata FSM (category/owner changes, this
+// file) and the per-version view FSM (versions.go). A version's approved view
+// keeps serving order forms while its new draft is under review.
 package publications
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -51,17 +51,15 @@ func conflict(format string, a ...any) error {
 	return &conflictError{msg: fmt.Sprintf(format, a...)}
 }
 
-// SchemaSource provides values.schema.json and the chart's latest version
-// number (implemented by catalog.Service). The schema is needed for view
-// document cross-validation; the version - to stamp the approved view
-// (ApprovedViewVersion). On nil or a source error, the corresponding step is skipped.
+// SchemaSource provides chart data from Harbor (implemented by catalog.Service):
+// values.schema.json of a specific version for view cross-validation, and the
+// description/icon snapshots taken when a version is approved. On nil or a
+// source error, the corresponding step is skipped.
 type SchemaSource interface {
-	LatestSchema(ctx context.Context, project, name string) ([]byte, error)
-	LatestVersion(ctx context.Context, project, name string) (string, error)
 	LatestDescription(ctx context.Context, project, name string) (string, error)
 	LatestIcon(ctx context.Context, project, name string) (string, error)
 	// GetSchema returns values.schema.json for a specific chart version, used to
-	// cross-validate that version's view document (multi-version publications).
+	// cross-validate that version's view document.
 	GetSchema(ctx context.Context, project, name, version string) ([]byte, error)
 }
 
@@ -205,11 +203,11 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	return p, nil
 }
 
-// UpdateInput edits metadata and/or the view draft. Nil fields are left untouched.
+// UpdateInput edits publication metadata. Nil fields are left untouched.
+// Version view drafts are edited per version (SaveVersionView).
 type UpdateInput struct {
 	CategoryID *string
 	OwnerTeam  *string
-	View       json.RawMessage // view document draft; nil = do not change
 }
 
 func (s *Service) Update(ctx context.Context, u *models.User, id string, in UpdateInput) (*models.ChartPublication, error) {
@@ -259,20 +257,10 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 			payload["draft_owner_team"] = p.DraftOwnerTeam
 		}
 	}
-	if in.View != nil {
-		// A draft may be saved with schema flaws (the chart schema can
-		// change), but the format structure must be valid.
-		if issues := views.ValidateStructure(in.View); len(issues) > 0 {
-			return nil, &ValidationError{Message: "view.schema.json не проходит валидацию формата", Issues: issues}
-		}
-		p.ViewJSON = in.View
-		payload["view_updated"] = true
-	}
 	if len(payload) == 0 {
 		return p, nil // no-op
 	}
-	// Any draft edit (view or metadata) returns a rejected publication
-	// back to work.
+	// A metadata edit returns a rejected publication back to work.
 	if p.Status == models.PubRejected {
 		p.Status = models.PubDraft
 	}
@@ -283,7 +271,8 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	return p, nil
 }
 
-// Submit sends the view draft for review by an admin.
+// Submit sends the accumulated metadata changes (category/owner) for review by
+// an admin. Version view drafts are submitted per version (SubmitVersion).
 func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*models.ChartPublication, error) {
 	p, err := s.store.GetPublication(ctx, id)
 	if err != nil {
@@ -295,16 +284,8 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if p.Status == models.PubPending {
 		return nil, conflict("черновик уже на согласовании")
 	}
-	if len(p.ViewJSON) == 0 && !p.PendingMeta() {
-		return nil, invalid("нечего отправлять: нет ни черновика view, ни изменений метаданных")
-	}
-	// Only a fully valid document goes to review: format +
-	// (when possible) a check against the chart's values.schema.json. If only
-	// metadata changes (the view was not touched), there is nothing to check.
-	if len(p.ViewJSON) > 0 {
-		if issues := s.validateView(ctx, p, p.ViewJSON); len(issues) > 0 {
-			return nil, &ValidationError{Message: "view.schema.json не проходит валидацию", Issues: issues}
-		}
+	if !p.PendingMeta() {
+		return nil, invalid("нечего отправлять: нет изменений метаданных")
 	}
 	from := p.Status
 	p.Status = models.PubPending
@@ -337,12 +318,13 @@ func (s *Service) Withdraw(ctx context.Context, u *models.User, id string) (*mod
 	return p, nil
 }
 
-// Approve (admin): the draft becomes the active view.
+// Approve (admin): the proposed metadata change goes live.
 func (s *Service) Approve(ctx context.Context, u *models.User, id string) (*models.ChartPublication, error) {
 	return s.review(ctx, u, id, models.PubApproved, "")
 }
 
-// Reject (admin): the draft is rejected with a comment; the approved version is untouched.
+// Reject (admin): the metadata change is rejected with a comment; the live
+// category/owner stay untouched.
 func (s *Service) Reject(ctx context.Context, u *models.User, id, comment string) (*models.ChartPublication, error) {
 	return s.review(ctx, u, id, models.PubRejected, comment)
 }
@@ -361,23 +343,6 @@ func (s *Service) review(ctx context.Context, u *models.User, id string, to mode
 	from := p.Status
 	var applied map[string]any
 	if to == models.PubApproved {
-		p.ApprovedViewJSON = p.ViewJSON
-		// Stamp the version the view is approved for: this is the "blessed"
-		// chart version (latest at approve time). Best-effort: if Harbor is
-		// unavailable, keep the previous mark.
-		if v := s.latestVersion(ctx, p); v != "" {
-			p.ApprovedViewVersion = v
-		}
-		// Snapshot the description and icon too - catalog/profile show the
-		// approved ones, not the live Harbor data (otherwise a new version "leaks" into the catalog).
-		if s.schemas != nil {
-			if d, err := s.schemas.LatestDescription(ctx, p.ChartProject, p.ChartName); err == nil {
-				p.ApprovedDescription = d
-			}
-			if ic, err := s.schemas.LatestIcon(ctx, p.ChartProject, p.ChartName); err == nil {
-				p.ApprovedIconURL = ic
-			}
-		}
 		// The approved metadata change is applied to the live values and the draft
 		// is cleared. Recheck the category: it could have been deleted during review.
 		applied = map[string]any{}
@@ -545,55 +510,6 @@ func (s *Service) List(ctx context.Context, f store.PublicationFilter) ([]*model
 
 func (s *Service) ListEvents(ctx context.Context, id string) ([]*models.PublicationEvent, error) {
 	return s.store.ListPublicationEvents(ctx, id)
-}
-
-// ActiveView returns the chart's active approved view (for order forms).
-func (s *Service) ActiveView(ctx context.Context, project, name string) (json.RawMessage, error) {
-	p, err := s.store.GetPublicationByChart(ctx, project, name)
-	if err != nil {
-		return nil, err
-	}
-	if !p.Published() {
-		return nil, models.ErrNotFound
-	}
-	return p.ApprovedViewJSON, nil
-}
-
-// ValidateView runs a full validation of the view draft for the builder
-// (live check): format structure + a check against the chart schema. Returns
-// a list of problems (empty = all good), not an error, 422 is not needed here.
-func (s *Service) ValidateView(ctx context.Context, id string, view json.RawMessage) ([]views.Issue, error) {
-	p, err := s.store.GetPublication(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return s.validateView(ctx, p, view), nil
-}
-
-// latestVersion is a best-effort latest chart version number (for the
-// ApprovedViewVersion stamp). Empty if the source is unavailable.
-func (s *Service) latestVersion(ctx context.Context, p *models.ChartPublication) string {
-	if s.schemas == nil {
-		return ""
-	}
-	v, err := s.schemas.LatestVersion(ctx, p.ChartProject, p.ChartName)
-	if err != nil {
-		return ""
-	}
-	return v
-}
-
-// validateView does format + best-effort cross-validation against the chart
-// schema: if the schema is unavailable (no SchemaSource, a chart without a
-// schema, Harbor unavailable), we check only the structure.
-func (s *Service) validateView(ctx context.Context, p *models.ChartPublication, view json.RawMessage) []views.Issue {
-	var schema []byte
-	if s.schemas != nil {
-		if b, err := s.schemas.LatestSchema(ctx, p.ChartProject, p.ChartName); err == nil {
-			schema = b
-		}
-	}
-	return views.Validate(view, schema)
 }
 
 func (s *Service) checkCategory(ctx context.Context, id string) error {

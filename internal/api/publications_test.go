@@ -110,9 +110,9 @@ func adminReq(method, path string, body any) *http.Request {
 	return r
 }
 
-// TestHTTPPublicationsFlow runs the full publication cycle over HTTP:
-// category (admin) -> chart registration -> view draft -> submit -> approve ->
-// active view and overlay in /catalog.
+// TestHTTPPublicationsFlow runs the publication cycle over HTTP: category
+// (admin) -> chart registration -> metadata change approval -> a published
+// version -> default active view and overlay in /catalog.
 func TestHTTPPublicationsFlow(t *testing.T) {
 	srv, _, _ := newServer(t)
 	h := srv.Router()
@@ -132,6 +132,10 @@ func TestHTTPPublicationsFlow(t *testing.T) {
 		map[string]any{"id": "network", "label": "Сеть", "sort": 20})); rec.Code != http.StatusCreated {
 		t.Fatalf("admin create category: %d %s", rec.Code, rec.Body.String())
 	}
+	if rec := do(adminReq("POST", "/api/v1/categories",
+		map[string]any{"id": "databases", "label": "Базы", "sort": 30})); rec.Code != http.StatusCreated {
+		t.Fatalf("admin create category 2: %d %s", rec.Code, rec.Body.String())
+	}
 
 	// chart registration by the owner
 	rec := do(devReq("POST", "/api/v1/publications", "core", map[string]any{
@@ -143,33 +147,53 @@ func TestHTTPPublicationsFlow(t *testing.T) {
 	var pub models.ChartPublication
 	_ = json.Unmarshal(rec.Body.Bytes(), &pub)
 
-	// view not approved yet
+	// no published version yet -> no view
 	if rec := do(devReq("GET", "/api/v1/charts/platform/ingress-gateway/view", "core", nil)); rec.Code != http.StatusNotFound {
-		t.Fatalf("view before approve: %d", rec.Code)
+		t.Fatalf("view before publish: %d", rec.Code)
 	}
 
-	// draft + submit
-	view := map[string]any{"views": map[string]any{"order": map[string]any{"identity": "/gateways/0/name", "include": []string{"gateways"}}}}
+	// metadata change: draft -> submit -> member approve 403 -> admin approve applies
 	if rec := do(devReq("PATCH", "/api/v1/publications/"+pub.ID, "core",
-		map[string]any{"view": view})); rec.Code != http.StatusOK {
-		t.Fatalf("patch view: %d %s", rec.Code, rec.Body.String())
+		map[string]any{"category_id": "databases"})); rec.Code != http.StatusOK {
+		t.Fatalf("patch category: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := do(devReq("POST", "/api/v1/publications/"+pub.ID+"/submit", "core", nil)); rec.Code != http.StatusOK {
 		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())
 	}
-
-	// approve: member 403, admin ok
 	if rec := do(devReq("POST", "/api/v1/publications/"+pub.ID+"/approve", "core", nil)); rec.Code != http.StatusForbidden {
 		t.Fatalf("member approve: %d", rec.Code)
 	}
-	if rec := do(adminReq("POST", "/api/v1/publications/"+pub.ID+"/approve", nil)); rec.Code != http.StatusOK {
+	rec = do(adminReq("POST", "/api/v1/publications/"+pub.ID+"/approve", nil))
+	if rec.Code != http.StatusOK {
 		t.Fatalf("admin approve: %d %s", rec.Code, rec.Body.String())
 	}
+	var approved models.ChartPublication
+	_ = json.Unmarshal(rec.Body.Bytes(), &approved)
+	if approved.CategoryID != "databases" || approved.DraftCategoryID != "" {
+		t.Fatalf("metadata approve must apply the draft: %+v", approved)
+	}
 
-	// active view is returned
+	// publish version 1.0.0: draft -> submit -> approve -> orderable
+	view := map[string]any{"views": map[string]any{"order": map[string]any{"identity": "/gateways/0/name", "include": []string{"gateways"}}}}
+	base := "/api/v1/publications/" + pub.ID
+	if rec := do(devReq("PUT", base+"/versions/1.0.0", "core", map[string]any{"view": view})); rec.Code != http.StatusOK {
+		t.Fatalf("save version view: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(devReq("POST", base+"/versions/1.0.0/submit", "core", nil)); rec.Code != http.StatusOK {
+		t.Fatalf("submit version: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(adminReq("POST", base+"/versions/1.0.0/approve", nil)); rec.Code != http.StatusOK {
+		t.Fatalf("approve version: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(devReq("POST", base+"/versions/1.0.0/orderable", "core",
+		map[string]any{"orderable": true})); rec.Code != http.StatusOK {
+		t.Fatalf("orderable: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// the default view (no ?version) resolves to the published version
 	rec = do(devReq("GET", "/api/v1/charts/platform/ingress-gateway/view", "core", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("view after approve: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("view after publish: %d %s", rec.Code, rec.Body.String())
 	}
 	var gotView struct {
 		Views map[string]json.RawMessage `json:"views"`
@@ -198,7 +222,7 @@ func TestHTTPPublicationsFlow(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &cat); err != nil {
 		t.Fatalf("catalog body: %v", err)
 	}
-	if len(cat.Categories) != 1 || cat.Categories[0].ID != "network" {
+	if len(cat.Categories) != 2 {
 		t.Fatalf("catalog categories: %+v", cat.Categories)
 	}
 	found := false
@@ -206,7 +230,7 @@ func TestHTTPPublicationsFlow(t *testing.T) {
 		if c.Project == "platform" && c.Name == "ingress-gateway" {
 			found = true
 			if c.Publication == nil || !c.Publication.Published || !c.Publication.HasOrderView ||
-				c.Publication.OwnerTeam != "core" || c.Publication.CategoryID != "network" {
+				c.Publication.OwnerTeam != "core" || c.Publication.CategoryID != "databases" {
 				t.Fatalf("publication overlay: %+v", c.Publication)
 			}
 		}
