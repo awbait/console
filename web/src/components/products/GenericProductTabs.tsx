@@ -1,4 +1,12 @@
-import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
+import {
+  IconAdjustmentsHorizontal,
+  IconDotsVertical,
+  IconInfoCircle,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -44,6 +52,69 @@ export type PersistValues = (values: Values) => Promise<void> | void;
 // generic fallback built from the view id.
 function actionLabel(a: ActionPlacement): string {
   return a.label ?? `Редактировать ${a.view}`;
+}
+
+// FormDialogShell is the shared chrome of the product form dialogs, styled as a
+// full-height slide-over panel on the right (console pattern for editing list
+// entries): blurred backdrop, icon-tile header with a title/subtitle pair, a
+// scrollable body and a tinted footer pinned to the bottom.
+function FormDialogShell({
+  isOpen,
+  onClose,
+  icon,
+  title,
+  subtitle,
+  maxWidth = "max-w-xl",
+  footer,
+  children,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  maxWidth?: string;
+  footer: (close: () => void) => React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={(o) => !o && onClose()}
+      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px] entering:animate-in entering:fade-in entering:duration-200 exiting:animate-out exiting:fade-out exiting:duration-200 exiting:fill-mode-forwards"
+    >
+      <Modal
+        className={`fixed inset-y-0 right-0 w-full ${maxWidth} border-l border-slate-200 bg-surface shadow-2xl outline-none entering:animate-in entering:slide-in-from-right entering:duration-300 entering:ease-out exiting:animate-out exiting:slide-out-to-right exiting:duration-200 exiting:fill-mode-forwards`}
+      >
+        <Dialog className="flex h-full flex-col outline-none">
+          {({ close }) => (
+            <>
+              <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                  {icon}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-base font-semibold text-slate-800">{title}</h2>
+                  {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
+                </div>
+                <button
+                  onClick={close}
+                  aria-label="Закрыть"
+                  className="rounded-md p-1.5 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
+                >
+                  <IconX size={18} stroke={2} />
+                </button>
+              </header>
+              <div className="flex-1 overflow-auto px-5 py-5">{children}</div>
+              <footer className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3.5">
+                {footer(close)}
+              </footer>
+            </>
+          )}
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
+  );
 }
 
 // rebaseFieldErrors re-roots server validation paths (absolute JSON pointers
@@ -483,68 +554,50 @@ function ItemModal({
   }
 
   return (
-    <ModalOverlay
+    <FormDialogShell
       isOpen={isOpen}
-      onOpenChange={(o) => !o && onClose()}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
+      onClose={onClose}
+      icon={initial ? <IconPencil size={18} stroke={1.8} /> : <IconPlus size={18} stroke={1.8} />}
+      title={label}
+      subtitle={initial ? "Изменение элемента" : "Новый элемент"}
+      footer={(close) => (
+        <>
+          <button
+            onClick={close}
+            disabled={saving}
+            className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <Button variant="primary" isDisabled={saving} onPress={save}>
+            {saving ? "Сохраняем…" : "Сохранить"}
+          </Button>
+        </>
+      )}
     >
-      <Modal className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
-        <Dialog className="flex max-h-[85vh] flex-col outline-none">
-          {({ close }) => (
-            <>
-              <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                <h2 className="text-sm font-semibold text-gray-700">
-                  {initial ? `Изменить ${label}` : `Новый ${label}`}
-                </h2>
-                <button
-                  onClick={close}
-                  aria-label="Закрыть"
-                  className="rounded-md p-1 text-gray-400 outline-none hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  <IconX size={18} stroke={2} />
-                </button>
-              </header>
-              <div className="flex-1 overflow-auto px-4 py-4">
-                <SchemaForm
-                  schema={schema}
-                  value={item}
-                  onChange={setItem}
-                  view={view}
-                  errors={errors}
-                  showErrors={showErrors}
-                  lockReadOnly={initial !== null}
-                />
-                {/* One error surface for both kinds: the client-side field
-                    summary and the server (domain/422) error with its details. */}
-                {(err || (showErrors && errors.size > 0)) && (
-                  <div ref={summaryRef} className="mt-3 scroll-mb-3">
-                    <FormErrors
-                      message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
-                      details={err?.details}
-                      fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
-                      schema={schema}
-                      view={view}
-                    />
-                  </div>
-                )}
-              </div>
-              <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
-                <button
-                  onClick={close}
-                  disabled={saving}
-                  className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Отмена
-                </button>
-                <Button variant="primary" isDisabled={saving} onPress={save}>
-                  {saving ? "Сохраняем…" : "Сохранить"}
-                </Button>
-              </footer>
-            </>
-          )}
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
+      <SchemaForm
+        schema={schema}
+        value={item}
+        onChange={setItem}
+        view={view}
+        errors={errors}
+        showErrors={showErrors}
+        lockReadOnly={initial !== null}
+      />
+      {/* One error surface for both kinds: the client-side field summary and
+          the server (domain/422) error with its details. */}
+      {(err || (showErrors && errors.size > 0)) && (
+        <div ref={summaryRef} className="mt-3 scroll-mb-3">
+          <FormErrors
+            message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
+            details={err?.details}
+            fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
+            schema={schema}
+            view={view}
+          />
+        </div>
+      )}
+    </FormDialogShell>
   );
 }
 
@@ -685,71 +738,56 @@ function ViewFormModal({
   }
 
   return (
-    <ModalOverlay
+    <FormDialogShell
       isOpen={isOpen}
-      onOpenChange={(o) => !o && onClose()}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
+      onClose={onClose}
+      icon={<IconAdjustmentsHorizontal size={18} stroke={1.8} />}
+      title={title}
+      subtitle="Параметры заказа"
+      maxWidth="max-w-lg"
+      footer={(close) => (
+        <>
+          <button
+            onClick={close}
+            disabled={saving}
+            className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+          >
+            Отмена
+          </button>
+          <Button variant="primary" isDisabled={saving || !schema} onPress={save}>
+            {saving ? "Сохраняем…" : "Сохранить"}
+          </Button>
+        </>
+      )}
     >
-      <Modal className="max-h-[85vh] w-full max-w-md overflow-hidden rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
-        <Dialog className="flex max-h-[85vh] flex-col outline-none">
-          {({ close }) => (
-            <>
-              <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
-                <button
-                  onClick={close}
-                  aria-label="Закрыть"
-                  className="rounded-md p-1 text-gray-400 outline-none hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  <IconX size={18} stroke={2} />
-                </button>
-              </header>
-              <div className="flex-1 overflow-auto px-4 py-4">
-                {loading ? (
-                  <Spinner label="Загрузка схемы…" />
-                ) : error ? (
-                  <SchemaLoadError request={request} error={error} />
-                ) : schema ? (
-                  <SchemaForm
-                    schema={schema}
-                    value={value}
-                    onChange={setValue}
-                    view={view}
-                    errors={errors}
-                    showErrors={showErrors}
-                    lockReadOnly
-                  />
-                ) : (
-                  <p className="text-sm text-gray-500">Нет схемы.</p>
-                )}
-                {(err || (showErrors && errors.size > 0)) && (
-                  <div ref={summaryRef} className="mt-3 scroll-mb-3">
-                    <FormErrors
-                      message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
-                      details={err?.details}
-                      fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
-                      schema={schema ?? undefined}
-                      view={view}
-                    />
-                  </div>
-                )}
-              </div>
-              <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
-                <button
-                  onClick={close}
-                  disabled={saving}
-                  className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Отмена
-                </button>
-                <Button variant="primary" isDisabled={saving || !schema} onPress={save}>
-                  {saving ? "Сохраняем…" : "Сохранить"}
-                </Button>
-              </footer>
-            </>
-          )}
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
+      {loading ? (
+        <Spinner label="Загрузка схемы…" />
+      ) : error ? (
+        <SchemaLoadError request={request} error={error} />
+      ) : schema ? (
+        <SchemaForm
+          schema={schema}
+          value={value}
+          onChange={setValue}
+          view={view}
+          errors={errors}
+          showErrors={showErrors}
+          lockReadOnly
+        />
+      ) : (
+        <p className="text-sm text-gray-500">Нет схемы.</p>
+      )}
+      {(err || (showErrors && errors.size > 0)) && (
+        <div ref={summaryRef} className="mt-3 scroll-mb-3">
+          <FormErrors
+            message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
+            details={err?.details}
+            fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
+            schema={schema ?? undefined}
+            view={view}
+          />
+        </div>
+      )}
+    </FormDialogShell>
   );
 }
