@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import yaml from "js-yaml";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
   Dialog,
@@ -10,25 +11,24 @@ import {
   ModalOverlay,
   Popover,
 } from "react-aria-components";
-import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import { api, HttpError } from "../../api/client";
-import { chartLabel } from "../../app/CatalogContext";
-import { useAsync } from "../../hooks/useAsync";
-import { SchemaForm, pruneEmpty, collectErrors, seedDefaults, type View } from "../../form/SchemaForm";
-import { Button, Hint, Spinner } from "../ui";
-import { ConfirmDialog } from "../ConfirmDialog";
-import { FormErrors } from "../FormErrors";
 import type { OrderRequest, ViewDocument, ViewTab } from "../../api/types";
+import { chartLabel } from "../../app/CatalogContext";
+import { collectErrors, pruneEmpty, SchemaForm, seedDefaults, type View } from "../../form/SchemaForm";
+import { useAsync } from "../../hooks/useAsync";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { FormErrors, type SubmitError, toSubmitError } from "../FormErrors";
+import { Button, Hint, Spinner } from "../ui";
 import {
+  type ActionPlacement,
   actionViews,
   applyEnums,
   computeCell,
+  type EnumRule,
   getAt,
+  type ResolvedTab,
   resolveTab,
   setAt,
-  type ActionPlacement,
-  type EnumRule,
-  type ResolvedTab,
 } from "./genericView";
 
 type Values = Record<string, any>;
@@ -44,6 +44,29 @@ export type PersistValues = (values: Values) => Promise<void> | void;
 // generic fallback built from the view id.
 function actionLabel(a: ActionPlacement): string {
   return a.label ?? `Редактировать ${a.view}`;
+}
+
+// rebaseFieldErrors re-roots server validation paths (absolute JSON pointers
+// into the full values document) onto the edited element, so a dialog's error
+// summary can resolve them against the element schema/view it renders. Errors
+// outside the edited element keep their absolute path.
+function rebaseFieldErrors(e: unknown, basePath: string): unknown {
+  if (e instanceof HttpError && e.details.length > 0) {
+    e.details = e.details.map((d) =>
+      d.path === basePath || d.path.startsWith(`${basePath}/`)
+        ? { ...d, path: d.path.slice(basePath.length) }
+        : d,
+    );
+  }
+  return e;
+}
+
+// revealSummary scrolls a dialog's error summary into view after the next
+// paint (the summary may be mounted in the same tick that reveals it).
+function revealSummary(ref: React.RefObject<HTMLDivElement | null>) {
+  requestAnimationFrame(() =>
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+  );
 }
 
 function parseValues(valuesYaml: string): Values {
@@ -231,8 +254,16 @@ function ListEditor({
     }
   }
   async function saveItem(item: Values) {
+    const idx = editIndex !== null ? editIndex : items.length;
     const next = editIndex !== null ? items.map((x, i) => (i === editIndex ? item : x)) : [...items, item];
-    await commit(next);
+    try {
+      await commit(next);
+    } catch (e) {
+      // Server validation paths point into the FULL values document, while the
+      // dialog renders the element's schema: re-root them onto the edited item
+      // so its error summary shows proper field breadcrumbs.
+      throw rebaseFieldErrors(e, `${target.itemsPath}/${idx}`);
+    }
     setAdding(false);
     setEditIndex(null);
   }
@@ -412,7 +443,8 @@ function ItemModal({
   const [item, setItem] = useState<Values>({});
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<SubmitError | null>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -432,6 +464,10 @@ function ItemModal({
   async function save() {
     if (errors.size > 0) {
       setShowErrors(true);
+      // The save button lives in the fixed footer while the summary is at the
+      // bottom of the scrollable body: bring it into view, or a blocked save
+      // looks like a no-op when the user is scrolled up.
+      revealSummary(summaryRef);
       return;
     }
     setSaving(true);
@@ -439,7 +475,8 @@ function ItemModal({
     try {
       await onSave(pruneEmpty(item));
     } catch (e) {
-      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+      setErr(toSubmitError(e));
+      revealSummary(summaryRef);
     } finally {
       setSaving(false);
     }
@@ -477,17 +514,19 @@ function ItemModal({
                   showErrors={showErrors}
                   lockReadOnly={initial !== null}
                 />
-                {showErrors && errors.size > 0 && (
-                  <div className="mt-3">
+                {/* One error surface for both kinds: the client-side field
+                    summary and the server (domain/422) error with its details. */}
+                {(err || (showErrors && errors.size > 0)) && (
+                  <div ref={summaryRef} className="mt-3 scroll-mb-3">
                     <FormErrors
-                      message="Заполните обязательные поля, отмеченные красным."
-                      fieldErrors={errors}
+                      message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
+                      details={err?.details}
+                      fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
                       schema={schema}
                       view={view}
                     />
                   </div>
                 )}
-                {err && <p className="mt-3 text-xs text-red-600">{err}</p>}
               </div>
               <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
                 <button
@@ -605,7 +644,8 @@ function ViewFormModal({
   const [value, setValue] = useState<Values>({});
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<SubmitError | null>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   // Client-side validation against the schema (honoring the view), like the order
   // form and the list-item modal, so invalid/required fields are caught before the
@@ -625,6 +665,7 @@ function ViewFormModal({
   async function save() {
     if (errors.size > 0) {
       setShowErrors(true);
+      revealSummary(summaryRef);
       return;
     }
     setSaving(true);
@@ -636,7 +677,8 @@ function ViewFormModal({
       onClose();
       onSaved();
     } catch (e) {
-      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+      setErr(toSubmitError(e));
+      revealSummary(summaryRef);
     } finally {
       setSaving(false);
     }
@@ -680,17 +722,17 @@ function ViewFormModal({
                 ) : (
                   <p className="text-sm text-gray-500">Нет схемы.</p>
                 )}
-                {showErrors && errors.size > 0 && (
-                  <div className="mt-3">
+                {(err || (showErrors && errors.size > 0)) && (
+                  <div ref={summaryRef} className="mt-3 scroll-mb-3">
                     <FormErrors
-                      message="Заполните обязательные поля, отмеченные красным."
-                      fieldErrors={errors}
+                      message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
+                      details={err?.details}
+                      fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
                       schema={schema ?? undefined}
                       view={view}
                     />
                   </div>
                 )}
-                {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
               </div>
               <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
                 <button

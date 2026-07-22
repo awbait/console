@@ -44,6 +44,7 @@ import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { FormErrors } from "../components/FormErrors";
 import { ProductIcon } from "../components/icons";
 import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
 import type { PersistValues } from "../components/products/GenericProductTabs";
@@ -354,7 +355,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
           )}
         </div>
       )}
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <FormErrors message={err} />}
 
       {/* Builder: the document on the left (+ chart schema alongside, read-only), preview on
           the right. On lg the two panels sit side by side and the height lock engages

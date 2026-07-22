@@ -743,7 +743,7 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 // schemaValidationError flattens a jsonschema failure into a ValidationError with
 // a per-field breakdown (the leaf causes), so the UI can pinpoint bad fields.
 func schemaValidationError(err error) *ValidationError {
-	ve := &ValidationError{Message: "values failed schema validation"}
+	ve := &ValidationError{Message: "Значения не прошли проверку по схеме чарта"}
 	var je *jsonschema.ValidationError
 	if errors.As(err, &je) {
 		collectSchemaLeaves(je, &ve.Fields)

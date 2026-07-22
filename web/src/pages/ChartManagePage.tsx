@@ -34,6 +34,7 @@ import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { FormErrors } from "../components/FormErrors";
 import { Button, Card, Chip, ErrorBox, Select, Spinner, TextField } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
@@ -180,7 +181,7 @@ function RegisterCard({
           onChange={(v: string) => setOwnerTeam(v)}
         />
       ) : null}
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <FormErrors message={err} />}
       <div>
         <Button variant="primary" isDisabled={busy} onPress={onCreate}>
           Опубликовать

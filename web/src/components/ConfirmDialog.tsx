@@ -1,7 +1,8 @@
+import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { HttpError } from "../api/client";
+import { FormErrors } from "./FormErrors";
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -88,7 +89,11 @@ export function ConfirmDialog({
               </header>
               <div className={`px-4 pb-4 text-sm text-gray-600 ${danger ? "pl-16" : ""}`}>
                 {message}
-                {err && <p className="mt-3 text-xs text-red-600">{err}</p>}
+                {err && (
+                  <div className="mt-3">
+                    <FormErrors message={err} />
+                  </div>
+                )}
               </div>
               <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
                 <button

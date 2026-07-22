@@ -1,6 +1,21 @@
 import { IconAlertTriangle } from "@tabler/icons-react";
+import { HttpError } from "../api/client";
 import type { FieldError } from "../api/types";
 import { fieldAnchorId } from "../form/SchemaForm";
+
+// SubmitError is a normalized submission failure: the human message plus the
+// server's per-field breakdown when the failure was a validation 422.
+export interface SubmitError {
+  message: string;
+  details?: FieldError[];
+}
+
+// toSubmitError normalizes any thrown value for FormErrors, keeping the
+// per-field details an HttpError carries instead of flattening to a string.
+export function toSubmitError(e: unknown): SubmitError {
+  if (e instanceof HttpError) return { message: e.message, details: e.details };
+  return { message: e instanceof Error ? e.message : String(e) };
+}
 
 // revealField scrolls the offending field into view and focuses its first control,
 // so clicking a summary row jumps straight to it. Errored disclosure sections are
