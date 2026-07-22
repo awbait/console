@@ -7,6 +7,7 @@ import type { ChartPublication, PublicationVersion } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
 import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
+import { FormErrors } from "./FormErrors";
 import { Button, Card, Chip, TextField } from "./ui";
 
 // VersionReview is the admin decision surface for one PENDING publication
@@ -93,7 +94,7 @@ export function VersionReview({
           <IconCircleX size={16} stroke={1.8} /> Отклонить
         </Button>
       </div>
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <FormErrors message={err} />}
     </Card>
   );
 }
@@ -190,7 +191,7 @@ export function PublicationReview({ pub, onReviewed }: { pub: ChartPublication; 
           <IconCircleX size={16} stroke={1.8} /> Отклонить
         </Button>
       </div>
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <FormErrors message={err} />}
     </Card>
   );
 }

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import yaml from "js-yaml";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button as AriaButton,
   Dialog,
@@ -10,25 +11,24 @@ import {
   ModalOverlay,
   Popover,
 } from "react-aria-components";
-import { IconDotsVertical, IconInfoCircle, IconPencil, IconTrash, IconX } from "@tabler/icons-react";
 import { api, HttpError } from "../../api/client";
-import { chartLabel } from "../../app/CatalogContext";
-import { useAsync } from "../../hooks/useAsync";
-import { SchemaForm, pruneEmpty, collectErrors, seedDefaults, type View } from "../../form/SchemaForm";
-import { Button, Hint, Spinner } from "../ui";
-import { ConfirmDialog } from "../ConfirmDialog";
-import { FormErrors } from "../FormErrors";
 import type { OrderRequest, ViewDocument, ViewTab } from "../../api/types";
+import { chartLabel } from "../../app/CatalogContext";
+import { collectErrors, pruneEmpty, SchemaForm, seedDefaults, type View } from "../../form/SchemaForm";
+import { useAsync } from "../../hooks/useAsync";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { FormErrors, type SubmitError, toSubmitError } from "../FormErrors";
+import { Button, Hint, Spinner } from "../ui";
 import {
+  type ActionPlacement,
   actionViews,
   applyEnums,
   computeCell,
+  type EnumRule,
   getAt,
+  type ResolvedTab,
   resolveTab,
   setAt,
-  type ActionPlacement,
-  type EnumRule,
-  type ResolvedTab,
 } from "./genericView";
 
 type Values = Record<string, any>;
@@ -412,7 +412,7 @@ function ItemModal({
   const [item, setItem] = useState<Values>({});
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<SubmitError | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -439,7 +439,7 @@ function ItemModal({
     try {
       await onSave(pruneEmpty(item));
     } catch (e) {
-      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+      setErr(toSubmitError(e));
     } finally {
       setSaving(false);
     }
@@ -477,17 +477,19 @@ function ItemModal({
                   showErrors={showErrors}
                   lockReadOnly={initial !== null}
                 />
-                {showErrors && errors.size > 0 && (
+                {/* One error surface for both kinds: the client-side field
+                    summary and the server (domain/422) error with its details. */}
+                {(err || (showErrors && errors.size > 0)) && (
                   <div className="mt-3">
                     <FormErrors
-                      message="Заполните обязательные поля, отмеченные красным."
-                      fieldErrors={errors}
+                      message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
+                      details={err?.details}
+                      fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
                       schema={schema}
                       view={view}
                     />
                   </div>
                 )}
-                {err && <p className="mt-3 text-xs text-red-600">{err}</p>}
               </div>
               <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
                 <button
@@ -605,7 +607,7 @@ function ViewFormModal({
   const [value, setValue] = useState<Values>({});
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<SubmitError | null>(null);
 
   // Client-side validation against the schema (honoring the view), like the order
   // form and the list-item modal, so invalid/required fields are caught before the
@@ -636,7 +638,7 @@ function ViewFormModal({
       onClose();
       onSaved();
     } catch (e) {
-      setErr(e instanceof HttpError ? e.message : (e as Error).message);
+      setErr(toSubmitError(e));
     } finally {
       setSaving(false);
     }
@@ -680,17 +682,17 @@ function ViewFormModal({
                 ) : (
                   <p className="text-sm text-gray-500">Нет схемы.</p>
                 )}
-                {showErrors && errors.size > 0 && (
+                {(err || (showErrors && errors.size > 0)) && (
                   <div className="mt-3">
                     <FormErrors
-                      message="Заполните обязательные поля, отмеченные красным."
-                      fieldErrors={errors}
+                      message={err?.message ?? "Заполните обязательные поля, отмеченные красным."}
+                      details={err?.details}
+                      fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
                       schema={schema ?? undefined}
                       view={view}
                     />
                   </div>
                 )}
-                {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
               </div>
               <footer className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
                 <button
