@@ -510,6 +510,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           namespace={namespace}
           onNamespace={setNamespace}
           hideNamespace={ns.hideField}
+          namespaceHint={ns.hideField ? resolveDestNamespace(ns, namespace, effectiveValues) : undefined}
           team={editing ? draft?.team : activeTeam ?? undefined}
           version={effectiveVersion ?? undefined}
           latest={!editing && orderableVersions.length === 0}

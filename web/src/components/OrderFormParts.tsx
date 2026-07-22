@@ -24,6 +24,7 @@ export function OrderMetaCard({
   namespace,
   onNamespace,
   hideNamespace = false,
+  namespaceHint,
   team,
   version,
   latest = false,
@@ -46,6 +47,9 @@ export function OrderMetaCard({
   // own values field or a fixed constant (view "namespace" directive), so there
   // is nothing for the user to type.
   hideNamespace?: boolean;
+  // Resolved destination namespace to show while the input is hidden ("where
+  // will this deploy"). Empty - not resolvable yet (form not filled in).
+  namespaceHint?: string;
   team?: string;
   version?: string;
   latest?: boolean;
@@ -86,7 +90,7 @@ export function OrderMetaCard({
         onChange={onCluster}
         errorText={showErrors && !cluster ? "Обязательное поле" : undefined}
       />
-      {!hideNamespace && (
+      {!hideNamespace ? (
         <TextField
           label="Namespace"
           description="Namespace назначения в кластере (destination.namespace)."
@@ -96,6 +100,24 @@ export function OrderMetaCard({
           onChange={onNamespace}
           errorText={showErrors && !namespace ? "Обязательное поле" : undefined}
         />
+      ) : (
+        // The input is hidden (the chart names the namespace itself); still show
+        // where the deploy will land, so the hidden field is not a surprise.
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium text-gray-700">Namespace</span>
+          <p className="text-sm text-gray-600">
+            {namespaceHint ? (
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px] text-slate-700">
+                {namespaceHint}
+              </span>
+            ) : (
+              <span className="text-gray-500">определится из значений формы</span>
+            )}
+          </p>
+          <span className="text-xs text-gray-500">
+            Namespace назначения задаёт сам чарт, вводить его не нужно.
+          </span>
+        </div>
       )}
       {showVersionSelect && (
         <Select
