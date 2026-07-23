@@ -92,6 +92,8 @@ export interface GraphModel {
 export interface PoliciesGraphHandle {
   openAddNamespace: () => void;
   loadExample: () => void;
+  // Replace the whole canvas with a new model (e.g. parsed from pasted values).
+  load: (m: GraphModel & { positions?: Record<string, XY> }) => void;
 }
 
 interface PoliciesGraphProps {
@@ -205,7 +207,8 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   // Stable key so effects depending on the draft set do not retrigger on every
   // parent render with an equal array.
   const draftKey = (draftNs ?? []).join(",");
-  const draftSet = useMemo(() => new Set(draftNs ?? []), [draftKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by content, not array identity
+  const draftSet = useMemo(() => new Set(draftKey ? draftKey.split(",") : []), [draftKey]);
   const toast = useToast();
   const { screenToFlowPosition } = useReactFlow();
 
@@ -360,10 +363,20 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
     if (!lockedOrderNs) setOrderNsState("netbox-core");
   }, [setEdges, lockedOrderNs]);
 
+  const load = useCallback(
+    (m: GraphModel & { positions?: Record<string, XY> }) => {
+      setTopology(m.topology);
+      setPositions(m.positions ?? {});
+      setEdges(m.edges);
+      if (!lockedOrderNs) setOrderNsState(m.orderNs);
+    },
+    [setEdges, lockedOrderNs],
+  );
+
   useImperativeHandle(
     ref,
-    () => ({ openAddNamespace: () => setNsDialog({}), loadExample }),
-    [loadExample],
+    () => ({ openAddNamespace: () => setNsDialog({}), loadExample, load }),
+    [loadExample, load],
   );
 
   // --- connection rules ---------------------------------------------------

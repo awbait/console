@@ -17,7 +17,7 @@ import {
 
 // Shared modal chrome for the small topology dialogs, matching the app's
 // centered modal style (ConfirmDialog).
-function MapDialog({
+export function MapDialog({
   isOpen,
   onOpenChange,
   title,

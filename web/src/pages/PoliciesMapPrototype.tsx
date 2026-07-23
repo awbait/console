@@ -1,4 +1,11 @@
-import { IconArrowLeft, IconCopy, IconPlus, IconSitemap, IconWand } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconClipboardText,
+  IconCopy,
+  IconPlus,
+  IconSitemap,
+  IconWand,
+} from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -8,6 +15,7 @@ import { useTeam } from "../app/TeamContext";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, Select, TextField } from "../components/ui";
+import { type ImportedValues, ImportValuesDialog } from "./policiesMap/ImportValuesDialog";
 import {
   type GraphModel,
   PoliciesGraph,
@@ -44,6 +52,7 @@ export function PoliciesMapPrototype() {
   // The pending order groups awaiting confirmation: one draft per group, the
   // primary one opens in the order form afterwards.
   const [pendingGroups, setPendingGroups] = useState<EdgeGroup[] | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     provider.suggestNamespaces().then(setSuggestions).catch(() => setSuggestions([]));
@@ -97,6 +106,33 @@ export function PoliciesMapPrototype() {
       toast.error("Не удалось скопировать в буфер обмена.");
     }
   }, [valuesYaml, toast]);
+
+  // importValues replaces the canvas with a graph parsed from pasted values
+  // and adopts its naming tags when present.
+  const importValues = useCallback(
+    (r: ImportedValues) => {
+      graph.current?.load({
+        topology: r.parsed.topology,
+        edges: r.parsed.edges,
+        orderNs: r.orderNs,
+        positions: r.parsed.positions,
+      });
+      const n = r.naming as Partial<Record<keyof NamingTags, unknown>> | undefined;
+      if (n && typeof n === "object") {
+        setNaming((prev) => ({
+          instanceTag: typeof n.instanceTag === "string" ? n.instanceTag : prev.instanceTag,
+          clusterTag: typeof n.clusterTag === "string" ? n.clusterTag : prev.clusterTag,
+          projectTag: typeof n.projectTag === "string" ? n.projectTag : prev.projectTag,
+        }));
+      }
+      if (r.hasOtherSections) {
+        toast.error("Секции netpol/authzpol на граф не переносятся и в сандбоксе будут потеряны.");
+      } else {
+        toast.success("values загружен на холст.");
+      }
+    },
+    [toast],
+  );
 
   const submit = useCallback(() => {
     const errors = validateSubmit(topology, edges, naming, orderNs);
@@ -156,6 +192,9 @@ export function PoliciesMapPrototype() {
           Карта сетевого взаимодействия (сандбокс)
         </h1>
         <div className="ml-auto flex items-center gap-2">
+          <Button onPress={() => setImportOpen(true)}>
+            <IconClipboardText size={16} /> Вставить values
+          </Button>
           <Button onPress={() => graph.current?.loadExample()}>
             <IconWand size={16} /> Пример
           </Button>
@@ -253,6 +292,12 @@ export function PoliciesMapPrototype() {
           </div>
         </aside>
       </div>
+
+      <ImportValuesDialog
+        isOpen={importOpen}
+        onOpenChange={setImportOpen}
+        onLoad={importValues}
+      />
 
       <ConfirmDialog
         isOpen={pendingGroups !== null}
