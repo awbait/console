@@ -99,15 +99,14 @@ const rulePort = (p: TopoPort) => ({
   protocol: p.protocol === "UDP" ? "UDP" : "TCP",
 });
 
-// buildValues turns the drawn edges into the `policies` chart values object
-// (ready for yaml.dump). Links of the same owner merge into one entry; edges
-// out of the order namespace scope are skipped (validateSubmit reports them).
-export function buildValues(
+// buildPolicies turns the drawn edges into the policies[] section. Links of
+// the same owner merge into one entry; edges out of the order namespace scope
+// are skipped (validateSubmit reports them).
+export function buildPolicies(
   topology: TopoNamespace[],
   edges: Edge[],
-  naming: NamingTags,
   orderNs: string | null,
-): Record<string, unknown> {
+): unknown[] {
   const used = new Set<string>();
   const byOwner = new Map<
     string,
@@ -136,7 +135,7 @@ export function buildValues(
     }
   }
 
-  const policies = [...byOwner.values()].map((g) => ({
+  return [...byOwner.values()].map((g) => ({
     name: shortName(g.owner.name, used),
     enabled: true,
     serviceAccount: g.owner.serviceAccount ?? undefined,
@@ -144,8 +143,16 @@ export function buildValues(
     ...(g.ingress.length > 0 ? { ingress: g.ingress } : {}),
     ...(g.egress.length > 0 ? { egress: g.egress } : {}),
   }));
+}
 
-  return { naming, policies };
+// buildValues wraps buildPolicies into a full sandbox values object.
+export function buildValues(
+  topology: TopoNamespace[],
+  edges: Edge[],
+  naming: NamingTags,
+  orderNs: string | null,
+): Record<string, unknown> {
+  return { naming, policies: buildPolicies(topology, edges, orderNs) };
 }
 
 // Lightweight stand-in for values.schema.json validation. The real flow

@@ -21,6 +21,13 @@ export const portFromHandle = (handle: string | null | undefined): number | null
   return m ? Number(m[1]) : null;
 };
 
+// Body handles sit at the card header and anchor edges whose source port is
+// unknown (values parsed back into a graph never record the source port).
+// They are not user-connectable - drawing stays port-to-port.
+export const bodyHandleId = (side: "l" | "r") => `w-${side}`;
+export const isBodyHandle = (handle: string | null | undefined): boolean =>
+  handle === "w-l" || handle === "w-r";
+
 export function WorkloadNode({ data }: NodeProps) {
   const { workload, invalidReason, connectedHandles } = data as WorkloadNodeData;
   // Invalid workloads keep their ports connectable on purpose: per spec the
@@ -42,6 +49,22 @@ export function WorkloadNode({ data }: NodeProps) {
   return (
     <div className={`rf-wl${invalid ? " rf-wl--invalid" : ""}`} title={invalidReason ?? undefined}>
       <div className="rf-wl__head">
+        <Handle
+          id={bodyHandleId("l")}
+          type="source"
+          position={Position.Left}
+          isConnectableStart={false}
+          isConnectableEnd={false}
+          className={portClass(bodyHandleId("l"))}
+        />
+        <Handle
+          id={bodyHandleId("r")}
+          type="source"
+          position={Position.Right}
+          isConnectableStart={false}
+          isConnectableEnd={false}
+          className={portClass(bodyHandleId("r"))}
+        />
         <div className="rf-wl__title">
           <span className="rf-wl__name" title={workload.name}>
             {workload.name}

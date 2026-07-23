@@ -51,6 +51,8 @@ import {
   workloadInvalidReason,
 } from "./topology";
 import {
+  bodyHandleId,
+  isBodyHandle,
   portFromHandle,
   portHandleId,
   WorkloadNode,
@@ -229,12 +231,15 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
         const t = findWorkload(topology, e.target);
         const sp = portFromHandle(e.sourceHandle);
         const tp = portFromHandle(e.targetHandle);
+        // The source may anchor at the body handle (parsed edges whose source
+        // port is unknown); the target is always a concrete port.
+        const sourceOk =
+          sp !== null ? s?.ports.some((p) => p.port === sp) : isBodyHandle(e.sourceHandle);
         return (
           !!s &&
           !!t &&
-          sp !== null &&
+          !!sourceOk &&
           tp !== null &&
-          s.ports.some((p) => p.port === sp) &&
           t.ports.some((p) => p.port === tp) &&
           // A workload moved into the peer namespace turns the edge same-ns.
           nsOfWorkload(e.source) !== nsOfWorkload(e.target)
@@ -665,7 +670,8 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
       edges.map((e) => {
         const sp = portFromHandle(e.sourceHandle);
         const tp = portFromHandle(e.targetHandle);
-        if (sp === null || tp === null) return e;
+        const sourceIsBody = sp === null && isBodyHandle(e.sourceHandle);
+        if ((sp === null && !sourceIsBody) || tp === null) return e;
         const bidi = e.data?.bidirectional === true;
         let sSide: "l" | "r" = "r";
         let tSide: "l" | "r" = "l";
@@ -679,7 +685,7 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
           // FlowEdge animates traffic with travelling dots: one forward dot,
           // plus a counter-moving one in another color for two-way links.
           type: "flow",
-          sourceHandle: portHandleId(sp, sSide),
+          sourceHandle: sourceIsBody ? bodyHandleId(sSide) : portHandleId(sp as number, sSide),
           targetHandle: portHandleId(tp, tSide),
           animated: false,
           style: { strokeWidth: 2 },

@@ -17,6 +17,7 @@ import {
   type PersistValues,
 } from "../components/products/GenericProductTabs";
 import { actionViews, productTabs } from "../components/products/genericView";
+import { valuesEditorPlugins } from "../components/products/valuesEditors";
 import { Button, Card, ErrorBox, Spinner } from "../components/ui";
 import { parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
 import { collectErrors, pruneEmpty } from "../form/SchemaForm";
@@ -109,9 +110,12 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // New-order chart version: defaults to the recommended (or highest orderable)
   // version once the catalog loads; the user can switch it (initialized below).
   const [selectedVersion, setSelectedVersion] = useState("");
-  const [mode, setMode] = useState<"form" | "raw">("form");
+  const [mode, setMode] = useState<string>("form");
   const [values, setValues] = useState<Values>({});
   const [raw, setRaw] = useState("");
+  // Raw-YAML parse error carried into a values-editor plugin (the plugin shows
+  // it instead of a graph and leaves the user's YAML untouched).
+  const [pluginInputError, setPluginInputError] = useState<string | null>(null);
   const [submitErr, setSubmitErr] = useState<{ message: string; details?: FieldError[] } | null>(null);
   const [busy, setBusy] = useState<null | "draft" | "submit">(null);
   // Reveal all client-side validation errors (set on a submit attempt); before
@@ -267,17 +271,24 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     );
   }
 
-  function switchMode(next: "form" | "raw") {
+  function switchMode(next: string) {
     if (next === mode) return;
-    if (next === "raw") {
-      setRaw(yaml.dump(pruneEmpty(values)));
-    } else {
+    let parseError: string | null = null;
+    if (mode === "raw") {
+      // Leaving raw: adopt the YAML into the shared values. Invalid YAML keeps
+      // the previous values (the raw text itself is preserved either way); a
+      // plugin mode surfaces the error explicitly instead of showing a graph
+      // built from stale values.
       try {
         setValues((yaml.load(raw) as Values) ?? {});
-      } catch {
-        /* keep previous form values if YAML is invalid */
+      } catch (e) {
+        parseError = (e as Error).message;
       }
     }
+    if (next === "raw") {
+      setRaw(yaml.dump(pruneEmpty(values)));
+    }
+    setPluginInputError(next !== "form" && next !== "raw" ? parseError : null);
     setMode(next);
   }
 
@@ -535,6 +546,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         showErrors={showErrors}
         lockReadOnly={upgrade}
         lockedPaths={upgrade && identity ? [identity] : undefined}
+        plugins={valuesEditorPlugins(name)}
+        pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
+        pluginInputError={pluginInputError}
       />
 
       {/* On upgrade, let the other sections be edited too (tabs + actions), like

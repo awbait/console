@@ -115,8 +115,14 @@
 }
 
 .rf-wl__head {
+  position: relative; /* anchors the body handles at the header level */
   padding: 7px 10px 6px;
   border-bottom: 1px solid rgb(var(--c-neutral-100));
+}
+
+/* Body handles only anchor parsed edges; the user cannot grab them. */
+.react-flow__handle.rf-port[data-handleid^="w-"] {
+  pointer-events: none;
 }
 
 .rf-wl__title {
