@@ -192,11 +192,18 @@
   color: rgb(var(--c-danger-500));
 }
 
-/* Travelling dot on bidirectional edges (two of them run the path in opposite
-   directions). */
+/* Travelling traffic dots: blue runs source -> target on every edge, green
+   runs the opposite way on bidirectional links. */
 .rf-flow-dot {
-  fill: rgb(var(--c-info-500));
   pointer-events: none;
+}
+
+.rf-flow-dot--fwd {
+  fill: rgb(var(--c-info-500));
+}
+
+.rf-flow-dot--rev {
+  fill: rgb(var(--c-success-500));
 }
 
 /* Port handle: the interactive circle on the box border. The circle itself

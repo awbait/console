@@ -32,8 +32,8 @@ import { Link } from "react-router-dom";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, TextField } from "../components/ui";
-import { BidiEdge } from "./policiesMap/BidiEdge";
 import { ContextMenu, type MenuEntry } from "./policiesMap/ContextMenu";
+import { FlowEdge } from "./policiesMap/FlowEdge";
 import "./policiesMap/policiesMap.css";
 import { NamespaceDialog, WorkloadDialog } from "./policiesMap/TopologyDialogs";
 import {
@@ -59,7 +59,7 @@ import {
 } from "./policiesMap/WorkloadNode";
 
 const nodeTypes = { workload: WorkloadNode, nsGroup: NsGroupNode };
-const edgeTypes = { bidi: BidiEdge };
+const edgeTypes = { flow: FlowEdge };
 
 // The pluggable topology source. Manual mode suggests nothing; later tiers
 // (orders data, collector snapshot) return deployed namespaces here.
@@ -496,13 +496,12 @@ function Canvas() {
         }
         return {
           ...e,
-          // The running dash flows source -> target only, which lies about a
-          // two-way link: bidirectional edges use the custom type with two
-          // counter-moving dots instead.
-          type: bidi ? "bidi" : undefined,
+          // FlowEdge animates traffic with travelling dots: one forward dot,
+          // plus a counter-moving one in another color for two-way links.
+          type: "flow",
           sourceHandle: portHandleId(sp, sSide),
           targetHandle: portHandleId(tp, tSide),
-          animated: !bidi,
+          animated: false,
           style: { strokeWidth: 2 },
           markerEnd: ARROW,
           markerStart: bidi ? { ...ARROW, orient: "auto-start-reverse" } : undefined,
@@ -790,19 +789,12 @@ function Legend() {
           viewBox="0 0 20 6"
           className="h-2 w-5 shrink-0 text-slate-500"
           role="img"
-          aria-label="Пунктирная стрелка"
+          aria-label="Стрелка с бегущей точкой"
         >
-          <line
-            x1="0"
-            y1="3"
-            x2="20"
-            y2="3"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeDasharray="4 2"
-          />
+          <line x1="0" y1="3" x2="20" y2="3" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="10" cy="3" r="2.2" className="fill-sky-500" />
         </svg>
-        разрешённый трафик source -&gt; target
+        разрешённый трафик source -&gt; target (точка бежит по стрелке)
       </div>
       <div className="flex items-center gap-2">
         <svg
@@ -814,8 +806,10 @@ function Legend() {
           <path d="M5 4 L19 4" stroke="currentColor" strokeWidth="1.5" />
           <path d="M8 1 L4 4 L8 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
           <path d="M16 1 L20 4 L16 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          <circle cx="10" cy="4" r="2" className="fill-sky-500" />
+          <circle cx="14" cy="4" r="2" className="fill-emerald-500" />
         </svg>
-        трафик в обе стороны (встречные стрелки сливаются)
+        трафик в обе стороны: синяя точка - туда, зелёная - обратно
       </div>
         <div className="mt-1 text-slate-400">ПКМ - добавить или изменить элементы.</div>
       </div>
