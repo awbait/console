@@ -74,8 +74,8 @@ const WL_W = 230; // workload card width, must match .rf-wl in policiesMap.css
 // marker on our 2px edges - pin it to absolute pixels instead.
 const ARROW = {
   type: MarkerType.ArrowClosed,
-  width: 14,
-  height: 14,
+  width: 20,
+  height: 20,
   markerUnits: "userSpaceOnUse",
 };
 
