@@ -32,6 +32,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, TextField } from "../components/ui";
+import { BidiEdge } from "./policiesMap/BidiEdge";
 import { ContextMenu, type MenuEntry } from "./policiesMap/ContextMenu";
 import "./policiesMap/policiesMap.css";
 import { NamespaceDialog, WorkloadDialog } from "./policiesMap/TopologyDialogs";
@@ -58,6 +59,7 @@ import {
 } from "./policiesMap/WorkloadNode";
 
 const nodeTypes = { workload: WorkloadNode, nsGroup: NsGroupNode };
+const edgeTypes = { bidi: BidiEdge };
 
 // The pluggable topology source. Manual mode suggests nothing; later tiers
 // (orders data, collector snapshot) return deployed namespaces here.
@@ -494,10 +496,12 @@ function Canvas() {
         }
         return {
           ...e,
+          // The running dash flows source -> target only, which lies about a
+          // two-way link: bidirectional edges use the custom type with two
+          // counter-moving dots instead.
+          type: bidi ? "bidi" : undefined,
           sourceHandle: portHandleId(sp, sSide),
           targetHandle: portHandleId(tp, tSide),
-          // The running dash flows source -> target only, which lies about a
-          // two-way link: bidirectional edges render as a steady double arrow.
           animated: !bidi,
           style: { strokeWidth: 2 },
           markerEnd: ARROW,
@@ -614,6 +618,7 @@ function Canvas() {
             nodes={nodes}
             edges={displayEdges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             // Ports are all source handles; loose mode lets any port connect to
             // any other (strict mode only links source -> target).
             connectionMode={ConnectionMode.Loose}
@@ -639,7 +644,8 @@ function Canvas() {
           >
             <Background />
             <Controls showInteractive={false} />
-            <Panel position="bottom-left">
+            {/* Shifted right so the chip clears the zoom controls. */}
+            <Panel position="bottom-left" style={{ marginLeft: 56 }}>
               <Legend />
             </Panel>
           </ReactFlow>

@@ -192,6 +192,13 @@
   color: rgb(var(--c-danger-500));
 }
 
+/* Travelling dot on bidirectional edges (two of them run the path in opposite
+   directions). */
+.rf-flow-dot {
+  fill: rgb(var(--c-info-500));
+  pointer-events: none;
+}
+
 /* Port handle: the interactive circle on the box border. The circle itself
    never moves or grows on hover - a scale transform made the target shift
    under the cursor and hard to grab. Circles are hidden until they carry an
