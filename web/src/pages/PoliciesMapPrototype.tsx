@@ -399,8 +399,37 @@ function Canvas() {
 
   // --- drag and context menus ---------------------------------------------
 
+  // While a workload card is dragged, highlight the namespace box it would
+  // land in (droppable feedback).
+  const dragHover = useRef<string | null>(null);
+  const onNodeDrag = useCallback(
+    (_e: MouseEvent | TouchEvent | React.MouseEvent, node: Node) => {
+      if (node.type !== "workload") return;
+      const fromNs = nsOfWorkload(node.id);
+      const groupPos = positions[fromNs] ?? { x: 0, y: 0 };
+      const cx = groupPos.x + node.position.x + WL_W / 2;
+      const cy = groupPos.y + node.position.y + 20;
+      const target = topology.find((ns) => {
+        const p = positions[ns.name] ?? { x: 0, y: 0 };
+        return cx >= p.x && cx <= p.x + GROUP_W && cy >= p.y && cy <= p.y + groupHeight(ns);
+      });
+      const hover = target && target.name !== fromNs ? target.name : null;
+      if (hover === dragHover.current) return;
+      dragHover.current = hover;
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.type === "nsGroup"
+            ? { ...n, className: `rf-ns${n.id === `group:${hover}` ? " rf-ns--drop" : ""}` }
+            : n,
+        ),
+      );
+    },
+    [topology, positions, setNodes],
+  );
+
   const onNodeDragStop = useCallback(
     (_e: MouseEvent | TouchEvent | React.MouseEvent, node: Node) => {
+      dragHover.current = null;
       if (node.type === "nsGroup") {
         setPositions((p) => ({ ...p, [node.id.slice("group:".length)]: node.position }));
         return;
@@ -686,6 +715,7 @@ function Canvas() {
             onReconnectStart={onReconnectStart}
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}
+            onNodeDrag={onNodeDrag}
             onNodeDragStop={onNodeDragStop}
             onNodeDragStart={() => setMenu(null)}
             onMoveStart={() => setMenu(null)}

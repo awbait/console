@@ -45,6 +45,13 @@
   cursor: grabbing;
 }
 
+/* Namespace box a dragged workload would land in. */
+.rf-ns--drop {
+  border-color: rgb(var(--c-brand-500));
+  border-style: solid;
+  background: rgb(var(--c-brand-50) / 0.7);
+}
+
 /* Namespace caption: just the name, uppercased - the dashed box shape is
    explained by the legend. */
 .rf-ns__title {
