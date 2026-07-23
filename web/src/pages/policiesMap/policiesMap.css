@@ -7,6 +7,32 @@
   height: 100%;
 }
 
+/* React Flow zoom controls ship hardcoded light styles (a bright square in
+   the dark theme) - restyle them with the app's theme variables. */
+.rf-wrap .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgb(var(--c-neutral-200));
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+.rf-wrap .react-flow__controls-button {
+  border-bottom: 1px solid rgb(var(--c-neutral-200));
+  background: rgb(var(--c-surface));
+}
+
+.rf-wrap .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.rf-wrap .react-flow__controls-button:hover {
+  background: rgb(var(--c-neutral-100));
+}
+
+.rf-wrap .react-flow__controls-button svg {
+  fill: rgb(var(--c-neutral-600));
+}
+
 /* Namespace group box (draggable). */
 .rf-ns {
   border: 1px dashed rgb(var(--c-neutral-300));
