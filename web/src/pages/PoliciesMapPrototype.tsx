@@ -199,6 +199,7 @@ export function PoliciesMapPrototype() {
                 <Select
                   label="Заказ для предпросмотра"
                   hideLabel
+                  compact
                   selectedKey={previewGroup?.ns ?? null}
                   onSelectionChange={(ns) => setPreviewNs(ns)}
                   options={groups.map((g) => ({
