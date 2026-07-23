@@ -1,5 +1,5 @@
 import { IconInfoCircle } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { FormErrors } from "../../components/FormErrors";
 import type { ValuesEditorProps } from "../../components/products/valuesEditors";
 import { type GraphModel, PoliciesGraph } from "./PoliciesGraph";
@@ -19,13 +19,16 @@ export function PoliciesValuesEditor({
   readOnly,
   inputError,
 }: ValuesEditorProps) {
-  // Snapshot the parse at mount: afterwards the graph is the source of truth
-  // for policies[] and re-parsing on every regenerated values would fight it.
-  const [parsed] = useState(() =>
-    !inputError && namespace ? parseValues(values, namespace) : null,
-  );
   const valuesRef = useRef(values);
   valuesRef.current = values;
+  // Parse once per namespace (the graph below is keyed by it): after that the
+  // graph owns policies[], and re-parsing every regenerated values would fight
+  // it. When the user fills the namespace in the form later, the parse - and
+  // the graph - rebuild around it.
+  const parsed = useMemo(
+    () => (!inputError && namespace ? parseValues(valuesRef.current, namespace) : null),
+    [namespace, inputError],
+  );
 
   if (inputError) {
     return (
@@ -66,6 +69,7 @@ export function PoliciesValuesEditor({
   return (
     <div className="h-[480px] overflow-hidden rounded-md border border-gray-200">
       <PoliciesGraph
+        key={namespace}
         initial={
           parsed
             ? {
