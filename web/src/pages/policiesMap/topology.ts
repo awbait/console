@@ -149,7 +149,23 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
         kind: "StatefulSet",
         serviceAccount: "shop-postgresql",
         selector: { "app.kubernetes.io/name": "postgresql" },
-        ports: [{ port: 5432, protocol: "TCP" }],
+        ports: [
+          { port: 5432, protocol: "TCP" },
+          { port: 9187, protocol: "TCP" },
+        ],
+      },
+    ],
+  },
+  {
+    name: "shop-monitoring",
+    workloads: [
+      {
+        id: "shop-monitoring/prometheus",
+        name: "prometheus",
+        kind: "StatefulSet",
+        serviceAccount: "prometheus",
+        selector: { "app.kubernetes.io/name": "prometheus" },
+        ports: [{ port: 9090, protocol: "HTTP" }],
       },
     ],
   },
@@ -225,12 +241,24 @@ export const EXAMPLE_EDGES = [
     data: { bidirectional: false },
     reconnectable: true,
   },
+  // Does not touch the order namespace: becomes a second (draft) order in
+  // shop-monitoring.
+  {
+    id: "ex-metrics",
+    source: "shop-monitoring/prometheus",
+    target: "shop-postgresql/postgresql",
+    sourceHandle: "w-r",
+    targetHandle: "p-9187-l",
+    data: { bidirectional: false },
+    reconnectable: true,
+  },
 ];
 
 export const EXAMPLE_POSITIONS: Record<string, { x: number; y: number }> = {
   "shop-ingress": { x: 0, y: 40 },
   "shop-core": { x: 330, y: 0 },
+  "shop-monitoring": { x: 330, y: 320 },
   "shop-postgresql": { x: 660, y: 0 },
-  "shop-valkey": { x: 660, y: 170 },
-  "shop-egress": { x: 660, y: 340 },
+  "shop-valkey": { x: 660, y: 200 },
+  "shop-egress": { x: 660, y: 370 },
 };
