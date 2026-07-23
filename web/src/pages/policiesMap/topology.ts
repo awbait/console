@@ -80,9 +80,10 @@ export function findWorkload(topology: TopoNamespace[], id: string): TopoWorkloa
 
 // A workload may anchor an arrow only if it has a service account AND at least
 // one exposed port. Returns the human-readable reason it cannot, or null.
+// Egress gateways are the exception: they work without their own SA.
 export function workloadInvalidReason(w: TopoWorkload): string | null {
   const missing: string[] = [];
-  if (!w.serviceAccount) missing.push("нет service account");
+  if (!w.serviceAccount && w.kind !== "EgressGateway") missing.push("нет service account");
   if (w.ports.length === 0) missing.push("нет exposed-портов");
   return missing.length ? missing.join(", ") : null;
 }

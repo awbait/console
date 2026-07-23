@@ -121,7 +121,8 @@ export function validateSubmit(
   if (edges.length === 0) errors.push("Не нарисовано ни одной стрелки.");
   for (const e of edges) {
     for (const link of resolveEdge(topology, e)) {
-      if (!link.owner.serviceAccount) {
+      // Egress gateways may own policies without their own service account.
+      if (!link.owner.serviceAccount && link.owner.kind !== "EgressGateway") {
         errors.push(`Источник ${link.owner.name} без service account.`);
       }
     }

@@ -48,6 +48,8 @@ export function WorkloadNode({ data }: NodeProps) {
         </div>
         {workload.serviceAccount ? (
           <div className="rf-wl__sa">sa: {workload.serviceAccount}</div>
+        ) : workload.kind === "EgressGateway" ? (
+          <div className="rf-wl__sa">sa не требуется</div>
         ) : (
           <div className="rf-wl__sa rf-wl__sa--missing">нет service account</div>
         )}
