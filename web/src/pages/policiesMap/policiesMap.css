@@ -81,19 +81,22 @@
   white-space: nowrap;
 }
 
+/* Badge glyphs are centered by matching line-height to the box (13px against
+   a 14px box lifts the caps optically); the title's uppercase is reset so the
+   9px text keeps its own metrics. */
 .rf-ns__order {
   flex: none;
-  display: inline-flex;
-  align-items: center;
+  display: block;
   height: 14px;
   padding: 0 5px;
   border-radius: 999px;
   background: rgb(var(--c-brand-100));
   color: rgb(var(--c-brand-700));
   font-size: 9px;
-  line-height: 1;
+  line-height: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
+  text-transform: none;
 }
 
 /* Namespace caption: just the name, uppercased - the dashed box shape is
