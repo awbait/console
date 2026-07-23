@@ -81,9 +81,11 @@ const ARROW = {
 
 type XY = { x: number; y: number };
 
-// Estimated workload card height: header + port rows (or the empty-ports note).
+// Estimated workload card height: header (shorter when the SA row is hidden,
+// i.e. an egress gateway without SA) + port rows (or the empty-ports note).
 function workloadHeight(w: TopoWorkload): number {
-  return 47 + (w.ports.length > 0 ? w.ports.length * 26 : 33);
+  const head = w.serviceAccount !== null || w.kind !== "EgressGateway" ? 50 : 34;
+  return head + (w.ports.length > 0 ? w.ports.length * 26 : 33);
 }
 
 function groupHeight(ns: TopoNamespace): number {
@@ -540,7 +542,14 @@ function Canvas() {
   // are the model, there is no intermediate arrow JSON.
   const valuesYaml = useMemo(() => {
     if (edges.length === 0) return "# нарисуйте стрелки между портами";
-    return yaml.dump(buildValues(topology, edges, naming), { lineWidth: 100, sortKeys: false });
+    // noRefs: with bidirectional links the same selector object lands in the
+    // values twice and js-yaml would emit &ref_0/*ref_0 anchors - dump plain
+    // copies instead.
+    return yaml.dump(buildValues(topology, edges, naming), {
+      lineWidth: 100,
+      sortKeys: false,
+      noRefs: true,
+    });
   }, [topology, edges, naming]);
 
   // Copy the generated values.yaml. navigator.clipboard needs a secure

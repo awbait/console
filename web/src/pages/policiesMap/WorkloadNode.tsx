@@ -29,29 +29,34 @@ export function WorkloadNode({ data }: NodeProps) {
   const connected = new Set(connectedHandles ?? []);
   const portClass = (id: string) => `rf-port${connected.has(id) ? " rf-port--on" : ""}`;
 
+  const badgeMod =
+    workload.kind === "IngressGateway"
+      ? " rf-wl__badge--ingw"
+      : workload.kind === "EgressGateway"
+        ? " rf-wl__badge--egw"
+        : "";
+  // Egress gateways work without an SA: no row at all instead of a noisy
+  // "not required" note. Other kinds always show the row (red when missing).
+  const showSa = workload.serviceAccount !== null || workload.kind !== "EgressGateway";
+
   return (
     <div className={`rf-wl${invalid ? " rf-wl--invalid" : ""}`} title={invalidReason ?? undefined}>
       <div className="rf-wl__head">
-        <div>
-          <span className="rf-wl__name">{workload.name}</span>
-          <span
-            className={`rf-wl__kind${
-              workload.kind === "IngressGateway"
-                ? " rf-wl__kind--ingw"
-                : workload.kind === "EgressGateway"
-                  ? " rf-wl__kind--egw"
-                  : ""
-            }`}
-          >
-            {KIND_LABELS[workload.kind]}
+        <div className="rf-wl__title">
+          <span className="rf-wl__name" title={workload.name}>
+            {workload.name}
           </span>
+          <span className={`rf-wl__badge${badgeMod}`}>{KIND_LABELS[workload.kind]}</span>
         </div>
-        {workload.serviceAccount ? (
-          <div className="rf-wl__sa">sa: {workload.serviceAccount}</div>
-        ) : workload.kind === "EgressGateway" ? (
-          <div className="rf-wl__sa">sa не требуется</div>
-        ) : (
-          <div className="rf-wl__sa rf-wl__sa--missing">нет service account</div>
+        {showSa && (
+          <div className="rf-wl__sa" title={workload.serviceAccount ?? undefined}>
+            <span className="rf-wl__sa-label">sa</span>
+            {workload.serviceAccount ? (
+              <span className="rf-wl__sa-value">{workload.serviceAccount}</span>
+            ) : (
+              <span className="rf-wl__sa-value rf-wl__sa-value--missing">не задан</span>
+            )}
+          </div>
         )}
       </div>
 

@@ -46,46 +46,81 @@
 }
 
 .rf-wl__head {
-  padding: 8px 10px 6px;
+  padding: 7px 10px 6px;
   border-bottom: 1px solid rgb(var(--c-neutral-100));
 }
 
+.rf-wl__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
 .rf-wl__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   color: rgb(var(--c-neutral-900));
 }
 
-.rf-wl__kind {
-  margin-left: 6px;
-  font-size: 10px;
+/* Kind badge: a small pill on the right of the title. Gateways are the
+   entry/exit points of the mesh and get their own tints: ingress blue
+   (inbound), egress amber (outbound). */
+.rf-wl__badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
+  background: rgb(var(--c-neutral-100));
+  color: rgb(var(--c-neutral-500));
+}
+
+.rf-wl__badge--ingw {
+  background: rgb(var(--c-info-50));
+  color: rgb(var(--c-info-600));
+}
+
+.rf-wl__badge--egw {
+  background: rgb(var(--c-warning-50));
+  color: rgb(var(--c-warning-700));
+}
+
+/* Service-account row: tiny label + truncated mono value. */
+.rf-wl__sa {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 3px;
+  min-width: 0;
+}
+
+.rf-wl__sa-label {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: rgb(var(--c-neutral-400));
 }
 
-/* Gateways are entry/exit points of the mesh: tint the kind label so they
-   stand out among plain workloads. Ingress is blue (inbound), egress amber
-   (outbound). */
-.rf-wl__kind--ingw {
-  color: rgb(var(--c-info-500));
-  font-weight: 600;
-}
-
-.rf-wl__kind--egw {
-  color: rgb(var(--c-warning-600));
-  font-weight: 600;
-}
-
-.rf-wl__sa {
-  margin-top: 2px;
-  color: rgb(var(--c-neutral-500));
+.rf-wl__sa-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
+  color: rgb(var(--c-neutral-500));
 }
 
-.rf-wl__sa--missing {
-  color: rgb(var(--c-danger-500));
+.rf-wl__sa-value--missing {
   font-family: inherit;
+  color: rgb(var(--c-danger-500));
 }
 
 .rf-wl__ports {
