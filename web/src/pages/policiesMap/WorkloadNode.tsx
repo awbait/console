@@ -34,7 +34,9 @@ export function WorkloadNode({ data }: NodeProps) {
       <div className="rf-wl__head">
         <div>
           <span className="rf-wl__name">{workload.name}</span>
-          <span className="rf-wl__kind">{workload.kind}</span>
+          <span className={`rf-wl__kind${workload.kind === "Gateway" ? " rf-wl__kind--gw" : ""}`}>
+            {workload.kind}
+          </span>
         </div>
         {workload.serviceAccount ? (
           <div className="rf-wl__sa">sa: {workload.serviceAccount}</div>

@@ -63,6 +63,13 @@
   color: rgb(var(--c-neutral-400));
 }
 
+/* Gateways are entry/exit points of the mesh: tint the kind label so they
+   stand out among plain workloads. */
+.rf-wl__kind--gw {
+  color: rgb(var(--c-info-500));
+  font-weight: 600;
+}
+
 .rf-wl__sa {
   margin-top: 2px;
   color: rgb(var(--c-neutral-500));
