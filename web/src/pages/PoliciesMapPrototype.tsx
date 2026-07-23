@@ -7,7 +7,7 @@ import { useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Button, TextField } from "../components/ui";
+import { Button, Select, TextField } from "../components/ui";
 import {
   type GraphModel,
   PoliciesGraph,
@@ -192,46 +192,32 @@ export function PoliciesMapPrototype() {
             />
           </div>
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
-            <span className="text-xs font-semibold text-slate-700">values.yaml</span>
+            <span className="shrink-0 text-xs font-semibold text-slate-700">values.yaml</span>
             {!orderNs && <span className="text-[11px] text-slate-400">ns заказа не выбран</span>}
+            {orderNs && groups.length > 0 && (
+              <div className="min-w-0 flex-1">
+                <Select
+                  label="Заказ для предпросмотра"
+                  hideLabel
+                  selectedKey={previewGroup?.ns ?? null}
+                  onSelectionChange={(ns) => setPreviewNs(ns)}
+                  options={groups.map((g) => ({
+                    id: g.ns,
+                    label: `${g.ns} - ${g.ns === orderNs ? "заказ" : "черновик"}`,
+                  }))}
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={copyValues}
               disabled={!previewGroup || !orderNs}
               aria-label="Скопировать values.yaml"
-              className="ml-auto flex cursor-pointer items-center gap-1 rounded-md border border-gray-300 bg-surface px-2 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-gray-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-40"
+              className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-gray-300 bg-surface px-2 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-gray-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-40"
             >
               <IconCopy size={14} /> Скопировать
             </button>
           </div>
-          {orderNs && groups.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 px-3 py-2">
-              {groups.map((g) => {
-                const active = g.ns === (previewGroup?.ns ?? null);
-                const primary = g.ns === orderNs;
-                return (
-                  <button
-                    key={g.ns}
-                    type="button"
-                    onClick={() => setPreviewNs(g.ns)}
-                    title={primary ? "Основной заказ" : "Дополнительный заказ (черновик)"}
-                    className={`flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-                      active
-                        ? primary
-                          ? "bg-brand-100 text-brand-700"
-                          : "bg-amber-100 text-amber-800"
-                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                    }`}
-                  >
-                    {g.ns}
-                    <span className={active ? "opacity-70" : "opacity-50"}>
-                      {primary ? "заказ" : "черновик"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
           {!previewGroup || !orderNs ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-app p-6 text-center">
               <IconSitemap size={28} stroke={1.5} className="text-slate-300" />
