@@ -81,18 +81,20 @@
   white-space: nowrap;
 }
 
-/* Badge glyphs are centered by matching line-height to the box: uppercase has
-   no descenders, so 12px line against a 14px box sits caps in the middle. */
+/* Badge: flex-centered caps with a small extra bottom padding as an optical
+   lift (the canvas zoom renders tiny text at fractional scales, so pure
+   line-height math lands the glyphs low). */
 .rf-ns__order {
   flex: none;
-  display: block;
+  display: inline-flex;
+  align-items: center;
   height: 14px;
-  padding: 0 5px;
+  padding: 0 5px 1.5px;
   border-radius: 999px;
   background: rgb(var(--c-brand-100));
   color: rgb(var(--c-brand-700));
   font-size: 8px;
-  line-height: 12px;
+  line-height: 1;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
