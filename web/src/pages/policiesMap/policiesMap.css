@@ -58,6 +58,17 @@
   background: rgb(var(--c-brand-50) / 0.35);
 }
 
+/* A namespace that will produce an additional draft order. */
+.rf-ns--draft {
+  border-color: rgb(var(--c-warning-500));
+  background: rgb(var(--c-warning-50) / 0.35);
+}
+
+.rf-ns__order--draft {
+  background: rgb(var(--c-warning-50));
+  color: rgb(var(--c-warning-700));
+}
+
 .rf-ns__title {
   display: flex;
   align-items: center;

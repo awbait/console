@@ -51,19 +51,31 @@ export function PoliciesMapPrototype() {
 
   const { topology, edges, orderNs } = model;
 
-  // values.yaml is rebuilt straight from the edges on every change: the edges
-  // are the model, there is no intermediate arrow JSON.
+  // One group = one policies order (the primary order namespace + a draft per
+  // extra source namespace). The preview panel switches between them.
+  const groups = useMemo(
+    () => partitionEdges(topology, edges, orderNs),
+    [topology, edges, orderNs],
+  );
+  const [previewNs, setPreviewNs] = useState<string | null>(null);
+  const previewGroup = groups.find((g) => g.ns === previewNs) ?? groups[0] ?? null;
+  useEffect(() => {
+    if (previewNs && !groups.some((g) => g.ns === previewNs)) setPreviewNs(null);
+  }, [groups, previewNs]);
+
+  // values.yaml of the selected group is rebuilt straight from the edges on
+  // every change: the edges are the model, there is no intermediate JSON.
   const valuesYaml = useMemo(() => {
-    if (edges.length === 0 || !orderNs) return "";
+    if (!previewGroup || !orderNs) return "";
     // noRefs: with bidirectional links the same selector object lands in the
     // values twice and js-yaml would emit &ref_0/*ref_0 anchors - dump plain
     // copies instead.
-    return yaml.dump(buildValues(topology, edges, naming, orderNs), {
+    return yaml.dump(buildValues(topology, previewGroup.edges, naming, previewGroup.ns), {
       lineWidth: 100,
       sortKeys: false,
       noRefs: true,
     });
-  }, [topology, edges, naming, orderNs]);
+  }, [topology, previewGroup, naming, orderNs]);
 
   // Copy the generated values.yaml. navigator.clipboard needs a secure
   // context, which the dev stand over plain http lacks - fall back to the
@@ -154,7 +166,12 @@ export function PoliciesMapPrototype() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <PoliciesGraph ref={graph} suggestions={suggestions} onModelChange={setModel} />
+        <PoliciesGraph
+          ref={graph}
+          suggestions={suggestions}
+          draftNs={groups.filter((g) => g.ns !== orderNs).map((g) => g.ns)}
+          onModelChange={setModel}
+        />
 
         <aside className="flex w-[380px] shrink-0 flex-col border-l border-gray-200 bg-surface">
           <div className="grid grid-cols-3 gap-2 border-b border-gray-200 px-3 py-2">
@@ -176,24 +193,46 @@ export function PoliciesMapPrototype() {
           </div>
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
             <span className="text-xs font-semibold text-slate-700">values.yaml</span>
-            {orderNs ? (
-              <span className="rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-700">
-                заказ: {orderNs}
-              </span>
-            ) : (
-              <span className="text-[11px] text-slate-400">ns заказа не выбран</span>
-            )}
+            {!orderNs && <span className="text-[11px] text-slate-400">ns заказа не выбран</span>}
             <button
               type="button"
               onClick={copyValues}
-              disabled={edges.length === 0}
+              disabled={!previewGroup || !orderNs}
               aria-label="Скопировать values.yaml"
               className="ml-auto flex cursor-pointer items-center gap-1 rounded-md border border-gray-300 bg-surface px-2 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-gray-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-40"
             >
               <IconCopy size={14} /> Скопировать
             </button>
           </div>
-          {edges.length === 0 || !orderNs ? (
+          {orderNs && groups.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 px-3 py-2">
+              {groups.map((g) => {
+                const active = g.ns === (previewGroup?.ns ?? null);
+                const primary = g.ns === orderNs;
+                return (
+                  <button
+                    key={g.ns}
+                    type="button"
+                    onClick={() => setPreviewNs(g.ns)}
+                    title={primary ? "Основной заказ" : "Дополнительный заказ (черновик)"}
+                    className={`flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                      active
+                        ? primary
+                          ? "bg-brand-100 text-brand-700"
+                          : "bg-amber-100 text-amber-800"
+                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    }`}
+                  >
+                    {g.ns}
+                    <span className={active ? "opacity-70" : "opacity-50"}>
+                      {primary ? "заказ" : "черновик"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {!previewGroup || !orderNs ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-app p-6 text-center">
               <IconSitemap size={28} stroke={1.5} className="text-slate-300" />
               <p className="text-xs leading-5 text-slate-400">

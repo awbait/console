@@ -101,6 +101,9 @@ interface PoliciesGraphProps {
   // Order-mode: the order namespace is fixed by the order form and cannot be
   // reassigned or deleted from the canvas.
   lockedOrderNs?: string;
+  // Namespaces that will produce additional draft orders (edges not touching
+  // the order namespace, grouped by source): highlighted on the canvas.
+  draftNs?: string[];
   readOnly?: boolean;
   // Known namespace names from the topology provider (for the add dialog).
   suggestions?: string[];
@@ -119,10 +122,12 @@ function groupHeight(ns: TopoNamespace): number {
   return HEAD + Math.max(cards, 40) + 10;
 }
 
-// groupClass builds the namespace box class list: base + order-namespace
-// accent + drop-target highlight.
-function groupClass(isOrder: boolean, isDrop = false): string {
-  return `rf-ns${isOrder ? " rf-ns--order" : ""}${isDrop ? " rf-ns--drop" : ""}`;
+// groupClass builds the namespace box class list: base + order/draft accents +
+// drop-target highlight.
+function groupClass(isOrder: boolean, isDraft: boolean, isDrop = false): string {
+  return `rf-ns${isOrder ? " rf-ns--order" : ""}${isDraft ? " rf-ns--draft" : ""}${
+    isDrop ? " rf-ns--drop" : ""
+  }`;
 }
 
 // buildNodes lays the namespaces out as draggable group boxes with their
@@ -132,6 +137,7 @@ function buildNodes(
   topology: TopoNamespace[],
   positions: Record<string, XY>,
   orderNs: string | null,
+  draftSet: Set<string>,
   readOnly: boolean,
 ): Node[] {
   const nodes: Node[] = [];
@@ -141,14 +147,14 @@ function buildNodes(
       id: `group:${ns.name}`,
       type: "nsGroup",
       position: pos,
-      data: { label: ns.name, isOrder: ns.name === orderNs },
+      data: { label: ns.name, isOrder: ns.name === orderNs, isDraft: draftSet.has(ns.name) },
       draggable: !readOnly,
       selectable: false,
       // Keyboard-deleting RF nodes would desync them from the topology model:
       // deletion goes through the context menus instead.
       deletable: false,
       style: { width: GROUP_W, height: groupHeight(ns) },
-      className: groupClass(ns.name === orderNs),
+      className: groupClass(ns.name === orderNs, draftSet.has(ns.name)),
     });
     let y = HEAD;
     for (const w of ns.workloads) {
@@ -175,11 +181,12 @@ function buildNodes(
   return nodes;
 }
 
-function NsGroupNode({ data }: { data: { label: string; isOrder?: boolean } }) {
+function NsGroupNode({ data }: { data: { label: string; isOrder?: boolean; isDraft?: boolean } }) {
   return (
     <div className="rf-ns__title">
       <span className="rf-ns__name">{data.label}</span>
       {data.isOrder && <span className="rf-ns__order">заказ</span>}
+      {data.isDraft && <span className="rf-ns__order rf-ns__order--draft">черновик</span>}
     </div>
   );
 }
@@ -192,9 +199,13 @@ interface MenuState {
 }
 
 const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canvas(
-  { initial, lockedOrderNs, readOnly = false, suggestions = [], onModelChange },
+  { initial, lockedOrderNs, draftNs, readOnly = false, suggestions = [], onModelChange },
   ref,
 ) {
+  // Stable key so effects depending on the draft set do not retrigger on every
+  // parent render with an equal array.
+  const draftKey = (draftNs ?? []).join(",");
+  const draftSet = useMemo(() => new Set(draftNs ?? []), [draftKey]);
   const toast = useToast();
   const { screenToFlowPosition } = useReactFlow();
 
@@ -224,7 +235,7 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   // Rebuild nodes from the topology model; prune edges whose endpoint workload
   // or port no longer exists.
   useEffect(() => {
-    setNodes(buildNodes(topology, positions, orderNs, readOnly));
+    setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly));
     setEdges((eds) =>
       eds.filter((e) => {
         const s = findWorkload(topology, e.source);
@@ -246,7 +257,7 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
         );
       }),
     );
-  }, [topology, positions, orderNs, readOnly, setNodes, setEdges]);
+  }, [topology, positions, orderNs, draftSet, readOnly, setNodes, setEdges]);
 
   // --- topology mutations -------------------------------------------------
 
@@ -482,13 +493,17 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
           n.type === "nsGroup"
             ? {
                 ...n,
-                className: groupClass(n.id === `group:${orderNs}`, n.id === `group:${hover}`),
+                className: groupClass(
+                  n.id === `group:${orderNs}`,
+                  draftSet.has(n.id.slice("group:".length)),
+                  n.id === `group:${hover}`,
+                ),
               }
             : n,
         ),
       );
     },
-    [topology, positions, orderNs, setNodes],
+    [topology, positions, orderNs, draftSet, setNodes],
   );
 
   const onNodeDragStop = useCallback(
@@ -510,10 +525,10 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
         return cx >= p.x && cx <= p.x + GROUP_W && cy >= p.y && cy <= p.y + groupHeight(ns);
       });
       if (!target || target.name === fromNs || !moveWorkload(node.id, target.name)) {
-        setNodes(buildNodes(topology, positions, orderNs, readOnly));
+        setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly));
       }
     },
-    [topology, positions, orderNs, readOnly, moveWorkload, setNodes],
+    [topology, positions, orderNs, draftSet, readOnly, moveWorkload, setNodes],
   );
 
   const onPaneContextMenu = useCallback(
@@ -851,7 +866,10 @@ function Legend({ readOnly }: { readOnly: boolean }) {
           namespace{readOnly ? "" : " (перетаскивается)"}
         </LegendRow>
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-blue-500 bg-blue-50" />}>
-          namespace заказа: сюда ставится policies, стрелки должны его касаться
+          namespace заказа: основной заказ policies ставится сюда
+        </LegendRow>
+        <LegendRow sample={<span className="h-3.5 w-5 rounded border border-amber-500 bg-amber-50" />}>
+          namespace с дополнительным заказом (уйдёт в черновик)
         </LegendRow>
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-slate-300 bg-surface shadow-sm" />}>
           workload: тип указан на карточке
