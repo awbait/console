@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addEdge,
   Background,
@@ -15,25 +14,23 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
+import { IconArrowLeft } from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { Link } from "react-router-dom";
-import { IconArrowLeft } from "@tabler/icons-react";
 import { useToast } from "../app/ToastContext";
 import { Button } from "../components/ui";
 import {
+  findNamespace,
   findWorkload,
   MOCK_NAMESPACES,
   type MockNamespace,
   workloadInvalidReason,
 } from "./policiesMap/mockData";
 import "./policiesMap/policiesMap.css";
-import {
-  type ArrowRecord,
-  buildValues,
-  validateArrows,
-} from "./policiesMap/valuesBuilder";
-import { portIndexFromHandle, WorkloadNode, type WorkloadNodeData } from "./policiesMap/WorkloadNode";
+import { buildValues, validateEdges } from "./policiesMap/valuesBuilder";
+import { WorkloadNode, type WorkloadNodeData } from "./policiesMap/WorkloadNode";
 
 const nodeTypes = { workload: WorkloadNode, nsGroup: NsGroupNode };
 
@@ -84,41 +81,6 @@ function buildNodes(ns1: MockNamespace, ns2: MockNamespace): Node[] {
   return nodes;
 }
 
-// edgesToArrows reconstructs the per-arrow JSON model from the React Flow edges.
-function edgesToArrows(edges: Edge[]): ArrowRecord[] {
-  const out: ArrowRecord[] = [];
-  for (const e of edges) {
-    const from = findWorkload(e.source);
-    const to = findWorkload(e.target);
-    const fi = portIndexFromHandle(e.sourceHandle);
-    const ti = portIndexFromHandle(e.targetHandle);
-    if (!from || !to || fi === null || ti === null) continue;
-    const fp = from.ports[fi];
-    const tp = to.ports[ti];
-    if (!fp || !tp) continue;
-    out.push({
-      id: e.id,
-      from: {
-        namespace: nsOf(from.id),
-        workload: from.name,
-        serviceAccount: from.serviceAccount,
-        selector: from.selector,
-        port: fp.port,
-        protocol: fp.protocol,
-      },
-      to: {
-        namespace: nsOf(to.id),
-        workload: to.name,
-        selector: to.selector,
-        serviceAccount: to.serviceAccount,
-        port: tp.port,
-        protocol: tp.protocol,
-      },
-    });
-  }
-  return out;
-}
-
 function NsGroupNode({ data }: { data: { label: string } }) {
   return <div className="rf-ns__title">namespace: {data.label}</div>;
 }
@@ -127,16 +89,15 @@ function Canvas() {
   const toast = useToast();
   const [ns1, setNs1] = useState<string>(MOCK_NAMESPACES[0].name);
   const [ns2, setNs2] = useState<string>(MOCK_NAMESPACES[1].name);
-  const [tab, setTab] = useState<"json" | "values">("json");
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   // Rebuild the canvas whenever a namespace changes. Changing a namespace wipes
-  // all arrows and clears the JSON (requirement 6).
+  // all arrows, so the generated values reset too.
   useEffect(() => {
-    const a = MOCK_NAMESPACES.find((n) => n.name === ns1);
-    const b = MOCK_NAMESPACES.find((n) => n.name === ns2);
+    const a = findNamespace(ns1);
+    const b = findNamespace(ns2);
     if (!a || !b) return;
     setNodes(buildNodes(a, b));
     setEdges([]);
@@ -211,22 +172,22 @@ function Canvas() {
     [setEdges],
   );
 
-  const arrows = useMemo(() => edgesToArrows(edges), [edges]);
+  // values.yaml is rebuilt straight from the edges on every change: the edges
+  // are the model, there is no intermediate arrow JSON.
   const valuesYaml = useMemo(() => {
-    if (arrows.length === 0) return "# нарисуйте стрелки между портами";
-    return yaml.dump(buildValues(arrows), { lineWidth: 100, sortKeys: false });
-  }, [arrows]);
-  const jsonText = useMemo(() => JSON.stringify(arrows, null, 2), [arrows]);
+    if (edges.length === 0) return "# нарисуйте стрелки между портами";
+    return yaml.dump(buildValues(edges), { lineWidth: 100, sortKeys: false });
+  }, [edges]);
 
   const submit = useCallback(() => {
-    const errors = validateArrows(arrows);
+    const errors = validateEdges(edges);
     if (errors.length) {
       toast.error(`Валидация не пройдена: ${errors.join(" ")}`);
       return;
     }
     // No backend in the prototype: simulate the would-be GitLab branch + MR.
     toast.success(`values валиден. Создан бы MR в ветке ${ns1}-${ns2} (managed-services/<team>/policies).`);
-  }, [arrows, ns1, ns2, toast]);
+  }, [edges, ns1, ns2, toast]);
 
   const ns2Options = MOCK_NAMESPACES.filter((n) => n.name !== ns1);
   const ns1Options = MOCK_NAMESPACES.filter((n) => n.name !== ns2);
@@ -279,15 +240,11 @@ function Canvas() {
 
         <aside className="flex w-[380px] shrink-0 flex-col border-l border-gray-200 bg-surface">
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
-            <TabBtn active={tab === "json"} onClick={() => setTab("json")}>
-              json ({arrows.length})
-            </TabBtn>
-            <TabBtn active={tab === "values"} onClick={() => setTab("values")}>
-              values.yaml
-            </TabBtn>
+            <span className="text-xs font-semibold text-slate-700">values.yaml</span>
+            <span className="text-xs text-slate-400">стрелок: {edges.length}</span>
           </div>
           <pre className="min-h-0 flex-1 overflow-auto bg-app p-3 font-mono text-xs leading-relaxed text-slate-700">
-            {tab === "json" ? jsonText : valuesYaml}
+            {valuesYaml}
           </pre>
           <div className="border-t border-gray-200 p-3">
             <Button variant="primary" onPress={submit} className="w-full justify-center">
@@ -329,28 +286,6 @@ function NsPicker({
         ))}
       </select>
     </label>
-  );
-}
-
-function TabBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded px-2 py-1 text-xs font-medium ${
-        active ? "bg-brand-50 text-brand-700" : "text-slate-500 hover:bg-slate-100"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
