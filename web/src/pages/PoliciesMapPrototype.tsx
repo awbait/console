@@ -70,8 +70,14 @@ const WL_X = 10;
 const WL_GAP = 10;
 const WL_W = 230; // workload card width, must match .rf-wl in policiesMap.css
 
-// Edge arrowhead, slightly larger than the React Flow default.
-const ARROW = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
+// Edge arrowhead. markerUnits defaults to strokeWidth, which doubles the
+// marker on our 2px edges - pin it to absolute pixels instead.
+const ARROW = {
+  type: MarkerType.ArrowClosed,
+  width: 14,
+  height: 14,
+  markerUnits: "userSpaceOnUse",
+};
 
 type XY = { x: number; y: number };
 
