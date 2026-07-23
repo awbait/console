@@ -827,12 +827,13 @@ function Canvas() {
 function Legend() {
   return (
     <div className="group relative">
-      <div
-        tabIndex={0}
+      <button
+        type="button"
+        aria-label="Показать легенду"
         className="flex cursor-help items-center gap-1.5 rounded-md border border-gray-200 bg-surface/95 px-2.5 py-1.5 text-[11px] font-medium text-slate-500 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       >
         <IconInfoCircle size={14} /> Легенда
-      </div>
+      </button>
       <div className="pointer-events-none absolute bottom-full left-0 mb-2 w-max max-w-96 rounded-md border border-gray-200 bg-surface/95 px-3 py-2 text-[11px] leading-5 text-slate-600 opacity-0 shadow-md transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-dashed border-slate-400" />}>
           namespace (перетаскивается)
