@@ -204,7 +204,7 @@ export function OrderValuesCard({
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Values</h2>
+        <h2 className="text-sm font-semibold text-gray-700">Параметры сервиса</h2>
         <div className="flex gap-1 rounded-md bg-gray-100 p-0.5 text-xs">
           <button
             onClick={() => onSwitchMode("form")}
