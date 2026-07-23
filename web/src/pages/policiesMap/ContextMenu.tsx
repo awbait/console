@@ -31,14 +31,18 @@ export function ContextMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: Event) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
+    // Capture phase: canvas libraries (d3-drag under React Flow) may stop
+    // propagation of press events, which would leave the menu hanging open.
     window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onDown);
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("wheel", onDown, true);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("wheel", onDown, true);
     };
   }, [onClose]);
 

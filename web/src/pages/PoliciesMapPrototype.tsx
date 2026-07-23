@@ -474,6 +474,8 @@ function Canvas() {
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}
             onNodeDragStop={onNodeDragStop}
+            onNodeDragStart={() => setMenu(null)}
+            onMoveStart={() => setMenu(null)}
             onPaneContextMenu={onPaneContextMenu}
             onNodeContextMenu={onNodeContextMenu}
             onNodeDoubleClick={onNodeDoubleClick}
