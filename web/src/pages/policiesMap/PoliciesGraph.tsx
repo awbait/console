@@ -207,7 +207,6 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   // Stable key so effects depending on the draft set do not retrigger on every
   // parent render with an equal array.
   const draftKey = (draftNs ?? []).join(",");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by content, not array identity
   const draftSet = useMemo(() => new Set(draftKey ? draftKey.split(",") : []), [draftKey]);
   const toast = useToast();
   const { screenToFlowPosition } = useReactFlow();
