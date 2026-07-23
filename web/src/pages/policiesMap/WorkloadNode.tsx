@@ -49,13 +49,15 @@ export function WorkloadNode({ data }: NodeProps) {
   return (
     <div className={`rf-wl${invalid ? " rf-wl--invalid" : ""}`} title={invalidReason ?? undefined}>
       <div className="rf-wl__head">
+        {/* Invisible anchors for parsed edges (no circle: the arrow just
+            leaves the card border at header level). */}
         <Handle
           id={bodyHandleId("l")}
           type="source"
           position={Position.Left}
           isConnectableStart={false}
           isConnectableEnd={false}
-          className={portClass(bodyHandleId("l"))}
+          className="rf-port"
         />
         <Handle
           id={bodyHandleId("r")}
@@ -63,7 +65,7 @@ export function WorkloadNode({ data }: NodeProps) {
           position={Position.Right}
           isConnectableStart={false}
           isConnectableEnd={false}
-          className={portClass(bodyHandleId("r"))}
+          className="rf-port"
         />
         <div className="rf-wl__title">
           <span className="rf-wl__name" title={workload.name}>

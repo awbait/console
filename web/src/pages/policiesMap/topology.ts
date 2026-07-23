@@ -200,13 +200,13 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
 
 // Pre-drawn arrows of the example: in through the ingress gateway, out to the
 // database, a bidirectional link with the cache and out through the egress
-// gateway. One-way sources anchor at the body handle (like parsed values do).
+// gateway. Sources anchor at real port circles, like hand-drawn arrows.
 export const EXAMPLE_EDGES = [
   {
     id: "ex-ingress",
     source: "shop-ingress/ingress-istio",
     target: "shop-core/backend",
-    sourceHandle: "w-r",
+    sourceHandle: "p-443-r",
     targetHandle: "p-8080-l",
     data: { bidirectional: false },
     reconnectable: true,
@@ -215,7 +215,7 @@ export const EXAMPLE_EDGES = [
     id: "ex-db",
     source: "shop-core/backend",
     target: "shop-postgresql/postgresql",
-    sourceHandle: "w-r",
+    sourceHandle: "p-8080-r",
     targetHandle: "p-5432-l",
     data: { bidirectional: false },
     reconnectable: true,
@@ -233,7 +233,7 @@ export const EXAMPLE_EDGES = [
     id: "ex-egress",
     source: "shop-core/backend",
     target: "shop-egress/egress-gw",
-    sourceHandle: "w-r",
+    sourceHandle: "p-8080-r",
     targetHandle: "p-8443-l",
     data: { bidirectional: false },
     reconnectable: true,
@@ -244,7 +244,7 @@ export const EXAMPLE_EDGES = [
     id: "ex-reports",
     source: "shop-analytics/reports",
     target: "shop-postgresql/postgresql",
-    sourceHandle: "w-r",
+    sourceHandle: "p-8081-r",
     targetHandle: "p-5432-l",
     data: { bidirectional: false },
     reconnectable: true,
