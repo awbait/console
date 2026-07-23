@@ -79,17 +79,15 @@
   position: relative;
 }
 
+/* Port row: the label sits centered, the port circles hang on both borders. */
 .rf-wl__port-row {
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   height: 26px;
   padding: 0 14px;
   color: rgb(var(--c-neutral-600));
-}
-
-.rf-wl__port-row--right {
-  justify-content: flex-end;
 }
 
 .rf-wl__port-label {

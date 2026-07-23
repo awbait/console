@@ -9,12 +9,13 @@ export interface WorkloadNodeData {
 }
 
 // Handle id encodes the port NUMBER (stable across workload edits, unlike an
-// index); the editor looks the port up from node data when an edge is drawn.
-export const portHandleId = (port: number) => `p-${port}`;
+// index) plus the side. Every port renders a circle on BOTH card borders, so
+// the user draws the arrow from whichever side faces the peer namespace and
+// the edge geometry stays clean.
+export const portHandleId = (port: number, side: "l" | "r") => `p-${port}-${side}`;
 export const portFromHandle = (handle: string | null | undefined): number | null => {
-  if (!handle?.startsWith("p-")) return null;
-  const n = Number(handle.slice(2));
-  return Number.isInteger(n) ? n : null;
+  const m = handle?.match(/^p-(\d+)-[lr]$/);
+  return m ? Number(m[1]) : null;
 };
 
 export function WorkloadNode({ data }: NodeProps) {
@@ -42,13 +43,21 @@ export function WorkloadNode({ data }: NodeProps) {
           <div className="rf-wl__empty">нет exposed-портов</div>
         ) : (
           workload.ports.map((p) => (
-            <div key={`${p.port}-${p.protocol}`} className="rf-wl__port-row rf-wl__port-row--right">
+            <div key={`${p.port}-${p.protocol}`} className="rf-wl__port-row">
               <span className="rf-wl__port-label">
                 <span className="rf-wl__port-num">{p.port}</span>
                 <span className="rf-wl__port-proto">{p.protocol}</span>
               </span>
               <Handle
-                id={portHandleId(p.port)}
+                id={portHandleId(p.port, "l")}
+                type="source"
+                position={Position.Left}
+                isConnectableStart
+                isConnectableEnd
+                className="rf-port"
+              />
+              <Handle
+                id={portHandleId(p.port, "r")}
                 type="source"
                 position={Position.Right}
                 isConnectableStart
