@@ -149,23 +149,20 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
         kind: "StatefulSet",
         serviceAccount: "shop-postgresql",
         selector: { "app.kubernetes.io/name": "postgresql" },
-        ports: [
-          { port: 5432, protocol: "TCP" },
-          { port: 9187, protocol: "TCP" },
-        ],
+        ports: [{ port: 5432, protocol: "TCP" }],
       },
     ],
   },
   {
-    name: "shop-monitoring",
+    name: "shop-analytics",
     workloads: [
       {
-        id: "shop-monitoring/prometheus",
-        name: "prometheus",
-        kind: "StatefulSet",
-        serviceAccount: "prometheus",
-        selector: { "app.kubernetes.io/name": "prometheus" },
-        ports: [{ port: 9090, protocol: "HTTP" }],
+        id: "shop-analytics/reports",
+        name: "reports",
+        kind: "Deployment",
+        serviceAccount: "reports",
+        selector: { "app.kubernetes.io/name": "reports" },
+        ports: [{ port: 8081, protocol: "HTTP" }],
       },
     ],
   },
@@ -241,14 +238,14 @@ export const EXAMPLE_EDGES = [
     data: { bidirectional: false },
     reconnectable: true,
   },
-  // Does not touch the order namespace: becomes a second (draft) order in
-  // shop-monitoring.
+  // The analytics team reads the same database. The arrow does not touch the
+  // order namespace, so it becomes a second (draft) order in shop-analytics.
   {
-    id: "ex-metrics",
-    source: "shop-monitoring/prometheus",
+    id: "ex-reports",
+    source: "shop-analytics/reports",
     target: "shop-postgresql/postgresql",
     sourceHandle: "w-r",
-    targetHandle: "p-9187-l",
+    targetHandle: "p-5432-l",
     data: { bidirectional: false },
     reconnectable: true,
   },
@@ -257,7 +254,7 @@ export const EXAMPLE_EDGES = [
 export const EXAMPLE_POSITIONS: Record<string, { x: number; y: number }> = {
   "shop-ingress": { x: 0, y: 40 },
   "shop-core": { x: 330, y: 0 },
-  "shop-monitoring": { x: 330, y: 320 },
+  "shop-analytics": { x: 330, y: 320 },
   "shop-postgresql": { x: 660, y: 0 },
   "shop-valkey": { x: 660, y: 200 },
   "shop-egress": { x: 660, y: 370 },
