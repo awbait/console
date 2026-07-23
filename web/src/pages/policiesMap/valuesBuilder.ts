@@ -5,31 +5,50 @@
 // AuthorizationPolicy into the target namespace. See charts/policies/values.full.yaml.
 
 import type { Edge } from "@xyflow/react";
-import { findWorkload, type MockPort, type MockWorkload } from "./mockData";
-import { portIndexFromHandle } from "./WorkloadNode";
+import {
+  DNS_NAME_RE,
+  findWorkload,
+  nsOfWorkload,
+  type TopoNamespace,
+  type TopoPort,
+  type TopoWorkload,
+} from "./topology";
+import { portFromHandle } from "./WorkloadNode";
 
-const nsOf = (workloadId: string) => workloadId.split("/")[0];
+// Naming tags required by the chart (resource name convention
+// {instanceTag}-{clusterTag}-{kindShort}-{projectTag}-{name}).
+export interface NamingTags {
+  instanceTag: string;
+  clusterTag: string;
+  projectTag: string;
+}
+
+export const DEFAULT_NAMING: NamingTags = {
+  instanceTag: "ru1",
+  clusterTag: "k8s1",
+  projectTag: "prj",
+};
 
 // A drawn edge resolved to its endpoints. Only the destination port matters for
 // the generated policy (it is what the egress rule allows); the source handle
 // just anchors the arrow visually.
 interface ResolvedEdge {
-  owner: MockWorkload;
-  target: MockWorkload;
-  targetPort: MockPort;
+  owner: TopoWorkload;
+  target: TopoWorkload;
+  targetPort: TopoPort;
 }
 
-function resolveEdge(e: Edge): ResolvedEdge | null {
-  const owner = findWorkload(e.source);
-  const target = findWorkload(e.target);
-  const portIndex = portIndexFromHandle(e.targetHandle);
-  if (!owner || !target || portIndex === null) return null;
-  const targetPort = target.ports[portIndex];
+function resolveEdge(topology: TopoNamespace[], e: Edge): ResolvedEdge | null {
+  const owner = findWorkload(topology, e.source);
+  const target = findWorkload(topology, e.target);
+  const portNumber = portFromHandle(e.targetHandle);
+  if (!owner || !target || portNumber === null) return null;
+  const targetPort = target.ports.find((p) => p.port === portNumber);
   return targetPort ? { owner, target, targetPort } : null;
 }
 
 // shortName derives a 2..6 char DNS-ish policy name from a workload name, so
-// generated values look plausible. Real implementation may let the user name it.
+// generated values look plausible. Later the user may name policies explicitly.
 function shortName(workload: string, used: Set<string>): string {
   const base = workload.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 5) || "pol";
   let name = base;
@@ -45,13 +64,17 @@ function shortName(workload: string, used: Set<string>): string {
 // buildValues turns the drawn edges into the `policies` chart values object
 // (ready for yaml.dump). Edges from the same source workload are merged into a
 // single policy entry with multiple egress rules. Edges pointing at removed
-// workloads/ports are silently skipped.
-export function buildValues(edges: Edge[]): Record<string, unknown> {
+// workloads/ports are silently skipped (the editor prunes them anyway).
+export function buildValues(
+  topology: TopoNamespace[],
+  edges: Edge[],
+  naming: NamingTags,
+): Record<string, unknown> {
   const used = new Set<string>();
   // Key by source workload id so several edges from one owner merge.
   const byOwner = new Map<string, ResolvedEdge[]>();
   for (const e of edges) {
-    const link = resolveEdge(e);
+    const link = resolveEdge(topology, e);
     if (!link) continue;
     const list = byOwner.get(link.owner.id) ?? [];
     list.push(link);
@@ -63,11 +86,11 @@ export function buildValues(edges: Edge[]): Record<string, unknown> {
     return {
       name: shortName(owner.name, used),
       enabled: true,
-      namespace: nsOf(owner.id),
+      namespace: nsOfWorkload(owner.id),
       serviceAccount: owner.serviceAccount ?? undefined,
       selector: owner.selector,
       egress: links.map((l) => ({
-        to: [{ namespace: nsOf(l.target.id), selector: l.target.selector }],
+        to: [{ namespace: nsOfWorkload(l.target.id), selector: l.target.selector }],
         // The exposed (destination) port is what the policy allows.
         ports: [
           { port: l.targetPort.port, protocol: l.targetPort.protocol === "UDP" ? "UDP" : "TCP" },
@@ -76,23 +99,29 @@ export function buildValues(edges: Edge[]): Record<string, unknown> {
     };
   });
 
-  return {
-    naming: { instanceTag: "ru1", clusterTag: "k8s1", projectTag: "nbox" },
-    policies,
-  };
+  return { naming, policies };
 }
 
 // Lightweight stand-in for values.schema.json validation. The real flow
 // validates against the chart schema on the backend; here we only sanity-check
-// that something was drawn and the owners can carry a policy.
-export function validateEdges(edges: Edge[]): string[] {
+// that something was drawn and required fields hold together.
+export function validateSubmit(
+  topology: TopoNamespace[],
+  edges: Edge[],
+  naming: NamingTags,
+): string[] {
   const errors: string[] = [];
   if (edges.length === 0) errors.push("Не нарисовано ни одной стрелки.");
   for (const e of edges) {
-    const link = resolveEdge(e);
+    const link = resolveEdge(topology, e);
     if (link && !link.owner.serviceAccount) {
       errors.push(`Источник ${link.owner.name} без service account.`);
     }
+  }
+  if (!DNS_NAME_RE.test(naming.instanceTag)) errors.push("naming: instanceTag не в DNS-формате.");
+  if (!DNS_NAME_RE.test(naming.clusterTag)) errors.push("naming: clusterTag не в DNS-формате.");
+  if (!DNS_NAME_RE.test(naming.projectTag) || naming.projectTag.length < 2 || naming.projectTag.length > 6) {
+    errors.push("naming: projectTag - 2..6 символов в DNS-формате.");
   }
   return errors;
 }

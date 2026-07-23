@@ -7,11 +7,16 @@
   height: 100%;
 }
 
-/* Namespace group box. */
+/* Namespace group box (draggable). */
 .rf-ns {
   border: 1px dashed rgb(var(--c-neutral-300));
   border-radius: 14px;
   background: rgb(var(--c-neutral-50) / 0.5);
+  cursor: grab;
+}
+
+.rf-ns:active {
+  cursor: grabbing;
 }
 
 .rf-ns__title {

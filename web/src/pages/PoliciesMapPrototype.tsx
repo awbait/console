@@ -8,75 +8,100 @@ import {
   type FinalConnectionState,
   MarkerType,
   type Node,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   reconnectEdge,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
-import { IconArrowLeft } from "@tabler/icons-react";
+import { IconArrowLeft, IconPencil, IconPlus, IconTrash, IconWand } from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { Link } from "react-router-dom";
 import { useToast } from "../app/ToastContext";
-import { Button } from "../components/ui";
-import {
-  findNamespace,
-  findWorkload,
-  MOCK_NAMESPACES,
-  type MockNamespace,
-  workloadInvalidReason,
-} from "./policiesMap/mockData";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Button, TextField } from "../components/ui";
+import { ContextMenu, type MenuEntry } from "./policiesMap/ContextMenu";
 import "./policiesMap/policiesMap.css";
-import { buildValues, validateEdges } from "./policiesMap/valuesBuilder";
-import { WorkloadNode, type WorkloadNodeData } from "./policiesMap/WorkloadNode";
+import { NamespaceDialog, WorkloadDialog } from "./policiesMap/TopologyDialogs";
+import {
+  EXAMPLE_TOPOLOGY,
+  findWorkload,
+  manualProvider,
+  nsOfWorkload,
+  type TopoNamespace,
+  type TopoWorkload,
+  workloadInvalidReason,
+} from "./policiesMap/topology";
+import {
+  buildValues,
+  DEFAULT_NAMING,
+  type NamingTags,
+  validateSubmit,
+} from "./policiesMap/valuesBuilder";
+import { portFromHandle, WorkloadNode, type WorkloadNodeData } from "./policiesMap/WorkloadNode";
 
 const nodeTypes = { workload: WorkloadNode, nsGroup: NsGroupNode };
 
-// Layout constants for the two-column namespace layout.
+// The pluggable topology source. Manual mode suggests nothing; later tiers
+// (orders data, collector snapshot) return deployed namespaces here.
+const provider = manualProvider;
+
+// Layout constants.
 const GROUP_W = 250;
-const GROUP_X2 = 430;
+const GROUP_GAP = 80;
 const HEAD = 40;
-const ROW = 150;
+const WL_X = 10;
+const WL_GAP = 10;
 
-const nsOf = (nodeId: string) => nodeId.split("/")[0];
+type XY = { x: number; y: number };
 
-// buildNodes lays out the two selected namespaces as group boxes with their
-// workloads stacked inside. ns1 sits on the left (ports on the right border),
-// ns2 on the right (ports on the left).
-function buildNodes(ns1: MockNamespace, ns2: MockNamespace): Node[] {
+// Estimated workload card height: header + port rows (or the empty-ports note).
+function workloadHeight(w: TopoWorkload): number {
+  return 47 + (w.ports.length > 0 ? w.ports.length * 26 : 33);
+}
+
+function groupHeight(ns: TopoNamespace): number {
+  const cards = ns.workloads.reduce((sum, w) => sum + workloadHeight(w) + WL_GAP, 0);
+  return HEAD + Math.max(cards, 40) + 10;
+}
+
+// buildNodes lays the namespaces out as draggable group boxes with their
+// workloads stacked inside. Positions are remembered per namespace so edits do
+// not reshuffle what the user arranged.
+function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): Node[] {
   const nodes: Node[] = [];
-  const groups: { ns: MockNamespace; x: number; side: "left" | "right" }[] = [
-    { ns: ns1, x: 0, side: "left" },
-    { ns: ns2, x: GROUP_X2, side: "right" },
-  ];
-  for (const { ns, x, side } of groups) {
-    const height = HEAD + ns.workloads.length * ROW + 20;
+  for (const ns of topology) {
+    const pos = positions[ns.name] ?? { x: 0, y: 0 };
     nodes.push({
       id: `group:${ns.name}`,
       type: "nsGroup",
-      position: { x, y: 0 },
+      position: pos,
       data: { label: ns.name },
-      draggable: false,
+      draggable: true,
       selectable: false,
-      style: { width: GROUP_W, height },
+      style: { width: GROUP_W, height: groupHeight(ns) },
       className: "rf-ns",
     });
-    ns.workloads.forEach((w, i) => {
-      const data: WorkloadNodeData = { workload: w, side, invalidReason: workloadInvalidReason(w) };
+    let y = HEAD;
+    for (const w of ns.workloads) {
+      const data: WorkloadNodeData = { workload: w, invalidReason: workloadInvalidReason(w) };
       nodes.push({
         id: w.id,
         type: "workload",
         parentId: `group:${ns.name}`,
         extent: "parent",
-        position: { x: 10, y: HEAD + i * ROW },
+        position: { x: WL_X, y },
         data,
         draggable: false,
         selectable: false,
         connectable: true,
       });
-    });
+      y += workloadHeight(w) + WL_GAP;
+    }
   }
   return nodes;
 }
@@ -85,39 +110,141 @@ function NsGroupNode({ data }: { data: { label: string } }) {
   return <div className="rf-ns__title">namespace: {data.label}</div>;
 }
 
+interface MenuState {
+  x: number;
+  y: number;
+  kind: "pane" | "ns" | "workload" | "edge";
+  id: string;
+}
+
 function Canvas() {
   const toast = useToast();
-  const [ns1, setNs1] = useState<string>(MOCK_NAMESPACES[0].name);
-  const [ns2, setNs2] = useState<string>(MOCK_NAMESPACES[1].name);
+  const { screenToFlowPosition } = useReactFlow();
+
+  const [topology, setTopology] = useState<TopoNamespace[]>([]);
+  const [positions, setPositions] = useState<Record<string, XY>>({});
+  const [naming, setNaming] = useState<NamingTags>(DEFAULT_NAMING);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  // Rebuild the canvas whenever a namespace changes. Changing a namespace wipes
-  // all arrows, so the generated values reset too.
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [nsDialog, setNsDialog] = useState<{ pos?: XY } | null>(null);
+  const [wlDialog, setWlDialog] = useState<{ ns: string; workload: TopoWorkload | null } | null>(null);
+  const [nsToDelete, setNsToDelete] = useState<string | null>(null);
+
   useEffect(() => {
-    const a = findNamespace(ns1);
-    const b = findNamespace(ns2);
-    if (!a || !b) return;
-    setNodes(buildNodes(a, b));
+    provider.suggestNamespaces().then(setSuggestions).catch(() => setSuggestions([]));
+  }, []);
+
+  // Rebuild nodes from the topology model; prune edges whose endpoint workload
+  // or port no longer exists.
+  useEffect(() => {
+    setNodes(buildNodes(topology, positions));
+    setEdges((eds) =>
+      eds.filter((e) => {
+        const s = findWorkload(topology, e.source);
+        const t = findWorkload(topology, e.target);
+        const sp = portFromHandle(e.sourceHandle);
+        const tp = portFromHandle(e.targetHandle);
+        return (
+          !!s &&
+          !!t &&
+          sp !== null &&
+          tp !== null &&
+          s.ports.some((p) => p.port === sp) &&
+          t.ports.some((p) => p.port === tp)
+        );
+      }),
+    );
+  }, [topology, positions, setNodes, setEdges]);
+
+  // --- topology mutations -------------------------------------------------
+
+  const nextFreePosition = useCallback((): XY => {
+    const xs = Object.values(positions);
+    if (xs.length === 0) return { x: 0, y: 0 };
+    return { x: Math.max(...xs.map((p) => p.x)) + GROUP_W + GROUP_GAP, y: 0 };
+  }, [positions]);
+
+  const addNamespace = useCallback(
+    (name: string, pos?: XY) => {
+      setTopology((t) => [...t, { name, workloads: [] }]);
+      setPositions((p) => ({ ...p, [name]: pos ?? nextFreePosition() }));
+    },
+    [nextFreePosition],
+  );
+
+  const removeNamespace = useCallback((name: string) => {
+    setTopology((t) => t.filter((ns) => ns.name !== name));
+    setPositions(({ [name]: _, ...rest }) => rest);
+  }, []);
+
+  const saveWorkload = useCallback(
+    (ns: string, prevId: string | null, w: TopoWorkload) => {
+      setTopology((t) =>
+        t.map((n) => {
+          if (n.name !== ns) return n;
+          const workloads = prevId
+            ? n.workloads.map((x) => (x.id === prevId ? w : x))
+            : [...n.workloads, w];
+          return { ...n, workloads };
+        }),
+      );
+      // A rename changes the node id: re-point existing edges at the new id
+      // (ports that disappeared are pruned by the topology effect).
+      if (prevId && prevId !== w.id) {
+        setEdges((eds) =>
+          eds.map((e) => ({
+            ...e,
+            source: e.source === prevId ? w.id : e.source,
+            target: e.target === prevId ? w.id : e.target,
+          })),
+        );
+      }
+    },
+    [setEdges],
+  );
+
+  const removeWorkload = useCallback((id: string) => {
+    setTopology((t) =>
+      t.map((n) => ({ ...n, workloads: n.workloads.filter((w) => w.id !== id) })),
+    );
+  }, []);
+
+  const loadExample = useCallback(() => {
+    setTopology(EXAMPLE_TOPOLOGY);
+    setPositions({
+      "netbox-ingress": { x: 0, y: 0 },
+      "netbox-core": { x: GROUP_W + GROUP_GAP, y: 0 },
+      "netbox-postgresql": { x: (GROUP_W + GROUP_GAP) * 2, y: 0 },
+      "netbox-valkey": { x: (GROUP_W + GROUP_GAP) * 2, y: 180 },
+    });
     setEdges([]);
-  }, [ns1, ns2, setNodes, setEdges]);
+  }, [setEdges]);
+
+  // --- connection rules ---------------------------------------------------
 
   // connectionReason returns why a (source -> target) link is rejected, or null
   // if it is allowed. Shared by isValidConnection (live feedback) and the
   // dropped-on-invalid-target error toast.
-  const connectionReason = useCallback((source: string, target: string): string | null => {
-    if (source === target) return "Нельзя соединить порт сам с собой.";
-    if (nsOf(source) === nsOf(target)) return "Стрелки проводятся только между выбранными namespace.";
-    const from = findWorkload(source);
-    const to = findWorkload(target);
-    if (!from || !to) return "Неизвестный workload.";
-    const fromBad = workloadInvalidReason(from);
-    if (fromBad) return `Источник ${from.name}: ${fromBad}.`;
-    const toBad = workloadInvalidReason(to);
-    if (toBad) return `Получатель ${to.name}: ${toBad}.`;
-    return null;
-  }, []);
+  const connectionReason = useCallback(
+    (source: string, target: string): string | null => {
+      if (source === target) return "Нельзя соединить workload сам с собой.";
+      if (nsOfWorkload(source) === nsOfWorkload(target))
+        return "Стрелки проводятся только между разными namespace.";
+      const from = findWorkload(topology, source);
+      const to = findWorkload(topology, target);
+      if (!from || !to) return "Неизвестный workload.";
+      const fromBad = workloadInvalidReason(from);
+      if (fromBad) return `Источник ${from.name}: ${fromBad}.`;
+      const toBad = workloadInvalidReason(to);
+      if (toBad) return `Получатель ${to.name}: ${toBad}.`;
+      return null;
+    },
+    [topology],
+  );
 
   const isValidConnection = useCallback(
     (c: Connection | Edge) => connectionReason(c.source, c.target) === null,
@@ -128,7 +255,12 @@ function Canvas() {
     (c: Connection) => {
       setEdges((eds) =>
         addEdge(
-          { ...c, markerEnd: { type: MarkerType.ArrowClosed }, reconnectable: true },
+          {
+            ...c,
+            animated: true,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            reconnectable: true,
+          },
           eds,
         ),
       );
@@ -136,8 +268,8 @@ function Canvas() {
     [setEdges],
   );
 
-  // Dropped a new connection onto an invalid target: explain why (requirement
-  // 1.1). Dropped on empty canvas (toNode null): arrow just disappears (2.3).
+  // Dropped a new connection onto an invalid target: explain why. Dropped on
+  // empty canvas (toNode null): the arrow just disappears.
   const onConnectEnd = useCallback(
     (_e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
       if (state.isValid) return;
@@ -151,8 +283,7 @@ function Canvas() {
   );
 
   // Reconnect: dragging an arrow end onto another port moves it (direction is
-  // preserved by reconnectEdge); dropping it off a port deletes the arrow
-  // (requirements 3 and 4).
+  // preserved by reconnectEdge); dropping it off a port deletes the arrow.
   const reconnectOk = useRef(false);
   const onReconnectStart = useCallback(() => {
     reconnectOk.current = false;
@@ -172,25 +303,119 @@ function Canvas() {
     [setEdges],
   );
 
+  // --- drag and context menus ---------------------------------------------
+
+  const onNodeDragStop = useCallback((_e: MouseEvent | TouchEvent | React.MouseEvent, node: Node) => {
+    if (node.type === "nsGroup") {
+      setPositions((p) => ({ ...p, [node.id.slice("group:".length)]: node.position }));
+    }
+  }, []);
+
+  const onPaneContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, kind: "pane", id: "" });
+  }, []);
+
+  const onNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
+    e.preventDefault();
+    if (node.type === "nsGroup") {
+      setMenu({ x: e.clientX, y: e.clientY, kind: "ns", id: node.id.slice("group:".length) });
+    } else {
+      setMenu({ x: e.clientX, y: e.clientY, kind: "workload", id: node.id });
+    }
+  }, []);
+
+  const onEdgeContextMenu = useCallback((e: React.MouseEvent, edge: Edge) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, kind: "edge", id: edge.id });
+  }, []);
+
+  const menuEntries = useMemo((): MenuEntry[] => {
+    if (!menu) return [];
+    switch (menu.kind) {
+      case "pane":
+        return [
+          {
+            label: "Добавить namespace",
+            icon: <IconPlus size={16} />,
+            onAction: () =>
+              setNsDialog({ pos: screenToFlowPosition({ x: menu.x, y: menu.y }) }),
+          },
+        ];
+      case "ns":
+        return [
+          {
+            label: "Добавить workload",
+            icon: <IconPlus size={16} />,
+            onAction: () => setWlDialog({ ns: menu.id, workload: null }),
+          },
+          {
+            label: "Удалить namespace",
+            icon: <IconTrash size={16} />,
+            danger: true,
+            onAction: () => {
+              const ns = topology.find((n) => n.name === menu.id);
+              if (ns && ns.workloads.length > 0) setNsToDelete(menu.id);
+              else removeNamespace(menu.id);
+            },
+          },
+        ];
+      case "workload": {
+        const w = findWorkload(topology, menu.id);
+        return [
+          {
+            label: "Изменить",
+            icon: <IconPencil size={16} />,
+            onAction: () =>
+              setWlDialog({ ns: nsOfWorkload(menu.id), workload: w ?? null }),
+          },
+          {
+            label: "Удалить workload",
+            icon: <IconTrash size={16} />,
+            danger: true,
+            onAction: () => removeWorkload(menu.id),
+          },
+        ];
+      }
+      case "edge":
+        return [
+          {
+            label: "Удалить стрелку",
+            icon: <IconTrash size={16} />,
+            danger: true,
+            onAction: () => setEdges((eds) => eds.filter((e) => e.id !== menu.id)),
+          },
+        ];
+    }
+  }, [menu, topology, removeNamespace, removeWorkload, screenToFlowPosition, setEdges]);
+
+  const menuTitle = useMemo(() => {
+    if (!menu) return undefined;
+    if (menu.kind === "ns") return `namespace: ${menu.id}`;
+    if (menu.kind === "workload") return findWorkload(topology, menu.id)?.name;
+    return undefined;
+  }, [menu, topology]);
+
+  // --- values preview and submit ------------------------------------------
+
   // values.yaml is rebuilt straight from the edges on every change: the edges
   // are the model, there is no intermediate arrow JSON.
   const valuesYaml = useMemo(() => {
     if (edges.length === 0) return "# нарисуйте стрелки между портами";
-    return yaml.dump(buildValues(edges), { lineWidth: 100, sortKeys: false });
-  }, [edges]);
+    return yaml.dump(buildValues(topology, edges, naming), { lineWidth: 100, sortKeys: false });
+  }, [topology, edges, naming]);
 
   const submit = useCallback(() => {
-    const errors = validateEdges(edges);
+    const errors = validateSubmit(topology, edges, naming);
     if (errors.length) {
       toast.error(`Валидация не пройдена: ${errors.join(" ")}`);
       return;
     }
-    // No backend in the prototype: simulate the would-be GitLab branch + MR.
-    toast.success(`values валиден. Создан бы MR в ветке ${ns1}-${ns2} (managed-services/<team>/policies).`);
-  }, [edges, ns1, ns2, toast]);
+    // No backend in the prototype: simulate the would-be order handoff.
+    toast.success("values валиден. Здесь values передадутся в форму заказа policies.");
+  }, [topology, edges, naming, toast]);
 
-  const ns2Options = MOCK_NAMESPACES.filter((n) => n.name !== ns1);
-  const ns1Options = MOCK_NAMESPACES.filter((n) => n.name !== ns2);
+  const wlDialogNs = wlDialog ? (topology.find((n) => n.name === wlDialog.ns) ?? null) : null;
 
   return (
     <div className="flex h-[calc(100vh-1px)] flex-col">
@@ -202,17 +427,20 @@ function Canvas() {
           <IconArrowLeft size={16} /> Портал
         </Link>
         <h1 className="text-sm font-semibold text-slate-900">
-          Карта сетевого взаимодействия (прототип)
+          Карта сетевого взаимодействия (сандбокс)
         </h1>
-        <div className="ml-auto flex items-center gap-3">
-          <NsPicker label="namespace 1" value={ns1} options={ns1Options} onChange={setNs1} />
-          <span className="text-slate-300">-&gt;</span>
-          <NsPicker label="namespace 2" value={ns2} options={ns2Options} onChange={setNs2} />
+        <div className="ml-auto flex items-center gap-2">
+          <Button onPress={loadExample}>
+            <IconWand size={16} /> Пример
+          </Button>
+          <Button variant="primary" onPress={() => setNsDialog({})}>
+            <IconPlus size={16} /> Namespace
+          </Button>
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className="rf-wrap min-w-0 flex-1">
+        <div className="rf-wrap relative min-w-0 flex-1">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -228,17 +456,61 @@ function Canvas() {
             onReconnectStart={onReconnectStart}
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}
-            nodesDraggable={false}
+            onNodeDragStop={onNodeDragStop}
+            onPaneContextMenu={onPaneContextMenu}
+            onNodeContextMenu={onNodeContextMenu}
+            onEdgeContextMenu={onEdgeContextMenu}
+            deleteKeyCode={["Delete", "Backspace"]}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             proOptions={{ hideAttribution: true }}
           >
             <Background />
             <Controls showInteractive={false} />
+            <Panel position="bottom-left">
+              <Legend />
+            </Panel>
           </ReactFlow>
+
+          {topology.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-lg border border-gray-200 bg-surface/95 px-6 py-5 text-center shadow-sm">
+                <p className="text-sm text-slate-600">
+                  Холст пуст. Добавьте namespace кнопкой сверху
+                  <br />
+                  или правым кликом по холсту.
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="primary" onPress={() => setNsDialog({})}>
+                    <IconPlus size={16} /> Namespace
+                  </Button>
+                  <Button onPress={loadExample}>
+                    <IconWand size={16} /> Загрузить пример
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="flex w-[380px] shrink-0 flex-col border-l border-gray-200 bg-surface">
+          <div className="grid grid-cols-3 gap-2 border-b border-gray-200 px-3 py-2">
+            <TextField
+              label="instanceTag"
+              value={naming.instanceTag}
+              onChange={(v) => setNaming((n) => ({ ...n, instanceTag: v }))}
+            />
+            <TextField
+              label="clusterTag"
+              value={naming.clusterTag}
+              onChange={(v) => setNaming((n) => ({ ...n, clusterTag: v }))}
+            />
+            <TextField
+              label="projectTag"
+              value={naming.projectTag}
+              onChange={(v) => setNaming((n) => ({ ...n, projectTag: v }))}
+            />
+          </div>
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
             <span className="text-xs font-semibold text-slate-700">values.yaml</span>
             <span className="text-xs text-slate-400">стрелок: {edges.length}</span>
@@ -248,44 +520,98 @@ function Canvas() {
           </pre>
           <div className="border-t border-gray-200 p-3">
             <Button variant="primary" onPress={submit} className="w-full justify-center">
-              Отправить на согласование
+              Заказать
             </Button>
             <p className="mt-2 text-center text-[11px] text-slate-400">
-              Прототип на моках: бэка и реальных данных нет.
+              Сандбокс: топология вводится вручную, values собирается из стрелок.
             </p>
           </div>
         </aside>
       </div>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          title={menuTitle}
+          entries={menuEntries}
+          onClose={() => setMenu(null)}
+        />
+      )}
+
+      <NamespaceDialog
+        isOpen={nsDialog !== null}
+        onOpenChange={(open) => !open && setNsDialog(null)}
+        existing={topology.map((n) => n.name)}
+        suggestions={suggestions}
+        onAdd={(name) => addNamespace(name, nsDialog?.pos)}
+      />
+
+      <WorkloadDialog
+        isOpen={wlDialog !== null}
+        onOpenChange={(open) => !open && setWlDialog(null)}
+        namespace={wlDialogNs}
+        workload={wlDialog?.workload ?? null}
+        onSave={saveWorkload}
+      />
+
+      <ConfirmDialog
+        isOpen={nsToDelete !== null}
+        onOpenChange={(open) => !open && setNsToDelete(null)}
+        title="Удалить namespace?"
+        message={`Namespace «${nsToDelete}» будет удалён вместе с workloads и их стрелками.`}
+        confirmLabel="Удалить"
+        danger
+        onConfirm={() => {
+          if (nsToDelete) removeNamespace(nsToDelete);
+        }}
+      />
     </div>
   );
 }
 
-function NsPicker({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: MockNamespace[];
-  onChange: (v: string) => void;
-}) {
+// Legend explains the canvas notation; extend it together with new highlights.
+function Legend() {
   return (
-    <label className="flex items-center gap-2 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-gray-300 bg-surface px-2 py-1 text-sm outline-none focus:border-brand-500"
-      >
-        {options.map((n) => (
-          <option key={n.name} value={n.name}>
-            {n.name}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="rounded-md border border-gray-200 bg-surface/95 px-3 py-2 text-[11px] leading-5 text-slate-600 shadow-sm">
+      <div className="mb-1 font-semibold text-slate-700">Легенда</div>
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-5 shrink-0 rounded border border-dashed border-slate-400" />
+        namespace (перетаскивается)
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-5 shrink-0 rounded border border-slate-300 bg-surface shadow-sm" />
+        workload (Deployment / StatefulSet / DaemonSet)
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-3 shrink-0 rounded-full border-2 border-sky-500 bg-surface" />
+        exposed-порт: стрелки проводятся между кружками
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-5 shrink-0 rounded border border-red-500 bg-surface" />
+        невалидный workload (нет SA или портов)
+      </div>
+      <div className="flex items-center gap-2">
+        <svg
+          viewBox="0 0 20 6"
+          className="h-2 w-5 shrink-0 text-slate-500"
+          role="img"
+          aria-label="Пунктирная стрелка"
+        >
+          <line
+            x1="0"
+            y1="3"
+            x2="20"
+            y2="3"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeDasharray="4 2"
+          />
+        </svg>
+        разрешённый трафик source -&gt; target
+      </div>
+      <div className="mt-1 text-slate-400">ПКМ - добавить или изменить элементы.</div>
+    </div>
   );
 }
 
