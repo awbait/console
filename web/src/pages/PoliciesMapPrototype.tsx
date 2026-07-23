@@ -1,8 +1,12 @@
 import { IconArrowLeft, IconCopy, IconPlus, IconSitemap, IconWand } from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
+import { useCatalog } from "../app/CatalogContext";
+import { useTeam } from "../app/TeamContext";
 import { useToast } from "../app/ToastContext";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, TextField } from "../components/ui";
 import {
   type GraphModel,
@@ -13,7 +17,9 @@ import { manualProvider } from "./policiesMap/topology";
 import {
   buildValues,
   DEFAULT_NAMING,
+  type EdgeGroup,
   type NamingTags,
+  partitionEdges,
   validateSubmit,
 } from "./policiesMap/valuesBuilder";
 
@@ -28,10 +34,16 @@ const EMPTY_MODEL: GraphModel = { topology: [], edges: [], orderNs: null };
 // handoff button.
 export function PoliciesMapPrototype() {
   const toast = useToast();
+  const navigate = useNavigate();
+  const { team } = useTeam();
+  const { charts } = useCatalog();
   const graph = useRef<PoliciesGraphHandle>(null);
   const [model, setModel] = useState<GraphModel>(EMPTY_MODEL);
   const [naming, setNaming] = useState<NamingTags>(DEFAULT_NAMING);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  // The pending order groups awaiting confirmation: one draft per group, the
+  // primary one opens in the order form afterwards.
+  const [pendingGroups, setPendingGroups] = useState<EdgeGroup[] | null>(null);
 
   useEffect(() => {
     provider.suggestNamespaces().then(setSuggestions).catch(() => setSuggestions([]));
@@ -80,9 +92,44 @@ export function PoliciesMapPrototype() {
       toast.error(`Валидация не пройдена: ${errors.join(" ")}`);
       return;
     }
-    // No backend in the prototype: simulate the would-be order handoff.
-    toast.success("values валиден. Здесь values передадутся в форму заказа policies.");
+    setPendingGroups(partitionEdges(topology, edges, orderNs));
   }, [topology, edges, naming, orderNs, toast]);
+
+  // createDrafts turns each group into a DRAFT policies order; the primary one
+  // opens in the order edit form, the rest wait in the orders list.
+  const createDrafts = useCallback(async () => {
+    const groups = pendingGroups ?? [];
+    if (groups.length === 0) return;
+    if (!team) throw new Error("Не выбрана команда - откройте портал и выберите команду.");
+    const chart = charts.find((c) => c.name === "policies" && c.publication?.published) ??
+      charts.find((c) => c.name === "policies");
+    if (!chart) throw new Error("Чарт policies не найден в каталоге.");
+    const version =
+      chart.publication?.recommended_version ??
+      chart.publication?.orderable_versions?.[0] ??
+      chart.latest_version;
+    const created: string[] = [];
+    for (const g of groups) {
+      const req = await api.createRequest({
+        chart: `${chart.project}/${chart.name}`,
+        version,
+        team,
+        service_name: `policies-${g.ns}`.slice(0, 40).replace(/-+$/, ""),
+        display_name: `Policies (${g.ns})`,
+        cluster: "in-cluster",
+        namespace: g.ns,
+        values: buildValues(topology, g.edges, naming, g.ns),
+        draft: true,
+      });
+      created.push(req.id);
+    }
+    toast.success(
+      groups.length === 1
+        ? "Черновик заказа создан."
+        : `Создано черновиков: ${groups.length}. Остальные - в списке заказов.`,
+    );
+    navigate(`/requests/${created[0]}/edit`);
+  }, [pendingGroups, team, charts, topology, naming, toast, navigate]);
 
   return (
     <div className="flex h-[calc(100vh-1px)] flex-col">
@@ -174,11 +221,42 @@ export function PoliciesMapPrototype() {
               Заказать
             </Button>
             <p className="mt-2 text-center text-[11px] text-slate-400">
-              Кнопка передаст собранный values.yaml в форму заказа сервиса policies.
+              На каждый namespace со связями создаётся черновик заказа policies;
+              основной откроется в форме заказа.
             </p>
           </div>
         </aside>
       </div>
+
+      <ConfirmDialog
+        isOpen={pendingGroups !== null}
+        onOpenChange={(open) => !open && setPendingGroups(null)}
+        title="Создать черновики заказов?"
+        message={
+          <div className="flex flex-col gap-2">
+            <p>Связи на графе превратятся в заказы сервиса policies:</p>
+            <ul className="list-inside list-disc">
+              {(pendingGroups ?? []).map((g, i) => (
+                <li key={g.ns}>
+                  <span className="font-medium">{g.ns}</span>
+                  {" - "}
+                  {g.edges.length} связ{g.edges.length === 1 ? "ь" : g.edges.length < 5 ? "и" : "ей"}
+                  {i === 0 && " (основной, откроется в форме заказа)"}
+                </li>
+              ))}
+            </ul>
+            {(pendingGroups?.length ?? 0) > 1 && (
+              <p className="text-xs text-slate-500">
+                Остальные черновики появятся в списке заказов - их можно доработать и
+                отправить по отдельности.
+              </p>
+            )}
+          </div>
+        }
+        confirmLabel="Создать"
+        busyLabel="Создаём…"
+        onConfirm={createDrafts}
+      />
     </div>
   );
 }

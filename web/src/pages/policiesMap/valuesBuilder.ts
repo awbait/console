@@ -155,6 +155,43 @@ export function buildValues(
   return { naming, policies: buildPolicies(topology, edges, orderNs) };
 }
 
+export interface EdgeGroup {
+  ns: string;
+  edges: Edge[];
+}
+
+// partitionEdges splits the drawn edges into per-order groups: the chosen
+// order namespace absorbs every edge touching it; each remaining edge goes to
+// the group of its source namespace (it becomes an egress rule there). One
+// group = one policies order; empty groups are dropped, the primary one comes
+// first.
+export function partitionEdges(
+  topology: TopoNamespace[],
+  edges: Edge[],
+  orderNs: string | null,
+): EdgeGroup[] {
+  const primary: Edge[] = [];
+  const rest = new Map<string, Edge[]>();
+  for (const e of edges) {
+    if (!findWorkload(topology, e.source) || !findWorkload(topology, e.target)) continue;
+    const srcNs = nsOfWorkload(e.source);
+    const dstNs = nsOfWorkload(e.target);
+    if (orderNs && (srcNs === orderNs || dstNs === orderNs)) {
+      primary.push(e);
+    } else {
+      const list = rest.get(srcNs) ?? [];
+      list.push(e);
+      rest.set(srcNs, list);
+    }
+  }
+  const groups: EdgeGroup[] = [];
+  if (orderNs && primary.length > 0) groups.push({ ns: orderNs, edges: primary });
+  for (const [ns, list] of [...rest.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    groups.push({ ns, edges: list });
+  }
+  return groups;
+}
+
 // Lightweight stand-in for values.schema.json validation. The real flow
 // validates against the chart schema on the backend; here we only sanity-check
 // that something was drawn and required fields hold together.
@@ -170,21 +207,19 @@ export function validateSubmit(
     return errors;
   }
   if (edges.length === 0) errors.push("Не нарисовано ни одной стрелки.");
-  for (const e of edges) {
-    const { links, outOfScope } = edgeLinks(topology, orderNs, e);
-    if (outOfScope) {
-      errors.push(
-        `Стрелка ${outOfScope} не касается namespace заказа ${orderNs} - оформите её отдельным заказом policies.`,
-      );
-    }
-    for (const link of links) {
-      // Egress gateways may own policies without their own service account.
-      if (
-        link.dir === "egress" &&
-        !link.owner.serviceAccount &&
-        link.owner.kind !== "EgressGateway"
-      ) {
-        errors.push(`Источник ${link.owner.name} без service account.`);
+  // Edges not touching the order namespace become extra per-namespace orders
+  // (drafts), so they are validated against their own group namespace.
+  for (const group of partitionEdges(topology, edges, orderNs)) {
+    for (const e of group.edges) {
+      for (const link of edgeLinks(topology, group.ns, e).links) {
+        // Egress gateways may own policies without their own service account.
+        if (
+          link.dir === "egress" &&
+          !link.owner.serviceAccount &&
+          link.owner.kind !== "EgressGateway"
+        ) {
+          errors.push(`Источник ${link.owner.name} без service account.`);
+        }
       }
     }
   }
