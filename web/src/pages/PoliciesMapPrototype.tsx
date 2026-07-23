@@ -24,6 +24,7 @@ import {
   IconInfoCircle,
   IconPencil,
   IconPlus,
+  IconSitemap,
   IconTrash,
   IconWand,
 } from "@tabler/icons-react";
@@ -43,6 +44,7 @@ import {
   nsOfWorkload,
   type TopoNamespace,
   type TopoWorkload,
+  workloadId,
   workloadInvalidReason,
 } from "./policiesMap/topology";
 import {
@@ -123,10 +125,11 @@ function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): N
         id: w.id,
         type: "workload",
         parentId: `group:${ns.name}`,
-        extent: "parent",
+        // No extent: "parent" - a card may be dragged OUT of its box to move
+        // the workload into another namespace (it snaps back otherwise).
         position: { x: WL_X, y },
         data,
-        draggable: false,
+        draggable: true,
         // selectable keeps pointer events on the card: React Flow disables
         // them entirely on nodes that are neither draggable nor selectable,
         // which would swallow right-clicks (the ns menu opened instead).
@@ -188,7 +191,9 @@ function Canvas() {
           sp !== null &&
           tp !== null &&
           s.ports.some((p) => p.port === sp) &&
-          t.ports.some((p) => p.port === tp)
+          t.ports.some((p) => p.port === tp) &&
+          // A workload moved into the peer namespace turns the edge same-ns.
+          nsOfWorkload(e.source) !== nsOfWorkload(e.target)
         );
       }),
     );
@@ -246,6 +251,40 @@ function Canvas() {
       t.map((n) => ({ ...n, workloads: n.workloads.filter((w) => w.id !== id) })),
     );
   }, []);
+
+  // moveWorkload relocates a workload into another namespace (drag-and-drop),
+  // re-pointing its edges at the new id. Returns false when the move is not
+  // possible (name already taken there).
+  const moveWorkload = useCallback(
+    (id: string, targetNs: string): boolean => {
+      const w = findWorkload(topology, id);
+      const target = topology.find((n) => n.name === targetNs);
+      if (!w || !target) return false;
+      if (target.workloads.some((x) => x.name === w.name)) {
+        toast.error(`В namespace ${targetNs} уже есть workload «${w.name}».`);
+        return false;
+      }
+      const moved = { ...w, id: workloadId(targetNs, w.name) };
+      const fromNs = nsOfWorkload(id);
+      setTopology((t) =>
+        t.map((n) => {
+          if (n.name === fromNs)
+            return { ...n, workloads: n.workloads.filter((x) => x.id !== id) };
+          if (n.name === targetNs) return { ...n, workloads: [...n.workloads, moved] };
+          return n;
+        }),
+      );
+      setEdges((eds) =>
+        eds.map((e) => ({
+          ...e,
+          source: e.source === id ? moved.id : e.source,
+          target: e.target === id ? moved.id : e.target,
+        })),
+      );
+      return true;
+    },
+    [topology, toast, setEdges],
+  );
 
   const loadExample = useCallback(() => {
     setTopology(EXAMPLE_TOPOLOGY);
@@ -360,11 +399,29 @@ function Canvas() {
 
   // --- drag and context menus ---------------------------------------------
 
-  const onNodeDragStop = useCallback((_e: MouseEvent | TouchEvent | React.MouseEvent, node: Node) => {
-    if (node.type === "nsGroup") {
-      setPositions((p) => ({ ...p, [node.id.slice("group:".length)]: node.position }));
-    }
-  }, []);
+  const onNodeDragStop = useCallback(
+    (_e: MouseEvent | TouchEvent | React.MouseEvent, node: Node) => {
+      if (node.type === "nsGroup") {
+        setPositions((p) => ({ ...p, [node.id.slice("group:".length)]: node.position }));
+        return;
+      }
+      if (node.type !== "workload") return;
+      // A dragged card either lands inside another namespace box (the workload
+      // moves there) or snaps back into its stacked slot.
+      const fromNs = nsOfWorkload(node.id);
+      const groupPos = positions[fromNs] ?? { x: 0, y: 0 };
+      const cx = groupPos.x + node.position.x + WL_W / 2;
+      const cy = groupPos.y + node.position.y + 20;
+      const target = topology.find((ns) => {
+        const p = positions[ns.name] ?? { x: 0, y: 0 };
+        return cx >= p.x && cx <= p.x + GROUP_W && cy >= p.y && cy <= p.y + groupHeight(ns);
+      });
+      if (!target || target.name === fromNs || !moveWorkload(node.id, target.name)) {
+        setNodes(buildNodes(topology, positions));
+      }
+    },
+    [topology, positions, moveWorkload, setNodes],
+  );
 
   const onPaneContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
     e.preventDefault();
@@ -690,26 +747,35 @@ function Canvas() {
           </div>
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
             <span className="text-xs font-semibold text-slate-700">values.yaml</span>
-            <span className="text-xs text-slate-400">стрелок: {edges.length}</span>
             <button
               type="button"
               onClick={copyValues}
               disabled={edges.length === 0}
               aria-label="Скопировать values.yaml"
-              className="ml-auto flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-slate-500 outline-none hover:bg-gray-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-40"
+              className="ml-auto flex cursor-pointer items-center gap-1 rounded-md border border-gray-300 bg-surface px-2 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-gray-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-40"
             >
               <IconCopy size={14} /> Скопировать
             </button>
           </div>
-          <pre className="min-h-0 flex-1 overflow-auto bg-app p-3 font-mono text-xs leading-relaxed text-slate-700">
-            {valuesYaml}
-          </pre>
+          {edges.length === 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-app p-6 text-center">
+              <IconSitemap size={28} stroke={1.5} className="text-slate-300" />
+              <p className="text-xs leading-5 text-slate-400">
+                Пока пусто: соедините порты стрелками,
+                <br />и values.yaml появится здесь.
+              </p>
+            </div>
+          ) : (
+            <pre className="min-h-0 flex-1 overflow-auto bg-app p-3 font-mono text-xs leading-relaxed text-slate-700">
+              {valuesYaml}
+            </pre>
+          )}
           <div className="border-t border-gray-200 p-3">
             <Button variant="primary" onPress={submit} className="w-full justify-center">
               Заказать
             </Button>
             <p className="mt-2 text-center text-[11px] text-slate-400">
-              Сандбокс: топология вводится вручную, values собирается из стрелок.
+              Кнопка передаст собранный values.yaml в форму заказа сервиса policies.
             </p>
           </div>
         </aside>
@@ -768,51 +834,63 @@ function Legend() {
         <IconInfoCircle size={14} /> Легенда
       </div>
       <div className="pointer-events-none absolute bottom-full left-0 mb-2 w-max max-w-96 rounded-md border border-gray-200 bg-surface/95 px-3 py-2 text-[11px] leading-5 text-slate-600 opacity-0 shadow-md transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
-      <div className="flex items-center gap-2">
-        <span className="h-3.5 w-5 shrink-0 rounded border border-dashed border-slate-400" />
-        namespace (перетаскивается)
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="h-3.5 w-5 shrink-0 rounded border border-slate-300 bg-surface shadow-sm" />
-        workload (Deployment / StatefulSet / DaemonSet / Ingress- и Egress-GW)
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="h-3 w-3 shrink-0 rounded-full border-2 border-sky-500 bg-surface" />
-        exposed-порт: кружки с двух сторон, тяните стрелку с удобной
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="h-3.5 w-5 shrink-0 rounded border border-red-500 bg-surface" />
-        невалидный workload (нет SA или портов)
-      </div>
-      <div className="flex items-center gap-2">
-        <svg
-          viewBox="0 0 20 6"
-          className="h-2 w-5 shrink-0 text-slate-500"
-          role="img"
-          aria-label="Стрелка с бегущей точкой"
+        <LegendRow sample={<span className="h-3.5 w-5 rounded border border-dashed border-slate-400" />}>
+          namespace (перетаскивается)
+        </LegendRow>
+        <LegendRow sample={<span className="h-3.5 w-5 rounded border border-slate-300 bg-surface shadow-sm" />}>
+          workload: тип указан на карточке; перетащите в другой namespace, чтобы перенести
+        </LegendRow>
+        <LegendRow sample={<span className="h-3 w-3 rounded-full border-2 border-sky-500 bg-surface" />}>
+          exposed-порт: появляется при наведении на строку порта
+        </LegendRow>
+        <LegendRow sample={<span className="h-3.5 w-5 rounded border border-red-500 bg-surface" />}>
+          невалидный workload (нет SA или портов)
+        </LegendRow>
+        <LegendRow
+          sample={
+            <svg
+              viewBox="0 0 20 6"
+              className="h-2 w-5 text-slate-500"
+              role="img"
+              aria-label="Стрелка с бегущей точкой"
+            >
+              <line x1="0" y1="3" x2="20" y2="3" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="10" cy="3" r="2.2" className="fill-sky-500" />
+            </svg>
+          }
         >
-          <line x1="0" y1="3" x2="20" y2="3" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="10" cy="3" r="2.2" className="fill-sky-500" />
-        </svg>
-        разрешённый трафик source -&gt; target (точка бежит по стрелке)
-      </div>
-      <div className="flex items-center gap-2">
-        <svg
-          viewBox="0 0 24 8"
-          className="h-2.5 w-6 shrink-0 text-slate-500"
-          role="img"
-          aria-label="Двойная стрелка"
+          разрешённый трафик source -&gt; target
+        </LegendRow>
+        <LegendRow
+          sample={
+            <svg
+              viewBox="0 0 24 8"
+              className="h-2.5 w-6 text-slate-500"
+              role="img"
+              aria-label="Двойная стрелка"
+            >
+              <path d="M5 4 L19 4" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 1 L4 4 L8 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M16 1 L20 4 L16 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              <circle cx="10" cy="4" r="2" className="fill-sky-500" />
+              <circle cx="14" cy="4" r="2" className="fill-emerald-500" />
+            </svg>
+          }
         >
-          <path d="M5 4 L19 4" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M8 1 L4 4 L8 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M16 1 L20 4 L16 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
-          <circle cx="10" cy="4" r="2" className="fill-sky-500" />
-          <circle cx="14" cy="4" r="2" className="fill-emerald-500" />
-        </svg>
-        трафик в обе стороны: синяя точка - туда, зелёная - обратно
+          трафик в обе стороны: синяя точка - туда, зелёная - обратно
+        </LegendRow>
+        <div className="mt-1 pl-8 text-slate-400">ПКМ - добавить или изменить элементы.</div>
       </div>
-        <div className="mt-1 text-slate-400">ПКМ - добавить или изменить элементы.</div>
-      </div>
+    </div>
+  );
+}
+
+// LegendRow keeps every sample in a fixed-width column so the texts align.
+function LegendRow({ sample, children }: { sample: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex w-6 shrink-0 items-center justify-center">{sample}</span>
+      <span>{children}</span>
     </div>
   );
 }
