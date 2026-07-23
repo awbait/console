@@ -113,17 +113,27 @@
   color: rgb(var(--c-danger-500));
 }
 
-/* Port handle: the interactive circle on the box border. */
+/* Port handle: the interactive circle on the box border. The circle itself
+   never moves or grows on hover - a scale transform made the target shift
+   under the cursor and hard to grab. */
 .react-flow__handle.rf-port {
   width: 12px;
   height: 12px;
   border: 2px solid rgb(var(--c-info-500));
   background: rgb(var(--c-surface));
-  transition: box-shadow 0.12s ease, transform 0.12s ease;
+  transition: box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+/* Enlarged invisible hit area: pseudo-elements participate in hit testing,
+   so the circle is easy to catch without visually growing. */
+.react-flow__handle.rf-port::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
 }
 
 .react-flow__handle.rf-port:hover {
-  transform: scale(1.25);
   /* Gradient green: transparent center, greener toward the edge. */
   background: radial-gradient(
     circle,
@@ -131,4 +141,5 @@
     rgb(var(--c-success-500) / 0.85) 100%
   );
   border-color: rgb(var(--c-success-600));
+  box-shadow: 0 0 0 4px rgb(var(--c-success-500) / 0.18);
 }

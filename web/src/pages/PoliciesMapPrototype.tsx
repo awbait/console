@@ -83,6 +83,9 @@ function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): N
       data: { label: ns.name },
       draggable: true,
       selectable: false,
+      // Keyboard-deleting RF nodes would desync them from the topology model:
+      // deletion goes through the context menus instead.
+      deletable: false,
       style: { width: GROUP_W, height: groupHeight(ns) },
       className: "rf-ns",
     });
@@ -97,7 +100,11 @@ function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): N
         position: { x: WL_X, y },
         data,
         draggable: false,
-        selectable: false,
+        // selectable keeps pointer events on the card: React Flow disables
+        // them entirely on nodes that are neither draggable nor selectable,
+        // which would swallow right-clicks (the ns menu opened instead).
+        selectable: true,
+        deletable: false,
         connectable: true,
       });
       y += workloadHeight(w) + WL_GAP;
@@ -330,6 +337,16 @@ function Canvas() {
     setMenu({ x: e.clientX, y: e.clientY, kind: "edge", id: edge.id });
   }, []);
 
+  // Double-click on a workload card is a shortcut for "edit".
+  const onNodeDoubleClick = useCallback(
+    (_e: React.MouseEvent, node: Node) => {
+      if (node.type !== "workload") return;
+      const w = findWorkload(topology, node.id);
+      if (w) setWlDialog({ ns: nsOfWorkload(node.id), workload: w });
+    },
+    [topology],
+  );
+
   const menuEntries = useMemo((): MenuEntry[] => {
     if (!menu) return [];
     switch (menu.kind) {
@@ -459,6 +476,7 @@ function Canvas() {
             onNodeDragStop={onNodeDragStop}
             onPaneContextMenu={onPaneContextMenu}
             onNodeContextMenu={onNodeContextMenu}
+            onNodeDoubleClick={onNodeDoubleClick}
             onEdgeContextMenu={onEdgeContextMenu}
             deleteKeyCode={["Delete", "Backspace"]}
             fitView
