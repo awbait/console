@@ -91,17 +91,22 @@ export function workloadInvalidReason(w: TopoWorkload): string | null {
 // Kubernetes DNS label: lower-case letters, digits and hyphens.
 export const DNS_NAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
-// Example topology, loadable from the toolbar: demos the editor without typing
-// everything in (includes deliberately invalid workloads).
+// Example scenario, loadable from the toolbar: an online shop whose core
+// namespace (the order) receives traffic through an ingress gateway, talks to
+// its database and cache (the cache link is bidirectional) and reaches the
+// outside world through an egress gateway. One workload is deliberately
+// invalid (no SA) to demo the red border. Arrows come pre-drawn.
+export const EXAMPLE_ORDER_NS = "shop-core";
+
 export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
   {
-    name: "netbox-ingress",
+    name: "shop-ingress",
     workloads: [
       {
-        id: "netbox-ingress/ingress-istio",
+        id: "shop-ingress/ingress-istio",
         name: "ingress-istio",
         kind: "IngressGateway",
-        serviceAccount: "netbox-ingress-gateway-istio",
+        serviceAccount: "shop-ingress-gateway-istio",
         selector: { "app.kubernetes.io/name": "ingress-istio" },
         ports: [
           { port: 443, protocol: "HTTP" },
@@ -111,66 +116,121 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
     ],
   },
   {
-    name: "netbox-core",
+    name: "shop-core",
     workloads: [
       {
-        id: "netbox-core/netbox",
-        name: "netbox",
+        id: "shop-core/backend",
+        name: "backend",
         kind: "Deployment",
-        serviceAccount: "netbox",
-        selector: { "app.kubernetes.io/name": "netbox" },
+        serviceAccount: "backend",
+        selector: { "app.kubernetes.io/name": "backend" },
         ports: [
           { port: 8080, protocol: "HTTP" },
           { port: 9100, protocol: "TCP" },
         ],
       },
       {
-        id: "netbox-core/netbox-worker",
-        name: "netbox-worker",
+        id: "shop-core/legacy-app",
+        name: "legacy-app",
         kind: "Deployment",
         // Invalid on purpose: no service account -> red border, blocked endpoint.
         serviceAccount: null,
-        selector: { "app.kubernetes.io/name": "netbox-worker" },
-        ports: [{ port: 8081, protocol: "HTTP" }],
+        selector: { "app.kubernetes.io/name": "legacy-app" },
+        ports: [{ port: 8000, protocol: "HTTP" }],
       },
     ],
   },
   {
-    name: "netbox-postgresql",
+    name: "shop-postgresql",
     workloads: [
       {
-        id: "netbox-postgresql/postgresql",
+        id: "shop-postgresql/postgresql",
         name: "postgresql",
         kind: "StatefulSet",
-        serviceAccount: "netbox-postgresql",
+        serviceAccount: "shop-postgresql",
         selector: { "app.kubernetes.io/name": "postgresql" },
         ports: [{ port: 5432, protocol: "TCP" }],
       },
     ],
   },
   {
-    name: "netbox-valkey",
+    name: "shop-valkey",
     workloads: [
       {
-        id: "netbox-valkey/valkey-primary",
+        id: "shop-valkey/valkey-primary",
         name: "valkey-primary",
         kind: "StatefulSet",
-        serviceAccount: "netbox-valkey-primary",
+        serviceAccount: "shop-valkey-primary",
         selector: {
           "app.kubernetes.io/name": "valkey",
           "app.kubernetes.io/component": "primary",
         },
         ports: [{ port: 6379, protocol: "TCP" }],
       },
+    ],
+  },
+  {
+    name: "shop-egress",
+    workloads: [
       {
-        id: "netbox-valkey/valkey-metrics",
-        name: "valkey-metrics",
-        kind: "DaemonSet",
-        // Invalid on purpose: no exposed ports.
-        serviceAccount: "netbox-valkey-metrics",
-        selector: { "app.kubernetes.io/name": "valkey-metrics" },
-        ports: [],
+        id: "shop-egress/egress-gw",
+        name: "egress-gw",
+        kind: "EgressGateway",
+        // Egress gateways work without their own SA (no red border).
+        serviceAccount: null,
+        selector: { "app.kubernetes.io/name": "egress-gw" },
+        ports: [{ port: 8443, protocol: "TCP" }],
       },
     ],
   },
 ];
+
+// Pre-drawn arrows of the example: in through the ingress gateway, out to the
+// database, a bidirectional link with the cache and out through the egress
+// gateway. One-way sources anchor at the body handle (like parsed values do).
+export const EXAMPLE_EDGES = [
+  {
+    id: "ex-ingress",
+    source: "shop-ingress/ingress-istio",
+    target: "shop-core/backend",
+    sourceHandle: "w-r",
+    targetHandle: "p-8080-l",
+    data: { bidirectional: false },
+    reconnectable: true,
+  },
+  {
+    id: "ex-db",
+    source: "shop-core/backend",
+    target: "shop-postgresql/postgresql",
+    sourceHandle: "w-r",
+    targetHandle: "p-5432-l",
+    data: { bidirectional: false },
+    reconnectable: true,
+  },
+  {
+    id: "ex-cache",
+    source: "shop-core/backend",
+    target: "shop-valkey/valkey-primary",
+    sourceHandle: "p-9100-r",
+    targetHandle: "p-6379-l",
+    data: { bidirectional: true },
+    reconnectable: true,
+  },
+  {
+    id: "ex-egress",
+    source: "shop-core/backend",
+    target: "shop-egress/egress-gw",
+    sourceHandle: "w-r",
+    targetHandle: "p-8443-l",
+    data: { bidirectional: false },
+    reconnectable: true,
+  },
+];
+
+export const EXAMPLE_POSITIONS: Record<string, { x: number; y: number }> = {
+  "shop-ingress": { x: 0, y: 40 },
+  "shop-core": { x: 330, y: 0 },
+  "shop-postgresql": { x: 660, y: 0 },
+  "shop-valkey": { x: 660, y: 170 },
+  "shop-egress": { x: 660, y: 340 },
+};

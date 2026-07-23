@@ -42,6 +42,9 @@ import { FlowEdge } from "./FlowEdge";
 import "./policiesMap.css";
 import { NamespaceDialog, WorkloadDialog } from "./TopologyDialogs";
 import {
+  EXAMPLE_EDGES,
+  EXAMPLE_ORDER_NS,
+  EXAMPLE_POSITIONS,
   EXAMPLE_TOPOLOGY,
   findWorkload,
   nsOfWorkload,
@@ -352,14 +355,10 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
 
   const loadExample = useCallback(() => {
     setTopology(EXAMPLE_TOPOLOGY);
-    setPositions({
-      "netbox-ingress": { x: 0, y: 0 },
-      "netbox-core": { x: GROUP_W + GROUP_GAP, y: 0 },
-      "netbox-postgresql": { x: (GROUP_W + GROUP_GAP) * 2, y: 0 },
-      "netbox-valkey": { x: (GROUP_W + GROUP_GAP) * 2, y: 180 },
-    });
-    setEdges([]);
-    if (!lockedOrderNs) setOrderNsState("netbox-core");
+    setPositions(EXAMPLE_POSITIONS);
+    // Fresh copies: the RF state mutates edge objects (selection etc).
+    setEdges(EXAMPLE_EDGES.map((e) => ({ ...e, data: { ...e.data } })));
+    if (!lockedOrderNs) setOrderNsState(EXAMPLE_ORDER_NS);
   }, [setEdges, lockedOrderNs]);
 
   const load = useCallback(
