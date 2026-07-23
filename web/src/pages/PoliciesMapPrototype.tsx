@@ -21,6 +21,7 @@ import "@xyflow/react/dist/style.css";
 import {
   IconArrowLeft,
   IconCopy,
+  IconInfoCircle,
   IconPencil,
   IconPlus,
   IconTrash,
@@ -751,10 +752,17 @@ function Canvas() {
 }
 
 // Legend explains the canvas notation; extend it together with new highlights.
+// Collapsed to a small chip, the full card slides in on hover or focus.
 function Legend() {
   return (
-    <div className="rounded-md border border-gray-200 bg-surface/95 px-3 py-2 text-[11px] leading-5 text-slate-600 shadow-sm">
-      <div className="mb-1 font-semibold text-slate-700">Легенда</div>
+    <div className="group relative">
+      <div
+        tabIndex={0}
+        className="flex cursor-help items-center gap-1.5 rounded-md border border-gray-200 bg-surface/95 px-2.5 py-1.5 text-[11px] font-medium text-slate-500 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <IconInfoCircle size={14} /> Легенда
+      </div>
+      <div className="pointer-events-none absolute bottom-full left-0 mb-2 w-max max-w-96 rounded-md border border-gray-200 bg-surface/95 px-3 py-2 text-[11px] leading-5 text-slate-600 opacity-0 shadow-md transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
       <div className="flex items-center gap-2">
         <span className="h-3.5 w-5 shrink-0 rounded border border-dashed border-slate-400" />
         namespace (перетаскивается)
@@ -803,7 +811,8 @@ function Legend() {
         </svg>
         трафик в обе стороны (встречные стрелки сливаются)
       </div>
-      <div className="mt-1 text-slate-400">ПКМ - добавить или изменить элементы.</div>
+        <div className="mt-1 text-slate-400">ПКМ - добавить или изменить элементы.</div>
+      </div>
     </div>
   );
 }
