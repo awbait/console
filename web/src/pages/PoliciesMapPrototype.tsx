@@ -752,7 +752,7 @@ function Legend() {
       </div>
       <div className="flex items-center gap-2">
         <span className="h-3.5 w-5 shrink-0 rounded border border-slate-300 bg-surface shadow-sm" />
-        workload (Deployment / StatefulSet / DaemonSet / Gateway)
+        workload (Deployment / StatefulSet / DaemonSet / Ingress- и Egress-GW)
       </div>
       <div className="flex items-center gap-2">
         <span className="h-3 w-3 shrink-0 rounded-full border-2 border-sky-500 bg-surface" />

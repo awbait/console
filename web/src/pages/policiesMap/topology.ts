@@ -4,15 +4,30 @@
 // everything by hand; future tiers (orders data, console-collector snapshot,
 // direct K8s API) plug in behind the same interface without editor changes.
 
-export type WorkloadKind = "Deployment" | "DaemonSet" | "StatefulSet" | "Gateway";
+export type WorkloadKind =
+  | "Deployment"
+  | "DaemonSet"
+  | "StatefulSet"
+  | "IngressGateway"
+  | "EgressGateway";
 export type PortProtocol = "HTTP" | "TCP" | "UDP" | "GRPC";
 
 export const WORKLOAD_KINDS: WorkloadKind[] = [
   "Deployment",
   "DaemonSet",
   "StatefulSet",
-  "Gateway",
+  "IngressGateway",
+  "EgressGateway",
 ];
+
+// Display labels: the gateway kinds are shown shortened so they fit the card.
+export const KIND_LABELS: Record<WorkloadKind, string> = {
+  Deployment: "Deployment",
+  DaemonSet: "DaemonSet",
+  StatefulSet: "StatefulSet",
+  IngressGateway: "Ingress GW",
+  EgressGateway: "Egress GW",
+};
 export const PORT_PROTOCOLS: PortProtocol[] = ["HTTP", "TCP", "UDP", "GRPC"];
 
 export interface TopoPort {
@@ -84,7 +99,7 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
       {
         id: "netbox-ingress/ingress-istio",
         name: "ingress-istio",
-        kind: "Gateway",
+        kind: "IngressGateway",
         serviceAccount: "netbox-ingress-gateway-istio",
         selector: { "app.kubernetes.io/name": "ingress-istio" },
         ports: [

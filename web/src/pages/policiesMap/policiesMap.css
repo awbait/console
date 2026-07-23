@@ -64,9 +64,15 @@
 }
 
 /* Gateways are entry/exit points of the mesh: tint the kind label so they
-   stand out among plain workloads. */
-.rf-wl__kind--gw {
+   stand out among plain workloads. Ingress is blue (inbound), egress amber
+   (outbound). */
+.rf-wl__kind--ingw {
   color: rgb(var(--c-info-500));
+  font-weight: 600;
+}
+
+.rf-wl__kind--egw {
+  color: rgb(var(--c-warning-600));
   font-weight: 600;
 }
 

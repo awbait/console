@@ -1,5 +1,5 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import type { TopoWorkload } from "./topology";
+import { KIND_LABELS, type TopoWorkload } from "./topology";
 
 // Data carried by a workload node.
 export interface WorkloadNodeData {
@@ -34,8 +34,16 @@ export function WorkloadNode({ data }: NodeProps) {
       <div className="rf-wl__head">
         <div>
           <span className="rf-wl__name">{workload.name}</span>
-          <span className={`rf-wl__kind${workload.kind === "Gateway" ? " rf-wl__kind--gw" : ""}`}>
-            {workload.kind}
+          <span
+            className={`rf-wl__kind${
+              workload.kind === "IngressGateway"
+                ? " rf-wl__kind--ingw"
+                : workload.kind === "EgressGateway"
+                  ? " rf-wl__kind--egw"
+                  : ""
+            }`}
+          >
+            {KIND_LABELS[workload.kind]}
           </span>
         </div>
         {workload.serviceAccount ? (

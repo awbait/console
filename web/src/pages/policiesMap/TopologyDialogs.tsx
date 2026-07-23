@@ -5,6 +5,7 @@ import { FormErrors } from "../../components/FormErrors";
 import { Button, Select, TextField } from "../../components/ui";
 import {
   DNS_NAME_RE,
+  KIND_LABELS,
   PORT_PROTOCOLS,
   type PortProtocol,
   type TopoNamespace,
@@ -263,7 +264,7 @@ export function WorkloadDialog({
             label="Тип"
             selectedKey={kind}
             onSelectionChange={setKind}
-            options={WORKLOAD_KINDS.map((k) => ({ id: k, label: k }))}
+            options={WORKLOAD_KINDS.map((k) => ({ id: k, label: KIND_LABELS[k] }))}
           />
         </div>
         <TextField
