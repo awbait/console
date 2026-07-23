@@ -18,7 +18,14 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "@xyflow/react/dist/style.css";
-import { IconArrowLeft, IconPencil, IconPlus, IconTrash, IconWand } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconCopy,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconWand,
+} from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { Link } from "react-router-dom";
 import { useToast } from "../app/ToastContext";
@@ -63,8 +70,8 @@ const WL_X = 10;
 const WL_GAP = 10;
 const WL_W = 230; // workload card width, must match .rf-wl in policiesMap.css
 
-// Edge arrowhead, deliberately large so the direction reads at a glance.
-const ARROW = { type: MarkerType.ArrowClosed, width: 22, height: 22 };
+// Edge arrowhead, slightly larger than the React Flow default.
+const ARROW = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
 
 type XY = { x: number; y: number };
 
@@ -480,6 +487,9 @@ function Canvas() {
           ...e,
           sourceHandle: portHandleId(sp, sSide),
           targetHandle: portHandleId(tp, tSide),
+          // The running dash flows source -> target only, which lies about a
+          // two-way link: bidirectional edges render as a steady double arrow.
+          animated: !bidi,
           style: { strokeWidth: 2 },
           markerEnd: ARROW,
           markerStart: bidi ? { ...ARROW, orient: "auto-start-reverse" } : undefined,
@@ -487,6 +497,36 @@ function Canvas() {
       }),
     [edges, centerX],
   );
+
+  // Port circles are hidden until used: mark the handles that carry an edge so
+  // WorkloadNode renders their circles (the rest appear on row hover only).
+  useEffect(() => {
+    const used = new Map<string, Set<string>>();
+    const mark = (node: string, handle: string | null | undefined) => {
+      if (!handle) return;
+      const set = used.get(node) ?? new Set<string>();
+      set.add(handle);
+      used.set(node, set);
+    };
+    for (const e of displayEdges) {
+      mark(e.source, e.sourceHandle);
+      mark(e.target, e.targetHandle);
+    }
+    setNodes((nds) => {
+      let changed = false;
+      const next = nds.map((n) => {
+        if (n.type !== "workload") return n;
+        const want = [...(used.get(n.id) ?? [])].sort();
+        const have = (n.data as WorkloadNodeData).connectedHandles ?? [];
+        if (want.join(",") === have.join(",")) return n;
+        changed = true;
+        return { ...n, data: { ...n.data, connectedHandles: want } };
+      });
+      // Same reference when nothing changed, so this effect cannot loop
+      // through the nodes -> displayEdges -> nodes dependency chain.
+      return changed ? next : nds;
+    });
+  }, [displayEdges, setNodes]);
 
   // --- values preview and submit ------------------------------------------
 
@@ -496,6 +536,27 @@ function Canvas() {
     if (edges.length === 0) return "# нарисуйте стрелки между портами";
     return yaml.dump(buildValues(topology, edges, naming), { lineWidth: 100, sortKeys: false });
   }, [topology, edges, naming]);
+
+  // Copy the generated values.yaml. navigator.clipboard needs a secure
+  // context, which the dev stand over plain http lacks - fall back to the
+  // hidden-textarea trick there.
+  const copyValues = useCallback(async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(valuesYaml);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = valuesYaml;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      toast.success("values.yaml скопирован.");
+    } catch {
+      toast.error("Не удалось скопировать в буфер обмена.");
+    }
+  }, [valuesYaml, toast]);
 
   const submit = useCallback(() => {
     const errors = validateSubmit(topology, edges, naming);
@@ -609,6 +670,15 @@ function Canvas() {
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
             <span className="text-xs font-semibold text-slate-700">values.yaml</span>
             <span className="text-xs text-slate-400">стрелок: {edges.length}</span>
+            <button
+              type="button"
+              onClick={copyValues}
+              disabled={edges.length === 0}
+              aria-label="Скопировать values.yaml"
+              className="ml-auto flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-slate-500 outline-none hover:bg-gray-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-40"
+            >
+              <IconCopy size={14} /> Скопировать
+            </button>
           </div>
           <pre className="min-h-0 flex-1 overflow-auto bg-app p-3 font-mono text-xs leading-relaxed text-slate-700">
             {valuesYaml}

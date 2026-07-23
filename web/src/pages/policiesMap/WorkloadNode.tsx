@@ -5,6 +5,9 @@ import type { TopoWorkload } from "./topology";
 export interface WorkloadNodeData {
   workload: TopoWorkload;
   invalidReason: string | null;
+  // Handle ids that currently carry an edge: their circles stay visible, the
+  // rest only appear on port-row hover.
+  connectedHandles?: string[];
   [key: string]: unknown;
 }
 
@@ -19,10 +22,12 @@ export const portFromHandle = (handle: string | null | undefined): number | null
 };
 
 export function WorkloadNode({ data }: NodeProps) {
-  const { workload, invalidReason } = data as WorkloadNodeData;
+  const { workload, invalidReason, connectedHandles } = data as WorkloadNodeData;
   // Invalid workloads keep their ports connectable on purpose: per spec the
   // arrow attempt must surface an explanatory error, not be silently blocked.
   const invalid = invalidReason !== null;
+  const connected = new Set(connectedHandles ?? []);
+  const portClass = (id: string) => `rf-port${connected.has(id) ? " rf-port--on" : ""}`;
 
   return (
     <div className={`rf-wl${invalid ? " rf-wl--invalid" : ""}`} title={invalidReason ?? undefined}>
@@ -54,7 +59,7 @@ export function WorkloadNode({ data }: NodeProps) {
                 position={Position.Left}
                 isConnectableStart
                 isConnectableEnd
-                className="rf-port"
+                className={portClass(portHandleId(p.port, "l"))}
               />
               <Handle
                 id={portHandleId(p.port, "r")}
@@ -62,7 +67,7 @@ export function WorkloadNode({ data }: NodeProps) {
                 position={Position.Right}
                 isConnectableStart
                 isConnectableEnd
-                className="rf-port"
+                className={portClass(portHandleId(p.port, "r"))}
               />
             </div>
           ))

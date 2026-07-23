@@ -113,13 +113,25 @@
 
 /* Port handle: the interactive circle on the box border. The circle itself
    never moves or grows on hover - a scale transform made the target shift
-   under the cursor and hard to grab. */
+   under the cursor and hard to grab. Circles are hidden until they carry an
+   edge (rf-port--on); hovering the port row reveals them for drawing. */
 .react-flow__handle.rf-port {
   width: 12px;
   height: 12px;
   border: 2px solid rgb(var(--c-info-500));
   background: rgb(var(--c-surface));
-  transition: box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  opacity: 0;
+  transition: opacity 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.rf-wl__port-row:hover .react-flow__handle.rf-port {
+  opacity: 0.65;
+}
+
+.react-flow__handle.rf-port:hover,
+.react-flow__handle.rf-port.rf-port--on {
+  opacity: 1;
 }
 
 /* Enlarged invisible hit area: pseudo-elements participate in hit testing,
