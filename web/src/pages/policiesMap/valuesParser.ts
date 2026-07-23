@@ -16,6 +16,15 @@ import {
 } from "./topology";
 import { bodyHandleId, portHandleId } from "./WorkloadNode";
 
+// Canvas-only state the values cannot carry (empty namespaces, unlinked
+// workloads, target SAs, extra ports, kinds, box positions). The order graph
+// saves it between mode switches and merges it back over a fresh parse.
+export interface SavedGraphState {
+  orderNs: string;
+  topology: TopoNamespace[];
+  positions: Record<string, XY>;
+}
+
 export interface ParsedGraph {
   topology: TopoNamespace[];
   edges: Edge[];
@@ -276,4 +285,67 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
   }
 
   return { topology, edges, positions, errors };
+}
+
+// mergeWithSaved overlays canvas-only state on a fresh parse: the values stay
+// the source of truth for links and selectors, while the saved graph restores
+// what they cannot express - workload identity/kind/SA/extra ports, unlinked
+// workloads, empty namespaces and box positions.
+export function mergeWithSaved(parsed: ParsedGraph, saved: SavedGraphState | null): ParsedGraph {
+  if (!saved) return parsed;
+  const savedBySelector = new Map<string, TopoWorkload>();
+  for (const ns of saved.topology) {
+    for (const w of ns.workloads) savedBySelector.set(selectorKey(ns.name, w.selector), w);
+  }
+
+  // Parsed workloads adopt the saved identity (name, kind, SA) and the union
+  // of ports; edges are re-pointed when the adopted name changes the id.
+  const idRemap = new Map<string, string>();
+  const topology: TopoNamespace[] = parsed.topology.map((ns) => ({
+    name: ns.name,
+    workloads: ns.workloads.map((w) => {
+      const s = savedBySelector.get(selectorKey(ns.name, w.selector));
+      if (!s) return w;
+      const ports = [...w.ports];
+      for (const p of s.ports) {
+        if (!ports.some((x) => x.port === p.port)) ports.push(p);
+      }
+      ports.sort((a, b) => a.port - b.port);
+      const merged: TopoWorkload = {
+        id: workloadId(ns.name, s.name),
+        name: s.name,
+        kind: s.kind,
+        serviceAccount: w.serviceAccount ?? s.serviceAccount,
+        selector: w.selector,
+        ports,
+      };
+      if (merged.id !== w.id) idRemap.set(w.id, merged.id);
+      return merged;
+    }),
+  }));
+
+  // Bring back namespaces and workloads the values do not mention.
+  for (const ns of saved.topology) {
+    let target = topology.find((n) => n.name === ns.name);
+    if (!target) {
+      target = { name: ns.name, workloads: [] };
+      topology.push(target);
+    }
+    for (const w of ns.workloads) {
+      const key = selectorKey(ns.name, w.selector);
+      const exists = target.workloads.some(
+        (x) => x.name === w.name || selectorKey(ns.name, x.selector) === key,
+      );
+      if (!exists) target.workloads.push(w);
+    }
+  }
+
+  const edges = parsed.edges.map((e) => ({
+    ...e,
+    source: idRemap.get(e.source) ?? e.source,
+    target: idRemap.get(e.target) ?? e.target,
+  }));
+  // Saved positions win for boxes the user already arranged.
+  const positions = { ...parsed.positions, ...saved.positions };
+  return { topology, edges, positions, errors: parsed.errors };
 }

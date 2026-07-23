@@ -112,7 +112,7 @@ interface PoliciesGraphProps {
   readOnly?: boolean;
   // Known namespace names from the topology provider (for the add dialog).
   suggestions?: string[];
-  onModelChange?: (m: GraphModel) => void;
+  onModelChange?: (m: GraphModel & { positions: Record<string, XY> }) => void;
 }
 
 // Estimated workload card height: header (shorter when the SA row is hidden,
@@ -234,8 +234,8 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   const modelCb = useRef(onModelChange);
   modelCb.current = onModelChange;
   useEffect(() => {
-    modelCb.current?.({ topology, edges, orderNs });
-  }, [topology, edges, orderNs]);
+    modelCb.current?.({ topology, edges, orderNs, positions });
+  }, [topology, edges, orderNs, positions]);
 
   // Rebuild nodes from the topology model; prune edges whose endpoint workload
   // or port no longer exists.

@@ -169,6 +169,8 @@ export function OrderValuesCard({
   plugins = [],
   pluginNamespace = "",
   pluginInputError = null,
+  pluginState,
+  onPluginState,
 }: {
   schema: JSONSchema | null;
   view?: View;
@@ -192,6 +194,9 @@ export function OrderValuesCard({
   // Raw-YAML parse error carried into the plugin (it must show it and keep
   // the values untouched).
   pluginInputError?: string | null;
+  // Opaque plugin editor state surviving mode switches (see ValuesEditorProps).
+  pluginState?: unknown;
+  onPluginState?: (s: unknown) => void;
 }) {
   const { theme } = useTheme();
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
@@ -205,13 +210,13 @@ export function OrderValuesCard({
             onClick={() => onSwitchMode("form")}
             className={`rounded px-2 py-1 ${mode === "form" ? "bg-surface shadow" : "text-gray-500"}`}
           >
-            Form
+            Форма
           </button>
           <button
             onClick={() => onSwitchMode("raw")}
             className={`rounded px-2 py-1 ${mode === "raw" ? "bg-surface shadow" : "text-gray-500"}`}
           >
-            Raw YAML
+            YAML
           </button>
           {plugins.map((p) => (
             <button
@@ -240,6 +245,8 @@ export function OrderValuesCard({
             onValues={onValues}
             namespace={pluginNamespace}
             inputError={pluginInputError}
+            editorState={pluginState}
+            onEditorState={onPluginState}
           />
         </Suspense>
       ) : mode === "form" ? (

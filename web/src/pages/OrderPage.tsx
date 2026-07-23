@@ -116,6 +116,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Raw-YAML parse error carried into a values-editor plugin (the plugin shows
   // it instead of a graph and leaves the user's YAML untouched).
   const [pluginInputError, setPluginInputError] = useState<string | null>(null);
+  // Opaque plugin editor state (e.g. the policies graph topology extras) kept
+  // across mode switches; a ref is enough - only the plugin reads it on mount.
+  const pluginStateRef = useRef<unknown>(null);
   const [submitErr, setSubmitErr] = useState<{ message: string; details?: FieldError[] } | null>(null);
   const [busy, setBusy] = useState<null | "draft" | "submit">(null);
   // Reveal all client-side validation errors (set on a submit attempt); before
@@ -549,6 +552,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         plugins={valuesEditorPlugins(name)}
         pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
         pluginInputError={pluginInputError}
+        pluginState={pluginStateRef.current}
+        onPluginState={(s) => {
+          pluginStateRef.current = s;
+        }}
       />
 
       {/* On upgrade, let the other sections be edited too (tabs + actions), like

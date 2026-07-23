@@ -16,6 +16,10 @@ export interface ValuesEditorProps {
   // Set when the raw YAML could not be parsed on switching into the plugin:
   // the plugin must show the error and leave the values untouched.
   inputError?: string | null;
+  // Opaque editor state that survives mode switches (the plugin unmounts when
+  // another mode is active): the plugin reads it on mount and reports updates.
+  editorState?: unknown;
+  onEditorState?: (s: unknown) => void;
 }
 
 export interface ValuesEditorPlugin {
