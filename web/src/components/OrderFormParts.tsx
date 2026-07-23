@@ -3,12 +3,26 @@
 // OrderMetaCard (display name / service name / cluster / namespace + summary)
 // and OrderValuesCard (Form/Raw YAML toggle over the schema-driven form).
 import Editor from "@monaco-editor/react";
+import { Suspense } from "react";
 import type { JSONSchema } from "../api/types";
 import { useTheme } from "../app/ThemeContext";
 import { SchemaForm, type View } from "../form/SchemaForm";
-import { Card, Select, TextField } from "./ui";
+import type { ValuesEditorPlugin } from "./products/valuesEditors";
+import { Card, Select, Spinner, TextField } from "./ui";
 
 type Values = Record<string, unknown>;
+
+// Kubernetes namespace name: an RFC 1123 DNS label (lower-case letters, digits
+// and hyphens, no leading/trailing hyphen, at most 63 characters).
+export const NAMESPACE_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+export function namespaceError(ns: string): string | null {
+  if (!ns) return null;
+  if (ns.length > 63) return "Не длиннее 63 символов.";
+  if (!NAMESPACE_RE.test(ns)) {
+    return "Только строчные латинские буквы, цифры и дефисы; не начинается и не заканчивается дефисом.";
+  }
+  return null;
+}
 
 // OrderMetaCard holds the order's non-values fields. When the order view declares
 // an identity field, the service name comes from the form, so the Service name
@@ -98,7 +112,10 @@ export function OrderMetaCard({
           placeholder="my-namespace"
           value={namespace}
           onChange={onNamespace}
-          errorText={showErrors && !namespace ? "Обязательное поле" : undefined}
+          errorText={
+            namespaceError(namespace) ??
+            (showErrors && !namespace ? "Обязательное поле" : undefined)
+          }
         />
       ) : (
         // The input is hidden (the chart names the namespace itself); still show
@@ -164,13 +181,18 @@ export function OrderValuesCard({
   showErrors = false,
   lockReadOnly = false,
   lockedPaths,
+  plugins = [],
+  pluginNamespace = "",
+  pluginInputError = null,
+  pluginState,
+  onPluginState,
 }: {
   schema: JSONSchema | null;
   view?: View;
   values: Values;
   onValues: (v: Values) => void;
-  mode: "form" | "raw";
-  onSwitchMode: (next: "form" | "raw") => void;
+  mode: string;
+  onSwitchMode: (next: string) => void;
   raw: string;
   onRaw: (s: string) => void;
   errors?: Map<string, string>;
@@ -179,30 +201,70 @@ export function OrderValuesCard({
   lockReadOnly?: boolean;
   // Always-locked field paths (e.g. the deploy identity on upgrade).
   lockedPaths?: string[];
+  // Chart-specific extra editors (e.g. the policies graph); each adds its own
+  // toggle button after Form/Raw YAML.
+  plugins?: ValuesEditorPlugin[];
+  // Order namespace passed through to plugins.
+  pluginNamespace?: string;
+  // Raw-YAML parse error carried into the plugin (it must show it and keep
+  // the values untouched).
+  pluginInputError?: string | null;
+  // Opaque plugin editor state surviving mode switches (see ValuesEditorProps).
+  pluginState?: unknown;
+  onPluginState?: (s: unknown) => void;
 }) {
   const { theme } = useTheme();
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
+  const activePlugin = plugins.find((p) => p.id === mode) ?? null;
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Values</h2>
+        <h2 className="text-sm font-semibold text-gray-700">Параметры сервиса</h2>
         <div className="flex gap-1 rounded-md bg-gray-100 p-0.5 text-xs">
           <button
             onClick={() => onSwitchMode("form")}
             className={`rounded px-2 py-1 ${mode === "form" ? "bg-surface shadow" : "text-gray-500"}`}
           >
-            Form
+            Форма
           </button>
           <button
             onClick={() => onSwitchMode("raw")}
             className={`rounded px-2 py-1 ${mode === "raw" ? "bg-surface shadow" : "text-gray-500"}`}
           >
-            Raw YAML
+            YAML
           </button>
+          {plugins.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onSwitchMode(p.id)}
+              className={`flex items-center gap-1 rounded px-2 py-1 ${
+                mode === p.id ? "bg-surface shadow" : "text-gray-500"
+              }`}
+            >
+              {p.label}
+              {p.badge && (
+                <span className="rounded-full bg-brand-100 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-brand-700">
+                  {p.badge}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
-      {mode === "form" ? (
+      {activePlugin ? (
+        <Suspense fallback={<Spinner label="Загрузка редактора…" />}>
+          <activePlugin.Component
+            values={values}
+            onValues={onValues}
+            namespace={pluginNamespace}
+            inputError={pluginInputError}
+            editorState={pluginState}
+            onEditorState={onPluginState}
+          />
+        </Suspense>
+      ) : mode === "form" ? (
         schema ? (
           <SchemaForm
             schema={schema}

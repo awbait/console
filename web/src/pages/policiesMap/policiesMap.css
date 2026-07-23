@@ -1,0 +1,311 @@
+/* Custom styling for the policies network-map prototype, layered on top of
+   @xyflow/react/dist/style.css. Kept in a plain CSS file (not Tailwind) because
+   it mostly overrides React Flow internals and needs the radial-gradient hover. */
+
+.rf-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+/* React Flow zoom controls ship hardcoded light styles (a bright square in
+   the dark theme) - restyle them with the app's theme variables. */
+.rf-wrap .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgb(var(--c-neutral-200));
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+.rf-wrap .react-flow__controls-button {
+  border-bottom: 1px solid rgb(var(--c-neutral-200));
+  background: rgb(var(--c-surface));
+}
+
+.rf-wrap .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.rf-wrap .react-flow__controls-button:hover {
+  background: rgb(var(--c-neutral-100));
+}
+
+.rf-wrap .react-flow__controls-button svg {
+  fill: rgb(var(--c-neutral-600));
+}
+
+/* Namespace group box (draggable). */
+.rf-ns {
+  border: 1px dashed rgb(var(--c-neutral-300));
+  border-radius: 14px;
+  background: rgb(var(--c-neutral-50) / 0.5);
+  cursor: grab;
+}
+
+.rf-ns:active {
+  cursor: grabbing;
+}
+
+/* Namespace box a dragged workload would land in. */
+.rf-ns--drop {
+  border-color: rgb(var(--c-brand-500));
+  border-style: solid;
+  background: rgb(var(--c-brand-50) / 0.7);
+}
+
+/* The order namespace: the policies release is installed here. */
+.rf-ns--order {
+  border-color: rgb(var(--c-brand-400));
+  background: rgb(var(--c-brand-50) / 0.35);
+}
+
+/* A namespace that will produce an additional draft order. */
+.rf-ns--draft {
+  border-color: rgb(var(--c-warning-500));
+  background: rgb(var(--c-warning-50) / 0.35);
+}
+
+.rf-ns__order--draft {
+  background: rgb(var(--c-warning-50));
+  color: rgb(var(--c-warning-700));
+}
+
+.rf-ns__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rf-ns__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Badge: flex-centered caps with a small extra bottom padding as an optical
+   lift (the canvas zoom renders tiny text at fractional scales, so pure
+   line-height math lands the glyphs low). */
+.rf-ns__order {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 14px;
+  padding: 0 5px 1.5px;
+  border-radius: 999px;
+  background: rgb(var(--c-brand-100));
+  color: rgb(var(--c-brand-700));
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Namespace caption: just the name, uppercased - the dashed box shape is
+   explained by the legend. */
+.rf-ns__title {
+  position: absolute;
+  top: 9px;
+  left: 12px;
+  right: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(var(--c-neutral-400));
+}
+
+/* Workload box. */
+.rf-wl {
+  position: relative;
+  width: 230px;
+  border: 1px solid rgb(var(--c-neutral-200));
+  border-radius: 10px;
+  background: rgb(var(--c-surface));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  font-size: 12px;
+}
+
+.rf-wl--invalid {
+  border-color: rgb(var(--c-danger-500));
+  box-shadow: 0 0 0 1px rgb(var(--c-danger-500) / 0.4);
+}
+
+.rf-wl__head {
+  position: relative; /* anchors the body handles at the header level */
+  padding: 7px 10px 6px;
+  border-bottom: 1px solid rgb(var(--c-neutral-100));
+}
+
+/* Body handles only anchor parsed edges; the user cannot grab them. */
+.react-flow__handle.rf-port[data-handleid^="w-"] {
+  pointer-events: none;
+}
+
+.rf-wl__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rf-wl__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: rgb(var(--c-neutral-900));
+}
+
+/* Kind badge: a small pill on the right of the title. Gateways are the
+   entry/exit points of the mesh and get their own tints: ingress blue
+   (inbound), egress amber (outbound). */
+.rf-wl__badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgb(var(--c-neutral-100));
+  color: rgb(var(--c-neutral-500));
+}
+
+.rf-wl__badge--ingw {
+  background: rgb(var(--c-info-50));
+  color: rgb(var(--c-info-600));
+}
+
+.rf-wl__badge--egw {
+  background: rgb(var(--c-warning-50));
+  color: rgb(var(--c-warning-700));
+}
+
+/* Service-account row: tiny label + truncated mono value. */
+.rf-wl__sa {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 3px;
+  min-width: 0;
+}
+
+.rf-wl__sa-label {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(var(--c-neutral-400));
+}
+
+.rf-wl__sa-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: rgb(var(--c-neutral-500));
+}
+
+.rf-wl__sa-value--missing {
+  font-family: inherit;
+  color: rgb(var(--c-danger-500));
+}
+
+.rf-wl__ports {
+  position: relative;
+}
+
+/* Port row: the label sits centered, the port circles hang on both borders. */
+.rf-wl__port-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 14px;
+  color: rgb(var(--c-neutral-600));
+}
+
+.rf-wl__port-label {
+  font-size: 11px;
+}
+
+.rf-wl__port-num {
+  font-weight: 600;
+  color: rgb(var(--c-neutral-800));
+}
+
+.rf-wl__port-proto {
+  margin-left: 4px;
+  font-size: 10px;
+  color: rgb(var(--c-neutral-400));
+}
+
+.rf-wl__empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: rgb(var(--c-danger-500));
+}
+
+/* Travelling traffic dots: blue runs source -> target on every edge, green
+   runs the opposite way on bidirectional links. */
+.rf-flow-dot {
+  pointer-events: none;
+}
+
+.rf-flow-dot--fwd {
+  fill: rgb(var(--c-info-500));
+}
+
+.rf-flow-dot--rev {
+  fill: rgb(var(--c-success-500));
+}
+
+/* Port handle: the interactive circle on the box border. The circle itself
+   never moves or grows on hover - a scale transform made the target shift
+   under the cursor and hard to grab. Circles are hidden until they carry an
+   edge (rf-port--on); hovering the port row reveals them for drawing. */
+.react-flow__handle.rf-port {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgb(var(--c-info-500));
+  background: rgb(var(--c-surface));
+  opacity: 0;
+  transition: opacity 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.rf-wl__port-row:hover .react-flow__handle.rf-port {
+  opacity: 0.65;
+}
+
+.react-flow__handle.rf-port:hover,
+.react-flow__handle.rf-port.rf-port--on {
+  opacity: 1;
+}
+
+/* Enlarged invisible hit area: pseudo-elements participate in hit testing,
+   so the circle is easy to catch without visually growing. */
+.react-flow__handle.rf-port::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+}
+
+.react-flow__handle.rf-port:hover {
+  /* Gradient green: transparent center, greener toward the edge. */
+  background: radial-gradient(
+    circle,
+    rgb(var(--c-success-500) / 0) 30%,
+    rgb(var(--c-success-500) / 0.85) 100%
+  );
+  border-color: rgb(var(--c-success-600));
+  box-shadow: 0 0 0 4px rgb(var(--c-success-500) / 0.18);
+}

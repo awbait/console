@@ -153,6 +153,7 @@ export function Select<T extends string>({
   errorText,
   hideLabel,
   placeholder = "Выберите…",
+  compact = false,
 }: {
   label: string;
   description?: string;
@@ -167,6 +168,8 @@ export function Select<T extends string>({
   // Shown by SelectValue when nothing is selected - defaults to a RU placeholder
   // instead of React Aria's built-in English "Select an item".
   placeholder?: string;
+  // Small trigger (text-xs, tighter padding) for dense toolbars.
+  compact?: boolean;
 }) {
   const invalid = !!errorText;
   return (
@@ -187,12 +190,12 @@ export function Select<T extends string>({
         </Label>
       )}
       <AriaButton
-        className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-sm outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
-          invalid ? "border-red-500" : "border-gray-300 focus:border-brand-500"
-        }`}
+        className={`flex items-center justify-between rounded-md border outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+          compact ? "gap-1 px-2 py-1 text-xs" : "px-2 py-1.5 text-sm"
+        } ${invalid ? "border-red-500" : "border-gray-300 focus:border-brand-500"}`}
       >
-        <SelectValue />
-        <IconChevronDown size={16} className="text-gray-400" aria-hidden />
+        <SelectValue className="truncate" />
+        <IconChevronDown size={compact ? 14 : 16} className="shrink-0 text-gray-400" aria-hidden />
       </AriaButton>
       {errorText ? (
         <span className="text-xs text-red-600">{errorText}</span>
@@ -205,7 +208,9 @@ export function Select<T extends string>({
             <ListBoxItem
               key={o.id}
               id={o.id}
-              className="cursor-pointer rounded px-2 py-1 text-sm outline-none focus:bg-brand-50 selected:bg-brand-100"
+              className={`cursor-pointer rounded px-2 py-1 outline-none focus:bg-brand-50 selected:bg-brand-100 ${
+                compact ? "text-xs" : "text-sm"
+              }`}
             >
               {o.label}
             </ListBoxItem>

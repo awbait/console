@@ -788,11 +788,12 @@ function PreviewPane({
   const [serviceName, setServiceName] = useState("");
   const [cluster, setCluster] = useState("in-cluster");
   const [namespace, setNamespace] = useState("");
-  const [mode, setMode] = useState<"form" | "raw">("form");
+  const [mode, setMode] = useState<string>("form");
   const [raw, setRaw] = useState("");
 
-  // The same form/raw switching logic as on the order page.
-  function switchMode(next: "form" | "raw") {
+  // The same form/raw switching logic as on the order page (no plugins here:
+  // the constructor preview keeps just Form/Raw YAML).
+  function switchMode(next: string) {
     if (next === mode) return;
     if (next === "raw") {
       setRaw(yaml.dump(pruneEmpty(values)));

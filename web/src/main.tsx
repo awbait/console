@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
 import "./index.css";
@@ -35,6 +35,11 @@ import {
 } from "./pages/SecuritySection";
 import { StatusPage } from "./pages/StatusPage";
 import { SupportOverviewPage, SupportRequestsPage, SupportSection } from "./pages/SupportSection";
+
+// Dev-only network map prototype; lazy so @xyflow/react is split off.
+const PoliciesMapPrototype = lazy(() =>
+  import("./pages/PoliciesMapPrototype").then((m) => ({ default: m.PoliciesMapPrototype })),
+);
 
 // Role-aware landing: security users open their section by default; everyone
 // else lands on the catalog. Rendered inside Layout, which already gates on
@@ -121,6 +126,17 @@ const router = createBrowserRouter([
   // button to return to. Kept outside the Layout route on purpose.
   { path: "/docs", element: <DocsPage /> },
   { path: "/docs/:slug", element: <DocsPage /> },
+  // Dev prototype: full-screen network map editor on mock data, outside the
+  // portal Layout. Lazy-loaded so React Flow stays out of the main bundle.
+  // Not linked from the menu yet (see TODO, policies map).
+  {
+    path: "/policies-map",
+    element: (
+      <Suspense fallback={null}>
+        <PoliciesMapPrototype />
+      </Suspense>
+    ),
+  },
 ]);
 
 createRoot(document.getElementById("root")!).render(
