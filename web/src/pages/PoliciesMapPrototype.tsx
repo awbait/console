@@ -138,7 +138,7 @@ function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): N
 }
 
 function NsGroupNode({ data }: { data: { label: string } }) {
-  return <div className="rf-ns__title">namespace: {data.label}</div>;
+  return <div className="rf-ns__title">{data.label}</div>;
 }
 
 interface MenuState {

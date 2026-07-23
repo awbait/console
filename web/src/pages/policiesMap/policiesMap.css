@@ -19,13 +19,20 @@
   cursor: grabbing;
 }
 
+/* Namespace caption: just the name, uppercased - the dashed box shape is
+   explained by the legend. */
 .rf-ns__title {
   position: absolute;
-  top: 8px;
+  top: 9px;
   left: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  right: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: rgb(var(--c-neutral-500));
 }
 
