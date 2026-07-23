@@ -42,7 +42,12 @@ import {
   type NamingTags,
   validateSubmit,
 } from "./policiesMap/valuesBuilder";
-import { portFromHandle, WorkloadNode, type WorkloadNodeData } from "./policiesMap/WorkloadNode";
+import {
+  portFromHandle,
+  portHandleId,
+  WorkloadNode,
+  type WorkloadNodeData,
+} from "./policiesMap/WorkloadNode";
 
 const nodeTypes = { workload: WorkloadNode, nsGroup: NsGroupNode };
 
@@ -56,6 +61,10 @@ const GROUP_GAP = 80;
 const HEAD = 40;
 const WL_X = 10;
 const WL_GAP = 10;
+const WL_W = 230; // workload card width, must match .rf-wl in policiesMap.css
+
+// Edge arrowhead, deliberately large so the direction reads at a glance.
+const ARROW = { type: MarkerType.ArrowClosed, width: 22, height: 22 };
 
 type XY = { x: number; y: number };
 
@@ -260,19 +269,40 @@ function Canvas() {
 
   const onConnect = useCallback(
     (c: Connection) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...c,
-            animated: true,
-            markerEnd: { type: MarkerType.ArrowClosed },
-            reconnectable: true,
-          },
-          eds,
-        ),
+      const sp = portFromHandle(c.sourceHandle);
+      const tp = portFromHandle(c.targetHandle);
+      // The reverse arrow between the same port pair already exists: instead of
+      // a second overlapping line, the existing edge becomes bidirectional.
+      const reverse = edges.find(
+        (e) =>
+          e.source === c.target &&
+          e.target === c.source &&
+          portFromHandle(e.sourceHandle) === tp &&
+          portFromHandle(e.targetHandle) === sp,
       );
+      if (reverse) {
+        if (reverse.data?.bidirectional !== true) {
+          setEdges((eds) =>
+            eds.map((e) =>
+              e.id === reverse.id ? { ...e, data: { ...e.data, bidirectional: true } } : e,
+            ),
+          );
+          toast.success("Связь стала двусторонней.");
+        }
+        return;
+      }
+      // Exact duplicate of an existing arrow: nothing to add.
+      const dup = edges.some(
+        (e) =>
+          e.source === c.source &&
+          e.target === c.target &&
+          portFromHandle(e.sourceHandle) === sp &&
+          portFromHandle(e.targetHandle) === tp,
+      );
+      if (dup) return;
+      setEdges((eds) => addEdge({ ...c, animated: true, reconnectable: true }, eds));
     },
-    [setEdges],
+    [edges, setEdges, toast],
   );
 
   // Dropped a new connection onto an invalid target: explain why. Dropped on
@@ -413,6 +443,51 @@ function Canvas() {
     return undefined;
   }, [menu, topology]);
 
+  // --- edge presentation ---------------------------------------------------
+
+  // Absolute x-centers of workload cards (group position + relative offset),
+  // used to pick which side a bidirectional edge attaches to.
+  const centerX = useMemo(() => {
+    const groups = new Map<string, number>();
+    for (const n of nodes) if (n.type === "nsGroup") groups.set(n.id, n.position.x);
+    const m = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.type !== "workload" || !n.parentId) continue;
+      m.set(n.id, (groups.get(n.parentId) ?? 0) + n.position.x + WL_W / 2);
+    }
+    return m;
+  }, [nodes]);
+
+  // Display edges follow the convention "in on the left, out on the right":
+  // the source anchors at its right port circle, the target at its left one. A
+  // bidirectional link is drawn as a single double-headed edge whose ends face
+  // each other based on the current card positions.
+  const displayEdges = useMemo(
+    () =>
+      edges.map((e) => {
+        const sp = portFromHandle(e.sourceHandle);
+        const tp = portFromHandle(e.targetHandle);
+        if (sp === null || tp === null) return e;
+        const bidi = e.data?.bidirectional === true;
+        let sSide: "l" | "r" = "r";
+        let tSide: "l" | "r" = "l";
+        if (bidi) {
+          const facing = (centerX.get(e.source) ?? 0) <= (centerX.get(e.target) ?? 0);
+          sSide = facing ? "r" : "l";
+          tSide = facing ? "l" : "r";
+        }
+        return {
+          ...e,
+          sourceHandle: portHandleId(sp, sSide),
+          targetHandle: portHandleId(tp, tSide),
+          style: { strokeWidth: 2 },
+          markerEnd: ARROW,
+          markerStart: bidi ? { ...ARROW, orient: "auto-start-reverse" } : undefined,
+        };
+      }),
+    [edges, centerX],
+  );
+
   // --- values preview and submit ------------------------------------------
 
   // values.yaml is rebuilt straight from the edges on every change: the edges
@@ -460,7 +535,7 @@ function Canvas() {
         <div className="rf-wrap relative min-w-0 flex-1">
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={displayEdges}
             nodeTypes={nodeTypes}
             // Ports are all source handles; loose mode lets any port connect to
             // any other (strict mode only links source -> target).
@@ -629,6 +704,19 @@ function Legend() {
           />
         </svg>
         разрешённый трафик source -&gt; target
+      </div>
+      <div className="flex items-center gap-2">
+        <svg
+          viewBox="0 0 24 8"
+          className="h-2.5 w-6 shrink-0 text-slate-500"
+          role="img"
+          aria-label="Двойная стрелка"
+        >
+          <path d="M5 4 L19 4" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M8 1 L4 4 L8 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          <path d="M16 1 L20 4 L16 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+        трафик в обе стороны (встречные стрелки сливаются)
       </div>
       <div className="mt-1 text-slate-400">ПКМ - добавить или изменить элементы.</div>
     </div>

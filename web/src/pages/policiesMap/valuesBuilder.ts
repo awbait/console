@@ -29,22 +29,29 @@ export const DEFAULT_NAMING: NamingTags = {
   projectTag: "prj",
 };
 
-// A drawn edge resolved to its endpoints. Only the destination port matters for
-// the generated policy (it is what the egress rule allows); the source handle
-// just anchors the arrow visually.
-interface ResolvedEdge {
+// A drawn edge resolved to directed links. A one-way edge allows access to the
+// target port; a bidirectional edge (data.bidirectional) is two links at once,
+// the reverse one allowing access to the source-side port.
+interface ResolvedLink {
   owner: TopoWorkload;
   target: TopoWorkload;
   targetPort: TopoPort;
 }
 
-function resolveEdge(topology: TopoNamespace[], e: Edge): ResolvedEdge | null {
-  const owner = findWorkload(topology, e.source);
-  const target = findWorkload(topology, e.target);
-  const portNumber = portFromHandle(e.targetHandle);
-  if (!owner || !target || portNumber === null) return null;
-  const targetPort = target.ports.find((p) => p.port === portNumber);
-  return targetPort ? { owner, target, targetPort } : null;
+function resolveEdge(topology: TopoNamespace[], e: Edge): ResolvedLink[] {
+  const src = findWorkload(topology, e.source);
+  const dst = findWorkload(topology, e.target);
+  const sp = portFromHandle(e.sourceHandle);
+  const tp = portFromHandle(e.targetHandle);
+  if (!src || !dst || sp === null || tp === null) return [];
+  const links: ResolvedLink[] = [];
+  const targetPort = dst.ports.find((p) => p.port === tp);
+  if (targetPort) links.push({ owner: src, target: dst, targetPort });
+  if (e.data?.bidirectional === true) {
+    const sourcePort = src.ports.find((p) => p.port === sp);
+    if (sourcePort) links.push({ owner: dst, target: src, targetPort: sourcePort });
+  }
+  return links;
 }
 
 // shortName derives a 2..6 char DNS-ish policy name from a workload name, so
@@ -71,14 +78,14 @@ export function buildValues(
   naming: NamingTags,
 ): Record<string, unknown> {
   const used = new Set<string>();
-  // Key by source workload id so several edges from one owner merge.
-  const byOwner = new Map<string, ResolvedEdge[]>();
+  // Key by owner workload id so several links from one owner merge.
+  const byOwner = new Map<string, ResolvedLink[]>();
   for (const e of edges) {
-    const link = resolveEdge(topology, e);
-    if (!link) continue;
-    const list = byOwner.get(link.owner.id) ?? [];
-    list.push(link);
-    byOwner.set(link.owner.id, list);
+    for (const link of resolveEdge(topology, e)) {
+      const list = byOwner.get(link.owner.id) ?? [];
+      list.push(link);
+      byOwner.set(link.owner.id, list);
+    }
   }
 
   const policies = [...byOwner.values()].map((links) => {
@@ -113,9 +120,10 @@ export function validateSubmit(
   const errors: string[] = [];
   if (edges.length === 0) errors.push("Не нарисовано ни одной стрелки.");
   for (const e of edges) {
-    const link = resolveEdge(topology, e);
-    if (link && !link.owner.serviceAccount) {
-      errors.push(`Источник ${link.owner.name} без service account.`);
+    for (const link of resolveEdge(topology, e)) {
+      if (!link.owner.serviceAccount) {
+        errors.push(`Источник ${link.owner.name} без service account.`);
+      }
     }
   }
   if (!DNS_NAME_RE.test(naming.instanceTag)) errors.push("naming: instanceTag не в DNS-формате.");
