@@ -52,6 +52,35 @@
   background: rgb(var(--c-brand-50) / 0.7);
 }
 
+/* The order namespace: the policies release is installed here. */
+.rf-ns--order {
+  border-color: rgb(var(--c-brand-400));
+  background: rgb(var(--c-brand-50) / 0.35);
+}
+
+.rf-ns__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rf-ns__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rf-ns__order {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgb(var(--c-brand-100));
+  color: rgb(var(--c-brand-700));
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 /* Namespace caption: just the name, uppercased - the dashed box shape is
    explained by the legend. */
 .rf-ns__title {

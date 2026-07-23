@@ -25,6 +25,7 @@ import {
   IconPencil,
   IconPlus,
   IconSitemap,
+  IconTarget,
   IconTrash,
   IconWand,
 } from "@tabler/icons-react";
@@ -98,10 +99,20 @@ function groupHeight(ns: TopoNamespace): number {
   return HEAD + Math.max(cards, 40) + 10;
 }
 
+// groupClass builds the namespace box class list: base + order-namespace
+// accent + drop-target highlight.
+function groupClass(isOrder: boolean, isDrop = false): string {
+  return `rf-ns${isOrder ? " rf-ns--order" : ""}${isDrop ? " rf-ns--drop" : ""}`;
+}
+
 // buildNodes lays the namespaces out as draggable group boxes with their
 // workloads stacked inside. Positions are remembered per namespace so edits do
 // not reshuffle what the user arranged.
-function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): Node[] {
+function buildNodes(
+  topology: TopoNamespace[],
+  positions: Record<string, XY>,
+  orderNs: string | null,
+): Node[] {
   const nodes: Node[] = [];
   for (const ns of topology) {
     const pos = positions[ns.name] ?? { x: 0, y: 0 };
@@ -109,14 +120,14 @@ function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): N
       id: `group:${ns.name}`,
       type: "nsGroup",
       position: pos,
-      data: { label: ns.name },
+      data: { label: ns.name, isOrder: ns.name === orderNs },
       draggable: true,
       selectable: false,
       // Keyboard-deleting RF nodes would desync them from the topology model:
       // deletion goes through the context menus instead.
       deletable: false,
       style: { width: GROUP_W, height: groupHeight(ns) },
-      className: "rf-ns",
+      className: groupClass(ns.name === orderNs),
     });
     let y = HEAD;
     for (const w of ns.workloads) {
@@ -143,8 +154,13 @@ function buildNodes(topology: TopoNamespace[], positions: Record<string, XY>): N
   return nodes;
 }
 
-function NsGroupNode({ data }: { data: { label: string } }) {
-  return <div className="rf-ns__title">{data.label}</div>;
+function NsGroupNode({ data }: { data: { label: string; isOrder?: boolean } }) {
+  return (
+    <div className="rf-ns__title">
+      <span className="rf-ns__name">{data.label}</span>
+      {data.isOrder && <span className="rf-ns__order">заказ</span>}
+    </div>
+  );
 }
 
 interface MenuState {
@@ -162,6 +178,9 @@ function Canvas() {
   const [positions, setPositions] = useState<Record<string, XY>>({});
   const [naming, setNaming] = useState<NamingTags>(DEFAULT_NAMING);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  // The order namespace: the policies release lives there, every arrow must
+  // touch it. Defaults to the first namespace added.
+  const [orderNs, setOrderNs] = useState<string | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -178,7 +197,7 @@ function Canvas() {
   // Rebuild nodes from the topology model; prune edges whose endpoint workload
   // or port no longer exists.
   useEffect(() => {
-    setNodes(buildNodes(topology, positions));
+    setNodes(buildNodes(topology, positions, orderNs));
     setEdges((eds) =>
       eds.filter((e) => {
         const s = findWorkload(topology, e.source);
@@ -197,7 +216,7 @@ function Canvas() {
         );
       }),
     );
-  }, [topology, positions, setNodes, setEdges]);
+  }, [topology, positions, orderNs, setNodes, setEdges]);
 
   // --- topology mutations -------------------------------------------------
 
@@ -211,6 +230,7 @@ function Canvas() {
     (name: string, pos?: XY) => {
       setTopology((t) => [...t, { name, workloads: [] }]);
       setPositions((p) => ({ ...p, [name]: pos ?? nextFreePosition() }));
+      setOrderNs((prev) => prev ?? name);
     },
     [nextFreePosition],
   );
@@ -218,6 +238,7 @@ function Canvas() {
   const removeNamespace = useCallback((name: string) => {
     setTopology((t) => t.filter((ns) => ns.name !== name));
     setPositions(({ [name]: _, ...rest }) => rest);
+    setOrderNs((prev) => (prev === name ? null : prev));
   }, []);
 
   const saveWorkload = useCallback(
@@ -295,6 +316,7 @@ function Canvas() {
       "netbox-valkey": { x: (GROUP_W + GROUP_GAP) * 2, y: 180 },
     });
     setEdges([]);
+    setOrderNs("netbox-core");
   }, [setEdges]);
 
   // --- connection rules ---------------------------------------------------
@@ -419,12 +441,15 @@ function Canvas() {
       setNodes((nds) =>
         nds.map((n) =>
           n.type === "nsGroup"
-            ? { ...n, className: `rf-ns${n.id === `group:${hover}` ? " rf-ns--drop" : ""}` }
+            ? {
+                ...n,
+                className: groupClass(n.id === `group:${orderNs}`, n.id === `group:${hover}`),
+              }
             : n,
         ),
       );
     },
-    [topology, positions, setNodes],
+    [topology, positions, orderNs, setNodes],
   );
 
   const onNodeDragStop = useCallback(
@@ -446,10 +471,10 @@ function Canvas() {
         return cx >= p.x && cx <= p.x + GROUP_W && cy >= p.y && cy <= p.y + groupHeight(ns);
       });
       if (!target || target.name === fromNs || !moveWorkload(node.id, target.name)) {
-        setNodes(buildNodes(topology, positions));
+        setNodes(buildNodes(topology, positions, orderNs));
       }
     },
-    [topology, positions, moveWorkload, setNodes],
+    [topology, positions, orderNs, moveWorkload, setNodes],
   );
 
   const onPaneContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
@@ -500,6 +525,15 @@ function Canvas() {
             icon: <IconPlus size={16} />,
             onAction: () => setWlDialog({ ns: menu.id, workload: null }),
           },
+          ...(menu.id !== orderNs
+            ? [
+                {
+                  label: "Namespace заказа",
+                  icon: <IconTarget size={16} />,
+                  onAction: () => setOrderNs(menu.id),
+                },
+              ]
+            : []),
           {
             label: "Удалить namespace",
             icon: <IconTrash size={16} />,
@@ -538,7 +572,7 @@ function Canvas() {
           },
         ];
     }
-  }, [menu, topology, removeNamespace, removeWorkload, screenToFlowPosition, setEdges]);
+  }, [menu, topology, orderNs, removeNamespace, removeWorkload, screenToFlowPosition, setEdges]);
 
   const menuTitle = useMemo(() => {
     if (!menu) return undefined;
@@ -631,16 +665,16 @@ function Canvas() {
   // values.yaml is rebuilt straight from the edges on every change: the edges
   // are the model, there is no intermediate arrow JSON.
   const valuesYaml = useMemo(() => {
-    if (edges.length === 0) return "# нарисуйте стрелки между портами";
+    if (edges.length === 0 || !orderNs) return "";
     // noRefs: with bidirectional links the same selector object lands in the
     // values twice and js-yaml would emit &ref_0/*ref_0 anchors - dump plain
     // copies instead.
-    return yaml.dump(buildValues(topology, edges, naming), {
+    return yaml.dump(buildValues(topology, edges, naming, orderNs), {
       lineWidth: 100,
       sortKeys: false,
       noRefs: true,
     });
-  }, [topology, edges, naming]);
+  }, [topology, edges, naming, orderNs]);
 
   // Copy the generated values.yaml. navigator.clipboard needs a secure
   // context, which the dev stand over plain http lacks - fall back to the
@@ -664,14 +698,14 @@ function Canvas() {
   }, [valuesYaml, toast]);
 
   const submit = useCallback(() => {
-    const errors = validateSubmit(topology, edges, naming);
+    const errors = validateSubmit(topology, edges, naming, orderNs);
     if (errors.length) {
       toast.error(`Валидация не пройдена: ${errors.join(" ")}`);
       return;
     }
     // No backend in the prototype: simulate the would-be order handoff.
     toast.success("values валиден. Здесь values передадутся в форму заказа policies.");
-  }, [topology, edges, naming, toast]);
+  }, [topology, edges, naming, orderNs, toast]);
 
   const wlDialogNs = wlDialog ? (topology.find((n) => n.name === wlDialog.ns) ?? null) : null;
 
@@ -777,6 +811,13 @@ function Canvas() {
           </div>
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
             <span className="text-xs font-semibold text-slate-700">values.yaml</span>
+            {orderNs ? (
+              <span className="rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-700">
+                заказ: {orderNs}
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-400">ns заказа не выбран</span>
+            )}
             <button
               type="button"
               onClick={copyValues}
@@ -787,12 +828,22 @@ function Canvas() {
               <IconCopy size={14} /> Скопировать
             </button>
           </div>
-          {edges.length === 0 ? (
+          {edges.length === 0 || !orderNs ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-app p-6 text-center">
               <IconSitemap size={28} stroke={1.5} className="text-slate-300" />
               <p className="text-xs leading-5 text-slate-400">
-                Пока пусто: соедините порты стрелками,
-                <br />и values.yaml появится здесь.
+                {orderNs ? (
+                  <>
+                    Пока пусто: соедините порты стрелками,
+                    <br />и values.yaml появится здесь.
+                  </>
+                ) : (
+                  <>
+                    Выберите namespace заказа:
+                    <br />
+                    ПКМ по кубику -&gt; «Namespace заказа».
+                  </>
+                )}
               </p>
             </div>
           ) : (
@@ -867,6 +918,9 @@ function Legend() {
       <div className="pointer-events-none absolute bottom-full left-0 mb-2 w-max max-w-96 rounded-md border border-gray-200 bg-surface/95 px-3 py-2 text-[11px] leading-5 text-slate-600 opacity-0 shadow-md transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100">
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-dashed border-slate-400" />}>
           namespace (перетаскивается)
+        </LegendRow>
+        <LegendRow sample={<span className="h-3.5 w-5 rounded border border-blue-500 bg-blue-50" />}>
+          namespace заказа: сюда ставится policies, стрелки должны его касаться
         </LegendRow>
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-slate-300 bg-surface shadow-sm" />}>
           workload: тип указан на карточке; перетащите в другой namespace, чтобы перенести

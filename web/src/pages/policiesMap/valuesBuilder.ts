@@ -1,8 +1,14 @@
 // Pure mapping from the drawn edges straight to the `policies` chart values.
 // There is no intermediate arrow JSON: the edges are the model and values.yaml
-// is the only generated artifact. One edge source -> target becomes an egress
-// rule on the source workload (owner); the chart auto-mirrors NetworkPolicy +
-// AuthorizationPolicy into the target namespace. See charts/policies/values.full.yaml.
+// is the only generated artifact.
+//
+// Generation is centered on the ORDER namespace (the release namespace of the
+// policies chart): every policies[] entry describes an owner workload living
+// there. An arrow leaving the order namespace becomes an egress rule on its
+// source owner; an arrow entering it becomes an ingress rule on its target
+// owner (the chart mirrors the sender-side egress NetworkPolicy itself). An
+// arrow not touching the order namespace cannot be expressed in this release
+// and is reported out of scope.
 
 import type { Edge } from "@xyflow/react";
 import {
@@ -29,29 +35,49 @@ export const DEFAULT_NAMING: NamingTags = {
   projectTag: "prj",
 };
 
-// A drawn edge resolved to directed links. A one-way edge allows access to the
-// target port; a bidirectional edge (data.bidirectional) is two links at once,
-// the reverse one allowing access to the source-side port.
-interface ResolvedLink {
+// A directed link relative to the order namespace: the owner is always the
+// endpoint inside it, the peer is the other side, port is the destination
+// port the rule allows.
+interface DirectedLink {
+  dir: "ingress" | "egress";
   owner: TopoWorkload;
-  target: TopoWorkload;
-  targetPort: TopoPort;
+  peer: TopoWorkload;
+  port: TopoPort;
 }
 
-function resolveEdge(topology: TopoNamespace[], e: Edge): ResolvedLink[] {
+// edgeLinks splits an edge (plus its reverse half when bidirectional) into
+// directed links. outOfScope carries a human-readable description when the
+// edge does not touch the order namespace at all.
+function edgeLinks(
+  topology: TopoNamespace[],
+  orderNs: string,
+  e: Edge,
+): { links: DirectedLink[]; outOfScope: string | null } {
   const src = findWorkload(topology, e.source);
   const dst = findWorkload(topology, e.target);
   const sp = portFromHandle(e.sourceHandle);
   const tp = portFromHandle(e.targetHandle);
-  if (!src || !dst || sp === null || tp === null) return [];
-  const links: ResolvedLink[] = [];
-  const targetPort = dst.ports.find((p) => p.port === tp);
-  if (targetPort) links.push({ owner: src, target: dst, targetPort });
-  if (e.data?.bidirectional === true) {
-    const sourcePort = src.ports.find((p) => p.port === sp);
-    if (sourcePort) links.push({ owner: dst, target: src, targetPort: sourcePort });
+  if (!src || !dst || tp === null) return { links: [], outOfScope: null };
+  const srcNs = nsOfWorkload(src.id);
+  const dstNs = nsOfWorkload(dst.id);
+  if (srcNs !== orderNs && dstNs !== orderNs) {
+    return { links: [], outOfScope: `${src.name} (${srcNs}) -> ${dst.name} (${dstNs})` };
   }
-  return links;
+  const links: DirectedLink[] = [];
+  const dstPort = dst.ports.find((p) => p.port === tp);
+  if (dstPort) {
+    if (srcNs === orderNs) links.push({ dir: "egress", owner: src, peer: dst, port: dstPort });
+    else links.push({ dir: "ingress", owner: dst, peer: src, port: dstPort });
+  }
+  if (e.data?.bidirectional === true && sp !== null) {
+    // The reverse half allows the peer to reach back on the source-side port.
+    const srcPort = src.ports.find((p) => p.port === sp);
+    if (srcPort) {
+      if (dstNs === orderNs) links.push({ dir: "egress", owner: dst, peer: src, port: srcPort });
+      else links.push({ dir: "ingress", owner: src, peer: dst, port: srcPort });
+    }
+  }
+  return { links, outOfScope: null };
 }
 
 // shortName derives a 2..6 char DNS-ish policy name from a workload name, so
@@ -68,43 +94,56 @@ function shortName(workload: string, used: Set<string>): string {
   return name;
 }
 
+const rulePort = (p: TopoPort) => ({
+  port: p.port,
+  protocol: p.protocol === "UDP" ? "UDP" : "TCP",
+});
+
 // buildValues turns the drawn edges into the `policies` chart values object
-// (ready for yaml.dump). Edges from the same source workload are merged into a
-// single policy entry with multiple egress rules. Edges pointing at removed
-// workloads/ports are silently skipped (the editor prunes them anyway).
+// (ready for yaml.dump). Links of the same owner merge into one entry; edges
+// out of the order namespace scope are skipped (validateSubmit reports them).
 export function buildValues(
   topology: TopoNamespace[],
   edges: Edge[],
   naming: NamingTags,
+  orderNs: string | null,
 ): Record<string, unknown> {
   const used = new Set<string>();
-  // Key by owner workload id so several links from one owner merge.
-  const byOwner = new Map<string, ResolvedLink[]>();
-  for (const e of edges) {
-    for (const link of resolveEdge(topology, e)) {
-      const list = byOwner.get(link.owner.id) ?? [];
-      list.push(link);
-      byOwner.set(link.owner.id, list);
+  const byOwner = new Map<
+    string,
+    { owner: TopoWorkload; ingress: unknown[]; egress: unknown[] }
+  >();
+  if (orderNs) {
+    for (const e of edges) {
+      for (const link of edgeLinks(topology, orderNs, e).links) {
+        const g = byOwner.get(link.owner.id) ?? { owner: link.owner, ingress: [], egress: [] };
+        if (link.dir === "egress") {
+          g.egress.push({
+            to: [{ namespace: nsOfWorkload(link.peer.id), selector: link.peer.selector }],
+            ports: [rulePort(link.port)],
+          });
+        } else {
+          const from: Record<string, unknown> = {
+            namespace: nsOfWorkload(link.peer.id),
+            selector: link.peer.selector,
+          };
+          // Sender SA feeds the AuthorizationPolicy principal when known.
+          if (link.peer.serviceAccount) from.serviceAccount = link.peer.serviceAccount;
+          g.ingress.push({ from: [from], ports: [rulePort(link.port)] });
+        }
+        byOwner.set(link.owner.id, g);
+      }
     }
   }
 
-  const policies = [...byOwner.values()].map((links) => {
-    const owner = links[0].owner;
-    return {
-      name: shortName(owner.name, used),
-      enabled: true,
-      namespace: nsOfWorkload(owner.id),
-      serviceAccount: owner.serviceAccount ?? undefined,
-      selector: owner.selector,
-      egress: links.map((l) => ({
-        to: [{ namespace: nsOfWorkload(l.target.id), selector: l.target.selector }],
-        // The exposed (destination) port is what the policy allows.
-        ports: [
-          { port: l.targetPort.port, protocol: l.targetPort.protocol === "UDP" ? "UDP" : "TCP" },
-        ],
-      })),
-    };
-  });
+  const policies = [...byOwner.values()].map((g) => ({
+    name: shortName(g.owner.name, used),
+    enabled: true,
+    serviceAccount: g.owner.serviceAccount ?? undefined,
+    selector: g.owner.selector,
+    ...(g.ingress.length > 0 ? { ingress: g.ingress } : {}),
+    ...(g.egress.length > 0 ? { egress: g.egress } : {}),
+  }));
 
   return { naming, policies };
 }
@@ -116,13 +155,28 @@ export function validateSubmit(
   topology: TopoNamespace[],
   edges: Edge[],
   naming: NamingTags,
+  orderNs: string | null,
 ): string[] {
   const errors: string[] = [];
+  if (!orderNs) {
+    errors.push("Не выбран namespace заказа (ПКМ по кубику namespace).");
+    return errors;
+  }
   if (edges.length === 0) errors.push("Не нарисовано ни одной стрелки.");
   for (const e of edges) {
-    for (const link of resolveEdge(topology, e)) {
+    const { links, outOfScope } = edgeLinks(topology, orderNs, e);
+    if (outOfScope) {
+      errors.push(
+        `Стрелка ${outOfScope} не касается namespace заказа ${orderNs} - оформите её отдельным заказом policies.`,
+      );
+    }
+    for (const link of links) {
       // Egress gateways may own policies without their own service account.
-      if (!link.owner.serviceAccount && link.owner.kind !== "EgressGateway") {
+      if (
+        link.dir === "egress" &&
+        !link.owner.serviceAccount &&
+        link.owner.kind !== "EgressGateway"
+      ) {
         errors.push(`Источник ${link.owner.name} без service account.`);
       }
     }
