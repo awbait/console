@@ -12,6 +12,18 @@ import { Card, Select, Spinner, TextField } from "./ui";
 
 type Values = Record<string, unknown>;
 
+// Kubernetes namespace name: an RFC 1123 DNS label (lower-case letters, digits
+// and hyphens, no leading/trailing hyphen, at most 63 characters).
+export const NAMESPACE_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+export function namespaceError(ns: string): string | null {
+  if (!ns) return null;
+  if (ns.length > 63) return "Не длиннее 63 символов.";
+  if (!NAMESPACE_RE.test(ns)) {
+    return "Только строчные латинские буквы, цифры и дефисы; не начинается и не заканчивается дефисом.";
+  }
+  return null;
+}
+
 // OrderMetaCard holds the order's non-values fields. When the order view declares
 // an identity field, the service name comes from the form, so the Service name
 // input is hidden and the resolved identity is shown in the summary line instead.
@@ -100,7 +112,10 @@ export function OrderMetaCard({
           placeholder="my-namespace"
           value={namespace}
           onChange={onNamespace}
-          errorText={showErrors && !namespace ? "Обязательное поле" : undefined}
+          errorText={
+            namespaceError(namespace) ??
+            (showErrors && !namespace ? "Обязательное поле" : undefined)
+          }
         />
       ) : (
         // The input is hidden (the chart names the namespace itself); still show

@@ -10,7 +10,7 @@ import { useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { NotFound } from "../components/NotFound";
-import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
+import { namespaceError, OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
 import {
   GenericInfoActions,
   GenericListTab,
@@ -388,6 +388,12 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           ? "Не удалось определить namespace: заполните поле, из которого он берётся."
           : "Укажите кластер и namespace.",
       });
+      return;
+    }
+    const nsErr = namespaceError(c.destNamespace);
+    if (nsErr) {
+      setShowErrors(true);
+      setSubmitErr({ message: `Namespace указан неверно. ${nsErr}` });
       return;
     }
     setBusy("submit");
