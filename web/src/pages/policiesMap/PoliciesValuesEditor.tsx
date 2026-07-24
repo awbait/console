@@ -2,6 +2,7 @@ import { IconInfoCircle } from "@tabler/icons-react";
 import { useMemo, useRef } from "react";
 import { FormErrors } from "../../components/FormErrors";
 import type { ValuesEditorProps } from "../../components/products/valuesEditors";
+import { namespaceError } from "../../form/namespace";
 import { type GraphModel, PoliciesGraph, type XY } from "./PoliciesGraph";
 import { buildPolicies } from "./valuesBuilder";
 import { mergeWithSaved, parseValues, type SavedGraphState } from "./valuesParser";
@@ -33,7 +34,7 @@ export function PoliciesValuesEditor({
   // it. When the user fills the namespace in the form later, the parse - and
   // the graph - rebuild around it.
   const parsed = useMemo(() => {
-    if (inputError || !namespace) return null;
+    if (inputError || !namespace || namespaceError(namespace)) return null;
     const p = parseValues(valuesRef.current, namespace);
     if (p.errors.length > 0) return p;
     const saved = stateRef.current as SavedGraphState | null | undefined;
@@ -53,6 +54,14 @@ export function PoliciesValuesEditor({
         <IconInfoCircle size={16} className="shrink-0" />
         Укажите namespace заказа - граф строится вокруг него.
       </p>
+    );
+  }
+  const nsErr = namespaceError(namespace);
+  if (nsErr) {
+    return (
+      <FormErrors
+        message="Namespace указан неверно. Граф появится, как только поле будет исправлено."
+      />
     );
   }
   if (parsed && parsed.errors.length > 0) {

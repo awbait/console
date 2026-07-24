@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { FormErrors } from "../../components/FormErrors";
 import { Button, Select, TextField } from "../../components/ui";
+import { dnsLabelError, fieldMsg, withField } from "../../form/fieldErrors";
 import {
-  DNS_NAME_RE,
   KIND_LABELS,
   PORT_PROTOCOLS,
   type PortProtocol,
@@ -85,8 +85,9 @@ export function NamespaceDialog({
 
   function submit() {
     const n = name.trim();
-    if (!DNS_NAME_RE.test(n)) {
-      setErr("Имя namespace должно быть в DNS-формате: строчные буквы, цифры, дефисы.");
+    const nErr = n ? dnsLabelError(n) : fieldMsg.required;
+    if (nErr) {
+      setErr(nErr);
       return;
     }
     if (existing.includes(n)) {
@@ -106,7 +107,7 @@ export function NamespaceDialog({
           onChange={setName}
           isRequired
           placeholder="team-app"
-          description="DNS-формат: строчные буквы, цифры, дефисы."
+          description="Строчные латинские буквы, цифры и дефис."
         />
         {suggestions.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -194,16 +195,18 @@ export function WorkloadDialog({
     if (!namespace) return;
     const errors: string[] = [];
     const n = name.trim();
-    if (!DNS_NAME_RE.test(n)) {
-      errors.push("Имя workload должно быть в DNS-формате.");
+    const nameErr = n ? dnsLabelError(n) : fieldMsg.required;
+    if (nameErr) {
+      errors.push(withField("Имя workload", nameErr));
     } else if (
       namespace.workloads.some((w) => w.name === n && w.id !== workload?.id)
     ) {
       errors.push(`Workload «${n}» уже есть в namespace ${namespace.name}.`);
     }
     const saTrim = sa.trim();
-    if (saTrim && !DNS_NAME_RE.test(saTrim)) {
-      errors.push("ServiceAccount должен быть в DNS-формате (или пустым).");
+    const saErr = saTrim ? dnsLabelError(saTrim) : null;
+    if (saErr) {
+      errors.push(withField("Service account", saErr));
     }
     const sel: Record<string, string> = {};
     for (const row of selector) {
@@ -226,7 +229,7 @@ export function WorkloadDialog({
       if (!t) continue;
       const num = Number(t);
       if (!Number.isInteger(num) || num < 1 || num > 65535) {
-        errors.push(`Порт «${t}» должен быть целым числом от 1 до 65535.`);
+        errors.push(withField(`Порт «${t}»`, fieldMsg.range(1, 65535)));
         continue;
       }
       if (seen.has(num)) {
@@ -327,8 +330,12 @@ export function WorkloadDialog({
                 <TextField
                   label={`Порт ${i + 1}`}
                   hideLabel
+                  inputMode="numeric"
                   value={row.port}
-                  onChange={(v) => setPorts((rows) => rows.map((r, j) => (j === i ? { ...r, port: v } : r)))}
+                  onChange={(v) => {
+                    if (!/^\d*$/.test(v)) return;
+                    setPorts((rows) => rows.map((r, j) => (j === i ? { ...r, port: v } : r)));
+                  }}
                   placeholder="8080"
                 />
               </div>

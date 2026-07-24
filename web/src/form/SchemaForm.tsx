@@ -1,3 +1,4 @@
+import { IconAlertTriangle, IconChevronRight, IconTrash, IconX } from "@tabler/icons-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   Button as AriaButton,
@@ -5,8 +6,8 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import { IconAlertTriangle, IconChevronRight, IconTrash, IconX } from "@tabler/icons-react";
 import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
+import { fieldMsg, ruPlural } from "./fieldErrors";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -58,13 +59,24 @@ function matchesPattern(pattern: string, v: string): boolean {
 }
 
 function leafErrors(s: Schema, v: unknown, path: string, out: Map<string, string>) {
-  if (emptyVal(v) || typeof v !== "string") return;
+  if (emptyVal(v)) return;
+  if (typeof v === "number") {
+    const min = typeof s.minimum === "number" ? s.minimum : undefined;
+    const max = typeof s.maximum === "number" ? s.maximum : undefined;
+    if (s.type === "integer" && !Number.isInteger(v)) out.set(path, fieldMsg.integer);
+    else if (min !== undefined && max !== undefined && (v < min || v > max))
+      out.set(path, fieldMsg.range(min, max));
+    else if (min !== undefined && v < min) out.set(path, fieldMsg.min(min));
+    else if (max !== undefined && v > max) out.set(path, fieldMsg.max(max));
+    return;
+  }
+  if (typeof v !== "string") return;
   if (typeof s.minLength === "number" && v.length < s.minLength)
-    out.set(path, `Минимум ${s.minLength} символов`);
+    out.set(path, fieldMsg.minLen(s.minLength));
   else if (typeof s.maxLength === "number" && v.length > s.maxLength)
-    out.set(path, `Максимум ${s.maxLength} символов`);
+    out.set(path, fieldMsg.maxLen(s.maxLength));
   else if (typeof s.pattern === "string" && !matchesPattern(s.pattern, v))
-    out.set(path, "Недопустимый формат");
+    out.set(path, fieldMsg.badFormat);
 }
 
 // walkErrors mirrors what the form RENDERS (same view/hidden/required/conditional
@@ -101,7 +113,7 @@ function walkErrors(
       const hasDefault = "default" in child || "const" in child;
       if (required.has(k) && emptyVal(cv) && !hasDefault) {
         // A required empty array needs an element added, not a value typed in.
-        out.set(cpath, child.type === "array" ? "Добавьте хотя бы один элемент" : "Обязательное поле");
+        out.set(cpath, child.type === "array" ? "Добавьте хотя бы один элемент." : fieldMsg.required);
         continue;
       }
       if (cv === undefined) continue;
@@ -112,7 +124,10 @@ function walkErrors(
   if (s.type === "array") {
     const arr = Array.isArray(value) ? value : [];
     if (typeof s.minItems === "number" && arr.length < s.minItems)
-      out.set(base, `Минимум ${s.minItems} элемент(ов)`);
+      out.set(
+        base,
+        `Добавьте хотя бы ${s.minItems} ${ruPlural(s.minItems, "элемент", "элемента", "элементов")}.`,
+      );
     arr.forEach((it, i) => walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, `${base}/${i}`, out));
     return;
   }
@@ -446,16 +461,16 @@ function Field({
     case "number":
     case "integer":
       return (
-        <TextField
+        <NumberInput
           label={label}
           description={desc}
           isRequired={required}
           isDisabled={locked}
           errorText={err}
           hideLabel={hideLabel}
-          type="number"
-          value={value != null ? String(value) : ""}
-          onChange={(v) => change(v === "" ? undefined : Number(v))}
+          integer={s.type === "integer"}
+          value={typeof value === "number" ? value : undefined}
+          onChange={(v) => change(v)}
         />
       );
     case "array":
@@ -497,6 +512,53 @@ function Field({
 function coerceEnum(values: unknown[], key: string): unknown {
   const match = values.find((v) => String(v) === key);
   return match ?? key;
+}
+
+// NumberInput is a filtered text input, not a native <input type="number">:
+// the native one accepts "e"/"."/"+" (exponent notation) and reports unparsable
+// input as an empty value, so garbage could sit on screen while the model
+// silently held undefined. Here disallowed characters simply never enter the
+// field. The raw string lives in local state so partial input ("-", "1.")
+// survives typing; the parsed number is committed as soon as it parses.
+function NumberInput({
+  integer,
+  value,
+  onChange,
+  ...fieldProps
+}: {
+  integer: boolean;
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+  label: string;
+  description?: string;
+  errorText?: string;
+  hideLabel?: boolean;
+  isRequired?: boolean;
+  isDisabled?: boolean;
+}) {
+  const [raw, setRaw] = useState(value !== undefined ? String(value) : "");
+  // Adopt external model changes (YAML round-trip, defaults) unless the current
+  // text already parses to the same number - never fight the user mid-typing.
+  useEffect(() => {
+    const n = Number(raw);
+    const cur = raw === "" || Number.isNaN(n) ? undefined : n;
+    if (cur !== value) setRaw(value !== undefined ? String(value) : "");
+  }, [value, raw]);
+  const filter = integer ? /^-?\d*$/ : /^-?\d*\.?\d*$/;
+  const handle = (v: string) => {
+    if (!filter.test(v)) return;
+    setRaw(v);
+    const n = Number(v);
+    onChange(v === "" || Number.isNaN(n) ? undefined : n);
+  };
+  return (
+    <TextField
+      {...fieldProps}
+      inputMode={integer ? "numeric" : "decimal"}
+      value={raw}
+      onChange={handle}
+    />
+  );
 }
 
 // Light section: heading + a thin left guide instead of a full bordered box,

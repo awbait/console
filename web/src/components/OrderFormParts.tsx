@@ -6,23 +6,13 @@ import Editor from "@monaco-editor/react";
 import { Suspense } from "react";
 import type { JSONSchema } from "../api/types";
 import { useTheme } from "../app/ThemeContext";
+import { dnsLabelError, fieldMsg } from "../form/fieldErrors";
+import { namespaceError } from "../form/namespace";
 import { SchemaForm, type View } from "../form/SchemaForm";
 import type { ValuesEditorPlugin } from "./products/valuesEditors";
 import { Card, Select, Spinner, TextField } from "./ui";
 
 type Values = Record<string, unknown>;
-
-// Kubernetes namespace name: an RFC 1123 DNS label (lower-case letters, digits
-// and hyphens, no leading/trailing hyphen, at most 63 characters).
-export const NAMESPACE_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-export function namespaceError(ns: string): string | null {
-  if (!ns) return null;
-  if (ns.length > 63) return "Не длиннее 63 символов.";
-  if (!NAMESPACE_RE.test(ns)) {
-    return "Только строчные латинские буквы, цифры и дефисы; не начинается и не заканчивается дефисом.";
-  }
-  return null;
-}
 
 // OrderMetaCard holds the order's non-values fields. When the order view declares
 // an identity field, the service name comes from the form, so the Service name
@@ -80,7 +70,7 @@ export function OrderMetaCard({
     <Card className="flex flex-col gap-3">
       <TextField
         label="Отображаемое имя"
-        description="Произвольное имя для отображения. Можно изменить позже; на деплой не влияет."
+        description="Произвольное имя для отображения. Можно изменить позже, на развёртывание не влияет."
         placeholder={identity ? "Напр. Production" : "payments-db"}
         value={displayName}
         onChange={onDisplayName}
@@ -92,7 +82,10 @@ export function OrderMetaCard({
           placeholder="payments-db"
           value={serviceName}
           onChange={onServiceName}
-          errorText={showErrors && !serviceName ? "Обязательное поле" : undefined}
+          errorText={
+            dnsLabelError(serviceName) ??
+            (showErrors && !serviceName ? fieldMsg.required : undefined)
+          }
         />
       )}
       <TextField
@@ -102,7 +95,9 @@ export function OrderMetaCard({
         placeholder="in-cluster"
         value={cluster}
         onChange={onCluster}
-        errorText={showErrors && !cluster ? "Обязательное поле" : undefined}
+        errorText={
+          dnsLabelError(cluster) ?? (showErrors && !cluster ? fieldMsg.required : undefined)
+        }
       />
       {!hideNamespace ? (
         <TextField
@@ -114,7 +109,7 @@ export function OrderMetaCard({
           onChange={onNamespace}
           errorText={
             namespaceError(namespace) ??
-            (showErrors && !namespace ? "Обязательное поле" : undefined)
+            (showErrors && !namespace ? fieldMsg.required : undefined)
           }
         />
       ) : (

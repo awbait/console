@@ -1,20 +1,20 @@
-import type { ReactNode } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import {
   Button as AriaButton,
-  type ButtonProps,
+  Checkbox as AriaCheckbox,
   Select as AriaSelect,
-  SelectValue,
+  TextField as AriaTextField,
+  Tooltip as AriaTooltip,
+  type ButtonProps,
+  type CheckboxProps,
+  Input,
+  Label,
   ListBox,
   ListBoxItem,
   Popover,
-  Label,
-  TextField as AriaTextField,
-  Input,
-  Checkbox as AriaCheckbox,
-  type CheckboxProps,
+  SelectValue,
   TooltipTrigger,
-  Tooltip as AriaTooltip,
 } from "react-aria-components";
 
 const btnVariants = {
@@ -78,6 +78,8 @@ export function TextField({
   isDisabled?: boolean;
   type?: string;
   placeholder?: string;
+  // Mobile keyboard hint for filtered numeric text inputs (see NumberInput).
+  inputMode?: "numeric" | "decimal";
 }) {
   const invalid = !!errorText;
   return (
@@ -98,6 +100,7 @@ export function TextField({
       )}
       <Input
         type={rest.type}
+        inputMode={rest.inputMode}
         placeholder={rest.placeholder}
         onBlur={onBlur}
         className={`rounded-md border px-2 py-1.5 text-sm outline-none focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
