@@ -151,34 +151,53 @@ export interface EdgeGroup {
   edges: Edge[];
 }
 
-// partitionEdges splits the drawn edges into per-order groups: the chosen
-// order namespace absorbs every edge touching it; each remaining edge goes to
-// the group of its source namespace (it becomes an egress rule there). One
-// group = one policies order; empty groups are dropped, the primary one comes
-// first.
+// partitionEdges splits the drawn edges into per-order groups. The chosen
+// order namespace absorbs every edge touching it. The remaining edges are
+// covered by as FEW extra drafts as possible: an order in namespace X can
+// express any edge touching X (incoming as ingress, outgoing as egress), so
+// namespaces are tried by decreasing relation count and one becomes a draft
+// only while it still has an uncovered relation - a namespace whose every
+// relation already touches the order or an earlier draft stays as is. Each
+// edge belongs to the first group that covered it; empty groups are dropped,
+// the primary one comes first.
 export function partitionEdges(
   topology: TopoNamespace[],
   edges: Edge[],
   orderNs: string | null,
 ): EdgeGroup[] {
   const primary: Edge[] = [];
-  const rest = new Map<string, Edge[]>();
+  const rest: Edge[] = [];
   for (const e of edges) {
     if (!findWorkload(topology, e.source) || !findWorkload(topology, e.target)) continue;
     const srcNs = nsOfWorkload(e.source);
     const dstNs = nsOfWorkload(e.target);
-    if (orderNs && (srcNs === orderNs || dstNs === orderNs)) {
-      primary.push(e);
-    } else {
-      const list = rest.get(srcNs) ?? [];
-      list.push(e);
-      rest.set(srcNs, list);
-    }
+    if (orderNs && (srcNs === orderNs || dstNs === orderNs)) primary.push(e);
+    else rest.push(e);
   }
   const groups: EdgeGroup[] = [];
   if (orderNs && primary.length > 0) groups.push({ ns: orderNs, edges: primary });
-  for (const [ns, list] of [...rest.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    groups.push({ ns, edges: list });
+
+  // Relation count per namespace over ALL drawn edges (not only the ones
+  // that still need covering): a namespace that is already a hub - say a
+  // shared database also talked to by the order - should own the draft.
+  // Ties break alphabetically so the result is stable.
+  const degree = new Map<string, number>();
+  for (const e of [...primary, ...rest]) {
+    for (const ns of [nsOfWorkload(e.source), nsOfWorkload(e.target)]) {
+      if (ns !== orderNs) degree.set(ns, (degree.get(ns) ?? 0) + 1);
+    }
+  }
+  const candidates = [...degree.keys()].sort(
+    (a, b) => (degree.get(b) ?? 0) - (degree.get(a) ?? 0) || a.localeCompare(b),
+  );
+  const covered = new Set<Edge>();
+  for (const ns of candidates) {
+    const mine = rest.filter(
+      (e) => !covered.has(e) && (nsOfWorkload(e.source) === ns || nsOfWorkload(e.target) === ns),
+    );
+    if (mine.length === 0) continue;
+    for (const e of mine) covered.add(e);
+    groups.push({ ns, edges: mine });
   }
   return groups;
 }

@@ -150,8 +150,20 @@
   background: rgb(var(--c-info-500));
 }
 
-.rf-wl:hover .react-flow__handle.rf-port.rf-port--src {
+.rf-wl:hover .react-flow__handle.rf-port.rf-port--src:not(.rf-port--off) {
   opacity: 0.65;
+}
+
+/* A workload without a service account cannot send: its dot is hidden and
+   inert. It still shows while an edge parsed from broken values hangs on it,
+   so the arrow does not point at nothing. */
+.react-flow__handle.rf-port.rf-port--src.rf-port--off {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.react-flow__handle.rf-port.rf-port--src.rf-port--off.rf-port--on {
+  opacity: 1;
 }
 
 /* The green gradient on port hover means "drop the arrow here"; the source
@@ -266,10 +278,12 @@
   color: rgb(var(--c-neutral-400));
 }
 
+/* Neutral, not an error: a sender-only workload legitimately has no ports.
+   When incoming arrows actually need one, the card border turns red. */
 .rf-wl__empty {
   padding: 8px 10px;
   font-size: 11px;
-  color: rgb(var(--c-danger-500));
+  color: rgb(var(--c-neutral-400));
 }
 
 /* Travelling traffic dot: runs source -> target on every edge. */
