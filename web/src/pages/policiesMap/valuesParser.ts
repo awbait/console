@@ -18,7 +18,9 @@ import { bodyHandleId, portHandleId } from "./WorkloadNode";
 
 // Canvas-only state the values cannot carry (empty namespaces, unlinked
 // workloads, target SAs, extra ports, kinds, box positions). The order graph
-// saves it between mode switches and merges it back over a fresh parse.
+// saves it between mode switches and merges it back over a fresh parse. Edges
+// need no saving: an arrow is body dot -> destination port on the canvas too,
+// which is exactly what the values express.
 export interface SavedGraphState {
   orderNs: string;
   topology: TopoNamespace[];
@@ -226,41 +228,33 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
     topology.push({ name: nsName, workloads });
   }
 
-  // --- edges: merge opposite link pairs into bidirectional ones ------------
+  // --- edges: one arrow per unique link -------------------------------------
+
+  // Hand-written values may repeat the same rule (and rules from different
+  // source ports collapse into the same link anyway): one link per unique
+  // (source, target, port) triple, so duplicates do not stack arrows. An
+  // opposite pair of links (mutual ingress/egress) stays two arrows - there
+  // is no bidirectional edge on the canvas.
+  const seenLinks = new Set<string>();
+  const uniqueLinks = links.filter((l) => {
+    const key = `${selectorKey(l.from.ns, l.from.selector)}>${selectorKey(l.to.ns, l.to.selector)}:${l.port}`;
+    if (seenLinks.has(key)) return false;
+    seenLinks.add(key);
+    return true;
+  });
 
   const edges: Edge[] = [];
-  const consumed = new Set<number>();
-  links.forEach((link, i) => {
-    if (consumed.has(i)) return;
+  uniqueLinks.forEach((link, i) => {
     const from = workloadOf.get(link.from);
     const to = workloadOf.get(link.to);
     if (!from || !to) return;
-    // A reverse link between the same pair merges into one two-way edge; its
-    // port becomes the source-side anchor (the reverse destination port).
-    const backIdx = links.findIndex(
-      (b, j) => j > i && !consumed.has(j) && b.from === link.to && b.to === link.from,
-    );
-    if (backIdx >= 0) {
-      consumed.add(backIdx);
-      edges.push({
-        id: `pe-${i}`,
-        source: from.id,
-        target: to.id,
-        sourceHandle: portHandleId(links[backIdx].port, "r"),
-        targetHandle: portHandleId(link.port, "l"),
-        data: { bidirectional: true },
-        reconnectable: true,
-      });
-      return;
-    }
     edges.push({
       id: `pe-${i}`,
       source: from.id,
       target: to.id,
-      // The source port is not recorded in values: anchor at the body handle.
+      // The source port does not exist in the model: anchor at the body dot.
       sourceHandle: bodyHandleId("r"),
       targetHandle: portHandleId(link.port, "l"),
-      data: { bidirectional: false },
       reconnectable: true,
     });
   });

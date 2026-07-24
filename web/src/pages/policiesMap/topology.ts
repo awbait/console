@@ -196,43 +196,48 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
 ];
 
 // Pre-drawn arrows of the example: in through the ingress gateway, out to the
-// database, a bidirectional link with the cache and out through the egress
-// gateway. Sources anchor at real port circles, like hand-drawn arrows.
+// database and cache (which calls back to the backend metrics port - mutual
+// traffic is two opposite arrows) and out through the egress gateway. Every
+// arrow runs from the source's body dot to the destination port.
 export const EXAMPLE_EDGES = [
   {
     id: "ex-ingress",
     source: "shop-ingress/ingress-istio",
     target: "shop-core/backend",
-    sourceHandle: "p-443-r",
+    sourceHandle: "w-r",
     targetHandle: "p-8080-l",
-    data: { bidirectional: false },
     reconnectable: true,
   },
   {
     id: "ex-db",
     source: "shop-core/backend",
     target: "shop-postgresql/postgresql",
-    sourceHandle: "p-8080-r",
+    sourceHandle: "w-r",
     targetHandle: "p-5432-l",
-    data: { bidirectional: false },
     reconnectable: true,
   },
   {
     id: "ex-cache",
     source: "shop-core/backend",
     target: "shop-valkey/valkey-primary",
-    sourceHandle: "p-9100-r",
+    sourceHandle: "w-r",
     targetHandle: "p-6379-l",
-    data: { bidirectional: true },
+    reconnectable: true,
+  },
+  {
+    id: "ex-cache-back",
+    source: "shop-valkey/valkey-primary",
+    target: "shop-core/backend",
+    sourceHandle: "w-r",
+    targetHandle: "p-9100-l",
     reconnectable: true,
   },
   {
     id: "ex-egress",
     source: "shop-core/backend",
     target: "shop-egress/egress-gw",
-    sourceHandle: "p-8080-r",
+    sourceHandle: "w-r",
     targetHandle: "p-8443-l",
-    data: { bidirectional: false },
     reconnectable: true,
   },
   // The analytics team reads the same database. The arrow does not touch the
@@ -241,9 +246,8 @@ export const EXAMPLE_EDGES = [
     id: "ex-reports",
     source: "shop-analytics/reports",
     target: "shop-postgresql/postgresql",
-    sourceHandle: "p-8081-r",
+    sourceHandle: "w-r",
     targetHandle: "p-5432-l",
-    data: { bidirectional: false },
     reconnectable: true,
   },
 ];

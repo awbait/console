@@ -45,9 +45,9 @@ interface DirectedLink {
   port: TopoPort;
 }
 
-// edgeLinks splits an edge (plus its reverse half when bidirectional) into
-// directed links. outOfScope carries a human-readable description when the
-// edge does not touch the order namespace at all.
+// edgeLinks maps an edge to its directed link. outOfScope carries a
+// human-readable description when the edge does not touch the order
+// namespace at all.
 function edgeLinks(
   topology: TopoNamespace[],
   orderNs: string,
@@ -55,7 +55,6 @@ function edgeLinks(
 ): { links: DirectedLink[]; outOfScope: string | null } {
   const src = findWorkload(topology, e.source);
   const dst = findWorkload(topology, e.target);
-  const sp = portFromHandle(e.sourceHandle);
   const tp = portFromHandle(e.targetHandle);
   if (!src || !dst || tp === null) return { links: [], outOfScope: null };
   const srcNs = nsOfWorkload(src.id);
@@ -68,14 +67,6 @@ function edgeLinks(
   if (dstPort) {
     if (srcNs === orderNs) links.push({ dir: "egress", owner: src, peer: dst, port: dstPort });
     else links.push({ dir: "ingress", owner: dst, peer: src, port: dstPort });
-  }
-  if (e.data?.bidirectional === true && sp !== null) {
-    // The reverse half allows the peer to reach back on the source-side port.
-    const srcPort = src.ports.find((p) => p.port === sp);
-    if (srcPort) {
-      if (dstNs === orderNs) links.push({ dir: "egress", owner: dst, peer: src, port: srcPort });
-      else links.push({ dir: "ingress", owner: src, peer: dst, port: srcPort });
-    }
   }
   return { links, outOfScope: null };
 }
