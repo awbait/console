@@ -78,21 +78,32 @@ export function findWorkload(topology: TopoNamespace[], id: string): TopoWorkloa
   return undefined;
 }
 
-// A workload may anchor an arrow only if it has a service account AND at least
-// one exposed port. Returns the human-readable reason it cannot, or null.
-// Egress gateways are the exception: they work without their own SA.
-export function workloadInvalidReason(w: TopoWorkload): string | null {
+// canSend says whether a workload may be the source of an arrow (own an
+// egress rule): it needs a service account, except egress gateways which
+// work without their own SA. The outgoing dot renders only when true.
+export const canSend = (w: TopoWorkload) =>
+  w.serviceAccount !== null || w.kind === "EgressGateway";
+
+// workloadInvalidReason says why a workload cannot back the arrows it is
+// actually part of: a sender needs a service account, a receiver needs at
+// least one exposed port. A direction without arrows requires nothing - a
+// sender-only workload is fine without ports and a receiver-only one without
+// an SA. Returns the human-readable reason, or null.
+export function workloadInvalidReason(
+  w: TopoWorkload,
+  usage: { sends: boolean; receives: boolean },
+): string | null {
   const missing: string[] = [];
-  if (!w.serviceAccount && w.kind !== "EgressGateway") missing.push("нет service account");
-  if (w.ports.length === 0) missing.push("нет exposed-портов");
+  if (usage.sends && !canSend(w)) missing.push("нет service account");
+  if (usage.receives && w.ports.length === 0) missing.push("нет exposed-портов");
   return missing.length ? missing.join(", ") : null;
 }
 
 // Example scenario, loadable from the toolbar: an online shop whose core
 // namespace (the order) receives traffic through an ingress gateway, talks to
-// its database and cache (the cache link is bidirectional) and reaches the
-// outside world through an egress gateway. One workload is deliberately
-// invalid (no SA) to demo the red border. Arrows come pre-drawn.
+// its database and cache (mutual traffic is two opposite arrows) and reaches
+// the outside world through an egress gateway. One workload deliberately has
+// no SA to demo the missing outgoing dot. Arrows come pre-drawn.
 export const EXAMPLE_ORDER_NS = "shop-core";
 
 export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
@@ -130,7 +141,7 @@ export const EXAMPLE_TOPOLOGY: TopoNamespace[] = [
         id: "shop-core/legacy-app",
         name: "legacy-app",
         kind: "Deployment",
-        // Invalid on purpose: no service account -> red border, blocked endpoint.
+        // No service account on purpose: no outgoing dot, cannot send.
         serviceAccount: null,
         selector: { "app.kubernetes.io/name": "legacy-app" },
         ports: [{ port: 8000, protocol: "HTTP" }],

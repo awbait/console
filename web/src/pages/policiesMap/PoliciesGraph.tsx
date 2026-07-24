@@ -42,6 +42,7 @@ import { FlowEdge } from "./FlowEdge";
 import "./policiesMap.css";
 import { NamespaceDialog, WorkloadDialog } from "./TopologyDialogs";
 import {
+  canSend,
   EXAMPLE_EDGES,
   EXAMPLE_ORDER_NS,
   EXAMPLE_POSITIONS,
@@ -139,14 +140,19 @@ function groupClass(isOrder: boolean, isDraft: boolean, isDrop = false): string 
 
 // buildNodes lays the namespaces out as draggable group boxes with their
 // workloads stacked inside. Positions are remembered per namespace so edits do
-// not reshuffle what the user arranged.
+// not reshuffle what the user arranged. Edges feed the per-direction validity:
+// a workload is flagged only when its actual arrows lack support (a sender
+// without SA, a receiver without ports).
 function buildNodes(
   topology: TopoNamespace[],
   positions: Record<string, XY>,
   orderNs: string | null,
   draftSet: Set<string>,
   readOnly: boolean,
+  edges: Edge[],
 ): Node[] {
+  const senders = new Set(edges.map((e) => e.source));
+  const receivers = new Set(edges.map((e) => e.target));
   const nodes: Node[] = [];
   for (const ns of topology) {
     const pos = positions[ns.name] ?? { x: 0, y: 0 };
@@ -165,7 +171,13 @@ function buildNodes(
     });
     let y = HEAD;
     for (const w of ns.workloads) {
-      const data: WorkloadNodeData = { workload: w, invalidReason: workloadInvalidReason(w) };
+      const data: WorkloadNodeData = {
+        workload: w,
+        invalidReason: workloadInvalidReason(w, {
+          sends: senders.has(w.id),
+          receives: receivers.has(w.id),
+        }),
+      };
       nodes.push({
         id: w.id,
         type: "workload",
@@ -240,11 +252,14 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   }, [topology, edges, orderNs, positions]);
 
   // Rebuild nodes from the topology model; prune edges whose endpoint workload
-  // or destination port no longer exists.
+  // or destination port no longer exists. Edges are a dependency (they drive
+  // the per-direction validity flags), so the prune keeps the same array
+  // reference when nothing is dropped - a fresh reference every run would
+  // retrigger this effect forever.
   useEffect(() => {
-    setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly));
-    setEdges((eds) =>
-      eds.filter((e) => {
+    setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly, edges));
+    setEdges((eds) => {
+      const kept = eds.filter((e) => {
         const s = findWorkload(topology, e.source);
         const t = findWorkload(topology, e.target);
         const tp = portFromHandle(e.targetHandle);
@@ -259,9 +274,10 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
           // A workload moved into the peer namespace turns the edge same-ns.
           nsOfWorkload(e.source) !== nsOfWorkload(e.target)
         );
-      }),
-    );
-  }, [topology, positions, orderNs, draftSet, readOnly, setNodes, setEdges]);
+      });
+      return kept.length === eds.length ? eds : kept;
+    });
+  }, [topology, positions, orderNs, draftSet, readOnly, edges, setNodes, setEdges]);
 
   // --- topology mutations -------------------------------------------------
 
@@ -378,21 +394,20 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
 
   // --- connection rules ---------------------------------------------------
 
-  // connectionReason returns why a (source -> target) link is rejected, or null
-  // if it is allowed. Shared by isValidConnection (live feedback) and the
-  // dropped-on-invalid-target error toast.
+  // connectionReason returns why a (sender -> receiver) link is rejected, or
+  // null if it is allowed. Direction matters: the sender needs a service
+  // account, the receiver needs an exposed port. Shared by isValidConnection
+  // (live feedback) and the dropped-on-invalid-target error toast.
   const connectionReason = useCallback(
-    (source: string, target: string): string | null => {
-      if (source === target) return "Нельзя соединить workload сам с собой.";
-      if (nsOfWorkload(source) === nsOfWorkload(target))
+    (sender: string, receiver: string): string | null => {
+      if (sender === receiver) return "Нельзя соединить workload сам с собой.";
+      if (nsOfWorkload(sender) === nsOfWorkload(receiver))
         return "Стрелки проводятся только между разными namespace.";
-      const from = findWorkload(topology, source);
-      const to = findWorkload(topology, target);
+      const from = findWorkload(topology, sender);
+      const to = findWorkload(topology, receiver);
       if (!from || !to) return "Неизвестный workload.";
-      const fromBad = workloadInvalidReason(from);
-      if (fromBad) return `Источник ${from.name}: ${fromBad}.`;
-      const toBad = workloadInvalidReason(to);
-      if (toBad) return `Получатель ${to.name}: ${toBad}.`;
+      if (!canSend(from)) return `Источник ${from.name}: нет service account.`;
+      if (to.ports.length === 0) return `Получатель ${to.name}: нет exposed-портов.`;
       return null;
     },
     [topology],
@@ -419,16 +434,16 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
 
   const isValidConnection = useCallback(
     (c: Connection | Edge) => {
-      if (connectionReason(c.source, c.target) !== null) return false;
+      // The gesture may run from either end: connection "source" is where the
+      // drag started, so a port-to-dot drag has sender and receiver swapped.
+      const reversed = portFromHandle(c.sourceHandle) !== null && isBodyHandle(c.targetHandle);
+      const sender = reversed ? c.target : c.source;
+      const receiver = reversed ? c.source : c.target;
+      if (connectionReason(sender, receiver) !== null) return false;
       if (reconnecting.current) return true;
       // A new arrow connects the outgoing dot and a destination port, drawn
       // from either end. Dot-to-dot and port-to-port never form a rule.
-      const sp = portFromHandle(c.sourceHandle);
-      const tp = portFromHandle(c.targetHandle);
-      return (
-        (isBodyHandle(c.sourceHandle) && tp !== null) ||
-        (sp !== null && isBodyHandle(c.targetHandle))
-      );
+      return reversed || (isBodyHandle(c.sourceHandle) && portFromHandle(c.targetHandle) !== null);
     },
     [connectionReason],
   );
@@ -474,18 +489,19 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
       const fromId = state.fromNode?.id;
       const toId = state.toNode?.id;
       if (!fromId || !toId) return;
-      const reason = connectionReason(fromId, toId);
+      const fromH = state.fromHandle?.id;
+      const toH = state.toHandle?.id;
+      // Sender/receiver depend on the gesture direction (see isValidConnection).
+      const reversed = portFromHandle(fromH) !== null && isBodyHandle(toH);
+      const reason = connectionReason(reversed ? toId : fromId, reversed ? fromId : toId);
       if (reason) {
         toast.error(reason);
         return;
       }
-      // Namespaces are fine, so the drop failed the handle rule (dot-to-dot
+      // Endpoints are fine, so the drop failed the handle rule (dot-to-dot
       // or port-to-port).
-      const fromH = state.fromHandle?.id;
-      const toH = state.toHandle?.id;
       const ok =
-        (isBodyHandle(fromH) && portFromHandle(toH) !== null) ||
-        (portFromHandle(fromH) !== null && isBodyHandle(toH));
+        reversed || (isBodyHandle(fromH) && portFromHandle(toH) !== null);
       if (!ok) toast.error("Соедините исходящую точку с портом получателя.");
     },
     [connectionReason, toast],
@@ -577,10 +593,10 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
         return cx >= p.x && cx <= p.x + GROUP_W && cy >= p.y && cy <= p.y + groupHeight(ns);
       });
       if (!target || target.name === fromNs || !moveWorkload(node.id, target.name)) {
-        setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly));
+        setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly, edges));
       }
     },
-    [topology, positions, orderNs, draftSet, readOnly, moveWorkload, setNodes],
+    [topology, positions, orderNs, draftSet, readOnly, edges, moveWorkload, setNodes],
   );
 
   const onPaneContextMenu = useCallback(
@@ -912,7 +928,7 @@ function Legend({ readOnly }: { readOnly: boolean }) {
           {readOnly ? "" : "; появляется при наведении на строку порта"}
         </LegendRow>
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-red-500 bg-surface" />}>
-          невалидный workload (нет SA или портов)
+          невалидный workload: его связям не хватает SA или порта
         </LegendRow>
         <LegendRow
           sample={

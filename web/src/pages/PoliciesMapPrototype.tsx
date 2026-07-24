@@ -286,8 +286,8 @@ export function PoliciesMapPrototype() {
               Заказать
             </Button>
             <p className="mt-2 text-center text-[11px] text-slate-400">
-              Каждый namespace со связями станет черновиком заказа policies.
-              Основной откроется в форме заказа.
+              Связи превратятся в заказы policies: основной откроется в форме заказа,
+              дополнительные станут черновиками в списке заказов.
             </p>
           </div>
         </aside>
