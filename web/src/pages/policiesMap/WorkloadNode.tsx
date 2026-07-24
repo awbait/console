@@ -1,6 +1,6 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { createContext, useContext } from "react";
-import { KIND_LABELS, nsOfWorkload, type TopoWorkload } from "./topology";
+import { canSend, KIND_LABELS, nsOfWorkload, type TopoWorkload } from "./topology";
 
 // Data carried by a workload node.
 export interface WorkloadNodeData {
@@ -40,14 +40,14 @@ export const isBodyHandle = (handle: string | null | undefined): boolean =>
 export function WorkloadNode({ data }: NodeProps) {
   const { workload, invalidReason, connectedHandles } = data as WorkloadNodeData;
   const connecting = useContext(ConnectingCtx);
-  // Invalid workloads keep their ports connectable on purpose: per spec the
-  // arrow attempt must surface an explanatory error, not be silently blocked.
   const invalid = invalidReason !== null;
   const connected = new Set(connectedHandles ?? []);
+  // A workload without an SA cannot send: no outgoing dot to draw from.
+  const sendable = canSend(workload);
   // Arrows only run between namespaces, so only foreign cards highlight.
   const foreign = connecting !== null && connecting.ns !== nsOfWorkload(workload.id);
   const availPort = foreign && connecting.kind === "body";
-  const availBody = foreign && connecting.kind === "port";
+  const availBody = foreign && connecting.kind === "port" && sendable;
   const portClass = (id: string) =>
     `rf-port${connected.has(id) ? " rf-port--on" : ""}${availPort ? " rf-port--avail" : ""}`;
 
@@ -66,17 +66,19 @@ export function WorkloadNode({ data }: NodeProps) {
       <div className="rf-wl__head">
         {/* Outgoing anchor: one filled dot on the RIGHT at header level.
             Connectable in both gestures: drag from here to a peer's port, or
-            from a port back to here - onConnect normalizes the direction. */}
+            from a port back to here - onConnect normalizes the direction.
+            Without an SA the dot is hidden and inert (it stays in the DOM so
+            edges parsed from broken values keep their anchor). */}
         <Handle
           id={bodyHandleId("r")}
           type="source"
           position={Position.Right}
-          isConnectableStart
-          isConnectableEnd
-          className={`rf-port rf-port--src${connected.has(bodyHandleId("r")) ? " rf-port--on" : ""}${
-            availBody ? " rf-port--avail" : ""
-          }`}
-          title="Тяните стрелку отсюда к порту получателя"
+          isConnectableStart={sendable}
+          isConnectableEnd={sendable}
+          className={`rf-port rf-port--src${sendable ? "" : " rf-port--off"}${
+            connected.has(bodyHandleId("r")) ? " rf-port--on" : ""
+          }${availBody ? " rf-port--avail" : ""}`}
+          title={sendable ? "Тяните стрелку отсюда к порту получателя" : undefined}
         />
         <div className="rf-wl__title">
           <span className="rf-wl__name" title={workload.name}>
