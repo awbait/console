@@ -9,7 +9,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import yaml from "js-yaml";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
   Select as AriaSelect,
@@ -484,14 +484,16 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
           ) : viewNames.length === 0 ? (
             <p className="text-sm text-gray-500">Добавьте view в документ, чтобы увидеть форму.</p>
           ) : (
-            <PreviewPane
-              schema={schema as Record<string, any>}
-              doc={parsed!}
-              label={chartLabel(name)}
-              project={project}
-              name={name}
-              version={version}
-            />
+            <PreviewBoundary resetKey={text}>
+              <PreviewPane
+                schema={schema as Record<string, any>}
+                doc={parsed!}
+                label={chartLabel(name)}
+                project={project}
+                name={name}
+                version={version}
+              />
+            </PreviewBoundary>
           )}
         </Card>
       </div>
@@ -755,6 +757,33 @@ function readPointer(v: unknown, ptr: string): string {
     cur = Array.isArray(cur) ? cur[Number(seg)] : cur[seg];
   }
   return typeof cur === "string" ? cur : "";
+}
+
+// PreviewBoundary contains render crashes caused by a broken intermediate view
+// document (the author edits live JSON, so any shape can flow into the form).
+// Without it the error escalates to the router's error page and kills the whole
+// editor; here only the preview panel degrades to a hint. resetKey (the raw
+// document text) retries the render after each edit, so no manual reload is
+// needed; while the render succeeds the children stay mounted and keep their
+// preview state.
+class PreviewBoundary extends Component<{ resetKey: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidUpdate(prev: { resetKey: string }) {
+    if (this.state.failed && prev.resetKey !== this.props.resetKey) this.setState({ failed: false });
+  }
+  render() {
+    if (this.state.failed)
+      return (
+        <p className="text-sm text-gray-500">
+          Предпросмотр не построился по текущему документу. Продолжайте правку - форма появится,
+          когда документ снова станет корректным.
+        </p>
+      );
+    return this.props.children;
+  }
 }
 
 // The preview is built from the same components as the real pages (the order

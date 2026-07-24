@@ -179,6 +179,14 @@ function resolvePointer(ref: string, root: Schema): Schema {
   return cur as Schema;
 }
 
+// text guards UI hints coming from hand-written view overrides: while the
+// author is mid-typing, title/description may hold arbitrary JSON (e.g. {}),
+// and rendering an object as a React child crashes the whole tree. Anything
+// that is not a string is treated as absent.
+function text(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
 // deref follows $ref, merging sibling keywords (title/description/ui:widget)
 // over the resolved target so editor hints on $ref nodes are respected.
 export function deref(node: Schema | undefined, root: Schema): Schema {
@@ -421,8 +429,8 @@ function Field({
   // ui:readOnly field on a form that honors it (edit/upgrade). Locked
   // objects/arrays lock their whole subtree.
   const locked = ancestorLocked || lockedPaths.has(path) || (lockActive && isReadOnly(s));
-  const label = s.title ?? name;
-  const desc = s.description as string | undefined;
+  const label = text(s.title) ?? name;
+  const desc = text(s.description);
   // Inline error for leaf fields: shown once touched or after a submit attempt.
   const err = validation.showAll || validation.touched.has(path) ? validation.errors.get(path) : undefined;
   const change = (v: unknown) => {
@@ -600,7 +608,7 @@ function summarize(schema: Schema, value: unknown, root: Schema): string {
     if (ps.enum || ps.type === "string" || ps.type === "number" || ps.type === "integer") {
       parts.push(String(val));
     } else if (ps.type === "array" && Array.isArray(val) && val.length) {
-      parts.push(`${ps.title ?? k}: ${val.length}`);
+      parts.push(`${text(ps.title) ?? k}: ${val.length}`);
     }
   }
   return parts.join(" · ");
@@ -628,14 +636,14 @@ function VariantField({
   const sel = matchVariant(value, options, root);
   const selected = options[sel];
   return (
-    <Section label={schema.title ?? name} desc={schema.description} required={required}>
+    <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
       <div className="flex flex-col gap-3">
         <Select
           label="Вариант"
           isDisabled={locked}
           selectedKey={String(sel)}
           onSelectionChange={(k) => onChange(seedDefaults(options[Number(k)], root) ?? {})}
-          options={options.map((o, i) => ({ id: String(i), label: o.title ?? `Вариант ${i + 1}` }))}
+          options={options.map((o, i) => ({ id: String(i), label: text(o.title) ?? `Вариант ${i + 1}` }))}
         />
         {selected.type === "object" && selected.properties ? (
           <ObjectFields schema={selected} root={root} value={(value as Values) ?? {}} onChange={onChange} path={path} />
@@ -717,7 +725,7 @@ function ArrayField({
   }, [validation.showAll, validation.errors, validation.touched, items.length]);
 
   return (
-    <Section label={schema.title ?? name} desc={schema.description} required={required}>
+    <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
       <div className="flex flex-col gap-2">
         {items.length === 0 && (
           <p className={`text-xs ${arrErr ? "font-medium text-red-600" : "text-gray-400"}`}>
@@ -849,8 +857,8 @@ function SingleField({
   const itemSchema = deref(schema.items ?? {}, root);
   const item = Array.isArray(value) ? value[0] : undefined;
   const setItem = (v: unknown) => onChange(v === undefined ? undefined : [v]);
-  const label = schema.title ?? name;
-  const desc = schema.description as string | undefined;
+  const label = text(schema.title) ?? name;
+  const desc = text(schema.description);
 
   // Seed the item's schema defaults whenever it is empty (e.g. default Gateway
   // resources). Unfilled fields are pruned on submit and a provided list replaces
