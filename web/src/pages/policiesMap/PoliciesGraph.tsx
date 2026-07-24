@@ -55,6 +55,8 @@ import {
 } from "./topology";
 import {
   bodyHandleId,
+  ConnectingCtx,
+  type ConnectingFrom,
   isBodyHandle,
   portFromHandle,
   portHandleId,
@@ -238,23 +240,20 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   }, [topology, edges, orderNs, positions]);
 
   // Rebuild nodes from the topology model; prune edges whose endpoint workload
-  // or port no longer exists.
+  // or destination port no longer exists.
   useEffect(() => {
     setNodes(buildNodes(topology, positions, orderNs, draftSet, readOnly));
     setEdges((eds) =>
       eds.filter((e) => {
         const s = findWorkload(topology, e.source);
         const t = findWorkload(topology, e.target);
-        const sp = portFromHandle(e.sourceHandle);
         const tp = portFromHandle(e.targetHandle);
-        // The source may anchor at the body handle (parsed edges whose source
-        // port is unknown); the target is always a concrete port.
-        const sourceOk =
-          sp !== null ? s?.ports.some((p) => p.port === sp) : isBodyHandle(e.sourceHandle);
         return (
           !!s &&
           !!t &&
-          !!sourceOk &&
+          // The source anchors at the body dot (a rule has no source port);
+          // the target is always a concrete port.
+          isBodyHandle(e.sourceHandle) &&
           tp !== null &&
           t.ports.some((p) => p.port === tp) &&
           // A workload moved into the peer namespace turns the edge same-ns.
@@ -357,7 +356,7 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
     setTopology(EXAMPLE_TOPOLOGY);
     setPositions(EXAMPLE_POSITIONS);
     // Fresh copies: the RF state mutates edge objects (selection etc).
-    setEdges(EXAMPLE_EDGES.map((e) => ({ ...e, data: { ...e.data } })));
+    setEdges(EXAMPLE_EDGES.map((e) => ({ ...e })));
     if (!lockedOrderNs) setOrderNsState(EXAMPLE_ORDER_NS);
   }, [setEdges, lockedOrderNs]);
 
@@ -399,60 +398,95 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
     [topology],
   );
 
+  // True while an existing edge end is being dragged (reconnect): those drops
+  // re-point an end of an existing arrow, so the new-connection handle rule
+  // below must not apply.
+  const reconnecting = useRef(false);
+
+  // While a new connection is being dragged, foreign cards highlight their
+  // valid opposite ends (see ConnectingCtx in WorkloadNode).
+  const [connectingFrom, setConnectingFrom] = useState<ConnectingFrom>(null);
+  const onConnectStart = useCallback(
+    (_e: MouseEvent | TouchEvent, params: { nodeId: string | null; handleId: string | null }) => {
+      if (readOnly || !params.nodeId || !params.handleId) return;
+      setConnectingFrom({
+        kind: isBodyHandle(params.handleId) ? "body" : "port",
+        ns: nsOfWorkload(params.nodeId),
+      });
+    },
+    [readOnly],
+  );
+
   const isValidConnection = useCallback(
-    (c: Connection | Edge) => connectionReason(c.source, c.target) === null,
+    (c: Connection | Edge) => {
+      if (connectionReason(c.source, c.target) !== null) return false;
+      if (reconnecting.current) return true;
+      // A new arrow connects the outgoing dot and a destination port, drawn
+      // from either end. Dot-to-dot and port-to-port never form a rule.
+      const sp = portFromHandle(c.sourceHandle);
+      const tp = portFromHandle(c.targetHandle);
+      return (
+        (isBodyHandle(c.sourceHandle) && tp !== null) ||
+        (sp !== null && isBodyHandle(c.targetHandle))
+      );
+    },
     [connectionReason],
   );
 
+  // Arrows follow the rule model: the source is the workload itself (an
+  // outgoing rule has no source port), the target is a concrete port. The
+  // gesture works from either end - starting at a port and dropping on the
+  // peer's outgoing dot draws the same arrow, so normalize before the rules.
   const onConnect = useCallback(
-    (c: Connection) => {
+    (raw: Connection) => {
       if (readOnly) return;
-      const sp = portFromHandle(c.sourceHandle);
+      const startPort = portFromHandle(raw.sourceHandle);
+      const c: Connection =
+        startPort !== null && isBodyHandle(raw.targetHandle)
+          ? {
+              source: raw.target,
+              sourceHandle: bodyHandleId("r"),
+              target: raw.source,
+              targetHandle: portHandleId(startPort, "l"),
+            }
+          : raw;
       const tp = portFromHandle(c.targetHandle);
-      // The reverse arrow between the same port pair already exists: instead of
-      // a second overlapping line, the existing edge becomes bidirectional.
-      const reverse = edges.find(
-        (e) =>
-          e.source === c.target &&
-          e.target === c.source &&
-          portFromHandle(e.sourceHandle) === tp &&
-          portFromHandle(e.targetHandle) === sp,
-      );
-      if (reverse) {
-        if (reverse.data?.bidirectional !== true) {
-          setEdges((eds) =>
-            eds.map((e) =>
-              e.id === reverse.id ? { ...e, data: { ...e.data, bidirectional: true } } : e,
-            ),
-          );
-          toast.success("Связь стала двусторонней.");
-        }
-        return;
-      }
-      // Exact duplicate of an existing arrow: nothing to add.
+      if (tp === null || !isBodyHandle(c.sourceHandle)) return;
+      // The same rule again (same source, target and destination port):
+      // nothing to add. An opposite arrow between the same pair is a separate
+      // rule and stays a separate arrow - there are no two-way edges.
       const dup = edges.some(
         (e) =>
-          e.source === c.source &&
-          e.target === c.target &&
-          portFromHandle(e.sourceHandle) === sp &&
-          portFromHandle(e.targetHandle) === tp,
+          e.source === c.source && e.target === c.target && portFromHandle(e.targetHandle) === tp,
       );
       if (dup) return;
       setEdges((eds) => addEdge({ ...c, animated: true, reconnectable: true }, eds));
     },
-    [readOnly, edges, setEdges, toast],
+    [readOnly, edges, setEdges],
   );
 
   // Dropped a new connection onto an invalid target: explain why. Dropped on
   // empty canvas (toNode null): the arrow just disappears.
   const onConnectEnd = useCallback(
     (_e: MouseEvent | TouchEvent, state: FinalConnectionState) => {
+      setConnectingFrom(null);
       if (state.isValid) return;
       const fromId = state.fromNode?.id;
       const toId = state.toNode?.id;
       if (!fromId || !toId) return;
       const reason = connectionReason(fromId, toId);
-      if (reason) toast.error(reason);
+      if (reason) {
+        toast.error(reason);
+        return;
+      }
+      // Namespaces are fine, so the drop failed the handle rule (dot-to-dot
+      // or port-to-port).
+      const fromH = state.fromHandle?.id;
+      const toH = state.toHandle?.id;
+      const ok =
+        (isBodyHandle(fromH) && portFromHandle(toH) !== null) ||
+        (portFromHandle(fromH) !== null && isBodyHandle(toH));
+      if (!ok) toast.error("Соедините исходящую точку с портом получателя.");
     },
     [connectionReason, toast],
   );
@@ -462,18 +496,25 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   const reconnectOk = useRef(false);
   const onReconnectStart = useCallback(() => {
     reconnectOk.current = false;
+    reconnecting.current = true;
   }, []);
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       if (readOnly) return;
       if (connectionReason(newConnection.source, newConnection.target) !== null) return;
       reconnectOk.current = true;
-      setEdges((els) => reconnectEdge(oldEdge, newConnection, els));
+      // An arrow keeps its body-dot source anchor: dropping the source end on
+      // a peer's handle picks the workload, not a source port.
+      const conn = isBodyHandle(newConnection.sourceHandle)
+        ? newConnection
+        : { ...newConnection, sourceHandle: bodyHandleId("r") };
+      setEdges((els) => reconnectEdge(oldEdge, conn, els));
     },
     [readOnly, connectionReason, setEdges],
   );
   const onReconnectEnd = useCallback(
     (_e: MouseEvent | TouchEvent, edge: Edge) => {
+      reconnecting.current = false;
       if (readOnly) return;
       if (!reconnectOk.current) setEdges((els) => els.filter((e) => e.id !== edge.id));
     },
@@ -674,52 +715,26 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
 
   // --- edge presentation ---------------------------------------------------
 
-  // Absolute x-centers of workload cards (group position + relative offset),
-  // used to pick which side a bidirectional edge attaches to.
-  const centerX = useMemo(() => {
-    const groups = new Map<string, number>();
-    for (const n of nodes) if (n.type === "nsGroup") groups.set(n.id, n.position.x);
-    const m = new Map<string, number>();
-    for (const n of nodes) {
-      if (n.type !== "workload" || !n.parentId) continue;
-      m.set(n.id, (groups.get(n.parentId) ?? 0) + n.position.x + WL_W / 2);
-    }
-    return m;
-  }, [nodes]);
-
-  // Display edges follow the convention "in on the left, out on the right":
-  // the source anchors at its right port circle, the target at its left one. A
-  // bidirectional link is drawn as a single double-headed edge whose ends face
-  // each other based on the current card positions.
+  // Display edges follow the convention "out on the right, in on the left":
+  // every arrow runs from the source's body dot to the target's left port
+  // circle. Mutual traffic is simply two opposite arrows.
   const displayEdges = useMemo(
     () =>
       edges.map((e) => {
-        const sp = portFromHandle(e.sourceHandle);
         const tp = portFromHandle(e.targetHandle);
-        const sourceIsBody = sp === null && isBodyHandle(e.sourceHandle);
-        if ((sp === null && !sourceIsBody) || tp === null) return e;
-        const bidi = e.data?.bidirectional === true;
-        let sSide: "l" | "r" = "r";
-        let tSide: "l" | "r" = "l";
-        if (bidi) {
-          const facing = (centerX.get(e.source) ?? 0) <= (centerX.get(e.target) ?? 0);
-          sSide = facing ? "r" : "l";
-          tSide = facing ? "l" : "r";
-        }
+        if (tp === null || !isBodyHandle(e.sourceHandle)) return e;
         return {
           ...e,
-          // FlowEdge animates traffic with travelling dots: one forward dot,
-          // plus a counter-moving one in another color for two-way links.
+          // FlowEdge animates traffic with a travelling dot.
           type: "flow",
-          sourceHandle: sourceIsBody ? bodyHandleId(sSide) : portHandleId(sp as number, sSide),
-          targetHandle: portHandleId(tp, tSide),
+          sourceHandle: bodyHandleId("r"),
+          targetHandle: portHandleId(tp, "l"),
           animated: false,
           style: { strokeWidth: 2 },
           markerEnd: ARROW,
-          markerStart: bidi ? { ...ARROW, orient: "auto-start-reverse" } : undefined,
         };
       }),
-    [edges, centerX],
+    [edges],
   );
 
   // Port circles are hidden until used: mark the handles that carry an edge so
@@ -756,42 +771,45 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
 
   return (
     <div className="rf-wrap relative min-w-0 flex-1">
-      <ReactFlow
-        nodes={nodes}
-        edges={displayEdges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        // Ports are all source handles; loose mode lets any port connect to
-        // any other (strict mode only links source -> target).
-        connectionMode={ConnectionMode.Loose}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onConnectEnd={onConnectEnd}
-        isValidConnection={isValidConnection}
-        onReconnectStart={onReconnectStart}
-        onReconnect={onReconnect}
-        onReconnectEnd={onReconnectEnd}
-        onNodeDrag={onNodeDrag}
-        onNodeDragStop={onNodeDragStop}
-        onNodeDragStart={() => setMenu(null)}
-        onMoveStart={() => setMenu(null)}
-        onPaneContextMenu={onPaneContextMenu}
-        onNodeContextMenu={onNodeContextMenu}
-        onNodeDoubleClick={onNodeDoubleClick}
-        onEdgeContextMenu={onEdgeContextMenu}
-        deleteKeyCode={readOnly ? null : ["Delete", "Backspace"]}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background />
-        <Controls showInteractive={false} />
-        {/* Shifted right so the chip clears the zoom controls. */}
-        <Panel position="bottom-left" style={{ marginLeft: 56 }}>
-          <Legend readOnly={readOnly} />
-        </Panel>
-      </ReactFlow>
+      <ConnectingCtx.Provider value={connectingFrom}>
+        <ReactFlow
+          nodes={nodes}
+          edges={displayEdges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          // Ports are all source handles; loose mode lets any port connect to
+          // any other (strict mode only links source -> target).
+          connectionMode={ConnectionMode.Loose}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
+          isValidConnection={isValidConnection}
+          onReconnectStart={onReconnectStart}
+          onReconnect={onReconnect}
+          onReconnectEnd={onReconnectEnd}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
+          onNodeDragStart={() => setMenu(null)}
+          onMoveStart={() => setMenu(null)}
+          onPaneContextMenu={onPaneContextMenu}
+          onNodeContextMenu={onNodeContextMenu}
+          onNodeDoubleClick={onNodeDoubleClick}
+          onEdgeContextMenu={onEdgeContextMenu}
+          deleteKeyCode={readOnly ? null : ["Delete", "Backspace"]}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <Controls showInteractive={false} />
+          {/* Shifted right so the chip clears the zoom controls. */}
+          <Panel position="bottom-left" style={{ marginLeft: 56 }}>
+            <Legend readOnly={readOnly} />
+          </Panel>
+        </ReactFlow>
+      </ConnectingCtx.Provider>
 
       {topology.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -886,8 +904,12 @@ function Legend({ readOnly }: { readOnly: boolean }) {
           workload: тип указан на карточке
           {readOnly ? "" : "; перетащите в другой namespace, чтобы перенести"}
         </LegendRow>
+        <LegendRow sample={<span className="h-3 w-3 rounded-full bg-sky-500" />}>
+          исходящая точка справа{readOnly ? "" : ": тяните стрелку отсюда к порту получателя"}
+        </LegendRow>
         <LegendRow sample={<span className="h-3 w-3 rounded-full border-2 border-sky-500 bg-surface" />}>
-          exposed-порт{readOnly ? "" : ": появляется при наведении на строку порта"}
+          exposed-порт слева: сюда приходит стрелка
+          {readOnly ? "" : "; появляется при наведении на строку порта"}
         </LegendRow>
         <LegendRow sample={<span className="h-3.5 w-5 rounded border border-red-500 bg-surface" />}>
           невалидный workload (нет SA или портов)
@@ -905,25 +927,7 @@ function Legend({ readOnly }: { readOnly: boolean }) {
             </svg>
           }
         >
-          разрешённый трафик source -&gt; target
-        </LegendRow>
-        <LegendRow
-          sample={
-            <svg
-              viewBox="0 0 24 8"
-              className="h-2.5 w-6 text-slate-500"
-              role="img"
-              aria-label="Двойная стрелка"
-            >
-              <path d="M5 4 L19 4" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M8 1 L4 4 L8 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
-              <path d="M16 1 L20 4 L16 7" fill="none" stroke="currentColor" strokeWidth="1.2" />
-              <circle cx="10" cy="4" r="2" className="fill-sky-500" />
-              <circle cx="14" cy="4" r="2" className="fill-emerald-500" />
-            </svg>
-          }
-        >
-          трафик в обе стороны: синяя точка - туда, зелёная - обратно
+          разрешённый трафик source -&gt; target; обратный трафик - встречная стрелка
         </LegendRow>
         {!readOnly && (
           <div className="mt-1 pl-8 text-slate-400">ПКМ - добавить или изменить элементы.</div>

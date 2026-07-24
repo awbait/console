@@ -1,5 +1,6 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import { KIND_LABELS, type TopoWorkload } from "./topology";
+import { createContext, useContext } from "react";
+import { KIND_LABELS, nsOfWorkload, type TopoWorkload } from "./topology";
 
 // Data carried by a workload node.
 export interface WorkloadNodeData {
@@ -11,30 +12,44 @@ export interface WorkloadNodeData {
   [key: string]: unknown;
 }
 
+// Set while the user drags a new connection: what kind of handle it started
+// from and in which namespace. Cards in OTHER namespaces light up the valid
+// opposite ends (drag from the outgoing dot -> their ports, drag from a
+// port -> their outgoing dots), so the drop target is obvious.
+export type ConnectingFrom = { kind: "body" | "port"; ns: string } | null;
+export const ConnectingCtx = createContext<ConnectingFrom>(null);
+
 // Handle id encodes the port NUMBER (stable across workload edits, unlike an
-// index) plus the side. Every port renders a circle on BOTH card borders, so
-// the user draws the arrow from whichever side faces the peer namespace and
-// the edge geometry stays clean.
+// index) plus the side. Ports render their circle on the LEFT border only:
+// the canvas flows left to right - incoming on the left, outgoing on the
+// right.
 export const portHandleId = (port: number, side: "l" | "r") => `p-${port}-${side}`;
 export const portFromHandle = (handle: string | null | undefined): number | null => {
   const m = handle?.match(/^p-(\d+)-[lr]$/);
   return m ? Number(m[1]) : null;
 };
 
-// Body handles sit at the card header and anchor edges whose source port is
-// unknown (values parsed back into a graph never record the source port).
-// They are not user-connectable - drawing stays port-to-port.
+// The body handle sits at the card header (right side) and is THE source
+// anchor: an outgoing rule never records a source port (only the destination
+// port exists in the values), so arrows start from the workload itself and
+// end on a peer's port. The port circles are destination-only.
 export const bodyHandleId = (side: "l" | "r") => `w-${side}`;
 export const isBodyHandle = (handle: string | null | undefined): boolean =>
   handle === "w-l" || handle === "w-r";
 
 export function WorkloadNode({ data }: NodeProps) {
   const { workload, invalidReason, connectedHandles } = data as WorkloadNodeData;
+  const connecting = useContext(ConnectingCtx);
   // Invalid workloads keep their ports connectable on purpose: per spec the
   // arrow attempt must surface an explanatory error, not be silently blocked.
   const invalid = invalidReason !== null;
   const connected = new Set(connectedHandles ?? []);
-  const portClass = (id: string) => `rf-port${connected.has(id) ? " rf-port--on" : ""}`;
+  // Arrows only run between namespaces, so only foreign cards highlight.
+  const foreign = connecting !== null && connecting.ns !== nsOfWorkload(workload.id);
+  const availPort = foreign && connecting.kind === "body";
+  const availBody = foreign && connecting.kind === "port";
+  const portClass = (id: string) =>
+    `rf-port${connected.has(id) ? " rf-port--on" : ""}${availPort ? " rf-port--avail" : ""}`;
 
   const badgeMod =
     workload.kind === "IngressGateway"
@@ -49,23 +64,19 @@ export function WorkloadNode({ data }: NodeProps) {
   return (
     <div className={`rf-wl${invalid ? " rf-wl--invalid" : ""}`} title={invalidReason ?? undefined}>
       <div className="rf-wl__head">
-        {/* Invisible anchors for parsed edges (no circle: the arrow just
-            leaves the card border at header level). */}
-        <Handle
-          id={bodyHandleId("l")}
-          type="source"
-          position={Position.Left}
-          isConnectableStart={false}
-          isConnectableEnd={false}
-          className="rf-port"
-        />
+        {/* Outgoing anchor: one filled dot on the RIGHT at header level.
+            Connectable in both gestures: drag from here to a peer's port, or
+            from a port back to here - onConnect normalizes the direction. */}
         <Handle
           id={bodyHandleId("r")}
           type="source"
           position={Position.Right}
-          isConnectableStart={false}
-          isConnectableEnd={false}
-          className="rf-port"
+          isConnectableStart
+          isConnectableEnd
+          className={`rf-port rf-port--src${connected.has(bodyHandleId("r")) ? " rf-port--on" : ""}${
+            availBody ? " rf-port--avail" : ""
+          }`}
+          title="Тяните стрелку отсюда к порту получателя"
         />
         <div className="rf-wl__title">
           <span className="rf-wl__name" title={workload.name}>
@@ -102,14 +113,6 @@ export function WorkloadNode({ data }: NodeProps) {
                 isConnectableStart
                 isConnectableEnd
                 className={portClass(portHandleId(p.port, "l"))}
-              />
-              <Handle
-                id={portHandleId(p.port, "r")}
-                type="source"
-                position={Position.Right}
-                isConnectableStart
-                isConnectableEnd
-                className={portClass(portHandleId(p.port, "r"))}
               />
             </div>
           ))

@@ -139,9 +139,28 @@
   border-bottom: 1px solid rgb(var(--c-neutral-100));
 }
 
-/* Body handles only anchor parsed edges; the user cannot grab them. */
-.react-flow__handle.rf-port[data-handleid^="w-"] {
-  pointer-events: none;
+/* Outgoing anchor: a FILLED dot at the header level (the port circles below
+   are outlined rings), so source and destination read differently by shape
+   and position, not color alone. Revealed on card hover; stays visible while
+   it carries an edge (rf-port--on). */
+/* Triple-class selectors: the generic .rf-port rules further down would
+   otherwise win (same specificity, later in file). */
+.react-flow__handle.rf-port.rf-port--src {
+  border-color: rgb(var(--c-info-500));
+  background: rgb(var(--c-info-500));
+}
+
+.rf-wl:hover .react-flow__handle.rf-port.rf-port--src {
+  opacity: 0.65;
+}
+
+/* The green gradient on port hover means "drop the arrow here"; the source
+   dot is a start point, so it darkens instead. */
+.react-flow__handle.rf-port.rf-port--src:hover {
+  opacity: 1;
+  background: rgb(var(--c-info-600));
+  border-color: rgb(var(--c-info-600));
+  box-shadow: 0 0 0 4px rgb(var(--c-info-500) / 0.18);
 }
 
 .rf-wl__title {
@@ -253,18 +272,13 @@
   color: rgb(var(--c-danger-500));
 }
 
-/* Travelling traffic dots: blue runs source -> target on every edge, green
-   runs the opposite way on bidirectional links. */
+/* Travelling traffic dot: runs source -> target on every edge. */
 .rf-flow-dot {
   pointer-events: none;
 }
 
 .rf-flow-dot--fwd {
   fill: rgb(var(--c-info-500));
-}
-
-.rf-flow-dot--rev {
-  fill: rgb(var(--c-success-500));
 }
 
 /* Port handle: the interactive circle on the box border. The circle itself
@@ -308,4 +322,11 @@
   );
   border-color: rgb(var(--c-success-600));
   box-shadow: 0 0 0 4px rgb(var(--c-success-500) / 0.18);
+}
+
+/* While a new connection is being dragged, the valid opposite ends on other
+   namespaces' cards light up (drag from the outgoing dot -> ports, drag from
+   a port -> outgoing dots), so the drop target is obvious. */
+.react-flow__handle.rf-port.rf-port--avail {
+  opacity: 0.65;
 }
