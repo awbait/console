@@ -3,7 +3,19 @@
 // destination namespace comes from and whether the order form shows a Namespace
 // input. Kept chart-agnostic: the rule lives in the chart's view document.
 
+import { dnsLabelError } from "./fieldErrors";
+
 type Values = Record<string, unknown>;
+
+// Kubernetes namespace name: an RFC 1123 DNS label of at most 63 characters.
+// The backend additionally rejects purely numeric namespaces (validNamespace
+// in internal/provisioning/service.go) - mirror that here.
+export function namespaceError(ns: string): string | null {
+  const e = dnsLabelError(ns);
+  if (e) return e;
+  if (ns && /^[0-9]+$/.test(ns)) return "Добавьте хотя бы одну букву.";
+  return null;
+}
 
 export type NamespaceSource = "field" | "values" | "fixed";
 

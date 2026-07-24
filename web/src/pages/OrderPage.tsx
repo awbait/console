@@ -10,7 +10,7 @@ import { useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { NotFound } from "../components/NotFound";
-import { namespaceError, OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
+import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
 import {
   GenericInfoActions,
   GenericListTab,
@@ -19,7 +19,7 @@ import {
 import { actionViews, productTabs } from "../components/products/genericView";
 import { valuesEditorPlugins } from "../components/products/valuesEditors";
 import { Button, Card, ErrorBox, Spinner } from "../components/ui";
-import { parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
+import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
 import { collectErrors, pruneEmpty } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";

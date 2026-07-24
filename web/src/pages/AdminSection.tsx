@@ -36,6 +36,7 @@ import { useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon } from "../components/icons";
 import { PublicationReview, VersionReview } from "../components/PublicationReview";
 import { Button, ErrorBox, Spinner } from "../components/ui";
+import { fieldMsg } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
 // ---------------------------------------------------------------------------
@@ -923,9 +924,9 @@ const SLUG_MIN_LETTERS = 2;
 // (or empty - emptiness is handled by disabling the button, not by an error).
 function slugError(id: string): string | null {
   if (!id) return null;
-  if (!SLUG_RE.test(id)) return "Только строчные латинские буквы, цифры и дефис, без пробелов.";
+  if (!SLUG_RE.test(id)) return fieldMsg.charset;
   if ((id.match(/[a-z]/g)?.length ?? 0) < SLUG_MIN_LETTERS)
-    return `Минимум ${SLUG_MIN_LETTERS} латинские буквы.`;
+    return `Добавьте хотя бы ${SLUG_MIN_LETTERS} латинские буквы.`;
   return null;
 }
 

@@ -88,9 +88,6 @@ export function workloadInvalidReason(w: TopoWorkload): string | null {
   return missing.length ? missing.join(", ") : null;
 }
 
-// Kubernetes DNS label: lower-case letters, digits and hyphens.
-export const DNS_NAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-
 // Example scenario, loadable from the toolbar: an online shop whose core
 // namespace (the order) receives traffic through an ingress gateway, talks to
 // its database and cache (the cache link is bidirectional) and reaches the

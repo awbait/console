@@ -11,8 +11,8 @@
 // and is reported out of scope.
 
 import type { Edge } from "@xyflow/react";
+import { dnsLabelError, fieldMsg, withField } from "../../form/fieldErrors";
 import {
-  DNS_NAME_RE,
   findWorkload,
   nsOfWorkload,
   type TopoNamespace,
@@ -223,10 +223,19 @@ export function validateSubmit(
       }
     }
   }
-  if (!DNS_NAME_RE.test(naming.instanceTag)) errors.push("naming: instanceTag не в DNS-формате.");
-  if (!DNS_NAME_RE.test(naming.clusterTag)) errors.push("naming: clusterTag не в DNS-формате.");
-  if (!DNS_NAME_RE.test(naming.projectTag) || naming.projectTag.length < 2 || naming.projectTag.length > 6) {
-    errors.push("naming: projectTag - 2..6 символов в DNS-формате.");
+  for (const [label, v] of [
+    ["instanceTag", naming.instanceTag],
+    ["clusterTag", naming.clusterTag],
+  ] as const) {
+    const e = v ? dnsLabelError(v) : fieldMsg.required;
+    if (e) errors.push(withField(label, e));
   }
+  const pt = naming.projectTag;
+  const ptErr = !pt
+    ? fieldMsg.required
+    : pt.length < 2
+      ? fieldMsg.minLen(2)
+      : dnsLabelError(pt, 6);
+  if (ptErr) errors.push(withField("projectTag", ptErr));
   return errors;
 }

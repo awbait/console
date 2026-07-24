@@ -2,8 +2,8 @@ import yaml from "js-yaml";
 import { useEffect, useState } from "react";
 import { FormErrors } from "../../components/FormErrors";
 import { Button, TextField } from "../../components/ui";
+import { dnsLabelError, fieldMsg, withField } from "../../form/fieldErrors";
 import { MapDialog } from "./TopologyDialogs";
-import { DNS_NAME_RE } from "./topology";
 import { type ParsedGraph, parseValues } from "./valuesParser";
 
 export interface ImportedValues {
@@ -39,8 +39,9 @@ export function ImportValuesDialog({
   function submit() {
     const errors: string[] = [];
     const n = ns.trim();
-    if (!DNS_NAME_RE.test(n)) {
-      errors.push("Namespace заказа должен быть в DNS-формате.");
+    const nsErr = n ? dnsLabelError(n) : fieldMsg.required;
+    if (nsErr) {
+      errors.push(withField("Namespace заказа", nsErr));
     }
     let obj: Record<string, unknown> | null = null;
     try {
