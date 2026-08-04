@@ -13,13 +13,13 @@ import "@xyflow/react/dist/style.css";
 import "./graph.css";
 import { bodyHandle, CardNode, rowHandleId } from "./CardNode";
 import { FlowEdge } from "./FlowEdge";
-import type { GraphData, GraphNode, GraphProfile, XY } from "./model";
+import type { GraphData, GraphLink, GraphNode, GraphProfile, XY } from "./model";
+import { DEFAULT_LAYOUT } from "./model";
 
 const nodeTypes = { card: CardNode, group: GroupNode };
 const edgeTypes = { flow: FlowEdge };
 
 // Layout constants; the card width must match .rf-card in graph.css.
-const GROUP_W = 250;
 const GROUP_GAP = 80;
 const HEAD = 40;
 const CARD_X = 10;
@@ -49,14 +49,42 @@ function cardHeight(n: GraphNode): number {
   return head + (n.rows.length > 0 ? n.rows.length * ROW_H : 33);
 }
 
-function groupHeight(nodes: GraphNode[]): number {
-  const cards = nodes.reduce((sum, n) => sum + cardHeight(n) + CARD_GAP, 0);
-  return HEAD + Math.max(cards, 40) + 10;
+function stackHeight(nodes: GraphNode[]): number {
+  return nodes.reduce((sum, n) => sum + cardHeight(n) + CARD_GAP, 0);
 }
 
-// build lays the groups out left to right (unless positions say otherwise) and
-// stacks their cards inside, mirroring the policies editor so both canvases
-// read the same.
+// columns splits a box's cards into left-to-right ranks by following the arrows
+// inside that box: a card with no incoming arrow starts a column, every other
+// card sits one column right of the furthest card pointing at it. Cycles cannot
+// run away - each pass can only push a card one column further and there are at
+// most as many passes as cards.
+function columns(nodes: GraphNode[], links: GraphLink[]): GraphNode[][] {
+  const own = new Set(nodes.map((n) => n.id));
+  const inner = links.filter((l) => own.has(l.from) && own.has(l.to) && l.from !== l.to);
+  const rank = new Map(nodes.map((n) => [n.id, 0]));
+  for (let pass = 0; pass < nodes.length; pass++) {
+    let moved = false;
+    for (const l of inner) {
+      const next = (rank.get(l.from) ?? 0) + 1;
+      if (next > (rank.get(l.to) ?? 0) && next < nodes.length) {
+        rank.set(l.to, next);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  const out: GraphNode[][] = [];
+  for (const n of nodes) {
+    const r = rank.get(n.id) ?? 0;
+    if (!out[r]) out[r] = [];
+    out[r].push(n);
+  }
+  return out.filter(Boolean);
+}
+
+// build places the boxes the way the profile asked (a row or a column, unless
+// saved positions say otherwise) and fills each one either as a plain stack or
+// as columns following the arrows.
 function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: Edge[] } {
   const anchored = new Map<string, Set<string>>();
   const mark = (nodeId: string, row: string) => {
@@ -69,38 +97,49 @@ function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: 
     mark(l.to, l.toRow ?? bodyHandle);
   }
 
+  const layout = profile.layout ?? DEFAULT_LAYOUT;
   const nodes: Node[] = [];
-  let x = 0;
+  let cursor = 0;
   for (const g of data.groups) {
     const own = data.nodes.filter((n) => n.groupId === g.id);
-    const pos: XY = data.positions?.[g.id] ?? { x, y: 0 };
-    x += GROUP_W + GROUP_GAP;
+    // A stacked box is one column wide; a flow box is as wide as its longest
+    // chain of arrows.
+    const cols = layout.nodes === "flow" ? columns(own, data.links) : [own];
+    const width = cols.length * CARD_W + (cols.length + 1) * CARD_X;
+    const height = HEAD + Math.max(...cols.map(stackHeight), 40) + 10;
+    const auto: XY =
+      layout.groups === "column" ? { x: 0, y: cursor } : { x: cursor, y: 0 };
+    cursor += (layout.groups === "column" ? height : width) + GROUP_GAP;
+
     nodes.push({
       id: g.id,
       type: "group",
-      position: pos,
+      position: data.positions?.[g.id] ?? auto,
       draggable: true,
       selectable: false,
       data: { label: g.title, note: g.note },
-      style: { width: GROUP_W, height: groupHeight(own) },
+      style: { width, height },
       className: `rf-ns${g.accent === "primary" ? " rf-ns--order" : ""}${
         g.accent === "secondary" ? " rf-ns--draft" : ""
       }`,
     });
-    let y = HEAD;
-    for (const n of own) {
-      nodes.push({
-        id: n.id,
-        type: "card",
-        parentId: g.id,
-        extent: "parent",
-        position: { x: CARD_X, y },
-        draggable: false,
-        data: { node: n, profile, anchored: [...(anchored.get(n.id) ?? [])] },
-        style: { width: CARD_W },
-      });
-      y += cardHeight(n) + CARD_GAP;
-    }
+
+    cols.forEach((col, i) => {
+      let y = HEAD;
+      for (const n of col) {
+        nodes.push({
+          id: n.id,
+          type: "card",
+          parentId: g.id,
+          extent: "parent",
+          position: { x: CARD_X + i * (CARD_W + CARD_X), y },
+          draggable: false,
+          data: { node: n, profile, anchored: [...(anchored.get(n.id) ?? [])] },
+          style: { width: CARD_W },
+        });
+        y += cardHeight(n) + CARD_GAP;
+      }
+    });
   }
 
   const edges: Edge[] = data.links.map((l) => ({

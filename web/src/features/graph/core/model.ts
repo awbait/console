@@ -70,6 +70,18 @@ export interface LegendEntry {
   text: string;
 }
 
+// GraphLayout says how the canvas arranges what a profile describes.
+export interface GraphLayout {
+  // Where the next box goes: to the right (good when the story crosses
+  // namespaces) or below (good when each box holds a whole flow of its own).
+  groups: "row" | "column";
+  // Cards inside a box: a plain vertical list, or columns that follow the
+  // arrows - entry points on the left, what they reach to the right.
+  nodes: "stack" | "flow";
+}
+
+export const DEFAULT_LAYOUT: GraphLayout = { groups: "row", nodes: "stack" };
+
 // GraphProfile teaches the core how to speak one domain: what a box and a card
 // are called, how each kind is labelled, and what the legend says.
 export interface GraphProfile {
@@ -81,6 +93,8 @@ export interface GraphProfile {
   legend: LegendEntry[];
   // Shown on an empty canvas.
   emptyHint: string;
+  // Omitted means DEFAULT_LAYOUT.
+  layout?: GraphLayout;
 }
 
 export function kindLabel(profile: GraphProfile, kind: string): string {

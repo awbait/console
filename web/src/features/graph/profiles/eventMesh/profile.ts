@@ -20,4 +20,7 @@ export const eventMeshProfile: GraphProfile = {
     { text: "Стрелка: поток событий, подпись - триггер и его фильтр" },
   ],
   emptyHint: "Событийных ресурсов в этом namespace нет.",
+  // Events flow left to right - producers, broker, consumers - and consumers
+  // usually live in other namespaces, so the boxes follow the same direction.
+  layout: { groups: "row", nodes: "flow" },
 };

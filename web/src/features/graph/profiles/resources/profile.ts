@@ -23,4 +23,8 @@ export const resourceTopologyProfile: GraphProfile = {
     { text: "Стрелка: ссылка на ресурс (селектор, том, переменные)" },
   ],
   emptyHint: "В namespace нет ресурсов или они ещё не собраны.",
+  // Inside a namespace the story runs left to right: ingress, service, workload,
+  // the data it mounts. Namespaces stack downwards, so the arrows between them
+  // stay short and readable.
+  layout: { groups: "column", nodes: "flow" },
 };
