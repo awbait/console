@@ -6,7 +6,8 @@
 // graph editing without touching the user's values.
 
 import type { Edge } from "@xyflow/react";
-import type { XY } from "./PoliciesGraph";
+import type { XY } from "../../core/model";
+import type { SavedGraphState } from "./editorState";
 import {
   type PortProtocol,
   type TopoNamespace,
@@ -16,17 +17,8 @@ import {
 } from "./topology";
 import { bodyHandleId, portHandleId } from "./WorkloadNode";
 
-// Canvas-only state the values cannot carry (empty namespaces, unlinked
-// workloads, target SAs, extra ports, kinds, box positions). The order graph
-// saves it between mode switches and merges it back over a fresh parse. Edges
-// need no saving: an arrow is body dot -> destination port on the canvas too,
-// which is exactly what the values express.
-export interface SavedGraphState {
-  orderNs: string;
-  topology: TopoNamespace[];
-  positions: Record<string, XY>;
-}
-
+// ParsedGraph is what the values alone describe: everything the canvas holds
+// beyond it comes from the saved editor state (see editorState.ts).
 export interface ParsedGraph {
   topology: TopoNamespace[];
   edges: Edge[];

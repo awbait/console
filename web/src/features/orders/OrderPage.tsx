@@ -122,8 +122,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Raw-YAML parse error carried into a values-editor plugin (the plugin shows
   // it instead of a graph and leaves the user's YAML untouched).
   const [pluginInputError, setPluginInputError] = useState<string | null>(null);
-  // Opaque plugin editor state (e.g. the policies graph topology extras) kept
-  // across mode switches; a ref is enough - only the plugin reads it on mount.
+  // Opaque plugin editor state (e.g. the policies graph topology extras). A ref
+  // is enough while the page lives - only the plugin reads it, on mount - but it
+  // also travels to the backend with every save, so what the canvas holds beyond
+  // the values (unlinked workloads, their SA and ports, empty namespaces, node
+  // positions) is still there when the draft is reopened.
   const pluginStateRef = useRef<unknown>(null);
   const [submitErr, setSubmitErr] = useState<{ message: string; details?: FieldError[] } | null>(null);
   const [busy, setBusy] = useState<null | "draft" | "submit">(null);
@@ -246,6 +249,8 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     } catch {
       setValues({});
     }
+    // The canvas extras the values cannot express; the plugin reads them on mount.
+    pluginStateRef.current = draft.editor_state ?? null;
     hydrated.current = true;
   }, [editing, draft]);
 
@@ -329,6 +334,13 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     return { values: finalValues, svcName, destNamespace };
   }
 
+  // editorState is what the visual editor holds beyond the values. undefined
+  // means "send nothing", which leaves the stored state untouched - the plain
+  // form and the YAML editor must not wipe what the graph saved.
+  function editorState(): unknown {
+    return pluginStateRef.current ?? undefined;
+  }
+
   function fail(e: unknown) {
     if (e instanceof HttpError) {
       // An open MR blocks the change: explain it in Russian instead of the bare
@@ -362,6 +374,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
           values: c.values,
+          editor_state: editorState(),
         });
       } else {
         await api.createRequest({
@@ -373,6 +386,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
           values: c.values,
+          editor_state: editorState(),
           draft: true,
         });
       }
@@ -428,6 +442,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           cluster,
           namespace: c.destNamespace,
           values: c.values,
+          editor_state: editorState(),
         });
         req = await api.submitRequest(id!);
       } else {
@@ -441,6 +456,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           cluster,
           namespace: c.destNamespace,
           values: c.values,
+          editor_state: editorState(),
         });
       }
       navigate(`/requests/${req.id}`);

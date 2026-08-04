@@ -5,7 +5,8 @@ import type { ValuesEditorProps } from "../../../orders/valuesEditors";
 import { namespaceError } from "../../../../form/namespace";
 import { type GraphModel, PoliciesGraph, type XY } from "./PoliciesGraph";
 import { buildPolicies } from "./valuesBuilder";
-import { mergeWithSaved, parseValues, type SavedGraphState } from "./valuesParser";
+import { packEditorState, readEditorState } from "./editorState";
+import { mergeWithSaved, parseValues } from "./valuesParser";
 
 // PoliciesValuesEditor is the "graph" values editor of the policies chart on
 // the order form. On mount it parses the current values and merges the saved
@@ -37,7 +38,7 @@ export function PoliciesValuesEditor({
     if (inputError || !namespace || namespaceError(namespace)) return null;
     const p = parseValues(valuesRef.current, namespace);
     if (p.errors.length > 0) return p;
-    const saved = stateRef.current as SavedGraphState | null | undefined;
+    const saved = readEditorState(stateRef.current);
     return mergeWithSaved(p, saved && saved.orderNs === namespace ? saved : null);
   }, [namespace, inputError]);
 
@@ -78,11 +79,9 @@ export function PoliciesValuesEditor({
   const onModelChange = (m: GraphModel & { positions: Record<string, XY> }) => {
     // The canvas extras are worth keeping even in readOnly (harmless), but
     // values must never change there.
-    onEditorState?.({
-      orderNs: namespace,
-      topology: m.topology,
-      positions: m.positions,
-    } satisfies SavedGraphState);
+    onEditorState?.(
+      packEditorState({ orderNs: namespace, topology: m.topology, positions: m.positions }),
+    );
     if (readOnly) return;
     onValues({
       ...valuesRef.current,

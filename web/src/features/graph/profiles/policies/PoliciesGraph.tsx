@@ -34,6 +34,7 @@ import {
   IconTrash,
   IconWand,
 } from "@tabler/icons-react";
+import type { XY } from "../../core/model";
 import { useToast } from "../../../../app/ToastContext";
 import { ConfirmDialog } from "../../../../components/ConfirmDialog";
 import { Button } from "../../../../components/ui";
@@ -85,7 +86,7 @@ const ARROW = {
   markerUnits: "userSpaceOnUse",
 };
 
-export type XY = { x: number; y: number };
+export type { XY };
 
 // The graph model shared with the host page: the editable topology, the drawn
 // edges and the chosen order namespace.
