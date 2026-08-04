@@ -963,7 +963,7 @@ function LegendRow({ sample, children }: { sample: React.ReactNode; children: Re
   );
 }
 
-// PoliciesGraph is the reusable network-map editor: the sandbox page hosts it
+// PoliciesGraph is the reusable network-map editor: the map page hosts it
 // full-screen, the order form embeds it as the "graph" values editor.
 export const PoliciesGraph = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(
   function PoliciesGraph(props, ref) {

@@ -46,3 +46,6 @@ __pycache__/
 
 # Local workspace with external charts and the console source mirror
 /charts-ext/
+
+# Scratch task materials (specs, screenshots, sample values)
+/task/
