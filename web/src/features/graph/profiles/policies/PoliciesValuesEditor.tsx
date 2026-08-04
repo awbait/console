@@ -1,8 +1,8 @@
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useMemo, useRef } from "react";
-import { FormErrors } from "../../components/FormErrors";
-import type { ValuesEditorProps } from "../../components/products/valuesEditors";
-import { namespaceError } from "../../form/namespace";
+import { FormErrors } from "../../../../components/FormErrors";
+import type { ValuesEditorProps } from "../../../orders/valuesEditors";
+import { namespaceError } from "../../../../form/namespace";
 import { type GraphModel, PoliciesGraph, type XY } from "./PoliciesGraph";
 import { buildPolicies } from "./valuesBuilder";
 import { mergeWithSaved, parseValues, type SavedGraphState } from "./valuesParser";

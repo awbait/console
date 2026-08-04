@@ -17,22 +17,22 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, errorMessage, HttpError } from "../api/client";
-import type { ViewDocument } from "../api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
-import { useTeam } from "../app/TeamContext";
-import { useToast } from "../app/ToastContext";
-import { canEditOrder, canModify, useUser } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { ProductIcon } from "../components/icons";
-import { NotFound } from "../components/NotFound";
-import { StatusBadge } from "../components/StatusBadge";
-import { Button, Card, Select, Spinner } from "../components/ui";
-import { useAsync } from "../hooks/useAsync";
-import { safeHref } from "../lib/href";
-import { upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";
-import { attachSseLogger } from "../lib/sse";
+import { api, errorMessage, HttpError } from "../../api/client";
+import type { ViewDocument } from "../../api/types";
+import { chartLabel, findCatalogChart, useCatalog } from "../../app/CatalogContext";
+import { useTeam } from "../../app/TeamContext";
+import { useToast } from "../../app/ToastContext";
+import { canEditOrder, canModify, useUser } from "../../auth/UserContext";
+import { Breadcrumbs } from "../../components/Breadcrumbs";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { ProductIcon } from "../../components/icons";
+import { NotFound } from "../../components/NotFound";
+import { StatusBadge } from "../../components/StatusBadge";
+import { Button, Card, Select, Spinner } from "../../components/ui";
+import { useAsync } from "../../hooks/useAsync";
+import { safeHref } from "../../lib/href";
+import { upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
+import { attachSseLogger } from "../../lib/sse";
 import { DetailActions, fmtDateTime, Meta, ProductView } from "./requestDetailParts";
 
 // Message for the "open MR blocks this change" conflict (proactive banner and

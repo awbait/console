@@ -9,20 +9,20 @@ import {
 import yaml from "js-yaml";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api/client";
-import { useCatalog } from "../app/CatalogContext";
-import { useTeam } from "../app/TeamContext";
-import { useToast } from "../app/ToastContext";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Button, Select, TextField } from "../components/ui";
-import { environmentsForInstance, instanceTags } from "./policiesMap/environments";
-import { type ImportedValues, ImportValuesDialog } from "./policiesMap/ImportValuesDialog";
+import { api } from "../../../api/client";
+import { useCatalog } from "../../../app/CatalogContext";
+import { useTeam } from "../../../app/TeamContext";
+import { useToast } from "../../../app/ToastContext";
+import { ConfirmDialog } from "../../../components/ConfirmDialog";
+import { Button, Select, TextField } from "../../../components/ui";
+import { environmentsForInstance, instanceTags } from "../environments";
+import { type ImportedValues, ImportValuesDialog } from "../profiles/policies/ImportValuesDialog";
 import {
   type GraphModel,
   PoliciesGraph,
   type PoliciesGraphHandle,
-} from "./policiesMap/PoliciesGraph";
-import { manualProvider } from "./policiesMap/topology";
+} from "../profiles/policies/PoliciesGraph";
+import { manualProvider } from "../profiles/policies/topology";
 import {
   buildValues,
   type EdgeGroup,
@@ -30,7 +30,7 @@ import {
   type IdentityTags,
   partitionEdges,
   validateSubmit,
-} from "./policiesMap/valuesBuilder";
+} from "../profiles/policies/valuesBuilder";
 
 // The pluggable topology source. Manual mode suggests nothing; later tiers
 // (orders data, collector snapshot) return deployed namespaces here.

@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { IconPlus, IconShoppingCart } from "@tabler/icons-react";
-import { OrdersTable } from "../components/OrdersTable";
+import { OrdersTable } from "../features/orders/OrdersTable";
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
 
 // Product page (= a published chart): its orders list + "Order".

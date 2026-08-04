@@ -34,12 +34,12 @@ import {
   IconTrash,
   IconWand,
 } from "@tabler/icons-react";
-import { useToast } from "../../app/ToastContext";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { Button } from "../../components/ui";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { FlowEdge } from "./FlowEdge";
-import "./policiesMap.css";
+import { useToast } from "../../../../app/ToastContext";
+import { ConfirmDialog } from "../../../../components/ConfirmDialog";
+import { Button } from "../../../../components/ui";
+import { ContextMenu, type MenuEntry } from "../../core/ContextMenu";
+import { FlowEdge } from "../../core/FlowEdge";
+import "../../core/graph.css";
 import { NamespaceDialog, WorkloadDialog } from "./TopologyDialogs";
 import {
   canSend,

@@ -1,8 +1,8 @@
 import yaml from "js-yaml";
 import { useEffect, useState } from "react";
-import { FormErrors } from "../../components/FormErrors";
-import { Button, TextField } from "../../components/ui";
-import { dnsLabelError, fieldMsg, withField } from "../../form/fieldErrors";
+import { FormErrors } from "../../../../components/FormErrors";
+import { Button, TextField } from "../../../../components/ui";
+import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
 import { MapDialog } from "./TopologyDialogs";
 import { type ParsedGraph, parseValues } from "./valuesParser";
 

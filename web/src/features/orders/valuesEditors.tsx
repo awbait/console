@@ -36,7 +36,7 @@ const policiesGraph: ValuesEditorPlugin = {
   label: "Граф",
   badge: "новое",
   Component: lazy(() =>
-    import("../../pages/policiesMap/PoliciesValuesEditor").then((m) => ({
+    import("../graph/profiles/policies/PoliciesValuesEditor").then((m) => ({
       default: m.PoliciesValuesEditor,
     })),
   ),

@@ -16,19 +16,19 @@ import {
   TableHeader,
 } from "react-aria-components";
 import { Link, useNavigate } from "react-router-dom";
-import { api, errorMessage, HttpError } from "../api/client";
-import type { OrderRequest, RequestStatus } from "../api/types";
-import { useCatalog } from "../app/CatalogContext";
-import { useTeam } from "../app/TeamContext";
-import { useToast } from "../app/ToastContext";
-import { canModify, useUser } from "../auth/UserContext";
-import { useAsync } from "../hooks/useAsync";
-import { isNewer } from "../lib/semver";
-import { attachSseLogger } from "../lib/sse";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { ProductIcon } from "./icons";
-import { StatusBadge, StatusDot } from "./StatusBadge";
-import { ErrorBox, Spinner } from "./ui";
+import { api, errorMessage, HttpError } from "../../api/client";
+import type { OrderRequest, RequestStatus } from "../../api/types";
+import { useCatalog } from "../../app/CatalogContext";
+import { useTeam } from "../../app/TeamContext";
+import { useToast } from "../../app/ToastContext";
+import { canModify, useUser } from "../../auth/UserContext";
+import { useAsync } from "../../hooks/useAsync";
+import { isNewer } from "../../lib/semver";
+import { attachSseLogger } from "../../lib/sse";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { ProductIcon } from "../../components/icons";
+import { StatusBadge, StatusDot } from "../../components/StatusBadge";
+import { ErrorBox, Spinner } from "../../components/ui";
 
 // Live order statuses (create-MR merged): only these can be upgraded to a new version.
 const LIVE_STATUSES: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];

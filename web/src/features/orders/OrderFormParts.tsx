@@ -4,13 +4,13 @@
 // and OrderValuesCard (Form/Raw YAML toggle over the schema-driven form).
 import Editor from "@monaco-editor/react";
 import { Suspense } from "react";
-import type { JSONSchema } from "../api/types";
-import { useTheme } from "../app/ThemeContext";
-import { dnsLabelError, fieldMsg } from "../form/fieldErrors";
-import { namespaceError } from "../form/namespace";
-import { SchemaForm, type View } from "../form/SchemaForm";
-import type { ValuesEditorPlugin } from "./products/valuesEditors";
-import { Card, Select, Spinner, TextField } from "./ui";
+import type { JSONSchema } from "../../api/types";
+import { useTheme } from "../../app/ThemeContext";
+import { dnsLabelError, fieldMsg } from "../../form/fieldErrors";
+import { namespaceError } from "../../form/namespace";
+import { SchemaForm, type View } from "../../form/SchemaForm";
+import type { ValuesEditorPlugin } from "./valuesEditors";
+import { Card, Select, Spinner, TextField } from "../../components/ui";
 
 type Values = Record<string, unknown>;
 

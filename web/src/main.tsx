@@ -23,10 +23,10 @@ import { ChartDetailPage } from "./pages/ChartDetailPage";
 import { ChartManagePage } from "./pages/ChartManagePage";
 import { ChartVersionEditPage } from "./pages/ChartVersionEditPage";
 import { DocsPage } from "./pages/DocsPage";
-import { OrderPage } from "./pages/OrderPage";
+import { OrderPage } from "./features/orders/OrderPage";
 import { ProductPage } from "./pages/ProductPage";
-import { RequestDetailPage } from "./pages/RequestDetailPage";
-import { RequestsPage } from "./pages/RequestsPage";
+import { RequestDetailPage } from "./features/orders/RequestDetailPage";
+import { RequestsPage } from "./features/orders/RequestsPage";
 import {
   KyvernoPage,
   PolicyApprovalPage,
@@ -38,7 +38,7 @@ import { SupportOverviewPage, SupportRequestsPage, SupportSection } from "./page
 
 // Network map page; lazy so @xyflow/react is split off the main bundle.
 const PoliciesMapPage = lazy(() =>
-  import("./pages/PoliciesMapPage").then((m) => ({ default: m.PoliciesMapPage })),
+  import("./features/graph/pages/PoliciesMapPage").then((m) => ({ default: m.PoliciesMapPage })),
 );
 
 // Role-aware landing: security users open their section by default; everyone

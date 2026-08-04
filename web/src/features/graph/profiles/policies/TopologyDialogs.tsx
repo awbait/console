@@ -1,9 +1,9 @@
 import { IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { FormErrors } from "../../components/FormErrors";
-import { Button, Select, TextField } from "../../components/ui";
-import { dnsLabelError, fieldMsg, withField } from "../../form/fieldErrors";
+import { FormErrors } from "../../../../components/FormErrors";
+import { Button, Select, TextField } from "../../../../components/ui";
+import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
 import {
   KIND_LABELS,
   PORT_PROTOCOLS,

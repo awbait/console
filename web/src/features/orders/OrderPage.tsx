@@ -2,30 +2,36 @@ import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TabList, TabPanel, Tabs } from "react-aria-components";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, HttpError } from "../api/client";
-import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "../api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
-import { useTeam } from "../app/TeamContext";
-import { useUser } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { FormErrors } from "../components/FormErrors";
-import { NotFound } from "../components/NotFound";
-import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
+import { api, HttpError } from "../../api/client";
+import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "../../api/types";
+import { chartLabel, findCatalogChart, useCatalog } from "../../app/CatalogContext";
+import { useTeam } from "../../app/TeamContext";
+import { useUser } from "../../auth/UserContext";
+import { Breadcrumbs } from "../../components/Breadcrumbs";
+import { FormErrors } from "../../components/FormErrors";
+import { NotFound } from "../../components/NotFound";
+import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
-} from "../components/products/GenericProductTabs";
-import { actionViews, productTabs } from "../components/products/genericView";
-import { valuesEditorPlugins } from "../components/products/valuesEditors";
-import { Button, Card, ErrorBox, Spinner } from "../components/ui";
-import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
-import { collectErrors, pruneEmpty } from "../form/SchemaForm";
-import { useAsync } from "../hooks/useAsync";
-import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";
+} from "../../components/products/GenericProductTabs";
+import { actionViews, productTabs } from "../../components/products/genericView";
+import { valuesEditorPlugins } from "./valuesEditors";
+import { Button, Card, ErrorBox, Spinner } from "../../components/ui";
+import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../../form/namespace";
+import { collectErrors, pruneEmpty } from "../../form/SchemaForm";
+import { useAsync } from "../../hooks/useAsync";
+import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
 import { DetailTab } from "./requestDetailParts";
 
 type Values = Record<string, unknown>;
+
+// Shown when a view sources the deploy identity from the values but the field
+// is still empty - e.g. the policies graph has no links yet, so there is no
+// first policy to take the name from. Without this the empty name reaches the
+// backend and comes back as a bare "service_name must be a valid Kubernetes name".
+const IDENTITY_MISSING = "Не удалось определить имя сервиса. Заполните данные заказа, из которых оно берётся.";
 
 // readPointer resolves a JSON Pointer (e.g. "/gateways/0/name") to a string.
 // Used to source the deploy identity (service_name) from a values field that a
@@ -219,6 +225,14 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     [mode, schema, effectiveValues, orderView],
   );
 
+  // A save error describes the order as it was sent, so any later edit makes it
+  // stale: clear it on the next change instead of leaving it on screen until the
+  // user saves again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the edits to react to, not values the body reads
+  useEffect(() => {
+    setSubmitErr(null);
+  }, [values, raw, serviceName, namespace, cluster, mode]);
+
   // Hydrate the form from the draft once (edit mode only).
   const hydrated = useRef(false);
   useEffect(() => {
@@ -332,6 +346,13 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setSubmitErr(null);
     const c = collectValues();
     if (!c) return;
+    // A new order carries its name from the start; editing keeps the saved one
+    // (the name is sent only when resolved), so the guard is create-only.
+    if (!editing && !c.svcName) {
+      setShowErrors(true);
+      setSubmitErr({ message: identity ? IDENTITY_MISSING : "Укажите имя сервиса." });
+      return;
+    }
     setBusy("draft");
     try {
       if (editing) {
@@ -378,7 +399,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (!c) return;
     if (!c.svcName) {
       setShowErrors(true);
-      setSubmitErr({ message: identity ? "Укажите идентификатор в форме" : "Укажите имя сервиса" });
+      setSubmitErr({ message: identity ? IDENTITY_MISSING : "Укажите имя сервиса." });
       return;
     }
     if (!cluster || !c.destNamespace) {
