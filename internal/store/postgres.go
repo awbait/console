@@ -89,31 +89,42 @@ func (p *Postgres) CreateRequest(ctx context.Context, r *models.Request) error {
 	_, err := p.db.Exec(ctx, `
 		INSERT INTO requests
 		(id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
-		 service_name, display_name, cluster, namespace, values_yaml, status, argocd_app_name, version, imported, resource_identity)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		 service_name, display_name, cluster, namespace, values_yaml, status, argocd_app_name, version, imported, resource_identity,
+		 editor_state)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		r.ID, r.CreatedBy, r.CreatedByName, r.Team, r.ChartProject, r.ChartName, r.ChartVersion,
-		r.ServiceName, r.DisplayName, r.Cluster, r.Namespace, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.Version, r.Imported, r.ResourceIdentity)
+		r.ServiceName, r.DisplayName, r.Cluster, r.Namespace, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.Version, r.Imported, r.ResourceIdentity,
+		nullJSON(r.EditorState))
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
 	return err
 }
 
-const reqCols = `id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
+const reqBase = `id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
 	service_name, COALESCE(display_name,''), cluster, COALESCE(namespace,''), values_yaml, status, COALESCE(argocd_app_name,''), version,
 	created_at, updated_at, deleted_at, COALESCE(drifted,false), COALESCE(drift_detail,''), COALESCE(imported,false), COALESCE(resource_identity,'')`
 
+// reqCols reads the whole row; reqColsLight keeps the same shape but skips the
+// editor state, which only the order page needs and which is large enough to
+// bloat a list of orders. Both feed one scan function.
+const reqCols = reqBase + `, editor_state`
+const reqColsLight = reqBase + `, NULL::jsonb`
+
 func scanRequest(row pgx.Row) (*models.Request, error) {
 	var r models.Request
+	var editorState []byte
 	err := row.Scan(&r.ID, &r.CreatedBy, &r.CreatedByName, &r.Team, &r.ChartProject, &r.ChartName,
 		&r.ChartVersion, &r.ServiceName, &r.DisplayName, &r.Cluster, &r.Namespace, &r.ValuesYAML, &r.Status, &r.ArgoCDAppName,
-		&r.Version, &r.CreatedAt, &r.UpdatedAt, &r.DeletedAt, &r.Drifted, &r.DriftDetail, &r.Imported, &r.ResourceIdentity)
+		&r.Version, &r.CreatedAt, &r.UpdatedAt, &r.DeletedAt, &r.Drifted, &r.DriftDetail, &r.Imported, &r.ResourceIdentity,
+		&editorState)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	r.EditorState = editorState
 	return &r, nil
 }
 
@@ -122,7 +133,7 @@ func (p *Postgres) GetRequest(ctx context.Context, id string) (*models.Request, 
 }
 
 func (p *Postgres) ListRequests(ctx context.Context, f RequestFilter) ([]*models.Request, error) {
-	q := `SELECT ` + reqCols + ` FROM requests WHERE 1=1`
+	q := `SELECT ` + reqColsLight + ` FROM requests WHERE 1=1`
 	args := []any{}
 	add := func(cond string, v any) { args = append(args, v); q += cond + "$" + itoa(len(args)) }
 
@@ -162,12 +173,18 @@ func (p *Postgres) ListRequests(ctx context.Context, f RequestFilter) ([]*models
 
 func (p *Postgres) UpdateRequest(ctx context.Context, r *models.Request) error {
 	tag, err := p.db.Exec(ctx, `
+		-- editor_state keeps its stored value when the caller passes none: a request
+		-- loaded from a list carries no state (lists skip the column) and reconcilers
+		-- update such rows, which must not wipe what the editor saved. An explicit
+		-- JSON null overwrites it.
 		UPDATE requests SET
 		  chart_version=$1, values_yaml=$2, status=$3, argocd_app_name=$4, display_name=$5,
-		  service_name=$6, cluster=$7, namespace=$8, resource_identity=$9, deleted_at=$10, version=version+1, updated_at=NOW()
-		WHERE id=$11 AND version=$12`,
+		  service_name=$6, cluster=$7, namespace=$8, resource_identity=$9, deleted_at=$10,
+		  editor_state=COALESCE($11::jsonb, editor_state), version=version+1, updated_at=NOW()
+		WHERE id=$12 AND version=$13`,
 		r.ChartVersion, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.DisplayName,
-		r.ServiceName, r.Cluster, r.Namespace, r.ResourceIdentity, r.DeletedAt, r.ID, r.Version)
+		r.ServiceName, r.Cluster, r.Namespace, r.ResourceIdentity, r.DeletedAt,
+		nullJSON(r.EditorState), r.ID, r.Version)
 	if isUniqueViolation(err) {
 		return models.ErrConflict // identity collides with another active order
 	}
@@ -201,7 +218,7 @@ func (p *Postgres) SetDrift(ctx context.Context, id string, drifted bool, detail
 }
 
 func (p *Postgres) ListActive(ctx context.Context) ([]*models.Request, error) {
-	rows, err := p.db.Query(ctx, `SELECT `+reqCols+`
+	rows, err := p.db.Query(ctx, `SELECT `+reqColsLight+`
 		FROM requests
 		WHERE deleted_at IS NULL AND status NOT IN ('DELETED','MR_CLOSED')`)
 	if err != nil {

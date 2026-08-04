@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"console/internal/auth"
 	"console/internal/provisioning"
 	"console/internal/store"
 	"console/pkg/models"
+	"github.com/go-chi/chi/v5"
 )
 
 type createReq struct {
@@ -21,7 +21,10 @@ type createReq struct {
 	Cluster     string         `json:"cluster"`   // ArgoCD destination cluster
 	Namespace   string         `json:"namespace"` // ArgoCD destination namespace
 	Values      map[string]any `json:"values"`
-	Draft       bool           `json:"draft"` // persist as DRAFT without opening an MR
+	// EditorState is opaque UI state of the visual values editor (see
+	// models.Request.EditorState); stored as given.
+	EditorState json.RawMessage `json:"editor_state"`
+	Draft       bool            `json:"draft"` // persist as DRAFT without opening an MR
 }
 
 type patchReq struct {
@@ -31,6 +34,8 @@ type patchReq struct {
 	Cluster     string         `json:"cluster"`      // draft only
 	Namespace   string         `json:"namespace"`    // draft only
 	Values      map[string]any `json:"values"`
+	// EditorState replaces the stored editor state; omitted leaves it untouched.
+	EditorState json.RawMessage `json:"editor_state"`
 }
 
 func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +71,7 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 		ChartProject: project, ChartName: name, Version: body.Version,
 		Team: body.Team, ServiceName: body.ServiceName, DisplayName: body.DisplayName,
 		Cluster: body.Cluster, Namespace: body.Namespace,
-		Values: body.Values, Draft: body.Draft,
+		Values: body.Values, EditorState: body.EditorState, Draft: body.Draft,
 	})
 	if err != nil {
 		writeDomainErr(w, err)
@@ -112,6 +117,7 @@ func (s *Server) handlePatchRequest(w http.ResponseWriter, r *http.Request) {
 	req, err := s.Prov.Update(r.Context(), u, chi.URLParam(r, "id"), provisioning.UpdateInput{
 		Version: body.Version, ServiceName: body.ServiceName, DisplayName: body.DisplayName,
 		Cluster: body.Cluster, Namespace: body.Namespace, Values: body.Values,
+		EditorState: body.EditorState,
 	})
 	if err != nil {
 		writeDomainErr(w, err)
