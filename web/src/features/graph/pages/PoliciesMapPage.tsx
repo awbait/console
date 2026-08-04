@@ -17,13 +17,13 @@ import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { Button, Select, TextField } from "../../../components/ui";
 import type { XY } from "../core/model";
 import { environmentsForInstance, instanceTags } from "../environments";
+import { packEditorState } from "../profiles/policies/editorState";
 import { type ImportedValues, ImportValuesDialog } from "../profiles/policies/ImportValuesDialog";
 import {
   type GraphModel,
   PoliciesGraph,
   type PoliciesGraphHandle,
 } from "../profiles/policies/PoliciesGraph";
-import { packEditorState } from "../profiles/policies/editorState";
 import { manualProvider } from "../profiles/policies/topology";
 import {
   buildValues,

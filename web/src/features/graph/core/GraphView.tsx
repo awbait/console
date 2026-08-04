@@ -19,11 +19,14 @@ import { DEFAULT_LAYOUT } from "./model";
 const nodeTypes = { card: CardNode, group: GroupNode };
 const edgeTypes = { flow: FlowEdge };
 
-// Layout constants; the card width must match .rf-card in graph.css.
-const GROUP_GAP = 80;
+// Layout constants; the card width must match .rf-card in graph.css. The gaps
+// are what the arrows travel through: a column gap has to fit an arrow with its
+// label, so it is far wider than the padding to the box edge.
+const GROUP_GAP = 140;
 const HEAD = 40;
-const CARD_X = 10;
-const CARD_GAP = 10;
+const PAD = 14; // box padding around its cards
+const COL_GAP = 90; // between card columns inside a box
+const CARD_GAP = 18; // between stacked cards
 const CARD_W = 230;
 const ROW_H = 26;
 
@@ -50,7 +53,8 @@ function cardHeight(n: GraphNode): number {
 }
 
 function stackHeight(nodes: GraphNode[]): number {
-  return nodes.reduce((sum, n) => sum + cardHeight(n) + CARD_GAP, 0);
+  if (nodes.length === 0) return 0;
+  return nodes.reduce((sum, n) => sum + cardHeight(n), 0) + (nodes.length - 1) * CARD_GAP;
 }
 
 // columns splits a box's cards into left-to-right ranks by following the arrows
@@ -105,8 +109,8 @@ function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: 
     // A stacked box is one column wide; a flow box is as wide as its longest
     // chain of arrows.
     const cols = layout.nodes === "flow" ? columns(own, data.links) : [own];
-    const width = cols.length * CARD_W + (cols.length + 1) * CARD_X;
-    const height = HEAD + Math.max(...cols.map(stackHeight), 40) + 10;
+    const width = 2 * PAD + cols.length * CARD_W + (cols.length - 1) * COL_GAP;
+    const height = HEAD + Math.max(...cols.map(stackHeight), 40) + PAD;
     const auto: XY =
       layout.groups === "column" ? { x: 0, y: cursor } : { x: cursor, y: 0 };
     cursor += (layout.groups === "column" ? height : width) + GROUP_GAP;
@@ -132,7 +136,7 @@ function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: 
           type: "card",
           parentId: g.id,
           extent: "parent",
-          position: { x: CARD_X + i * (CARD_W + CARD_X), y },
+          position: { x: PAD + i * (CARD_W + COL_GAP), y },
           draggable: false,
           data: { node: n, profile, anchored: [...(anchored.get(n.id) ?? [])] },
           style: { width: CARD_W },

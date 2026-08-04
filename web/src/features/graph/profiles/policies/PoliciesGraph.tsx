@@ -34,12 +34,12 @@ import {
   IconTrash,
   IconWand,
 } from "@tabler/icons-react";
-import type { XY } from "../../core/model";
 import { useToast } from "../../../../app/ToastContext";
 import { ConfirmDialog } from "../../../../components/ConfirmDialog";
 import { Button } from "../../../../components/ui";
 import { ContextMenu, type MenuEntry } from "../../core/ContextMenu";
 import { FlowEdge } from "../../core/FlowEdge";
+import type { XY } from "../../core/model";
 import "../../core/graph.css";
 import { NamespaceDialog, WorkloadDialog } from "./TopologyDialogs";
 import {
