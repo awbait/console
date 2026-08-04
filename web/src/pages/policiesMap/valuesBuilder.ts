@@ -21,18 +21,19 @@ import {
 } from "./topology";
 import { portFromHandle } from "./WorkloadNode";
 
-// Naming tags required by the chart (resource name convention
-// {instanceTag}-{clusterTag}-{kindShort}-{projectTag}-{name}).
-export interface NamingTags {
-  instanceTag: string;
-  clusterTag: string;
-  projectTag: string;
+// Identity tags required by the chart (resource name convention
+// {instance}-{cluster}-{kindShort}-{project}-{name}). instance/cluster come
+// from the environment list (see environments.ts), project is user input.
+export interface IdentityTags {
+  instance: string;
+  cluster: string;
+  project: string;
 }
 
-export const DEFAULT_NAMING: NamingTags = {
-  instanceTag: "ru1",
-  clusterTag: "k8s1",
-  projectTag: "prj",
+export const EMPTY_IDENTITY: IdentityTags = {
+  instance: "",
+  cluster: "",
+  project: "",
 };
 
 // A directed link relative to the order namespace: the owner is always the
@@ -136,14 +137,14 @@ export function buildPolicies(
   }));
 }
 
-// buildValues wraps buildPolicies into a full sandbox values object.
+// buildValues wraps buildPolicies into a full values object for the order.
 export function buildValues(
   topology: TopoNamespace[],
   edges: Edge[],
-  naming: NamingTags,
+  identity: IdentityTags,
   orderNs: string | null,
 ): Record<string, unknown> {
-  return { naming, policies: buildPolicies(topology, edges, orderNs) };
+  return { identity, policies: buildPolicies(topology, edges, orderNs) };
 }
 
 export interface EdgeGroup {
@@ -208,7 +209,7 @@ export function partitionEdges(
 export function validateSubmit(
   topology: TopoNamespace[],
   edges: Edge[],
-  naming: NamingTags,
+  identity: IdentityTags,
   orderNs: string | null,
 ): string[] {
   const errors: string[] = [];
@@ -234,18 +235,18 @@ export function validateSubmit(
     }
   }
   for (const [label, v] of [
-    ["instanceTag", naming.instanceTag],
-    ["clusterTag", naming.clusterTag],
+    ["Инстанс", identity.instance],
+    ["Кластер", identity.cluster],
   ] as const) {
     const e = v ? dnsLabelError(v) : fieldMsg.required;
     if (e) errors.push(withField(label, e));
   }
-  const pt = naming.projectTag;
+  const pt = identity.project;
   const ptErr = !pt
     ? fieldMsg.required
     : pt.length < 2
       ? fieldMsg.minLen(2)
       : dnsLabelError(pt, 6);
-  if (ptErr) errors.push(withField("projectTag", ptErr));
+  if (ptErr) errors.push(withField("Проект", ptErr));
   return errors;
 }

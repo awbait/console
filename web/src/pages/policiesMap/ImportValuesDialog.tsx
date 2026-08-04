@@ -9,9 +9,9 @@ import { type ParsedGraph, parseValues } from "./valuesParser";
 export interface ImportedValues {
   parsed: ParsedGraph;
   orderNs: string;
-  // Raw naming section of the pasted values (validated by the caller).
-  naming: unknown;
-  // The values carried netpol/authzpol sections the sandbox cannot represent.
+  // Raw identity section of the pasted values (validated by the caller).
+  identity: unknown;
+  // The values carried netpol/authzpol sections the map cannot represent.
   hasOtherSections: boolean;
 }
 
@@ -65,7 +65,7 @@ export function ImportValuesDialog({
     onLoad({
       parsed,
       orderNs: n,
-      naming: obj.naming,
+      identity: obj.identity,
       hasOtherSections: !!(obj.netpol || obj.authzpol),
     });
     onOpenChange(false);
@@ -91,7 +91,7 @@ export function ImportValuesDialog({
             onChange={(e) => setText(e.target.value)}
             rows={12}
             spellCheck={false}
-            placeholder={"naming:\n  instanceTag: ru1\npolicies:\n  - name: core\n    ..."}
+            placeholder={"identity:\n  instance: pr\npolicies:\n  - name: core\n    ..."}
             className="rounded-md border border-gray-300 bg-surface p-2 font-mono text-xs leading-relaxed outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
           />
         </label>

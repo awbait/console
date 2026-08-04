@@ -1,4 +1,4 @@
-/* Custom styling for the policies network-map prototype, layered on top of
+/* Custom styling for the policies network map, layered on top of
    @xyflow/react/dist/style.css. Kept in a plain CSS file (not Tailwind) because
    it mostly overrides React Flow internals and needs the radial-gradient hover. */
 

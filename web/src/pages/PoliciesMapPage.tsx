@@ -15,6 +15,7 @@ import { useTeam } from "../app/TeamContext";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, Select, TextField } from "../components/ui";
+import { environmentsForInstance, instanceTags } from "./policiesMap/environments";
 import { type ImportedValues, ImportValuesDialog } from "./policiesMap/ImportValuesDialog";
 import {
   type GraphModel,
@@ -24,9 +25,9 @@ import {
 import { manualProvider } from "./policiesMap/topology";
 import {
   buildValues,
-  DEFAULT_NAMING,
   type EdgeGroup,
-  type NamingTags,
+  EMPTY_IDENTITY,
+  type IdentityTags,
   partitionEdges,
   validateSubmit,
 } from "./policiesMap/valuesBuilder";
@@ -37,17 +38,17 @@ const provider = manualProvider;
 
 const EMPTY_MODEL: GraphModel = { topology: [], edges: [], orderNs: null };
 
-// PoliciesMapPrototype is the sandbox page: the reusable PoliciesGraph plus a
-// side panel with naming tags, the live values.yaml preview and the order
+// PoliciesMapPage is the network map page: the reusable PoliciesGraph plus a
+// side panel with identity tags, the live values.yaml preview and the order
 // handoff button.
-export function PoliciesMapPrototype() {
+export function PoliciesMapPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const { team } = useTeam();
   const { charts } = useCatalog();
   const graph = useRef<PoliciesGraphHandle>(null);
   const [model, setModel] = useState<GraphModel>(EMPTY_MODEL);
-  const [naming, setNaming] = useState<NamingTags>(DEFAULT_NAMING);
+  const [identity, setIdentity] = useState<IdentityTags>(EMPTY_IDENTITY);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   // The pending order groups awaiting confirmation: one draft per group, the
   // primary one opens in the order form afterwards.
@@ -56,6 +57,39 @@ export function PoliciesMapPrototype() {
 
   useEffect(() => {
     provider.suggestNamespaces().then(setSuggestions).catch(() => setSuggestions([]));
+  }, []);
+
+  // identity.instance/cluster are picked from the known environments; a value
+  // outside the list (e.g. from pasted values) is kept as an extra option so
+  // the selects still display it.
+  const instanceOptions = useMemo(() => {
+    const opts = instanceTags().map((t) => ({ id: t, label: t }));
+    if (identity.instance && !opts.some((o) => o.id === identity.instance)) {
+      opts.push({ id: identity.instance, label: identity.instance });
+    }
+    return opts;
+  }, [identity.instance]);
+
+  const clusterOptions = useMemo(() => {
+    const opts = environmentsForInstance(identity.instance).map((e) => ({
+      id: e.cluster,
+      label: `${e.cluster} - ${e.name}`,
+    }));
+    if (identity.cluster && !opts.some((o) => o.id === identity.cluster)) {
+      opts.push({ id: identity.cluster, label: identity.cluster });
+    }
+    return opts;
+  }, [identity.instance, identity.cluster]);
+
+  // Switching the instance keeps the cluster only while it stays valid and
+  // auto-picks it when the instance has a single cluster.
+  const changeInstance = useCallback((tag: string) => {
+    setIdentity((prev) => {
+      const clusters = environmentsForInstance(tag).map((e) => e.cluster);
+      const cluster =
+        clusters.length === 1 ? clusters[0] : clusters.includes(prev.cluster) ? prev.cluster : "";
+      return { ...prev, instance: tag, cluster };
+    });
   }, []);
 
   const { topology, edges, orderNs } = model;
@@ -79,12 +113,12 @@ export function PoliciesMapPrototype() {
     // noRefs: with bidirectional links the same selector object lands in the
     // values twice and js-yaml would emit &ref_0/*ref_0 anchors - dump plain
     // copies instead.
-    return yaml.dump(buildValues(topology, previewGroup.edges, naming, previewGroup.ns), {
+    return yaml.dump(buildValues(topology, previewGroup.edges, identity, previewGroup.ns), {
       lineWidth: 100,
       sortKeys: false,
       noRefs: true,
     });
-  }, [topology, previewGroup, naming, orderNs]);
+  }, [topology, previewGroup, identity, orderNs]);
 
   // Copy the generated values.yaml. navigator.clipboard needs a secure
   // context, which the dev stand over plain http lacks - fall back to the
@@ -108,7 +142,7 @@ export function PoliciesMapPrototype() {
   }, [valuesYaml, toast]);
 
   // importValues replaces the canvas with a graph parsed from pasted values
-  // and adopts its naming tags when present.
+  // and adopts its identity tags when present.
   const importValues = useCallback(
     (r: ImportedValues) => {
       graph.current?.load({
@@ -117,16 +151,16 @@ export function PoliciesMapPrototype() {
         orderNs: r.orderNs,
         positions: r.parsed.positions,
       });
-      const n = r.naming as Partial<Record<keyof NamingTags, unknown>> | undefined;
+      const n = r.identity as Partial<Record<keyof IdentityTags, unknown>> | undefined;
       if (n && typeof n === "object") {
-        setNaming((prev) => ({
-          instanceTag: typeof n.instanceTag === "string" ? n.instanceTag : prev.instanceTag,
-          clusterTag: typeof n.clusterTag === "string" ? n.clusterTag : prev.clusterTag,
-          projectTag: typeof n.projectTag === "string" ? n.projectTag : prev.projectTag,
+        setIdentity((prev) => ({
+          instance: typeof n.instance === "string" ? n.instance : prev.instance,
+          cluster: typeof n.cluster === "string" ? n.cluster : prev.cluster,
+          project: typeof n.project === "string" ? n.project : prev.project,
         }));
       }
       if (r.hasOtherSections) {
-        toast.error("Секции netpol/authzpol на граф не переносятся и в сандбоксе будут потеряны.");
+        toast.error("Секции netpol/authzpol на граф не переносятся и при заказе будут потеряны.");
       } else {
         toast.success("values загружен на холст.");
       }
@@ -135,13 +169,13 @@ export function PoliciesMapPrototype() {
   );
 
   const submit = useCallback(() => {
-    const errors = validateSubmit(topology, edges, naming, orderNs);
+    const errors = validateSubmit(topology, edges, identity, orderNs);
     if (errors.length) {
       toast.error(`Валидация не пройдена: ${errors.join(" ")}`);
       return;
     }
     setPendingGroups(partitionEdges(topology, edges, orderNs));
-  }, [topology, edges, naming, orderNs, toast]);
+  }, [topology, edges, identity, orderNs, toast]);
 
   // createDrafts turns each group into a DRAFT policies order; the primary one
   // opens in the order edit form, the rest wait in the orders list.
@@ -166,7 +200,7 @@ export function PoliciesMapPrototype() {
         display_name: `Policies (${g.ns})`,
         cluster: "in-cluster",
         namespace: g.ns,
-        values: buildValues(topology, g.edges, naming, g.ns),
+        values: buildValues(topology, g.edges, identity, g.ns),
         draft: true,
       });
       created.push(req.id);
@@ -177,7 +211,7 @@ export function PoliciesMapPrototype() {
         : `Создано черновиков: ${groups.length}. Остальные - в списке заказов.`,
     );
     navigate(`/requests/${created[0]}/edit`);
-  }, [pendingGroups, team, charts, topology, naming, toast, navigate]);
+  }, [pendingGroups, team, charts, topology, identity, toast, navigate]);
 
   return (
     <div className="flex h-[calc(100vh-1px)] flex-col">
@@ -189,7 +223,7 @@ export function PoliciesMapPrototype() {
           <IconArrowLeft size={16} /> Портал
         </Link>
         <h1 className="text-sm font-semibold text-slate-900">
-          Карта сетевого взаимодействия (сандбокс)
+          Карта сетевого взаимодействия
         </h1>
         <div className="ml-auto flex items-center gap-2">
           <Button onPress={() => setImportOpen(true)}>
@@ -214,20 +248,23 @@ export function PoliciesMapPrototype() {
 
         <aside className="flex w-[380px] shrink-0 flex-col border-l border-gray-200 bg-surface">
           <div className="grid grid-cols-3 gap-2 border-b border-gray-200 px-3 py-2">
-            <TextField
-              label="instanceTag"
-              value={naming.instanceTag}
-              onChange={(v) => setNaming((n) => ({ ...n, instanceTag: v }))}
+            <Select
+              label="Инстанс"
+              selectedKey={identity.instance || null}
+              onSelectionChange={changeInstance}
+              options={instanceOptions}
+            />
+            <Select
+              label="Кластер"
+              selectedKey={identity.cluster || null}
+              onSelectionChange={(v) => setIdentity((n) => ({ ...n, cluster: v }))}
+              options={clusterOptions}
+              isDisabled={clusterOptions.length === 0}
             />
             <TextField
-              label="clusterTag"
-              value={naming.clusterTag}
-              onChange={(v) => setNaming((n) => ({ ...n, clusterTag: v }))}
-            />
-            <TextField
-              label="projectTag"
-              value={naming.projectTag}
-              onChange={(v) => setNaming((n) => ({ ...n, projectTag: v }))}
+              label="Проект"
+              value={identity.project}
+              onChange={(v) => setIdentity((n) => ({ ...n, project: v }))}
             />
           </div>
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">

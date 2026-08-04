@@ -36,9 +36,9 @@ import {
 import { StatusPage } from "./pages/StatusPage";
 import { SupportOverviewPage, SupportRequestsPage, SupportSection } from "./pages/SupportSection";
 
-// Dev-only network map prototype; lazy so @xyflow/react is split off.
-const PoliciesMapPrototype = lazy(() =>
-  import("./pages/PoliciesMapPrototype").then((m) => ({ default: m.PoliciesMapPrototype })),
+// Network map page; lazy so @xyflow/react is split off the main bundle.
+const PoliciesMapPage = lazy(() =>
+  import("./pages/PoliciesMapPage").then((m) => ({ default: m.PoliciesMapPage })),
 );
 
 // Role-aware landing: security users open their section by default; everyone
@@ -126,14 +126,13 @@ const router = createBrowserRouter([
   // button to return to. Kept outside the Layout route on purpose.
   { path: "/docs", element: <DocsPage /> },
   { path: "/docs/:slug", element: <DocsPage /> },
-  // Dev prototype: full-screen network map editor on mock data, outside the
-  // portal Layout. Lazy-loaded so React Flow stays out of the main bundle.
-  // Not linked from the menu yet (see TODO, policies map).
+  // Full-screen network map editor, outside the portal Layout. Lazy-loaded so
+  // React Flow stays out of the main bundle. Not linked from the menu yet.
   {
     path: "/policies-map",
     element: (
       <Suspense fallback={null}>
-        <PoliciesMapPrototype />
+        <PoliciesMapPage />
       </Suspense>
     ),
   },
