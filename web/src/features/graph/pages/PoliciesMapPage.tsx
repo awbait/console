@@ -9,20 +9,22 @@ import {
 import yaml from "js-yaml";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api/client";
-import { useCatalog } from "../app/CatalogContext";
-import { useTeam } from "../app/TeamContext";
-import { useToast } from "../app/ToastContext";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Button, Select, TextField } from "../components/ui";
-import { environmentsForInstance, instanceTags } from "./policiesMap/environments";
-import { type ImportedValues, ImportValuesDialog } from "./policiesMap/ImportValuesDialog";
+import { api } from "../../../api/client";
+import { useCatalog } from "../../../app/CatalogContext";
+import { useTeam } from "../../../app/TeamContext";
+import { useToast } from "../../../app/ToastContext";
+import { ConfirmDialog } from "../../../components/ConfirmDialog";
+import { Button, Select, TextField } from "../../../components/ui";
+import type { XY } from "../core/model";
+import { environmentsForInstance, instanceTags } from "../environments";
+import { packEditorState } from "../profiles/policies/editorState";
+import { type ImportedValues, ImportValuesDialog } from "../profiles/policies/ImportValuesDialog";
 import {
   type GraphModel,
   PoliciesGraph,
   type PoliciesGraphHandle,
-} from "./policiesMap/PoliciesGraph";
-import { manualProvider } from "./policiesMap/topology";
+} from "../profiles/policies/PoliciesGraph";
+import { manualProvider } from "../profiles/policies/topology";
 import {
   buildValues,
   type EdgeGroup,
@@ -30,13 +32,17 @@ import {
   type IdentityTags,
   partitionEdges,
   validateSubmit,
-} from "./policiesMap/valuesBuilder";
+} from "../profiles/policies/valuesBuilder";
 
 // The pluggable topology source. Manual mode suggests nothing; later tiers
 // (orders data, collector snapshot) return deployed namespaces here.
 const provider = manualProvider;
 
-const EMPTY_MODEL: GraphModel = { topology: [], edges: [], orderNs: null };
+// The page keeps the positions the canvas reports, so a draft created here
+// reopens with the boxes where the user left them.
+type PageModel = GraphModel & { positions?: Record<string, XY> };
+
+const EMPTY_MODEL: PageModel = { topology: [], edges: [], orderNs: null };
 
 // PoliciesMapPage is the network map page: the reusable PoliciesGraph plus a
 // side panel with identity tags, the live values.yaml preview and the order
@@ -47,7 +53,7 @@ export function PoliciesMapPage() {
   const { team } = useTeam();
   const { charts } = useCatalog();
   const graph = useRef<PoliciesGraphHandle>(null);
-  const [model, setModel] = useState<GraphModel>(EMPTY_MODEL);
+  const [model, setModel] = useState<PageModel>(EMPTY_MODEL);
   const [identity, setIdentity] = useState<IdentityTags>(EMPTY_IDENTITY);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   // The pending order groups awaiting confirmation: one draft per group, the
@@ -201,6 +207,14 @@ export function PoliciesMapPage() {
         cluster: "in-cluster",
         namespace: g.ns,
         values: buildValues(topology, g.edges, identity, g.ns),
+        // The canvas as drawn travels with the draft: workloads with no links,
+        // their service accounts and ports and the box positions are not in the
+        // values, and without this they would be gone when the draft is opened.
+        editor_state: packEditorState({
+          orderNs: g.ns,
+          topology,
+          positions: model.positions ?? {},
+        }),
         draft: true,
       });
       created.push(req.id);
@@ -211,7 +225,7 @@ export function PoliciesMapPage() {
         : `Создано черновиков: ${groups.length}. Остальные - в списке заказов.`,
     );
     navigate(`/requests/${created[0]}/edit`);
-  }, [pendingGroups, team, charts, topology, identity, toast, navigate]);
+  }, [pendingGroups, team, charts, topology, identity, model.positions, toast, navigate]);
 
   return (
     <div className="flex h-[calc(100vh-1px)] flex-col">

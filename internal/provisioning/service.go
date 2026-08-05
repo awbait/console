@@ -4,6 +4,7 @@ package provisioning
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -76,9 +77,31 @@ type CreateInput struct {
 	Cluster      string // ArgoCD destination cluster; defaults to the configured cluster when empty.
 	Namespace    string // ArgoCD destination namespace; defaults to ServiceName when empty.
 	Values       map[string]any
+	// EditorState is the opaque UI state of the visual editor that produced the
+	// values (see models.Request.EditorState). Stored as given, never inspected.
+	EditorState json.RawMessage
 	// Draft persists the order in DRAFT without opening an MR. Its values may be
 	// incomplete (schema validation is deferred to Submit).
 	Draft bool
+}
+
+// maxEditorState bounds the opaque editor state: a policies canvas is a few KB,
+// so this only stops a client from parking megabytes on an order.
+const maxEditorState = 256 << 10
+
+// checkEditorState rejects oversized or malformed state. Empty is always fine -
+// it means the client sent none.
+func checkEditorState(b json.RawMessage) error {
+	if len(b) == 0 {
+		return nil
+	}
+	if len(b) > maxEditorState {
+		return &ValidationError{Message: "editor_state is too large"}
+	}
+	if !json.Valid(b) {
+		return &ValidationError{Message: "editor_state must be valid JSON"}
+	}
+	return nil
 }
 
 // UpdateInput patches an existing order. ServiceName/DisplayName are honoured
@@ -91,6 +114,9 @@ type UpdateInput struct {
 	Cluster     string // draft only: change the destination cluster
 	Namespace   string // draft only: change the destination namespace
 	Values      map[string]any
+	// EditorState replaces the stored editor state; nil leaves it untouched, so
+	// a client that does not use the visual editor cannot drop what it holds.
+	EditorState json.RawMessage
 }
 
 // canView / canEdit hold for admins and support across every team, and for
@@ -232,6 +258,32 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 // order of the same chart already deploys the same resource identity into the
 // same namespace+cluster. The DB partial unique index is the race-safe backstop;
 // this pre-check exists only to turn a bare 409 into an actionable message.
+// checkServiceName mirrors the uniq_active_service index (team, chart_name,
+// service_name, cluster among active orders). Without it the collision surfaces
+// as the index's bare "conflict", which tells the user nothing - and for a chart
+// whose view sources the identity from the values (the policies graph names the
+// order after its first policy) it is not even obvious which field to change.
+func (s *Service) checkServiceName(ctx context.Context, r *models.Request) error {
+	if r.ServiceName == "" {
+		return nil
+	}
+	list, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true, Team: r.Team, Chart: r.ChartName})
+	if err != nil {
+		return nil // best-effort; the unique index still guards
+	}
+	for _, ex := range list {
+		if ex.ID == r.ID || ex.DeletedAt != nil {
+			continue
+		}
+		if ex.Cluster == r.Cluster && ex.ServiceName == r.ServiceName {
+			return conflict(
+				"имя %q уже занято другим заказом этого продукта в кластере %q (%q). Выберите другое имя",
+				r.ServiceName, r.Cluster, ex.DisplayName)
+		}
+	}
+	return nil
+}
+
 func (s *Service) checkNamespaceIdentity(ctx context.Context, r *models.Request) error {
 	if r.Namespace == "" || r.ResourceIdentity == "" {
 		return nil
@@ -304,6 +356,9 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if in.Namespace != "" && !validNamespace(in.Namespace) {
 		return nil, &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
 	}
+	if err := checkEditorState(in.EditorState); err != nil {
+		return nil, err
+	}
 	if _, err := s.catalog.GetVersion(ctx, in.ChartProject, in.ChartName, in.Version); err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			return nil, &ValidationError{Message: "unknown chart or version"}
@@ -357,10 +412,14 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		Cluster:       cluster,
 		Namespace:     namespace,
 		ValuesYAML:    valuesYAML,
+		EditorState:   in.EditorState,
 		Status:        models.StatusDraft,
 	}
 	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.ServiceName) // computed once
 	r.ResourceIdentity = s.resourceIdentity(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.ServiceName, in.Values)
+	if err := s.checkServiceName(ctx, r); err != nil {
+		return nil, err
+	}
 	if err := s.checkNamespaceIdentity(ctx, r); err != nil {
 		return nil, err
 	}
@@ -457,6 +516,9 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	if r.DeletedAt != nil {
 		return nil, models.ErrNotFound
 	}
+	if err := checkEditorState(in.EditorState); err != nil {
+		return nil, err
+	}
 	if r.Status == models.StatusDraft {
 		return s.updateDraft(ctx, u, r, in)
 	}
@@ -489,6 +551,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	}
 	r.ChartVersion = version
 	r.ValuesYAML = valuesYAML
+	r.EditorState = in.EditorState // nil keeps what the store already holds
 	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
 	actions := []gitlab.FileAction{
 		{Action: "update", FilePath: s.gitops.AppPath(r.Cluster, r.ServiceName), Content: appYAML},
@@ -553,7 +616,11 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		return nil, err
 	}
 	r.ValuesYAML = valuesYAML
+	r.EditorState = in.EditorState // nil keeps what the store already holds
 	r.ResourceIdentity = s.resourceIdentity(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.ServiceName, in.Values)
+	if err := s.checkServiceName(ctx, r); err != nil {
+		return nil, err
+	}
 	if err := s.checkNamespaceIdentity(ctx, r); err != nil {
 		return nil, err
 	}

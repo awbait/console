@@ -74,6 +74,9 @@ export interface OrderRequest {
   drift_detail?: string;
   // True for orders discovered/adopted from Git (created outside the portal).
   imported: boolean;
+  // Opaque state of the visual values editor that produced the values (see
+  // ValuesEditorProps.editorState). Only single-order reads carry it.
+  editor_state?: unknown;
 }
 
 export interface RequestMR {
@@ -375,6 +378,8 @@ export interface CreateOrderBody {
   cluster?: string; // ArgoCD destination cluster
   namespace?: string; // ArgoCD destination namespace
   values: Record<string, unknown>;
+  // Opaque state of the visual values editor, stored with the order.
+  editor_state?: unknown;
   draft?: boolean; // persist as DRAFT without opening an MR
 }
 
@@ -387,6 +392,8 @@ export interface UpdateOrderBody {
   cluster?: string;
   namespace?: string;
   values: Record<string, unknown>;
+  // Replaces the stored editor state; omitted leaves it untouched.
+  editor_state?: unknown;
 }
 
 export interface FieldError {

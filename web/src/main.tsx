@@ -23,10 +23,10 @@ import { ChartDetailPage } from "./pages/ChartDetailPage";
 import { ChartManagePage } from "./pages/ChartManagePage";
 import { ChartVersionEditPage } from "./pages/ChartVersionEditPage";
 import { DocsPage } from "./pages/DocsPage";
-import { OrderPage } from "./pages/OrderPage";
+import { OrderPage } from "./features/orders/OrderPage";
 import { ProductPage } from "./pages/ProductPage";
-import { RequestDetailPage } from "./pages/RequestDetailPage";
-import { RequestsPage } from "./pages/RequestsPage";
+import { RequestDetailPage } from "./features/orders/RequestDetailPage";
+import { RequestsPage } from "./features/orders/RequestsPage";
 import {
   KyvernoPage,
   PolicyApprovalPage,
@@ -36,9 +36,17 @@ import {
 import { StatusPage } from "./pages/StatusPage";
 import { SupportOverviewPage, SupportRequestsPage, SupportSection } from "./pages/SupportSection";
 
-// Network map page; lazy so @xyflow/react is split off the main bundle.
+// Graph pages; lazy so @xyflow/react is split off the main bundle.
 const PoliciesMapPage = lazy(() =>
-  import("./pages/PoliciesMapPage").then((m) => ({ default: m.PoliciesMapPage })),
+  import("./features/graph/pages/PoliciesMapPage").then((m) => ({ default: m.PoliciesMapPage })),
+);
+const EventMeshPage = lazy(() =>
+  import("./features/graph/pages/EventMeshPage").then((m) => ({ default: m.EventMeshPage })),
+);
+const ResourceTopologyPage = lazy(() =>
+  import("./features/graph/pages/ResourceTopologyPage").then((m) => ({
+    default: m.ResourceTopologyPage,
+  })),
 );
 
 // Role-aware landing: security users open their section by default; everyone
@@ -126,13 +134,31 @@ const router = createBrowserRouter([
   // button to return to. Kept outside the Layout route on purpose.
   { path: "/docs", element: <DocsPage /> },
   { path: "/docs/:slug", element: <DocsPage /> },
-  // Full-screen network map editor, outside the portal Layout. Lazy-loaded so
-  // React Flow stays out of the main bundle. Not linked from the menu yet.
+  // Full-screen graph pages, outside the portal Layout. Lazy-loaded so React
+  // Flow stays out of the main bundle. Not linked from the menu yet: the
+  // policies map is the editor, the other two are read-only samples of the same
+  // canvas rendering another domain.
   {
     path: "/policies-map",
     element: (
       <Suspense fallback={null}>
         <PoliciesMapPage />
+      </Suspense>
+    ),
+  },
+  {
+    path: "/graph/event-mesh",
+    element: (
+      <Suspense fallback={null}>
+        <EventMeshPage />
+      </Suspense>
+    ),
+  },
+  {
+    path: "/graph/topology",
+    element: (
+      <Suspense fallback={null}>
+        <ResourceTopologyPage />
       </Suspense>
     ),
   },

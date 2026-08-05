@@ -344,3 +344,136 @@
 .react-flow__handle.rf-port.rf-port--avail {
   opacity: 0.65;
 }
+
+/* --- Core canvas card (read-only profiles) ------------------------------- */
+/* Same shape, spacing and type scale as the policies workload card above, so
+   an event-mesh or topology graph reads as the same product. The differences
+   are deliberate: no interactive handles, and the kind badge carries the tone
+   a profile assigns to its node kinds. */
+.rf-card {
+  position: relative;
+  width: 230px;
+  border: 1px solid rgb(var(--c-neutral-200));
+  border-radius: 10px;
+  background: rgb(var(--c-surface));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  font-size: 12px;
+}
+
+.rf-card--invalid {
+  border-color: rgb(var(--c-danger-500));
+  box-shadow: 0 0 0 1px rgb(var(--c-danger-500) / 0.4);
+}
+
+.rf-card__head {
+  position: relative;
+  padding: 7px 10px 6px;
+  border-bottom: 1px solid rgb(var(--c-neutral-100));
+}
+
+.rf-card__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rf-card__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: rgb(var(--c-neutral-900));
+}
+
+.rf-card__badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgb(var(--c-neutral-100));
+  color: rgb(var(--c-neutral-500));
+}
+
+.rf-card__badge--accent {
+  background: rgb(var(--c-info-50));
+  color: rgb(var(--c-info-600));
+}
+
+.rf-card__badge--warn {
+  background: rgb(var(--c-warning-50));
+  color: rgb(var(--c-warning-700));
+}
+
+.rf-card__badge--muted {
+  background: rgb(var(--c-neutral-100));
+  color: rgb(var(--c-neutral-400));
+}
+
+.rf-card__sub {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 3px;
+  min-width: 0;
+}
+
+.rf-card__sub-label {
+  flex: none;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(var(--c-neutral-400));
+}
+
+.rf-card__sub-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: rgb(var(--c-neutral-500));
+}
+
+.rf-card__rows {
+  position: relative;
+}
+
+.rf-card__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 14px;
+  color: rgb(var(--c-neutral-600));
+}
+
+.rf-card__row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.rf-card__row-name {
+  font-weight: 600;
+  color: rgb(var(--c-neutral-800));
+}
+
+.rf-card__row-tag {
+  margin-left: 4px;
+  font-size: 10px;
+  color: rgb(var(--c-neutral-400));
+}
+
+.rf-card__empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: rgb(var(--c-neutral-400));
+}

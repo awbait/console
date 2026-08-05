@@ -2,30 +2,36 @@ import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TabList, TabPanel, Tabs } from "react-aria-components";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, HttpError } from "../api/client";
-import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "../api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
-import { useTeam } from "../app/TeamContext";
-import { useUser } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { FormErrors } from "../components/FormErrors";
-import { NotFound } from "../components/NotFound";
-import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
+import { api, HttpError } from "../../api/client";
+import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "../../api/types";
+import { chartLabel, findCatalogChart, useCatalog } from "../../app/CatalogContext";
+import { useTeam } from "../../app/TeamContext";
+import { useUser } from "../../auth/UserContext";
+import { Breadcrumbs } from "../../components/Breadcrumbs";
+import { FormErrors } from "../../components/FormErrors";
+import { NotFound } from "../../components/NotFound";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
-} from "../components/products/GenericProductTabs";
-import { actionViews, productTabs } from "../components/products/genericView";
-import { valuesEditorPlugins } from "../components/products/valuesEditors";
-import { Button, Card, ErrorBox, Spinner } from "../components/ui";
-import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
-import { collectErrors, pruneEmpty } from "../form/SchemaForm";
-import { useAsync } from "../hooks/useAsync";
-import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../lib/semver";
+} from "../../components/products/GenericProductTabs";
+import { actionViews, productTabs } from "../../components/products/genericView";
+import { Button, Card, ErrorBox, Spinner } from "../../components/ui";
+import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../../form/namespace";
+import { collectErrors, pruneEmpty } from "../../form/SchemaForm";
+import { useAsync } from "../../hooks/useAsync";
+import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
+import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";
+import { valuesEditorPlugins } from "./valuesEditors";
 
 type Values = Record<string, unknown>;
+
+// Shown when a view sources the deploy identity from the values but the field
+// is still empty - e.g. the policies graph has no links yet, so there is no
+// first policy to take the name from. Without this the empty name reaches the
+// backend and comes back as a bare "service_name must be a valid Kubernetes name".
+const IDENTITY_MISSING = "Не удалось определить имя сервиса. Заполните данные заказа, из которых оно берётся.";
 
 // readPointer resolves a JSON Pointer (e.g. "/gateways/0/name") to a string.
 // Used to source the deploy identity (service_name) from a values field that a
@@ -116,8 +122,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Raw-YAML parse error carried into a values-editor plugin (the plugin shows
   // it instead of a graph and leaves the user's YAML untouched).
   const [pluginInputError, setPluginInputError] = useState<string | null>(null);
-  // Opaque plugin editor state (e.g. the policies graph topology extras) kept
-  // across mode switches; a ref is enough - only the plugin reads it on mount.
+  // Opaque plugin editor state (e.g. the policies graph topology extras). A ref
+  // is enough while the page lives - only the plugin reads it, on mount - but it
+  // also travels to the backend with every save, so what the canvas holds beyond
+  // the values (unlinked workloads, their SA and ports, empty namespaces, node
+  // positions) is still there when the draft is reopened.
   const pluginStateRef = useRef<unknown>(null);
   const [submitErr, setSubmitErr] = useState<{ message: string; details?: FieldError[] } | null>(null);
   const [busy, setBusy] = useState<null | "draft" | "submit">(null);
@@ -219,6 +228,14 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     [mode, schema, effectiveValues, orderView],
   );
 
+  // A save error describes the order as it was sent, so any later edit makes it
+  // stale: clear it on the next change instead of leaving it on screen until the
+  // user saves again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the edits to react to, not values the body reads
+  useEffect(() => {
+    setSubmitErr(null);
+  }, [values, raw, serviceName, namespace, cluster, mode]);
+
   // Hydrate the form from the draft once (edit mode only).
   const hydrated = useRef(false);
   useEffect(() => {
@@ -232,6 +249,8 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     } catch {
       setValues({});
     }
+    // The canvas extras the values cannot express; the plugin reads them on mount.
+    pluginStateRef.current = draft.editor_state ?? null;
     hydrated.current = true;
   }, [editing, draft]);
 
@@ -315,6 +334,25 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     return { values: finalValues, svcName, destNamespace };
   }
 
+  // editorState is what the visual editor holds beyond the values. undefined
+  // means "send nothing", which leaves the stored state untouched - the plain
+  // form and the YAML editor must not wipe what the graph saved.
+  function editorState(): unknown {
+    return pluginStateRef.current ?? undefined;
+  }
+
+  // sentName is the deploy identity to send with a save. A chart whose view
+  // sources it from the values (the policies graph names the order after its
+  // first policy) keeps the name it was created with: editing values must not
+  // rename the order behind the user's back. It renamed silently before, and
+  // since the name is unique per team/chart/cluster, two orders built from
+  // similar graphs collided on a name neither user ever typed. Charts with a
+  // "Service name" input keep sending it - there the user renames on purpose.
+  function sentName(svcName: string): string | undefined {
+    if (editing && identity) return undefined;
+    return svcName || undefined;
+  }
+
   function fail(e: unknown) {
     if (e instanceof HttpError) {
       // An open MR blocks the change: explain it in Russian instead of the bare
@@ -332,15 +370,23 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setSubmitErr(null);
     const c = collectValues();
     if (!c) return;
+    // A new order carries its name from the start; editing keeps the saved one
+    // (the name is sent only when resolved), so the guard is create-only.
+    if (!editing && !c.svcName) {
+      setShowErrors(true);
+      setSubmitErr({ message: identity ? IDENTITY_MISSING : "Укажите имя сервиса." });
+      return;
+    }
     setBusy("draft");
     try {
       if (editing) {
         await api.updateRequest(id!, {
-          service_name: c.svcName || undefined,
+          service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
           values: c.values,
+          editor_state: editorState(),
         });
       } else {
         await api.createRequest({
@@ -352,6 +398,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
           values: c.values,
+          editor_state: editorState(),
           draft: true,
         });
       }
@@ -376,9 +423,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     }
     const c = collectValues();
     if (!c) return;
-    if (!c.svcName) {
+    // Only block when the name is actually needed: an existing draft keeps the
+    // one it already has and does not send a new one.
+    if (!c.svcName && !(editing && identity)) {
       setShowErrors(true);
-      setSubmitErr({ message: identity ? "Укажите идентификатор в форме" : "Укажите имя сервиса" });
+      setSubmitErr({ message: identity ? IDENTITY_MISSING : "Укажите имя сервиса." });
       return;
     }
     if (!cluster || !c.destNamespace) {
@@ -402,11 +451,12 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       if (editing) {
         // Persist the latest edits, then finalise (opens the create MR).
         await api.updateRequest(id!, {
-          service_name: c.svcName,
+          service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           cluster,
           namespace: c.destNamespace,
           values: c.values,
+          editor_state: editorState(),
         });
         req = await api.submitRequest(id!);
       } else {
@@ -420,6 +470,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           cluster,
           namespace: c.destNamespace,
           values: c.values,
+          editor_state: editorState(),
         });
       }
       navigate(`/requests/${req.id}`);

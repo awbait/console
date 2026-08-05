@@ -1,7 +1,10 @@
 // Package models holds the domain types shared across the portal.
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // RequestStatus is the lifecycle state of an order (see spec FSM).
 type RequestStatus string
@@ -106,6 +109,13 @@ type Request struct {
 	// of one chart from colliding on resource names in a namespace.
 	ResourceIdentity string        `json:"resource_identity"`
 	ValuesYAML       string        `json:"values_yaml"`
+	// EditorState is opaque UI state of the visual values editor that produced
+	// the values (the policies graph and any future graph profile): a
+	// {profile, version, data} document holding what values cannot express -
+	// unlinked workloads, their service accounts and ports, empty namespaces,
+	// node positions. The backend stores and returns it untouched; only single
+	// order reads carry it, lists leave it out.
+	EditorState json.RawMessage `json:"editor_state,omitempty"`
 	Status           RequestStatus `json:"status"`
 	ArgoCDAppName    string        `json:"argocd_app_name"`
 	Version          int           `json:"version"` // optimistic lock

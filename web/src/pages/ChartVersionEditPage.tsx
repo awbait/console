@@ -46,7 +46,7 @@ import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { ProductIcon } from "../components/icons";
-import { OrderMetaCard, OrderValuesCard } from "../components/OrderFormParts";
+import { OrderMetaCard, OrderValuesCard } from "../features/orders/OrderFormParts";
 import type { PersistValues } from "../components/products/GenericProductTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button, Card, Chip, ErrorBox, Spinner } from "../components/ui";
@@ -55,7 +55,7 @@ import { pruneEmpty, type View } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
 import { RejectedChip, STATUS_LABELS, versionHint } from "./ChartManagePage";
-import { Meta, ProductView } from "./requestDetailParts";
+import { Meta, ProductView } from "../features/orders/requestDetailParts";
 
 type Values = Record<string, unknown>;
 

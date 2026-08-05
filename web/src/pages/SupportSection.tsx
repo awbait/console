@@ -13,7 +13,7 @@ import { api } from "../api/client";
 import type { OrderRequest, RequestStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
 import { ProductIcon } from "../components/icons";
-import { OrdersTable } from "../components/OrdersTable";
+import { OrdersTable } from "../features/orders/OrdersTable";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorBox, Spinner } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";

@@ -41,6 +41,14 @@ func NewMemory() *Memory {
 
 func clone[T any](v *T) *T { cp := *v; return &cp }
 
+// listed clones an order the way a list query returns it: without the editor
+// state, which Postgres reads only for a single order (it can be large).
+func listed(r *models.Request) *models.Request {
+	cp := clone(r)
+	cp.EditorState = nil
+	return cp
+}
+
 // stamp returns a strictly increasing timestamp so insertion order is
 // recoverable even when the wall clock has coarse resolution (e.g. Windows,
 // where two quick calls can return the same time). Callers must hold m.mu.
@@ -130,7 +138,7 @@ func (m *Memory) ListRequests(ctx context.Context, f RequestFilter) ([]*models.R
 		if f.Chart != "" && r.ChartName != f.Chart {
 			continue
 		}
-		out = append(out, clone(r))
+		out = append(out, listed(r))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out, nil
@@ -165,6 +173,11 @@ func (m *Memory) UpdateRequest(ctx context.Context, r *models.Request) error {
 	r.Version = cur.Version + 1
 	r.UpdatedAt = m.stamp()
 	r.CreatedAt = cur.CreatedAt
+	// Mirror Postgres: no editor state passed means keep the stored one (list
+	// reads carry none), an explicit JSON null clears it.
+	if r.EditorState == nil {
+		r.EditorState = cur.EditorState
+	}
 	m.requests[r.ID] = clone(r)
 	return nil
 }
@@ -193,7 +206,7 @@ func (m *Memory) ListActive(ctx context.Context) ([]*models.Request, error) {
 		if isTerminal(r.Status) {
 			continue
 		}
-		out = append(out, clone(r))
+		out = append(out, listed(r))
 	}
 	return out, nil
 }

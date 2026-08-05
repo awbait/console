@@ -41,17 +41,17 @@ import {
   IconTrash,
   IconX,
 } from "@tabler/icons-react";
-import { Card } from "../components/ui";
-import { safeHref } from "../lib/href";
-import { StatusBadge, statusMeta } from "../components/StatusBadge";
-import { useTheme } from "../app/ThemeContext";
-import { productTabs } from "../components/products/genericView";
+import { Card } from "../../components/ui";
+import { safeHref } from "../../lib/href";
+import { StatusBadge, statusMeta } from "../../components/StatusBadge";
+import { useTheme } from "../../app/ThemeContext";
+import { productTabs } from "../../components/products/genericView";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
-} from "../components/products/GenericProductTabs";
-import type { OrderRequest, RequestDetail, RequestEvent, RequestMR, ViewDocument } from "../api/types";
+} from "../../components/products/GenericProductTabs";
+import type { OrderRequest, RequestDetail, RequestEvent, RequestMR, ViewDocument } from "../../api/types";
 
 export function Meta({
   label,
