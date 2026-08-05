@@ -47,6 +47,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { ProductIcon } from "../components/icons";
 import { OrderMetaCard, OrderValuesCard } from "../features/orders/OrderFormParts";
+import { valuesEditorFor } from "../features/orders/valuesEditors";
 import type { PersistValues } from "../components/products/GenericProductTabs";
 import { StatusBadge } from "../components/StatusBadge";
 import { Button, Card, Chip, ErrorBox, Spinner } from "../components/ui";
@@ -625,8 +626,8 @@ function FormatHelp() {
                 </div>
                 <div className="overflow-y-auto text-xs leading-relaxed text-slate-600">
                   <p className="mb-1.5">
-                    Документ из трёх разделов: <b>views</b> (формы), <b>tabs</b> (вкладки-таблицы), <b>actions</b>{" "}
-                    (пункты меню «Действия»).
+                    Документ из разделов: <b>views</b> (формы), <b>tabs</b> (вкладки-таблицы), <b>actions</b>{" "}
+                    (пункты меню «Действия»), <b>graph</b> (визуальный редактор values).
                   </p>
                   <ul className="flex list-disc flex-col gap-1.5 pl-4">
                     <li>
@@ -662,6 +663,18 @@ function FormatHelp() {
                       (меню вкладки «Общая информация») или{" "}
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'"tab:<id>"'}</code>{" "}
                       (меню вкладки из <b>tabs</b>). <b>label</b> задаёт текст пункта.
+                    </li>
+                    <li>
+                      <b>graph</b> (необязательно): включает для этой версии визуальный редактор values - в форме
+                      заказа рядом с «Форма» и «YAML» появляется вкладка «Граф». Чарту, который называет поля по
+                      соглашению, достаточно{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"profile":"policies"}'}</code>.
+                      Если поля названы иначе, их можно переименовать здесь же: <b>entries</b> (JSON pointer на
+                      список записей),{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">{'{"entry":{"selector":"podSelector"}}'}</code>,{" "}
+                      а также <b>rule</b> и <b>peer</b>. <b>enabled: false</b> выключает редактор, не удаляя
+                      настройку. Поля проверяются по values.schema.json этой версии, поэтому несовпадение видно
+                      здесь, а не у пользователя при заказе.
                     </li>
                     <li>
                       <b>include</b> / <b>exclude</b>: какие поля показать или скрыть. <b>overrides</b>: настройка
@@ -820,13 +833,21 @@ function PreviewPane({
   const [mode, setMode] = useState<string>("form");
   const [raw, setRaw] = useState("");
 
-  // The same form/raw switching logic as on the order page (no plugins here:
-  // the constructor preview keeps just Form/Raw YAML).
+  // The extra values editor the document under edit turns on. Reading it from
+  // the draft means the author sees the tab appear as soon as the "graph" block
+  // is valid, which is the whole point of previewing.
+  const editor = useMemo(() => valuesEditorFor(doc), [doc]);
+  // Canvas state the editor keeps beyond the values; the preview holds it for
+  // the session so switching tabs does not wipe what was drawn.
+  const editorStateRef = useRef<unknown>(null);
+
+  // The same form/raw switching logic as on the order page. Leaving raw adopts
+  // the YAML; a plugin mode is entered with the values as they are.
   function switchMode(next: string) {
     if (next === mode) return;
     if (next === "raw") {
       setRaw(yaml.dump(pruneEmpty(values)));
-    } else {
+    } else if (mode === "raw") {
       try {
         setValues((yaml.load(raw) as Values) ?? {});
       } catch {
@@ -835,6 +856,12 @@ function PreviewPane({
     }
     setMode(next);
   }
+
+  // The tab disappears while the author edits the block; do not leave the card
+  // in a mode that no longer exists.
+  useEffect(() => {
+    if (mode !== "form" && mode !== "raw" && editor?.plugin.id !== mode) setMode("form");
+  }, [editor, mode]);
 
   const team = user?.teams?.[0] ?? "team";
   const svcName = (identity ? readPointer(values, identity) : serviceName) || "demo-service";
@@ -911,6 +938,13 @@ function PreviewPane({
               onSwitchMode={switchMode}
               raw={raw}
               onRaw={setRaw}
+              editor={editor}
+              pluginNamespace={resolveDestNamespace(ns, namespace, values)}
+              pluginChartVersion={version}
+              pluginState={editorStateRef.current}
+              onPluginState={(st) => {
+                editorStateRef.current = st;
+              }}
             />
           </>
         ) : (

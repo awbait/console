@@ -1,10 +1,16 @@
-// Registry of chart-specific extra values editors for the order form. The
-// portal stays chart-agnostic: a plugin is an optional UI upgrade keyed by
-// chart name - the schema form and the raw YAML editor keep working for every
-// chart regardless.
+// The extra values editor a chart version can turn on, on top of the schema form
+// and the raw YAML.
+//
+// The portal stays chart-agnostic: it knows domains, not charts. Which editor a
+// version uses, and where that editor's fields live in the values, is declared by
+// the version's own view document (the "graph" block, see
+// features/graph/mapping.ts and internal/views/graph.go). So adding the graph to
+// a chart is editing that chart's view document, not shipping a portal release,
+// and two versions of one chart can carry two different mappings.
 
 import { type ComponentType, lazy } from "react";
-import { compareSemver } from "../../lib/semver";
+import type { ViewDocument } from "../../api/types";
+import { type GraphMapping, readGraphMapping } from "../graph/mapping";
 
 type Values = Record<string, unknown>;
 
@@ -13,16 +19,17 @@ export interface ValuesEditorProps {
   onValues: (v: Values) => void;
   // The order (destination) namespace; empty string until the user fills it.
   namespace: string;
-  // Chart version being ordered. Always one this plugin declares support for
-  // (see chartVersions below); plugins stamp it into whatever they persist so a
-  // later read can tell which values shape the state was produced against.
+  // Chart version being ordered. Editors stamp it into whatever they persist so
+  // a later read can tell which values shape the state was produced against.
   chartVersion: string;
+  // Where this chart version keeps the fields the editor reads and writes.
+  mapping: GraphMapping;
   readOnly?: boolean;
-  // Set when the raw YAML could not be parsed on switching into the plugin:
-  // the plugin must show the error and leave the values untouched.
+  // Set when the raw YAML could not be parsed on switching into the editor:
+  // it must show the error and leave the values untouched.
   inputError?: string | null;
-  // Opaque editor state that survives mode switches (the plugin unmounts when
-  // another mode is active): the plugin reads it on mount and reports updates.
+  // Opaque editor state that survives mode switches (the editor unmounts when
+  // another mode is active): it reads this on mount and reports updates.
   editorState?: unknown;
   onEditorState?: (s: unknown) => void;
 }
@@ -32,16 +39,6 @@ export interface ValuesEditorPlugin {
   label: string;
   // Small highlight next to the label (e.g. "new").
   badge?: string;
-  // Chart versions whose values this plugin knows how to read and write, as the
-  // half-open range [since, before). A plugin does not just display values, it
-  // rewrites them through a mapping written against one concrete shape, so a
-  // chart that has moved past that shape must fall back to the form and the raw
-  // YAML instead of being edited through a stale mapping.
-  //
-  // This is where the mapping is bound to a chart version until the binding
-  // moves into the version's own view document (`views.graph`), which is what
-  // finally lets two versions of one chart carry two different mappings.
-  chartVersions: { since: string; before: string };
   // Lazy so heavy editors (React Flow) stay out of the main bundle.
   Component: ComponentType<ValuesEditorProps>;
 }
@@ -50,9 +47,6 @@ const policiesGraph: ValuesEditorPlugin = {
   id: "graph",
   label: "Граф",
   badge: "новое",
-  // Written against the policies values of 0.3.x. Below 1.0 a minor bump is
-  // allowed to break the shape, so the range ends at the next minor.
-  chartVersions: { since: "0.3.0", before: "0.4.0" },
   Component: lazy(() =>
     import("../graph/profiles/policies/PoliciesValuesEditor").then((m) => ({
       default: m.PoliciesValuesEditor,
@@ -60,29 +54,25 @@ const policiesGraph: ValuesEditorPlugin = {
   ),
 };
 
-const REGISTRY: Record<string, ValuesEditorPlugin[]> = {
-  policies: [policiesGraph],
+// Domains the portal implements, keyed by profile id. This is the closed list:
+// the semantics of a domain are behaviour and live in code, while the field names
+// they read come from the chart.
+const PROFILES: Record<string, ValuesEditorPlugin> = {
+  policies: policiesGraph,
 };
 
-// Bounds are compared against the release the version belongs to, so a
-// pre-release counts as its own release: 0.4.0-rc1 already carries the 0.4
-// values and is out of a range ending at 0.4.0.
-const release = (version: string) => version.split("-")[0];
-
-export function supportsChartVersion(plugin: ValuesEditorPlugin, chartVersion: string): boolean {
-  // No version, no plugin: the mapping is only safe on a version it was written
-  // for, and guessing costs the user their values.
-  if (!chartVersion) return false;
-  const v = release(chartVersion);
-  return (
-    compareSemver(v, plugin.chartVersions.since) >= 0 &&
-    compareSemver(v, plugin.chartVersions.before) < 0
-  );
+export interface ActiveValuesEditor {
+  plugin: ValuesEditorPlugin;
+  mapping: GraphMapping;
 }
 
-export function valuesEditorPlugins(
-  chartName: string,
-  chartVersion: string,
-): ValuesEditorPlugin[] {
-  return (REGISTRY[chartName] ?? []).filter((p) => supportsChartVersion(p, chartVersion));
+// valuesEditorFor returns the editor a version's view document turns on, or null
+// when it turns on none: no "graph" block, the block switched off, or a profile
+// this portal does not implement. Null means the order form keeps the form and
+// the raw YAML, which work for every chart regardless.
+export function valuesEditorFor(doc: ViewDocument | null | undefined): ActiveValuesEditor | null {
+  const mapping = readGraphMapping(doc);
+  if (!mapping) return null;
+  const plugin = PROFILES[mapping.profile];
+  return plugin ? { plugin, mapping } : null;
 }

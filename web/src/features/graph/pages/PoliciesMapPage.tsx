@@ -15,7 +15,8 @@ import { useTeam } from "../../../app/TeamContext";
 import { useToast } from "../../../app/ToastContext";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { Button, Select, TextField } from "../../../components/ui";
-import { valuesEditorPlugins } from "../../orders/valuesEditors";
+import { useAsync } from "../../../hooks/useAsync";
+import { readGraphMapping } from "../mapping";
 import type { XY } from "../core/model";
 import { environmentsForInstance, instanceTags } from "../environments";
 import { packEditorState } from "../profiles/policies/editorState";
@@ -65,6 +66,35 @@ export function PoliciesMapPage() {
   // described. Regenerating that same namespace writes back into those entries,
   // so pasted values keep their names and the keys the graph does not know.
   const [imported, setImported] = useState<{ ns: string; policies: unknown } | null>(null);
+
+  // The chart the map orders into and the version a draft would be created on.
+  const chart = useMemo(
+    () =>
+      charts.find((c) => c.name === "policies" && c.publication?.published) ??
+      charts.find((c) => c.name === "policies") ??
+      null,
+    [charts],
+  );
+  const chartVersion =
+    chart?.publication?.recommended_version ||
+    chart?.publication?.orderable_versions?.[0] ||
+    chart?.latest_version ||
+    "";
+
+  // The map writes values, so it needs the field mapping of the exact version it
+  // will order on - it comes from that version's view document, the same one the
+  // order form reads. Without it the map can draw but cannot generate values.
+  const { data: mapping } = useAsync(
+    async (signal) => {
+      if (!chart || !chartVersion) return null;
+      const doc = await api
+        .getChartView(chart.project, chart.name, chartVersion, signal)
+        .catch(() => null);
+      const m = readGraphMapping(doc);
+      return m && m.profile === "policies" ? m : null;
+    },
+    [chart?.project, chart?.name, chartVersion],
+  );
 
   useEffect(() => {
     provider.suggestNamespaces().then(setSuggestions).catch(() => setSuggestions([]));
@@ -120,17 +150,20 @@ export function PoliciesMapPage() {
   // values.yaml of the selected group is rebuilt straight from the edges on
   // every change: the edges are the model, there is no intermediate JSON.
   const valuesYaml = useMemo(() => {
-    if (!previewGroup || !orderNs) return "";
+    if (!previewGroup || !orderNs || !mapping) return "";
     const prev = imported?.ns === previewGroup.ns ? imported.policies : undefined;
     // noRefs: with bidirectional links the same selector object lands in the
     // values twice and js-yaml would emit &ref_0/*ref_0 anchors - dump plain
     // copies instead.
-    return yaml.dump(buildValues(topology, previewGroup.edges, identity, previewGroup.ns, prev), {
-      lineWidth: 100,
-      sortKeys: false,
-      noRefs: true,
-    });
-  }, [topology, previewGroup, identity, orderNs, imported]);
+    return yaml.dump(
+      buildValues(topology, previewGroup.edges, identity, previewGroup.ns, mapping, prev),
+      {
+        lineWidth: 100,
+        sortKeys: false,
+        noRefs: true,
+      },
+    );
+  }, [topology, previewGroup, identity, orderNs, imported, mapping]);
 
   // Copy the generated values.yaml. navigator.clipboard needs a secure
   // context, which the dev stand over plain http lacks - fall back to the
@@ -198,25 +231,17 @@ export function PoliciesMapPage() {
     if (!team) throw new Error("Не выбрана команда - откройте портал и выберите команду.");
     const chart = charts.find((c) => c.name === "policies" && c.publication?.published) ??
       charts.find((c) => c.name === "policies");
-    if (!chart) throw new Error("Чарт policies не найден в каталоге.");
-    // The map writes values through the graph mapping, so the draft has to be
-    // created on a version that mapping covers - the recommended version is not
-    // automatically one of them once the chart moves on.
-    const version = [
-      chart.publication?.recommended_version,
-      ...(chart.publication?.orderable_versions ?? []),
-      chart.latest_version,
-    ].find((v) => !!v && valuesEditorPlugins("policies", v).some((p) => p.id === "graph"));
-    if (!version) {
+    if (!chart || !chartVersion) throw new Error("Чарт policies не найден в каталоге.");
+    if (!mapping) {
       throw new Error(
-        "Ни одна доступная версия policies не поддерживается картой. Соберите заказ через форму сервиса.",
+        `Версия ${chartVersion} чарта policies не включает граф, поэтому карта не может собрать заказ. Соберите его через форму сервиса.`,
       );
     }
     const created: string[] = [];
     for (const g of groups) {
       const req = await api.createRequest({
         chart: `${chart.project}/${chart.name}`,
-        version,
+        version: chartVersion,
         team,
         service_name: `policies-${g.ns}`.slice(0, 40).replace(/-+$/, ""),
         display_name: `Policies (${g.ns})`,
@@ -227,6 +252,7 @@ export function PoliciesMapPage() {
           g.edges,
           identity,
           g.ns,
+          mapping,
           imported?.ns === g.ns ? imported.policies : undefined,
         ),
         // The canvas as drawn travels with the draft: workloads with no links,
@@ -234,7 +260,7 @@ export function PoliciesMapPage() {
         // values, and without this they would be gone when the draft is opened.
         editor_state: packEditorState(
           { orderNs: g.ns, topology, positions: model.positions ?? {} },
-          version,
+          chartVersion,
         ),
         draft: true,
       });
@@ -246,7 +272,19 @@ export function PoliciesMapPage() {
         : `Создано черновиков: ${groups.length}. Остальные - в списке заказов.`,
     );
     navigate(`/requests/${created[0]}/edit`);
-  }, [pendingGroups, team, charts, topology, identity, imported, model.positions, toast, navigate]);
+  }, [
+    pendingGroups,
+    team,
+    chart,
+    chartVersion,
+    mapping,
+    topology,
+    identity,
+    imported,
+    model.positions,
+    toast,
+    navigate,
+  ]);
 
   return (
     <div className="flex h-[calc(100vh-1px)] flex-col">
@@ -365,11 +403,14 @@ export function PoliciesMapPage() {
         </aside>
       </div>
 
-      <ImportValuesDialog
-        isOpen={importOpen}
-        onOpenChange={setImportOpen}
-        onLoad={importValues}
-      />
+      {mapping && (
+        <ImportValuesDialog
+          isOpen={importOpen}
+          onOpenChange={setImportOpen}
+          onLoad={importValues}
+          mapping={mapping}
+        />
+      )}
 
       <ConfirmDialog
         isOpen={pendingGroups !== null}

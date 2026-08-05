@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import { FormErrors } from "../../../../components/FormErrors";
 import { namespaceError } from "../../../../form/namespace";
 import type { ValuesEditorProps } from "../../../orders/valuesEditors";
+import { readEntries, writeEntries } from "../../mapping";
 import { packEditorState, readEditorState } from "./editorState";
 import { type GraphModel, PoliciesGraph, type XY } from "./PoliciesGraph";
 import { buildPolicies } from "./valuesBuilder";
@@ -21,6 +22,7 @@ export function PoliciesValuesEditor({
   onValues,
   namespace,
   chartVersion,
+  mapping,
   readOnly,
   inputError,
   editorState,
@@ -32,6 +34,8 @@ export function PoliciesValuesEditor({
   stateRef.current = editorState;
   const versionRef = useRef(chartVersion);
   versionRef.current = chartVersion;
+  const mappingRef = useRef(mapping);
+  mappingRef.current = mapping;
 
   // Parse once per namespace (the graph below is keyed by it): after that the
   // graph owns policies[], and re-parsing every regenerated values would fight
@@ -39,7 +43,7 @@ export function PoliciesValuesEditor({
   // the graph - rebuild around it.
   const parsed = useMemo(() => {
     if (inputError || !namespace || namespaceError(namespace)) return null;
-    const p = parseValues(valuesRef.current, namespace);
+    const p = parseValues(valuesRef.current, namespace, mappingRef.current);
     if (p.errors.length > 0) return p;
     const saved = readEditorState(stateRef.current, versionRef.current);
     return mergeWithSaved(p, saved && saved.orderNs === namespace ? saved : null);
@@ -92,10 +96,19 @@ export function PoliciesValuesEditor({
     // The current values are also the previous generation: passing their
     // policies[] back in keeps entry names and any key the graph does not know
     // (a newer chart, another editing mode) instead of rewriting the section.
-    onValues({
-      ...valuesRef.current,
-      policies: buildPolicies(m.topology, m.edges, namespace, valuesRef.current.policies),
-    });
+    onValues(
+      writeEntries(
+        valuesRef.current,
+        mapping.entries,
+        buildPolicies(
+          m.topology,
+          m.edges,
+          namespace,
+          mapping,
+          readEntries(valuesRef.current, mapping.entries),
+        ),
+      ),
+    );
   };
 
   return (

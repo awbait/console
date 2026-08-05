@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Edge } from "@xyflow/react";
 import { type TopoNamespace, type TopoWorkload, workloadId } from "./topology";
+import { defaultMapping } from "../../mapping";
 import { buildPolicies, partitionEdges } from "./valuesBuilder";
 import { parseValues } from "./valuesParser";
 import { bodyHandleId, portHandleId } from "./WorkloadNode";
@@ -32,6 +33,8 @@ function arrow(id: string, sourceNs: string, targetNs: string): Edge {
     targetHandle: portHandleId(port, "l"),
   };
 }
+
+const M = defaultMapping("policies");
 
 describe("partitionEdges", () => {
   test("edges touching the order namespace form the primary group", () => {
@@ -129,14 +132,14 @@ describe("buildPolicies keeps what it does not own", () => {
   ];
 
   test("an unknown key and the entry name survive regeneration", () => {
-    const [entry] = buildPolicies(shop, toDb, "ord", previous) as Entry[];
+    const [entry] = buildPolicies(shop, toDb, "ord", M, previous) as Entry[];
     expect(entry.name).toBe("my-policy");
     expect(entry.priority).toBe(10);
     expect(entry.annotations).toEqual({ owner: "team-core" });
   });
 
   test("without the previous values the name is generated as before", () => {
-    const [entry] = buildPolicies(shop, toDb, "ord") as Entry[];
+    const [entry] = buildPolicies(shop, toDb, "ord", M) as Entry[];
     expect(entry.name).toBe("backe");
     expect(entry.priority).toBeUndefined();
   });
@@ -144,7 +147,7 @@ describe("buildPolicies keeps what it does not own", () => {
   test("an owned key the graph no longer produces is dropped", () => {
     // The arrow now points the other way: the entry keeps its unknown key but
     // its egress rule must go, otherwise deleted traffic would stay allowed.
-    const [entry] = buildPolicies(shop, fromDb, "ord", previous) as Entry[];
+    const [entry] = buildPolicies(shop, fromDb, "ord", M, previous) as Entry[];
     expect(entry.ingress).toBeDefined();
     expect("egress" in entry).toBe(false);
     expect(entry.priority).toBe(10);
@@ -156,7 +159,7 @@ describe("buildPolicies keeps what it does not own", () => {
         ? { name: ns.name, workloads: [{ ...ns.workloads[0], serviceAccount: null }] }
         : ns,
     );
-    const [entry] = buildPolicies(noSa, toDb, "ord", previous) as Entry[];
+    const [entry] = buildPolicies(noSa, toDb, "ord", M, previous) as Entry[];
     expect("serviceAccount" in entry).toBe(false);
     expect(entry.priority).toBe(10);
   });
@@ -173,7 +176,7 @@ describe("buildPolicies keeps what it does not own", () => {
       link("e2", "ord/backendx", "db/pg", 5432),
     ];
     const kept: Entry[] = [{ name: "backe", selector: { "app.kubernetes.io/name": "backend" } }];
-    const out = buildPolicies(two, edges, "ord", kept) as Entry[];
+    const out = buildPolicies(two, edges, "ord", M, kept) as Entry[];
     expect(out.map((e) => e.name)).toEqual(["backe", "back1"]);
   });
 
@@ -194,9 +197,9 @@ describe("buildPolicies keeps what it does not own", () => {
         },
       ],
     };
-    const parsed = parseValues(values, "ord");
+    const parsed = parseValues(values, "ord", M);
     expect(parsed.errors).toEqual([]);
-    expect(buildPolicies(parsed.topology, parsed.edges, "ord", values.policies)).toEqual(
+    expect(buildPolicies(parsed.topology, parsed.edges, "ord", M, values.policies)).toEqual(
       values.policies,
     );
   });

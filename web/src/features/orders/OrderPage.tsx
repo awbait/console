@@ -23,7 +23,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
 import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";
-import { valuesEditorPlugins } from "./valuesEditors";
+import { valuesEditorFor } from "./valuesEditors";
 
 type Values = Record<string, unknown>;
 
@@ -254,22 +254,19 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     hydrated.current = true;
   }, [editing, draft]);
 
-  // Extra values editors available here: the chart has to offer one AND the
-  // version has to be one the editor's values mapping was written for.
-  const plugins = useMemo(
-    () => valuesEditorPlugins(name, effectiveVersion ?? ""),
-    [name, effectiveVersion],
-  );
+  // The extra values editor this chart version turns on, straight from its view
+  // document: a version with no "graph" block simply has no third tab.
+  const editor = useMemo(() => valuesEditorFor(viewDoc), [viewDoc]);
 
-  // A plugin can disappear from under the user: on a new order the version
-  // select can move to a version it does not cover. Land on the form instead of
-  // leaving the card in a mode that no longer exists.
+  // The editor can disappear from under the user: on a new order the version
+  // select can move to a version that does not declare one. Land on the form
+  // instead of leaving the card in a mode that no longer exists.
   useEffect(() => {
     if (mode === "form" || mode === "raw") return;
-    if (plugins.some((p) => p.id === mode)) return;
+    if (editor?.plugin.id === mode) return;
     setPluginInputError(null);
     setMode("form");
-  }, [plugins, mode]);
+  }, [editor, mode]);
 
   if (editing && existingLoading) return <Spinner />;
   if (editing && existingErr) return <ErrorBox error={existingErr} />;
@@ -623,7 +620,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         showErrors={showErrors}
         lockReadOnly={upgrade}
         lockedPaths={upgrade && identity ? [identity] : undefined}
-        plugins={plugins}
+        editor={editor}
         pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
         pluginChartVersion={effectiveVersion ?? ""}
         pluginInputError={pluginInputError}
