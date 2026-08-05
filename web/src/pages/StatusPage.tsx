@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { api } from "../api/client";
 import type { ComponentStatus, ReconcilerStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
-import { Button, ErrorBox, Spinner } from "../components/ui";
+import { Button, buttonClass, ErrorBox, Spinner } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { safeHref } from "../lib/href";
 
@@ -91,7 +91,7 @@ export function StatusPage() {
               href={safeHref(data?.grafana_url)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-surface px-3 py-1.5 text-sm font-medium text-slate-700 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+              className={buttonClass("secondary", "gap-1.5")}
             >
               Grafana
               <IconExternalLink size={14} stroke={1.8} />

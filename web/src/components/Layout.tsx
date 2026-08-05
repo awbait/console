@@ -8,6 +8,7 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconCloud,
+  IconHash,
   IconInfoCircle,
   IconLayoutDashboard,
   IconLayoutGrid,
@@ -28,8 +29,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
-  Dialog,
-  DialogTrigger,
   Disclosure,
   DisclosureGroup,
   DisclosurePanel,
@@ -37,8 +36,6 @@ import {
   Menu,
   MenuItem,
   MenuTrigger,
-  Modal,
-  ModalOverlay,
   Popover,
 } from "react-aria-components";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -174,9 +171,19 @@ export function Layout() {
     return pathname === to || pathname.startsWith(`${to}/`);
   };
 
-  // Publication builder (manage) - a wide two-pane editor: drop the content
-  // width limit here so the editor + preview fill the whole screen.
-  const fullBleed = /^\/catalog\/[^/]+\/[^/]+\/manage$/.test(pathname);
+  // Pages come in two widths. The limit applies to the whole shell (topbar +
+  // sidebar + content), not to the content alone: leftover space becomes an
+  // outer margin left of the sidebar and right of the content, and the content
+  // itself always fills its column. Wide pages drop the limit and use the full
+  // window - only the version editor qualifies, its editor + preview panes need
+  // the room; the version list above it stays a standard page.
+  // max-w-full rather than no class at all: a length -> percentage pair still
+  // interpolates, so switching between the two widths animates instead of
+  // snapping.
+  const isWide = /^\/catalog\/[^/]+\/[^/]+\/manage\/[^/]+$/.test(pathname);
+  const shellWidth = `transition-[max-width] duration-300 ease-out motion-reduce:transition-none ${
+    isWide ? "max-w-full" : "max-w-[1440px]"
+  }`;
 
   if (loading) return <Spinner />;
   if (unauthenticated || !user) return <LoginScreen />;
@@ -213,251 +220,272 @@ export function Layout() {
   const currentSection = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-800">
-      {/* LEFT NAV - full height; width animates (px->px) for a smooth collapse */}
-      <aside
-        className={`flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-surface transition-[width] duration-300 ease-in-out ${
-          collapsed ? "w-16" : "w-[260px]"
-        }`}
-      >
-        <div className="flex h-14 items-center gap-2.5 border-b border-slate-100 px-4">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-on-accent">
-            <IconCloud size={20} stroke={1.8} />
-          </span>
-          {!collapsed && (
-            <div className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-sm font-semibold text-slate-800">Console</span>
-              <span className="truncate text-[11px] text-slate-400">Managed Services</span>
+    <div className="flex h-screen flex-col bg-app text-slate-800">
+      {/* TOPBAR - the bar spans the whole window; its contents share the shell's
+          width and gutters, so the team selector lines up with the left edge of
+          the sidebar card and the account tools with the content's right edge.
+          The wordmark keeps its own full-height flex box so it sits on the
+          bar's vertical centre despite its larger type size. */}
+      <header className="shrink-0 border-b border-slate-200 bg-surface">
+        <div
+          className={`mx-auto flex h-14 w-full items-center justify-between gap-4 px-4 lg:px-6 ${shellWidth}`}
+        >
+          {/* Wordmark: lowercase and accented, set larger and bolder than the
+              rest of the topbar so it anchors the page. System fonts on purpose -
+              the portal runs in a closed network with no font CDN. */}
+          <Link
+            to="/"
+            className="flex h-full items-center truncate rounded-md text-2xl font-bold lowercase leading-none tracking-tight text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            console
+          </Link>
+          <div className="flex items-center gap-1">
+            <ThemeMenu />
+            <Link
+              to="/docs"
+              aria-label="Документация"
+              title="Документация"
+              aria-current={pathname.startsWith("/docs") ? "page" : undefined}
+              className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+            >
+              <IconBook size={20} stroke={1.7} />
+            </Link>
+            <Link
+              to="/about"
+              aria-label="О портале"
+              title="О портале"
+              aria-current={pathname.startsWith("/about") ? "page" : undefined}
+              className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+            >
+              <IconInfoCircle size={20} stroke={1.7} />
+            </Link>
+            <IconButton label="Уведомления">
+              <IconBell size={20} stroke={1.7} />
+            </IconButton>
+            <UserMenu />
+          </div>
+        </div>
+      </header>
+
+      {/* BODY - sidebar card and content column. mx-auto turns the space beyond
+          the shell width into an outer margin: it sits left of the sidebar and
+          right of the content, never between them - the gap and the gutters are
+          fixed. min-h-0 lets the two columns scroll inside themselves instead of
+          growing the page. */}
+      <div className={`mx-auto flex min-h-0 w-full flex-1 gap-10 px-4 py-8 lg:px-6 ${shellWidth}`}>
+        {/* LEFT COLUMN - a stack of cards: the current project on top, the
+            navigation below. Width animates (px->px) for a smooth collapse. */}
+        <div
+          className={`flex shrink-0 flex-col gap-4 transition-[width] duration-300 ease-in-out ${
+            collapsed ? "w-16" : "w-[260px]"
+          }`}
+        >
+          {/* The project selector is a platform concept; hide it in the admin,
+              support and security sections, which are not scoped to a team. */}
+          {activeSection === "platform" && (
+            <div className="shrink-0 rounded-xl border border-slate-200 bg-surface p-2 shadow-sm">
+              <OrgSelector collapsed={collapsed} />
             </div>
           )}
-        </div>
 
-        {/* section switcher (only when a role can see more than one section) */}
-        {availableSections.length > 1 &&
-          (collapsed ? (
-            <nav className="flex flex-col gap-1 px-2 pt-3">
-              {availableSections.map((s) => {
-                const Icon = s.Icon;
-                return (
-                  <Link
-                    key={s.id}
-                    to={s.home}
-                    title={s.label}
-                    aria-current={activeSection === s.id ? "page" : undefined}
-                    className="flex justify-center rounded-md px-3 py-2 text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                  >
-                    <Icon size={20} stroke={1.7} />
-                  </Link>
-                );
-              })}
-            </nav>
-          ) : (
-            /* dropdown: section labels don't fit as a pill row once there are
-               three of them, so switch via a menu showing the active section */
-            <div className="px-3 pt-3">
-              <MenuTrigger>
-                <Button className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50">
-                  <span className="flex items-center gap-2">
-                    <currentSection.Icon size={18} stroke={1.7} className="text-brand-600" />
-                    {currentSection.label}
-                  </span>
-                  <IconChevronDown
-                    size={16}
-                    className="text-slate-400 transition-transform duration-200 group-data-[pressed]:rotate-180"
-                  />
-                </Button>
-                <Popover className="w-[var(--trigger-width)] rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
-                  <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
+          <aside className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
+            {/* Nav scrolls on its own so the collapse toggle stays pinned to the
+                bottom of the card even with a long product taxonomy. */}
+            <div className="scroll-slim flex min-h-0 flex-1 flex-col overflow-y-auto">
+              {/* section switcher (only when a role can see more than one section) */}
+              {availableSections.length > 1 &&
+                (collapsed ? (
+                  <nav className="flex flex-col gap-1 px-2 pt-3">
                     {availableSections.map((s) => {
                       const Icon = s.Icon;
                       return (
-                        <MenuItem
+                        <Link
                           key={s.id}
-                          id={s.home}
-                          className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+                          to={s.home}
+                          title={s.label}
+                          aria-current={activeSection === s.id ? "page" : undefined}
+                          className="flex justify-center rounded-md px-3 py-2 text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
                         >
-                          <span className="flex items-center gap-2">
-                            <Icon size={18} stroke={1.7} className="text-slate-500" />
-                            {s.label}
-                          </span>
-                          {activeSection === s.id && <IconCheck size={15} className="text-brand-600" />}
-                        </MenuItem>
+                          <Icon size={20} stroke={1.7} />
+                        </Link>
                       );
                     })}
-                  </Menu>
-                </Popover>
-              </MenuTrigger>
-            </div>
-          ))}
+                  </nav>
+                ) : (
+                  /* dropdown: section labels don't fit as a pill row once there are
+                     three of them, so switch via a menu showing the active section */
+                  <div className="px-3 pt-3">
+                    <MenuTrigger>
+                      <Button className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50">
+                        <span className="flex items-center gap-2">
+                          <currentSection.Icon size={18} stroke={1.7} className="text-brand-600" />
+                          {currentSection.label}
+                        </span>
+                        <IconChevronDown
+                          size={16}
+                          className="text-slate-400 transition-transform duration-200 group-data-[pressed]:rotate-180"
+                        />
+                      </Button>
+                      <Popover className="w-[var(--trigger-width)] rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+                        <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
+                          {availableSections.map((s) => {
+                            const Icon = s.Icon;
+                            return (
+                              <MenuItem
+                                key={s.id}
+                                id={s.home}
+                                className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+                              >
+                                <span className="flex items-center gap-2">
+                                  <Icon size={18} stroke={1.7} className="text-slate-500" />
+                                  {s.label}
+                                </span>
+                                {activeSection === s.id && <IconCheck size={15} className="text-brand-600" />}
+                              </MenuItem>
+                            );
+                          })}
+                        </Menu>
+                      </Popover>
+                    </MenuTrigger>
+                  </div>
+                ))}
 
-        {sectionNav ? (
-          /* security/admin section: its own flat nav, no product categories */
-          <nav className="px-2 py-3">
-            <ul className="flex flex-col gap-0.5">
-              {sectionNav.map((n) => {
-                const Icon = n.Icon;
-                const active = n.exact ? pathname === n.to : navActive(n.to);
-                return (
-                  <li key={n.to}>
-                    <Link
-                      to={n.to}
-                      title={collapsed ? n.label : undefined}
-                      aria-current={active ? "page" : undefined}
-                      className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                    >
-                      <Icon size={20} stroke={1.7} className="shrink-0" />
-                      {!collapsed && <span className="shrink-0">{n.label}</span>}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        ) : (
-          <>
-            {/* flat group: Resources / Charts (active via navActive aria-current) */}
-            <nav className="px-2 py-3">
-              <ul className="flex flex-col gap-0.5">
-                {navItems.map((n) => {
-                  const Icon = n.Icon;
-                  return (
-                    <li key={n.to}>
-                      <Link
-                        to={n.to}
-                        title={collapsed ? n.label : undefined}
-                        aria-current={navActive(n.to) ? "page" : undefined}
-                        className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                      >
-                        <Icon size={20} stroke={1.7} className="shrink-0" />
-                        {!collapsed && <span className="shrink-0">{n.label}</span>}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </nav>
-
-            <div className="mx-3 border-t border-slate-100" />
-
-        {/* product categories (dynamic: published charts with an order view) */}
-        {collapsed ? (
-          <nav className="flex flex-col gap-0.5 px-2 py-3">
-            {menu.map((g) => {
-              const Icon = categoryIcon(g.icon || g.id);
-              const first = g.charts[0];
-              return (
-                <Link
-                  key={g.id}
-                  to={first ? `/products/${first.project}/${first.name}` : "/catalog"}
-                  title={g.label}
-                  aria-current={activeCategory === g.id ? "page" : undefined}
-                  className="flex rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                >
-                  <Icon size={20} stroke={1.7} />
-                </Link>
-              );
-            })}
-          </nav>
-        ) : (
-          <DisclosureGroup
-            allowsMultipleExpanded
-            expandedKeys={expanded}
-            onExpandedChange={(keys) => setExpanded(new Set([...keys].map(String)))}
-            className="px-2 py-3"
-          >
-            {menu.map((g) => {
-              const Icon = categoryIcon(g.icon || g.id);
-              return (
-                <Disclosure key={g.id} id={g.id} className="group">
-                  <Heading>
-                    <Button
-                      slot="trigger"
-                      className="flex w-full items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-                    >
-                      <span className="flex items-center gap-3">
-                        <Icon size={20} stroke={1.7} />
-                        {g.label}
-                      </span>
-                      <IconChevronRight
-                        size={16}
-                        className="text-slate-400 transition-transform duration-200 group-data-[expanded]:rotate-90"
-                      />
-                    </Button>
-                  </Heading>
-                  <DisclosurePanel>
-                    <ul className="ml-[22px] flex flex-col gap-0.5 border-l border-slate-100 py-1 pl-2">
-                      {g.charts.map((c) => (
-                        <li key={`${c.project}/${c.name}`}>
+              {sectionNav ? (
+                /* security/admin section: its own flat nav, no product categories */
+                <nav className="px-2 py-3">
+                  <ul className="flex flex-col gap-0.5">
+                    {sectionNav.map((n) => {
+                      const Icon = n.Icon;
+                      const active = n.exact ? pathname === n.to : navActive(n.to);
+                      return (
+                        <li key={n.to}>
                           <Link
-                            to={`/products/${c.project}/${c.name}`}
-                            aria-current={chartActive(c) ? "page" : undefined}
-                            className="block whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700"
+                            to={n.to}
+                            title={collapsed ? n.label : undefined}
+                            aria-current={active ? "page" : undefined}
+                            className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
                           >
-                            {chartLabel(c.name)}
+                            <Icon size={20} stroke={1.7} className="shrink-0" />
+                            {!collapsed && <span className="shrink-0">{n.label}</span>}
                           </Link>
                         </li>
-                      ))}
+                      );
+                    })}
+                  </ul>
+                </nav>
+              ) : (
+                <>
+                  {/* flat group: Resources / Charts (active via navActive aria-current) */}
+                  <nav className="px-2 py-3">
+                    <ul className="flex flex-col gap-0.5">
+                      {navItems.map((n) => {
+                        const Icon = n.Icon;
+                        return (
+                          <li key={n.to}>
+                            <Link
+                              to={n.to}
+                              title={collapsed ? n.label : undefined}
+                              aria-current={navActive(n.to) ? "page" : undefined}
+                              className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+                            >
+                              <Icon size={20} stroke={1.7} className="shrink-0" />
+                              {!collapsed && <span className="shrink-0">{n.label}</span>}
+                            </Link>
+                          </li>
+                        );
+                      })}
                     </ul>
-                  </DisclosurePanel>
-                </Disclosure>
-              );
-            })}
-          </DisclosureGroup>
-            )}
-          </>
-        )}
+                  </nav>
 
-        {/* collapse toggle */}
-        <div className="mt-auto border-t border-slate-100 p-2">
-          <Button
-            onPress={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
-            aria-pressed={collapsed}
-            className="flex w-full items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-          >
-            {collapsed ? (
-              <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
-            ) : (
-              <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
-            )}
-            {!collapsed && <span className="shrink-0">Свернуть меню</span>}
-          </Button>
-        </div>
-      </aside>
+                  <div className="mx-3 border-t border-slate-100" />
 
-      {/* RIGHT COLUMN: topbar + content */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* TOPBAR */}
-      <header className="flex h-14 items-center justify-between border-b border-slate-200 bg-surface px-4">
-        {/* The team/project selector is a platform concept; hide it in the admin
-            and security sections, which are not scoped to a team. */}
-        {activeSection === "platform" ? <OrgSelector /> : <span />}
-        <div className="flex items-center gap-1">
-          <ThemeMenu />
-          <Link
-            to="/docs"
-            aria-label="Документация"
-            title="Документация"
-            aria-current={pathname.startsWith("/docs") ? "page" : undefined}
-            className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-          >
-            <IconBook size={20} stroke={1.7} />
-          </Link>
-          <Link
-            to="/about"
-            aria-label="О портале"
-            title="О портале"
-            aria-current={pathname.startsWith("/about") ? "page" : undefined}
-            className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-          >
-            <IconInfoCircle size={20} stroke={1.7} />
-          </Link>
-          <IconButton label="Уведомления">
-            <IconBell size={20} stroke={1.7} />
-          </IconButton>
-          <UserMenu />
+                  {/* product categories (dynamic: published charts with an order view) */}
+                  {collapsed ? (
+                    <nav className="flex flex-col gap-0.5 px-2 py-3">
+                      {menu.map((g) => {
+                        const Icon = categoryIcon(g.icon || g.id);
+                        const first = g.charts[0];
+                        return (
+                          <Link
+                            key={g.id}
+                            to={first ? `/products/${first.project}/${first.name}` : "/catalog"}
+                            title={g.label}
+                            aria-current={activeCategory === g.id ? "page" : undefined}
+                            className="flex rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+                          >
+                            <Icon size={20} stroke={1.7} />
+                          </Link>
+                        );
+                      })}
+                    </nav>
+                  ) : (
+                    <DisclosureGroup
+                      allowsMultipleExpanded
+                      expandedKeys={expanded}
+                      onExpandedChange={(keys) => setExpanded(new Set([...keys].map(String)))}
+                      className="px-2 py-3"
+                    >
+                      {menu.map((g) => {
+                        const Icon = categoryIcon(g.icon || g.id);
+                        return (
+                          <Disclosure key={g.id} id={g.id} className="group">
+                            <Heading>
+                              <Button
+                                slot="trigger"
+                                className="flex w-full items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+                              >
+                                <span className="flex items-center gap-3">
+                                  <Icon size={20} stroke={1.7} />
+                                  {g.label}
+                                </span>
+                                <IconChevronRight
+                                  size={16}
+                                  className="text-slate-400 transition-transform duration-200 group-data-[expanded]:rotate-90"
+                                />
+                              </Button>
+                            </Heading>
+                            <DisclosurePanel>
+                              <ul className="ml-[22px] flex flex-col gap-0.5 border-l border-slate-100 py-1 pl-2">
+                                {g.charts.map((c) => (
+                                  <li key={`${c.project}/${c.name}`}>
+                                    <Link
+                                      to={`/products/${c.project}/${c.name}`}
+                                      aria-current={chartActive(c) ? "page" : undefined}
+                                      className="block whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700"
+                                    >
+                                      {chartLabel(c.name)}
+                                    </Link>
+                                  </li>
+                                ))}
+                              </ul>
+                            </DisclosurePanel>
+                          </Disclosure>
+                        );
+                      })}
+                    </DisclosureGroup>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* collapse toggle */}
+            <div className="shrink-0 border-t border-slate-100 p-2">
+              <Button
+                onPress={() => setCollapsed((c) => !c)}
+                aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+                aria-pressed={collapsed}
+                className="flex w-full items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                {collapsed ? (
+                  <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
+                ) : (
+                  <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
+                )}
+                {!collapsed && <span className="shrink-0">Свернуть меню</span>}
+              </Button>
+            </div>
+          </aside>
         </div>
-      </header>
 
         {/* MAIN - min-h-0 lets this flex child shrink below its content so its
             own overflow-y-auto scrolls instead of growing the page. relative
@@ -468,14 +496,23 @@ export function Layout() {
             item so it takes its height via flex-1 (not a height:100% percentage,
             which Chrome does not resolve against a flex-item main - the wrapper
             then collapsed to content height and main scrolled). */}
-        <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
-          {/* Constrain content width and center it: on wide screens rows don't
-              stretch full width. flex-1 + min-h-0 gives full-height pages (e.g.
-              the view builder, which uses flex-1 at its root) a real bounded
-              height via flex, with no fragile height:100% chain. mx-auto centers
-              the max-width box on the cross axis. Short pages keep a single
-              content-sized child pinned to the top, unchanged. */}
-          <div className={`mx-auto flex min-h-0 w-full flex-1 flex-col ${fullBleed ? "" : "max-w-screen-xl"}`}>
+        {/* -m-1 p-1: the scroll box clips at its own edge, which cut the focus
+            rings and shadows of controls sitting flush against it (the buttons in
+            a page header). The inset padding gives them 4px of room and the
+            negative margin takes it back off the layout, so nothing moves. */}
+        <main className="scroll-slim relative -m-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1">
+          {/* The page fills the column edge to edge - width is capped by the
+              shell above, not here. flex-1 + min-h-0 gives full-height pages
+              (e.g. the view builder, which uses flex-1 at its root) a real
+              bounded height via flex, with no fragile height:100% chain. Short
+              pages keep a single content-sized child pinned to the top.
+              The key fades the page in when the shell changes width, so the
+              standard -> wide switch reads as one move; navigating between two
+              pages of the same width keeps the subtree (and its state) alive. */}
+          <div
+            key={isWide ? "wide" : "standard"}
+            className="flex min-h-0 w-full flex-1 flex-col animate-in fade-in duration-300 motion-reduce:animate-none"
+          >
             <Outlet />
           </div>
         </main>
@@ -484,77 +521,125 @@ export function Layout() {
   );
 }
 
-function OrgSelector() {
+// OrgSelector lives in its own sidebar card, so it fills the card's width and
+// draws no frame of its own. Expanded, the groups are a plain list under a
+// "Проекты" header that folds away; collapsed, there is no room for the list, so
+// the same groups open in a popover next to the icon.
+function OrgSelector({ collapsed }: { collapsed: boolean }) {
   const { team, teams, setTeam } = useTeam();
+  const [open, setOpen] = useState(true);
+
   if (teams.length === 0) {
     return (
-      <span className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-1.5 text-sm text-slate-400">
-        <IconUsersGroup size={18} stroke={1.7} />
-        нет группы
+      <span
+        title={collapsed ? "нет группы" : undefined}
+        className={`flex items-center gap-2 rounded-lg py-2 text-sm text-slate-400 ${
+          collapsed ? "justify-center px-2" : "px-2.5"
+        }`}
+      >
+        <IconUsersGroup size={20} stroke={1.7} className="shrink-0" />
+        {!collapsed && "нет группы"}
       </span>
     );
   }
-  // A single group can't be switched: show it as a static "current project" chip
-  // (no chevron, no hover affordance) so it reads as context, not a control.
-  if (teams.length === 1) {
+
+  if (collapsed) {
+    // A single group is context, not a control: no popover to open.
+    if (teams.length === 1) {
+      return (
+        <span
+          title={team ?? undefined}
+          className="flex justify-center rounded-lg px-2 py-2 text-brand-600"
+        >
+          <IconUsersGroup size={20} stroke={1.7} />
+        </span>
+      );
+    }
     return (
-      <span className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm">
-        <IconUsersGroup size={18} stroke={1.7} className="text-brand-600" />
-        <span className="text-slate-400">Проект:</span>
-        <span className="font-semibold text-slate-800">{team}</span>
-      </span>
+      <MenuTrigger>
+        <Button
+          aria-label={`Проект: ${team}`}
+          className="flex w-full justify-center rounded-lg px-2 py-2 text-brand-600 outline-none transition-colors hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:bg-brand-50"
+        >
+          <IconUsersGroup size={20} stroke={1.7} />
+        </Button>
+        <Popover className="min-w-52 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+          <Menu className="outline-none" onAction={(key) => setTeam(String(key))}>
+            {teams.map((t) => (
+              <MenuItem
+                key={t}
+                id={t}
+                className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+              >
+                <span className="flex items-center gap-2">
+                  <IconUsersGroup size={18} stroke={1.7} className="text-slate-500" />
+                  {t}
+                </span>
+                {t === team && <IconCheck size={15} className="text-brand-600" />}
+              </MenuItem>
+            ))}
+          </Menu>
+        </Popover>
+      </MenuTrigger>
     );
   }
+
+  // Hand-rolled disclosure instead of react-aria's: its panel is hidden with the
+  // `hidden` attribute (display:none), which cannot be transitioned. The
+  // grid-rows 0fr->1fr trick animates to the list's natural height without
+  // measuring it. Closed, the list keeps its DOM node but leaves the tab order.
   return (
-    <DialogTrigger>
-      <Button className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50">
-        <IconUsersGroup size={18} stroke={1.7} className="text-brand-600" />
-        <span className="text-slate-400">Проект:</span>
-        <span className="font-semibold text-slate-800">{team}</span>
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="org-projects"
+        className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <IconUsersGroup size={20} stroke={1.7} className="shrink-0 text-brand-600" />
+          Проекты
+        </span>
         <IconChevronDown
           size={16}
-          className="text-slate-400 transition-transform duration-200 group-hover:text-brand-500 group-data-[pressed]:rotate-180"
+          className={`shrink-0 text-slate-400 transition-transform duration-200 ease-out ${
+            open ? "rotate-180" : ""
+          }`}
         />
-      </Button>
-      <ModalOverlay
-        isDismissable
-        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
+      </button>
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
       >
-        <Modal className="w-full max-w-md rounded-lg border border-slate-200 bg-surface shadow-xl">
-          <Dialog className="outline-none">
-            {({ close }) => (
-              <>
-                <div className="border-b border-slate-100 px-4 py-3">
-                  <Heading slot="title" className="text-sm font-semibold text-slate-800">
-                    Выбор группы
-                  </Heading>
-                  <p className="text-xs text-slate-500">Ваши team-* группы</p>
-                </div>
-                <ul className="max-h-72 overflow-auto p-2">
-                  {teams.map((t) => (
-                    <li key={t}>
-                      <button
-                        onClick={() => {
-                          setTeam(t);
-                          close();
-                        }}
-                        className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50"
-                      >
-                        <span className="flex items-center gap-3">
-                          <IconUsersGroup size={18} stroke={1.7} className="text-brand-600" />
-                          <span className="font-medium text-slate-800">{t}</span>
-                        </span>
-                        {t === team && <span className="text-xs text-brand-600">текущая</span>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+        <div className="overflow-hidden">
+          <ul
+            id="org-projects"
+            aria-hidden={!open}
+            className="flex max-h-64 flex-col gap-0.5 overflow-y-auto pt-1"
+          >
+            {teams.map((t) => (
+              <li key={t}>
+                <button
+                  type="button"
+                  onClick={() => setTeam(t)}
+                  tabIndex={open ? undefined : -1}
+                  aria-current={t === team ? "true" : undefined}
+                  className="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current]:bg-brand-50 aria-[current]:font-medium aria-[current]:text-brand-700"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <IconHash size={18} stroke={1.7} className="shrink-0 text-slate-400" />
+                    <span className="truncate">{t}</span>
+                  </span>
+                  {t === team && <IconCheck size={15} className="shrink-0 text-brand-600" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
   );
 }
 

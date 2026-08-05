@@ -1,20 +1,28 @@
 import { IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { qk } from "../api/queryKeys";
+import type { ChartPublication } from "../api/types";
 import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
-import { Button, Card, Chip, ErrorBox, Spinner } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, LinkButton, Spinner } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
 
 export function ChartDetailPage() {
   const { project = "", name = "" } = useParams();
-  const { data: chart, error, loading } = useAsync(() => api.getChart(project, name), [project, name]);
+  const {
+    data: chart,
+    error,
+    loading,
+  } = useAsync(() => api.getChart(project, name), [project, name], qk.chart(project, name));
   const { categories, charts: catalogCharts } = useCatalog();
   const { user } = useUser();
   const pub = findCatalogChart(catalogCharts, project, name)?.publication;
@@ -26,6 +34,29 @@ export function ChartDetailPage() {
   const manageable = pub
     ? canModify(user, pub.owner_team) || (pub.created_by === AUTO_DISCOVERY_ACTOR && hasTeam)
     : hasTeam;
+
+  // Warm the manage page's data while this page is being read. That page needs
+  // the full publication and its stored versions, neither of which this one
+  // loads (the header reads the catalog overlay), so without a warm cache
+  // pressing "Управление" opens on a full-screen spinner.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!manageable) return;
+    const key = qk.publication(project, name);
+    void queryClient
+      .prefetchQuery({
+        queryKey: key,
+        queryFn: ({ signal }) => api.findPublication(project, name, signal),
+      })
+      .then(() => {
+        const p = queryClient.getQueryData<ChartPublication | null>(key);
+        if (!p) return;
+        return queryClient.prefetchQuery({
+          queryKey: qk.versions(p.id),
+          queryFn: ({ signal }) => api.listVersions(p.id, signal),
+        });
+      });
+  }, [queryClient, manageable, project, name]);
 
   if (loading) return <Spinner />;
   if (error) return <ErrorBox error={error} />;
@@ -48,21 +79,26 @@ export function ChartDetailPage() {
     !!pub?.approved_view_version && isNewer(liveVersion, pub.approved_view_version);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
+    // The page itself stays within the viewport: the header keeps its size and
+    // only the open doc tab scrolls, so the shell never grows a scrollbar of its
+    // own.
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
+      <div className="flex shrink-0 items-start justify-between gap-6">
+        <div className="min-w-0">
           <Breadcrumbs
             items={[
               { label: "Каталог", to: "/catalog" },
               { label: `${chart.project}/${chart.name}` },
             ]}
           />
-          <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold">
+          <h1 className="mt-2 flex items-center gap-2 text-xl font-semibold">
             <ProductIcon project={chart.project} name={chart.name} size={24} />
             {chart.project}/{chart.name}
           </h1>
-          <p className="text-sm text-gray-600">{description}</p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {/* Keep the summary at a readable measure instead of letting it run
+              the full width of a wide screen. */}
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600">{description}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Chip className="bg-slate-100 text-slate-600">
               <IconTag size={13} stroke={1.8} className="text-slate-400" />
               <span className="text-slate-400">Версия:</span>v{version}
@@ -92,20 +128,20 @@ export function ChartDetailPage() {
         </div>
         <div className="flex shrink-0 gap-2">
           {manageable && (
-            <Link to={`/catalog/${project}/${name}/manage`} className="relative">
-              <Button>{pub ? "Управление" : "Опубликовать"}</Button>
+            <LinkButton to={`/catalog/${project}/${name}/manage`} className="relative">
+              {pub ? "Управление" : "Опубликовать"}
               {pub && viewOutdated && (
                 <span
                   title="В Harbor есть новая версия чарта - актуализируйте данные"
                   className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-surface"
                 />
               )}
-            </Link>
+            </LinkButton>
           )}
           {orderable ? (
-            <Link to={`/products/${project}/${name}`}>
-              <Button variant="primary">Заказать</Button>
-            </Link>
+            <LinkButton variant="primary" to={`/products/${project}/${name}`}>
+              Заказать
+            </LinkButton>
           ) : (
             <span title="Форма заказа не согласована для этого чарта">
               <Button variant="primary" isDisabled>
@@ -116,15 +152,19 @@ export function ChartDetailPage() {
         </div>
       </div>
 
-      <Tabs>
-        <TabList aria-label="Документация чарта" className="flex gap-1 border-b border-gray-200">
+      <Tabs className="flex min-h-0 flex-1 flex-col">
+        <TabList
+          aria-label="Документация чарта"
+          className="flex shrink-0 gap-2 border-b border-gray-200"
+        >
           <DocTab id="readme">Описание</DocTab>
           <DocTab id="changelog">Изменения</DocTab>
         </TabList>
-        <TabPanel id="readme" className="pt-4 outline-none">
+        {/* The panel only sizes the card; the scrolling happens inside it. */}
+        <TabPanel id="readme" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
           <Readme project={project} name={name} version={version} />
         </TabPanel>
-        <TabPanel id="changelog" className="pt-4 outline-none">
+        <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
           <Changelog project={project} name={name} />
         </TabPanel>
       </Tabs>
@@ -147,16 +187,19 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   const { data, error, loading } = useAsync(
     () => api.getReadme(project, name, version),
     [project, name, version],
+    qk.readme(project, name, version),
   );
   return (
-    <Card>
-      {loading ? (
-        <Spinner />
-      ) : error || !data?.trim() ? (
-        <p className="text-sm text-gray-500">Описание недоступно.</p>
-      ) : (
-        <Markdown>{data}</Markdown>
-      )}
+    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
+        {loading ? (
+          <Spinner />
+        ) : error || !data?.trim() ? (
+          <p className="text-sm text-gray-500">Описание недоступно.</p>
+        ) : (
+          <Markdown>{data}</Markdown>
+        )}
+      </div>
     </Card>
   );
 }
@@ -181,13 +224,14 @@ function Changelog({ project, name }: { project: string; name: string }) {
   const { data, error, loading } = useAsync(
     () => api.getAggregatedChangelog(project, name),
     [project, name],
+    qk.changelog(project, name),
   );
   if (loading) return <Spinner label="Загрузка истории изменений…" />;
   if (error || !data?.length)
     return <p className="text-sm text-gray-500">История изменений недоступна.</p>;
   return (
-    <Card>
-      <div className="flex flex-col gap-4">
+    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="scroll-slim flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         {data.map((e) => (
           <div key={e.version}>
             <div className="flex items-baseline gap-2">

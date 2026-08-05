@@ -1,5 +1,5 @@
 import { IconChevronDown } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   Button as AriaButton,
   Checkbox as AriaCheckbox,
@@ -16,6 +16,7 @@ import {
   SelectValue,
   TooltipTrigger,
 } from "react-aria-components";
+import { Link, type LinkProps } from "react-router-dom";
 
 const btnVariants = {
   primary:
@@ -24,6 +25,15 @@ const btnVariants = {
     "bg-surface text-gray-800 border border-gray-300 hover:bg-gray-50 pressed:bg-gray-100",
   danger: "bg-red-600 text-white hover:bg-red-700 pressed:bg-red-800 border border-transparent",
 };
+
+const BTN_BASE =
+  "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500";
+
+// buttonClass builds the shared look for both <Button> and <LinkButton>, so a
+// button and a button-shaped link can never drift apart.
+export function buttonClass(variant: keyof typeof btnVariants = "secondary", className = "") {
+  return `${BTN_BASE} ${btnVariants[variant]} ${className}`;
+}
 
 // Hint wraps a focusable trigger (a react-aria Button) with a styled tooltip,
 // the same look as the small "i" hints. Note: a tooltip won't open on a truly
@@ -47,11 +57,25 @@ export function Button({
   className = "",
   ...props
 }: ButtonProps & { variant?: keyof typeof btnVariants }) {
+  return <AriaButton {...props} className={buttonClass(variant, `disabled:opacity-50 ${className}`)} />;
+}
+
+// LinkButton: navigation that looks like a button. Use this instead of wrapping
+// a <Button> in a <Link> - a <button> inside an <a> is invalid markup, the
+// router never sees the click as its own, and the browser falls back to a full
+// page load (the whole shell reloads). It also gives assistive tech one control
+// to announce instead of two nested ones.
+export function LinkButton({
+  to,
+  variant = "secondary",
+  className = "",
+  children,
+  ...props
+}: LinkProps & { variant?: keyof typeof btnVariants }) {
   return (
-    <AriaButton
-      {...props}
-      className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50 ${btnVariants[variant]} ${className}`}
-    />
+    <Link {...props} to={to} className={buttonClass(variant, className)}>
+      {children}
+    </Link>
   );
 }
 
@@ -224,9 +248,22 @@ export function Select<T extends string>({
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+// Card: the standard content box. Pass padded={false} when the card holds its
+// own scrolling area - the padding then belongs to that area, so the scrollbar
+// runs along the card's inner edge instead of outside its border.
+export function Card({
+  children,
+  className = "",
+  padded = true,
+}: {
+  children: ReactNode;
+  className?: string;
+  padded?: boolean;
+}) {
   return (
-    <div className={`rounded-lg border border-gray-200 bg-surface p-4 shadow-sm ${className}`}>
+    <div
+      className={`rounded-lg border border-gray-200 bg-surface shadow-sm ${padded ? "p-4" : ""} ${className}`}
+    >
       {children}
     </div>
   );
@@ -245,7 +282,17 @@ export function Chip({ className = "", children }: { className?: string; childre
   );
 }
 
-export function Spinner({ label = "Loading…" }: { label?: string }) {
+// Spinner appears only if the wait actually lasts. A loading state that comes
+// and goes within a few hundred milliseconds reads as a flash, not as feedback,
+// so nothing is rendered until the delay passes - a cached page then swaps in
+// silently, and a genuinely slow one still says it is working.
+export function Spinner({ label = "Loading…", delayMs = 300 }: { label?: string; delayMs?: number }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShow(true), delayMs);
+    return () => clearTimeout(t);
+  }, [delayMs]);
+  if (!show) return null;
   return <div className="p-6 text-sm text-gray-500">{label}</div>;
 }
 
