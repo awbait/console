@@ -178,6 +178,7 @@ export function OrderValuesCard({
   lockedPaths,
   plugins = [],
   pluginNamespace = "",
+  pluginChartVersion = "",
   pluginInputError = null,
   pluginState,
   onPluginState,
@@ -201,6 +202,8 @@ export function OrderValuesCard({
   plugins?: ValuesEditorPlugin[];
   // Order namespace passed through to plugins.
   pluginNamespace?: string;
+  // Chart version being ordered, passed through to plugins.
+  pluginChartVersion?: string;
   // Raw-YAML parse error carried into the plugin (it must show it and keep
   // the values untouched).
   pluginInputError?: string | null;
@@ -254,6 +257,7 @@ export function OrderValuesCard({
             values={values}
             onValues={onValues}
             namespace={pluginNamespace}
+            chartVersion={pluginChartVersion}
             inputError={pluginInputError}
             editorState={pluginState}
             onEditorState={onPluginState}

@@ -232,11 +232,10 @@ export function PoliciesMapPage() {
         // The canvas as drawn travels with the draft: workloads with no links,
         // their service accounts and ports and the box positions are not in the
         // values, and without this they would be gone when the draft is opened.
-        editor_state: packEditorState({
-          orderNs: g.ns,
-          topology,
-          positions: model.positions ?? {},
-        }),
+        editor_state: packEditorState(
+          { orderNs: g.ns, topology, positions: model.positions ?? {} },
+          version,
+        ),
         draft: true,
       });
       created.push(req.id);

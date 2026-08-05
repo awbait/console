@@ -20,6 +20,7 @@ export function PoliciesValuesEditor({
   values,
   onValues,
   namespace,
+  chartVersion,
   readOnly,
   inputError,
   editorState,
@@ -29,6 +30,8 @@ export function PoliciesValuesEditor({
   valuesRef.current = values;
   const stateRef = useRef(editorState);
   stateRef.current = editorState;
+  const versionRef = useRef(chartVersion);
+  versionRef.current = chartVersion;
 
   // Parse once per namespace (the graph below is keyed by it): after that the
   // graph owns policies[], and re-parsing every regenerated values would fight
@@ -38,7 +41,7 @@ export function PoliciesValuesEditor({
     if (inputError || !namespace || namespaceError(namespace)) return null;
     const p = parseValues(valuesRef.current, namespace);
     if (p.errors.length > 0) return p;
-    const saved = readEditorState(stateRef.current);
+    const saved = readEditorState(stateRef.current, versionRef.current);
     return mergeWithSaved(p, saved && saved.orderNs === namespace ? saved : null);
   }, [namespace, inputError]);
 
@@ -80,7 +83,10 @@ export function PoliciesValuesEditor({
     // The canvas extras are worth keeping even in readOnly (harmless), but
     // values must never change there.
     onEditorState?.(
-      packEditorState({ orderNs: namespace, topology: m.topology, positions: m.positions }),
+      packEditorState(
+        { orderNs: namespace, topology: m.topology, positions: m.positions },
+        chartVersion,
+      ),
     );
     if (readOnly) return;
     // The current values are also the previous generation: passing their
