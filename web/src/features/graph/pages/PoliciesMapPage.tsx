@@ -15,6 +15,7 @@ import { useTeam } from "../../../app/TeamContext";
 import { useToast } from "../../../app/ToastContext";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { Button, Select, TextField } from "../../../components/ui";
+import { valuesEditorPlugins } from "../../orders/valuesEditors";
 import type { XY } from "../core/model";
 import { environmentsForInstance, instanceTags } from "../environments";
 import { packEditorState } from "../profiles/policies/editorState";
@@ -198,10 +199,19 @@ export function PoliciesMapPage() {
     const chart = charts.find((c) => c.name === "policies" && c.publication?.published) ??
       charts.find((c) => c.name === "policies");
     if (!chart) throw new Error("Чарт policies не найден в каталоге.");
-    const version =
-      chart.publication?.recommended_version ??
-      chart.publication?.orderable_versions?.[0] ??
-      chart.latest_version;
+    // The map writes values through the graph mapping, so the draft has to be
+    // created on a version that mapping covers - the recommended version is not
+    // automatically one of them once the chart moves on.
+    const version = [
+      chart.publication?.recommended_version,
+      ...(chart.publication?.orderable_versions ?? []),
+      chart.latest_version,
+    ].find((v) => !!v && valuesEditorPlugins("policies", v).some((p) => p.id === "graph"));
+    if (!version) {
+      throw new Error(
+        "Ни одна доступная версия policies не поддерживается картой. Соберите заказ через форму сервиса.",
+      );
+    }
     const created: string[] = [];
     for (const g of groups) {
       const req = await api.createRequest({

@@ -254,6 +254,23 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     hydrated.current = true;
   }, [editing, draft]);
 
+  // Extra values editors available here: the chart has to offer one AND the
+  // version has to be one the editor's values mapping was written for.
+  const plugins = useMemo(
+    () => valuesEditorPlugins(name, effectiveVersion ?? ""),
+    [name, effectiveVersion],
+  );
+
+  // A plugin can disappear from under the user: on a new order the version
+  // select can move to a version it does not cover. Land on the form instead of
+  // leaving the card in a mode that no longer exists.
+  useEffect(() => {
+    if (mode === "form" || mode === "raw") return;
+    if (plugins.some((p) => p.id === mode)) return;
+    setPluginInputError(null);
+    setMode("form");
+  }, [plugins, mode]);
+
   if (editing && existingLoading) return <Spinner />;
   if (editing && existingErr) return <ErrorBox error={existingErr} />;
   if (editing && !upgrade && draft && draft.status !== "DRAFT") {
@@ -606,7 +623,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         showErrors={showErrors}
         lockReadOnly={upgrade}
         lockedPaths={upgrade && identity ? [identity] : undefined}
-        plugins={valuesEditorPlugins(name)}
+        plugins={plugins}
         pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
         pluginInputError={pluginInputError}
         pluginState={pluginStateRef.current}
