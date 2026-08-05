@@ -31,6 +31,7 @@ import {
 } from "react-aria-components";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
+import { qk } from "../api/queryKeys";
 import type {
   ChartPublication,
   OrderRequest,
@@ -82,11 +83,9 @@ export function ChartVersionEditPage() {
     loading: pubLoading,
     error: pubError,
   } = useAsync(
-    () =>
-      api
-        .listPublications({ chart: name })
-        .then((list) => list.find((p) => p.chart_project === project) ?? null),
+    (signal) => api.findPublication(project, name, signal),
     [project, name],
+    qk.publication(project, name),
   );
 
   if (pubLoading && !pub) return <Spinner />;
@@ -122,10 +121,15 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   const name = pub.chart_name;
 
   // Chart versions (Harbor) feed the switcher; stored rows carry per-version state.
-  const { data: chart } = useAsync(() => api.getChart(project, name), [project, name]);
+  const { data: chart } = useAsync(
+    () => api.getChart(project, name),
+    [project, name],
+    qk.chart(project, name),
+  );
   const { data: versions, reload: reloadVersions } = useAsync(
     () => api.listVersions(pub.id),
     [pub.id],
+    qk.versions(pub.id),
   );
 
   // The version's stored row (may not exist yet -> a fresh draft).
@@ -136,6 +140,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   const { data: schema } = useAsync(
     () => api.getSchema(project, name, version),
     [project, name, version],
+    qk.schema(project, name, version),
   );
 
   const pending = curStatus === "PENDING";

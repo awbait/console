@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { type QueryKey, useQuery } from "@tanstack/react-query";
+import { useId } from "react";
 
 interface AsyncState<T> {
   data: T | null;
@@ -11,38 +12,31 @@ interface AsyncState<T> {
 // AbortSignal that is aborted on unmount or before the next run; forward it to
 // fetch (see api client) to actually cancel in-flight requests when deps change
 // quickly. A `() => Promise<T>` fn that ignores the signal is still accepted.
-export function useAsync<T>(fn: (signal: AbortSignal) => Promise<T>, deps: unknown[]): AsyncState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [nonce, setNonce] = useState(0);
+//
+// Pass a key (see api/queryKeys.ts) when two places load the same thing: they
+// then share one cache entry, so the second one renders from cache immediately
+// and revalidates in the background instead of blanking out to a spinner.
+// Without a key the call gets a private entry per hook instance - same behaviour
+// as before, no sharing.
+export function useAsync<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  deps: unknown[],
+  key?: QueryKey,
+): AsyncState<T> {
+  const instanceId = useId();
+  const query = useQuery({
+    queryKey: key ?? ["useAsync", instanceId, ...deps],
+    queryFn: ({ signal }) => fn(signal),
+  });
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const run = useCallback(fn, deps);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let alive = true;
-    setLoading(true);
-    setError(null);
-    run(controller.signal)
-      .then((d) => {
-        if (alive) setData(d);
-      })
-      .catch((e) => {
-        // Ignore errors from a request we deliberately cancelled.
-        if (!alive || controller.signal.aborted || (e as Error)?.name === "AbortError") return;
-        setError(e as Error);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-      controller.abort();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run, nonce]);
-
-  return { data, error, loading, reload: () => setNonce((n) => n + 1) };
+  return {
+    data: query.data ?? null,
+    error: (query.error as Error | null) ?? null,
+    // Only the first load (no data to show yet) counts as loading: a background
+    // revalidation must not swap a rendered page back to a spinner.
+    loading: query.isPending,
+    reload: () => {
+      void query.refetch();
+    },
+  };
 }

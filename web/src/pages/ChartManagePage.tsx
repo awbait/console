@@ -28,6 +28,7 @@ import {
 } from "react-aria-components";
 import { Link, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
+import { qk } from "../api/queryKeys";
 import type { ChartPublication, PublicationStatus, PublicationVersion } from "../api/types";
 import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
@@ -77,11 +78,9 @@ export function ChartManagePage() {
     error: pubError,
     reload: reloadPub,
   } = useAsync(
-    () =>
-      api
-        .listPublications({ chart: name })
-        .then((list) => list.find((p) => p.chart_project === project) ?? null),
+    (signal) => api.findPublication(project, name, signal),
     [project, name],
+    qk.publication(project, name),
   );
 
   if (pubLoading && !pub) return <Spinner />;
@@ -199,10 +198,15 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
   const name = pub.chart_name;
 
   // Chart versions from Harbor + the stored per-version publication rows.
-  const { data: chart } = useAsync(() => api.getChart(project, name), [project, name]);
+  const { data: chart } = useAsync(
+    () => api.getChart(project, name),
+    [project, name],
+    qk.chart(project, name),
+  );
   const { data: versions, reload: reloadVersions } = useAsync(
     () => api.listVersions(pub.id),
     [pub.id],
+    qk.versions(pub.id),
   );
 
   const isOwner = canModify(user, pub.owner_team);

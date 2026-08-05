@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { IconPlus, IconShoppingCart } from "@tabler/icons-react";
 import { OrdersTable } from "../features/orders/OrdersTable";
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { LinkButton } from "../components/ui";
 
 // Product page (= a published chart): its orders list + "Order".
 // Only charts with an approved order-view appear in the menu, but a direct URL
@@ -45,13 +46,10 @@ export function ProductPage() {
               <IconShoppingCart size={24} stroke={1.6} />
             </span>
             <p>Заказов пока нет</p>
-            <Link
-              to={orderTo}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface px-3 py-1.5 font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-            >
+            <LinkButton to={orderTo} className="gap-1.5">
               <IconPlus size={16} stroke={1.7} className="text-slate-400" />
               Заказать
-            </Link>
+            </LinkButton>
           </div>
         ) : orderDisabledReason ? (
           <>{orderDisabledReason}. Заказ недоступен, пока view не согласована.</>

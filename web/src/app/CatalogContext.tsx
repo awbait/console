@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { api } from "../api/client";
+import { qk } from "../api/queryKeys";
 import { useAsync } from "../hooks/useAsync";
 import type { CatalogChart, Category } from "../api/types";
 
@@ -23,7 +24,7 @@ const CatalogCtx = createContext<CatalogState>({
 });
 
 export function CatalogProvider({ children }: { children: ReactNode }) {
-  const { data, loading, error, reload } = useAsync(() => api.getCatalog(), []);
+  const { data, loading, error, reload } = useAsync(() => api.getCatalog(), [], qk.catalog());
   return (
     <CatalogCtx.Provider
       value={{

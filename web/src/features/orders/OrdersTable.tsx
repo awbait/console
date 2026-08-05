@@ -17,6 +17,7 @@ import {
 } from "react-aria-components";
 import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage, HttpError } from "../../api/client";
+import { qk } from "../../api/queryKeys";
 import type { OrderRequest, RequestStatus } from "../../api/types";
 import { useCatalog } from "../../app/CatalogContext";
 import { useTeam } from "../../app/TeamContext";
@@ -28,7 +29,7 @@ import { attachSseLogger } from "../../lib/sse";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ProductIcon } from "../../components/icons";
 import { StatusBadge, StatusDot } from "../../components/StatusBadge";
-import { ErrorBox, Spinner } from "../../components/ui";
+import { ErrorBox, LinkButton, Spinner } from "../../components/ui";
 
 // Live order statuses (create-MR merged): only these can be upgraded to a new version.
 const LIVE_STATUSES: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];
@@ -67,9 +68,13 @@ const DEFAULT_HIDDEN: RequestStatus[] = ["DELETED"];
 
 export function OrdersTable({ title, filter, orderTo, orderDisabledReason, emptyHint, allTeams }: Props) {
   // Fetch including deleted so the status filter can reveal them on demand.
+  // Shared cache key: every product page and the orders list render the same
+  // request list, so switching between them shows the cached rows immediately
+  // and refreshes in the background instead of blanking out.
   const { data, error, loading, reload } = useAsync(
-    () => api.listRequests({ include_deleted: "true" }),
+    (signal) => api.listRequests({ include_deleted: "true" }, signal),
     [],
+    qk.requests(),
   );
 
   // Live updates: a global SSE stream pushes a "status_changed" signal on any
@@ -185,13 +190,10 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       <div className="mb-4 flex min-h-9 items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
         {orderTo ? (
-          <Link
-            to={orderTo}
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-brand-700"
-          >
+          <LinkButton to={orderTo} variant="primary" className="gap-1.5">
             <IconPlus size={16} stroke={2} />
             Заказать
-          </Link>
+          </LinkButton>
         ) : orderDisabledReason ? (
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-slate-400 sm:inline">нет в реестре</span>
@@ -269,13 +271,10 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       <IconPackages size={24} stroke={1.6} />
                     </span>
                     <p>Заказов пока нет</p>
-                    <Link
-                      to="/catalog"
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface px-3 py-1.5 font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-                    >
+                    <LinkButton to="/catalog" className="gap-1.5">
                       Открыть каталог
                       <IconArrowRight size={16} stroke={1.7} className="text-slate-400" />
-                    </Link>
+                    </LinkButton>
                   </div>
                 )}
               </div>

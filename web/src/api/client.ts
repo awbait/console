@@ -179,6 +179,15 @@ export const api = {
   // chart publications (metadata + view builder + approval)
   listPublications: (params?: Record<string, string>) =>
     req<ChartPublication[] | null>("GET", "/publications" + qs(params)).then((r) => r ?? []),
+  // Publication of one chart by coordinates. The API filters by chart name
+  // only, so the project match happens here; null when the chart has none.
+  findPublication: (project: string, name: string, signal?: AbortSignal) =>
+    req<ChartPublication[] | null>(
+      "GET",
+      "/publications" + qs({ chart: name }),
+      undefined,
+      signal,
+    ).then((r) => (r ?? []).find((p) => p.chart_project === project) ?? null),
   createPublication: (body: { chart: string; category_id: string; owner_team: string }) =>
     req<ChartPublication>("POST", "/publications", body),
   getPublication: (id: string) => req<PublicationDetail>("GET", `/publications/${enc(id)}`),
@@ -228,8 +237,8 @@ export const api = {
     req<void>("POST", `/publications/${enc(id)}/recommended`, { version }),
 
   // requests
-  listRequests: (params?: Record<string, string>) =>
-    req<OrderRequest[]>("GET", "/requests" + qs(params)),
+  listRequests: (params?: Record<string, string>, signal?: AbortSignal) =>
+    req<OrderRequest[]>("GET", "/requests" + qs(params), undefined, signal),
   getRequest: (id: string, signal?: AbortSignal) =>
     req<RequestDetail>("GET", `/requests/${enc(id)}`, undefined, signal),
   createRequest: (body: CreateOrderBody) => req<OrderRequest>("POST", "/requests", body),

@@ -170,3 +170,31 @@
 body {
   @apply bg-app text-slate-800 antialiased;
 }
+
+/* Scrollable panes (content column, sidebar nav, doc tabs). The default OS
+   scrollbar draws a wide opaque strip right against the content and cuts the
+   page in two; this keeps a slim, low-contrast thumb over a transparent track. */
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-neutral-300)) transparent;
+}
+
+.scroll-slim::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-slim::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--c-neutral-300));
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 9999px;
+}
+
+.scroll-slim::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--c-neutral-400));
+}

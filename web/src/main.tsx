@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
@@ -164,18 +165,36 @@ const router = createBrowserRouter([
   },
 ]);
 
+// Query cache: stale-while-revalidate. Every mount still revalidates
+// (staleTime 0), but a cached entry renders instantly meanwhile, so moving
+// between two pages that need the same data no longer flashes a spinner.
+// Refetching on window focus is off - the portal's data doesn't change that
+// fast, and a background refetch on every alt-tab is noise.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 0,
+      gcTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider>
-      <ToastProvider>
-        <UserProvider>
-          <TeamProvider>
-            <CatalogProvider>
-              <RouterProvider router={router} />
-            </CatalogProvider>
-          </TeamProvider>
-        </UserProvider>
-      </ToastProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <ToastProvider>
+          <UserProvider>
+            <TeamProvider>
+              <CatalogProvider>
+                <RouterProvider router={router} />
+              </CatalogProvider>
+            </TeamProvider>
+          </UserProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   </StrictMode>,
 );
