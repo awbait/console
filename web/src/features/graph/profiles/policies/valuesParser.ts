@@ -12,6 +12,7 @@
 
 import type { Edge } from "@xyflow/react";
 import type { XY } from "../../core/model";
+import { entriesLabel, type GraphMapping, readEntries } from "../../mapping";
 import type { SavedGraphState } from "./editorState";
 import {
   type PortProtocol,
@@ -72,11 +73,21 @@ function parseRulePort(v: unknown): TopoPort | null {
 const selectorKey = (ns: string, selector: Record<string, string>) =>
   `${ns}|${selectorFingerprint(selector)}`;
 
-// parseValues maps values.policies back onto a graph centered on orderNs.
-export function parseValues(values: Record<string, unknown>, orderNs: string): ParsedGraph {
+// parseValues maps the chart's policy entries back onto a graph centered on
+// orderNs. Where those entries live and what their fields are called comes from
+// the version's mapping, not from this file.
+export function parseValues(
+  values: Record<string, unknown>,
+  orderNs: string,
+  mapping: GraphMapping,
+): ParsedGraph {
   const errors: string[] = [];
   const drafts = new Map<string, Draft>();
   const links: DirectedLink[] = [];
+  const F = mapping.entry;
+  const R = mapping.rule;
+  const P = mapping.peer;
+  const section = entriesLabel(mapping.entries);
 
   const ensure = (
     ns: string,
@@ -100,10 +111,10 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
     return d;
   };
 
-  const raw = values.policies;
+  const raw = readEntries(values, mapping.entries);
   const entries: unknown[] = Array.isArray(raw) ? raw : [];
   if (raw !== undefined && !Array.isArray(raw)) {
-    errors.push("Секция policies не является списком.");
+    errors.push(`Секция ${section} не является списком.`);
   }
 
   // Two entries with the same selector describe the same workload, and the graph
@@ -112,56 +123,62 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
   const ownerAt = new Map<string, number>();
 
   entries.forEach((entryRaw, i) => {
-    const at = `policies[${i}]`;
+    const at = `${section}[${i}]`;
     if (!isPlainObject(entryRaw)) {
       errors.push(`${at}: запись не является объектом.`);
       return;
     }
     const entry = entryRaw;
-    const label = typeof entry.name === "string" ? `${at} (${entry.name})` : at;
-    if (entry.enabled === false) {
-      errors.push(`${label}: enabled: false не отображается на графе.`);
+    const name = entry[F.name];
+    const label = typeof name === "string" ? `${at} (${name})` : at;
+    if (entry[F.enabled] === false) {
+      errors.push(`${label}: ${F.enabled}: false не отображается на графе.`);
       return;
     }
-    if (!isStringMap(entry.selector) || Object.keys(entry.selector).length === 0) {
-      errors.push(`${label}: нет selector - на графе такую запись не отобразить.`);
+    const selector = entry[F.selector];
+    if (!isStringMap(selector) || Object.keys(selector).length === 0) {
+      errors.push(`${label}: нет ${F.selector} - на графе такую запись не отобразить.`);
       return;
     }
-    const fingerprint = selectorFingerprint(entry.selector);
+    const fingerprint = selectorFingerprint(selector);
     const twin = ownerAt.get(fingerprint);
     if (twin !== undefined) {
       errors.push(
-        `${label}: тот же selector, что и у policies[${twin}] - для графа это один workload, и одна из записей потерялась бы.`,
+        `${label}: тот же ${F.selector}, что и у ${section}[${twin}] - для графа это один workload, и одна из записей потерялась бы.`,
       );
       return;
     }
     ownerAt.set(fingerprint, i);
-    const owner = ensure(orderNs, entry.selector, {
-      name: typeof entry.name === "string" ? entry.name : undefined,
-      serviceAccount: typeof entry.serviceAccount === "string" ? entry.serviceAccount : undefined,
+    const ownerSa = entry[F.serviceAccount];
+    const owner = ensure(orderNs, selector, {
+      name: typeof name === "string" ? name : undefined,
+      serviceAccount: typeof ownerSa === "string" ? ownerSa : undefined,
     });
 
     const walkRules = (dir: "ingress" | "egress") => {
-      const rules = entry[dir];
+      const rulesKey = dir === "ingress" ? F.ingress : F.egress;
+      const peersKey = dir === "ingress" ? R.from : R.to;
+      const rules = entry[rulesKey];
       if (rules === undefined) return;
       if (!Array.isArray(rules)) {
-        errors.push(`${label}.${dir}: не список правил.`);
+        errors.push(`${label}.${rulesKey}: не список правил.`);
         return;
       }
       rules.forEach((ruleRaw, j) => {
-        const ruleAt = `${label}.${dir}[${j}]`;
+        const ruleAt = `${label}.${rulesKey}[${j}]`;
         if (!isPlainObject(ruleRaw)) {
           errors.push(`${ruleAt}: правило не является объектом.`);
           return;
         }
-        const ports = Array.isArray(ruleRaw.ports) ? ruleRaw.ports.map(parseRulePort) : [];
+        const portsRaw = ruleRaw[R.ports];
+        const ports = Array.isArray(portsRaw) ? portsRaw.map(parseRulePort) : [];
         if (ports.length === 0 || ports.some((p) => p === null)) {
-          errors.push(`${ruleAt}: правило без конкретных ports не отображается на графе.`);
+          errors.push(`${ruleAt}: правило без конкретных ${R.ports} не отображается на графе.`);
           return;
         }
-        const peersRaw = ruleRaw[dir === "ingress" ? "from" : "to"];
+        const peersRaw = ruleRaw[peersKey];
         if (!Array.isArray(peersRaw) || peersRaw.length === 0) {
-          errors.push(`${ruleAt}: нет ${dir === "ingress" ? "from" : "to"}.`);
+          errors.push(`${ruleAt}: нет ${peersKey}.`);
           return;
         }
         for (const peerRaw of peersRaw) {
@@ -175,17 +192,19 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
             );
             continue;
           }
-          if (typeof peerRaw.namespace !== "string" || !isStringMap(peerRaw.selector)) {
-            errors.push(`${ruleAt}: peer должен иметь namespace и selector.`);
+          const peerNs = peerRaw[P.namespace];
+          const peerSelector = peerRaw[P.selector];
+          if (typeof peerNs !== "string" || !isStringMap(peerSelector)) {
+            errors.push(`${ruleAt}: peer должен иметь ${P.namespace} и ${P.selector}.`);
             continue;
           }
-          if (peerRaw.namespace === orderNs) {
+          if (peerNs === orderNs) {
             errors.push(`${ruleAt}: peer в namespace заказа - на графе такие связи не рисуются.`);
             continue;
           }
-          const peer = ensure(peerRaw.namespace, peerRaw.selector, {
-            serviceAccount:
-              typeof peerRaw.serviceAccount === "string" ? peerRaw.serviceAccount : undefined,
+          const peerSa = peerRaw[P.serviceAccount];
+          const peer = ensure(peerNs, peerSelector, {
+            serviceAccount: typeof peerSa === "string" ? peerSa : undefined,
           });
           for (const p of ports as TopoPort[]) {
             if (dir === "ingress") {

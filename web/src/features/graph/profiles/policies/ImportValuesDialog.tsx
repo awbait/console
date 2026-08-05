@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { FormErrors } from "../../../../components/FormErrors";
 import { Button, TextField } from "../../../../components/ui";
 import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
+import { type GraphMapping, readEntries } from "../../mapping";
 import { MapDialog } from "./TopologyDialogs";
 import { type ParsedGraph, parseValues } from "./valuesParser";
 
@@ -27,10 +28,12 @@ export function ImportValuesDialog({
   isOpen,
   onOpenChange,
   onLoad,
+  mapping,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onLoad: (r: ImportedValues) => void;
+  mapping: GraphMapping;
 }) {
   const [ns, setNs] = useState("");
   const [text, setText] = useState("");
@@ -61,7 +64,7 @@ export function ImportValuesDialog({
       setErrs(errors);
       return;
     }
-    const parsed = parseValues(obj, n);
+    const parsed = parseValues(obj, n, mapping);
     if (parsed.errors.length > 0) {
       setErrs(parsed.errors);
       return;
@@ -70,7 +73,7 @@ export function ImportValuesDialog({
       parsed,
       orderNs: n,
       identity: obj.identity,
-      policies: obj.policies,
+      policies: readEntries(obj, mapping.entries),
       hasOtherSections: !!(obj.netpol || obj.authzpol),
     });
     onOpenChange(false);

@@ -46,10 +46,10 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	issues = append(issues, duplicateKeys(viewJSON)...)
 	for k := range doc {
 		switch k {
-		case "views", "tabs", "actions", "defaults", "version", "$comment":
+		case "views", "tabs", "actions", "defaults", "graph", "version", "$comment":
 		default:
 			issues = append(issues, Issue{"/" + k,
-				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\" и \"version\"", k)})
+				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\" и \"version\"", k)})
 		}
 	}
 	viewsRaw, ok := doc["views"]
@@ -131,6 +131,12 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	// defaults: values the portal stamps into an order at create/update time.
 	if defaultsRaw, ok := doc["defaults"]; ok {
 		issues = append(issues, validateDefaults(defaultsRaw, schema)...)
+	}
+
+	// graph: the visual values editor this version turns on, and where its
+	// fields live in the values.
+	if graphRaw, ok := doc["graph"]; ok {
+		issues = append(issues, validateGraph(graphRaw, schema)...)
 	}
 	return issues
 }

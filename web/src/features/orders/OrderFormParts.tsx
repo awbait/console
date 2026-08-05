@@ -9,7 +9,7 @@ import { useTheme } from "../../app/ThemeContext";
 import { dnsLabelError, fieldMsg } from "../../form/fieldErrors";
 import { namespaceError } from "../../form/namespace";
 import { SchemaForm, type View } from "../../form/SchemaForm";
-import type { ValuesEditorPlugin } from "./valuesEditors";
+import type { ActiveValuesEditor } from "./valuesEditors";
 import { Card, Select, Spinner, TextField } from "../../components/ui";
 
 type Values = Record<string, unknown>;
@@ -176,7 +176,7 @@ export function OrderValuesCard({
   showErrors = false,
   lockReadOnly = false,
   lockedPaths,
-  plugins = [],
+  editor = null,
   pluginNamespace = "",
   pluginChartVersion = "",
   pluginInputError = null,
@@ -197,9 +197,9 @@ export function OrderValuesCard({
   lockReadOnly?: boolean;
   // Always-locked field paths (e.g. the deploy identity on upgrade).
   lockedPaths?: string[];
-  // Chart-specific extra editors (e.g. the policies graph); each adds its own
-  // toggle button after Form/Raw YAML.
-  plugins?: ValuesEditorPlugin[];
+  // The extra values editor this chart version turns on (e.g. the policies
+  // graph); adds one toggle button after Form/Raw YAML.
+  editor?: ActiveValuesEditor | null;
   // Order namespace passed through to plugins.
   pluginNamespace?: string;
   // Chart version being ordered, passed through to plugins.
@@ -213,7 +213,7 @@ export function OrderValuesCard({
 }) {
   const { theme } = useTheme();
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
-  const activePlugin = plugins.find((p) => p.id === mode) ?? null;
+  const active = editor && editor.plugin.id === mode ? editor : null;
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
@@ -231,33 +231,33 @@ export function OrderValuesCard({
           >
             YAML
           </button>
-          {plugins.map((p) => (
+          {editor && (
             <button
-              key={p.id}
               type="button"
-              onClick={() => onSwitchMode(p.id)}
+              onClick={() => onSwitchMode(editor.plugin.id)}
               className={`flex items-center gap-1 rounded px-2 py-1 ${
-                mode === p.id ? "bg-surface shadow" : "text-gray-500"
+                mode === editor.plugin.id ? "bg-surface shadow" : "text-gray-500"
               }`}
             >
-              {p.label}
-              {p.badge && (
+              {editor.plugin.label}
+              {editor.plugin.badge && (
                 <span className="rounded-full bg-brand-100 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-brand-700">
-                  {p.badge}
+                  {editor.plugin.badge}
                 </span>
               )}
             </button>
-          ))}
+          )}
         </div>
       </div>
 
-      {activePlugin ? (
+      {active ? (
         <Suspense fallback={<Spinner label="Загрузка редактора…" />}>
-          <activePlugin.Component
+          <active.plugin.Component
             values={values}
             onValues={onValues}
             namespace={pluginNamespace}
             chartVersion={pluginChartVersion}
+            mapping={active.mapping}
             inputError={pluginInputError}
             editorState={pluginState}
             onEditorState={onPluginState}

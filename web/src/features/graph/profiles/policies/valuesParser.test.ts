@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Edge } from "@xyflow/react";
 import { type TopoNamespace, type TopoWorkload, workloadId } from "./topology";
+import { defaultMapping } from "../../mapping";
 import { buildPolicies } from "./valuesBuilder";
 import { parseValues } from "./valuesParser";
 import { bodyHandleId, isBodyHandle, portFromHandle, portHandleId } from "./WorkloadNode";
@@ -32,11 +33,13 @@ function arrow(id: string, source: string, target: string, port: number): Edge {
   };
 }
 
+const M = defaultMapping("policies");
+
 describe("values round trip", () => {
   test("a one-way arrow keeps its shape: body dot -> destination port", () => {
     const drawn = arrow("e1", workloadId("ns1", "api"), workloadId("ns2", "db"), 5432);
-    const values = { policies: buildPolicies(topology, [drawn], "ns1") };
-    const parsed = parseValues(values, "ns1");
+    const values = { policies: buildPolicies(topology, [drawn], "ns1", M) };
+    const parsed = parseValues(values, "ns1", M);
     expect(parsed.errors).toEqual([]);
     expect(parsed.edges).toHaveLength(1);
     expect(isBodyHandle(parsed.edges[0].sourceHandle)).toBe(true);
@@ -59,7 +62,7 @@ describe("values round trip", () => {
         },
       ],
     };
-    const parsed = parseValues(values, "ns1");
+    const parsed = parseValues(values, "ns1", M);
     expect(parsed.errors).toEqual([]);
     expect(parsed.edges).toHaveLength(1);
   });
@@ -89,7 +92,7 @@ describe("values round trip", () => {
         },
       ],
     };
-    const parsed = parseValues(values, "ns1");
+    const parsed = parseValues(values, "ns1", M);
     expect(parsed.errors).toEqual([]);
     expect(parsed.edges).toHaveLength(2);
     // Every arrow runs body dot -> destination port of its direction.
@@ -134,7 +137,7 @@ describe("values round trip", () => {
         },
       ],
     };
-    const parsed = parseValues(values, "ns1");
+    const parsed = parseValues(values, "ns1", M);
     expect(parsed.errors).toHaveLength(1);
     expect(parsed.errors[0]).toContain("policies[0]");
   });

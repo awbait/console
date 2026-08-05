@@ -12,6 +12,7 @@
 
 import type { Edge } from "@xyflow/react";
 import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
+import { type GraphMapping, writeEntries } from "../../mapping";
 import {
   findWorkload,
   nsOfWorkload,
@@ -101,12 +102,15 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 // they describe, so regeneration can write into the existing entry instead of a
 // fresh one. Entries the graph could not have produced (no object, no selector)
 // are ignored here - parseValues refuses such values outright.
-function previousEntries(prev: unknown): Map<string, Record<string, unknown>> {
+function previousEntries(
+  prev: unknown,
+  selectorKey: string,
+): Map<string, Record<string, unknown>> {
   const out = new Map<string, Record<string, unknown>>();
   if (!Array.isArray(prev)) return out;
   for (const raw of prev) {
     if (!isPlainObject(raw)) continue;
-    const selector = raw.selector;
+    const selector = raw[selectorKey];
     if (!isPlainObject(selector)) continue;
     if (!Object.values(selector).every((v) => typeof v === "string")) continue;
     const key = selectorFingerprint(selector as Record<string, string>);
@@ -126,15 +130,16 @@ function rewrite(
   owner: TopoWorkload,
   ingress: unknown[],
   egress: unknown[],
+  F: Record<string, string>,
 ): Record<string, unknown> {
   const entry = { ...before };
-  entry.selector = owner.selector;
-  if (owner.serviceAccount) entry.serviceAccount = owner.serviceAccount;
-  else delete entry.serviceAccount;
-  if (ingress.length > 0) entry.ingress = ingress;
-  else delete entry.ingress;
-  if (egress.length > 0) entry.egress = egress;
-  else delete entry.egress;
+  entry[F.selector] = owner.selector;
+  if (owner.serviceAccount) entry[F.serviceAccount] = owner.serviceAccount;
+  else delete entry[F.serviceAccount];
+  if (ingress.length > 0) entry[F.ingress] = ingress;
+  else delete entry[F.ingress];
+  if (egress.length > 0) entry[F.egress] = egress;
+  else delete entry[F.egress];
   return entry;
 }
 
@@ -150,8 +155,12 @@ export function buildPolicies(
   topology: TopoNamespace[],
   edges: Edge[],
   orderNs: string | null,
+  mapping: GraphMapping,
   prev?: unknown,
 ): unknown[] {
+  const F = mapping.entry;
+  const R = mapping.rule;
+  const P = mapping.peer;
   const byOwner = new Map<
     string,
     { owner: TopoWorkload; ingress: unknown[]; egress: unknown[] }
@@ -160,19 +169,16 @@ export function buildPolicies(
     for (const e of edges) {
       for (const link of edgeLinks(topology, orderNs, e).links) {
         const g = byOwner.get(link.owner.id) ?? { owner: link.owner, ingress: [], egress: [] };
+        const peer: Record<string, unknown> = {
+          [P.namespace]: nsOfWorkload(link.peer.id),
+          [P.selector]: link.peer.selector,
+        };
         if (link.dir === "egress") {
-          g.egress.push({
-            to: [{ namespace: nsOfWorkload(link.peer.id), selector: link.peer.selector }],
-            ports: [rulePort(link.port)],
-          });
+          g.egress.push({ [R.to]: [peer], [R.ports]: [rulePort(link.port)] });
         } else {
-          const from: Record<string, unknown> = {
-            namespace: nsOfWorkload(link.peer.id),
-            selector: link.peer.selector,
-          };
           // Sender SA feeds the AuthorizationPolicy principal when known.
-          if (link.peer.serviceAccount) from.serviceAccount = link.peer.serviceAccount;
-          g.ingress.push({ from: [from], ports: [rulePort(link.port)] });
+          if (link.peer.serviceAccount) peer[P.serviceAccount] = link.peer.serviceAccount;
+          g.ingress.push({ [R.from]: [peer], [R.ports]: [rulePort(link.port)] });
         }
         byOwner.set(link.owner.id, g);
       }
@@ -182,26 +188,27 @@ export function buildPolicies(
   // Names already in the values are reserved before anything is generated, so a
   // new entry cannot take the name of one that is being kept.
   const groups = [...byOwner.values()];
-  const kept = previousEntries(prev);
+  const kept = previousEntries(prev, F.selector);
   const keptFor = new Map<string, Record<string, unknown>>();
   const used = new Set<string>();
   for (const g of groups) {
     const before = kept.get(selectorFingerprint(g.owner.selector));
     if (!before) continue;
     keptFor.set(g.owner.id, before);
-    if (typeof before.name === "string" && before.name) used.add(before.name);
+    const keptName = before[F.name];
+    if (typeof keptName === "string" && keptName) used.add(keptName);
   }
 
   return groups.map((g) => {
     const before = keptFor.get(g.owner.id);
-    if (before) return rewrite(before, g.owner, g.ingress, g.egress);
+    if (before) return rewrite(before, g.owner, g.ingress, g.egress, F);
     return {
-      name: shortName(g.owner.name, used),
-      enabled: true,
-      serviceAccount: g.owner.serviceAccount ?? undefined,
-      selector: g.owner.selector,
-      ...(g.ingress.length > 0 ? { ingress: g.ingress } : {}),
-      ...(g.egress.length > 0 ? { egress: g.egress } : {}),
+      [F.name]: shortName(g.owner.name, used),
+      [F.enabled]: true,
+      [F.serviceAccount]: g.owner.serviceAccount ?? undefined,
+      [F.selector]: g.owner.selector,
+      ...(g.ingress.length > 0 ? { [F.ingress]: g.ingress } : {}),
+      ...(g.egress.length > 0 ? { [F.egress]: g.egress } : {}),
     };
   });
 }
@@ -213,9 +220,14 @@ export function buildValues(
   edges: Edge[],
   identity: IdentityTags,
   orderNs: string | null,
+  mapping: GraphMapping,
   prev?: unknown,
 ): Record<string, unknown> {
-  return { identity, policies: buildPolicies(topology, edges, orderNs, prev) };
+  return writeEntries(
+    { identity },
+    mapping.entries,
+    buildPolicies(topology, edges, orderNs, mapping, prev),
+  );
 }
 
 export interface EdgeGroup {
