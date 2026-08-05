@@ -190,8 +190,17 @@ func checkGraphSchema(entries string, names map[string]map[string]string, schema
 		field("/graph/entry/"+f, elem, "entry", f)
 	}
 	// Rules and their peers: ingress carries "from", egress carries "to".
-	for _, dir := range []struct{ entryField, peerField string }{
-		{"ingress", "from"}, {"egress", "to"},
+	//
+	// A peer's serviceAccount is the SENDER's, and it is only ever written on the
+	// incoming side (it feeds the AuthorizationPolicy principal). An egress rule
+	// addresses its destination by namespace and selector, so a chart that has no
+	// serviceAccount on the outgoing peer is right and must not be reported.
+	for _, dir := range []struct {
+		entryField, peerField string
+		peerFields            []string
+	}{
+		{"ingress", "from", []string{"namespace", "selector", "serviceAccount"}},
+		{"egress", "to", []string{"namespace", "selector"}},
 	} {
 		rules := field("/graph/entry/"+dir.entryField, elem, "entry", dir.entryField)
 		if rules == nil {
@@ -204,7 +213,7 @@ func checkGraphSchema(entries string, names map[string]map[string]string, schema
 			continue
 		}
 		peer := itemNode(peers, schema)
-		for _, f := range []string{"namespace", "selector", "serviceAccount"} {
+		for _, f := range dir.peerFields {
 			field("/graph/peer/"+f, peer, "peer", f)
 		}
 	}

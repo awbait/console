@@ -178,6 +178,85 @@ func TestGraphSchemaMismatch(t *testing.T) {
 	}
 }
 
+// A peer's serviceAccount is the sender's and is only written on the incoming
+// side. A chart whose outgoing peer has none is right, not broken.
+func TestGraphEgressPeerNeedsNoServiceAccount(t *testing.T) {
+	schema := `{
+      "type": "object",
+      "properties": {
+        "policies": { "type": "array", "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "enabled": { "type": "boolean" },
+            "selector": { "type": "object" },
+            "serviceAccount": { "type": "string" },
+            "ingress": { "type": "array", "items": {
+              "type": "object",
+              "properties": {
+                "ports": { "type": "array", "items": { "type": "object" } },
+                "from": { "type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "namespace": { "type": "string" },
+                    "selector": { "type": "object" },
+                    "serviceAccount": { "type": "string" }
+                  }
+                }}
+              }
+            }},
+            "egress": { "type": "array", "items": {
+              "type": "object",
+              "properties": {
+                "ports": { "type": "array", "items": { "type": "object" } },
+                "to": { "type": "array", "items": {
+                  "type": "object",
+                  "properties": {
+                    "namespace": { "type": "string" },
+                    "selector": { "type": "object" }
+                  }
+                }}
+              }
+            }}
+          }
+        }}
+      }
+    }`
+	issues := views.Validate([]byte(doc(`{"profile": "policies"}`)), []byte(schema))
+	if len(issues) > 0 {
+		t.Fatalf("want no issues, got %+v", issues)
+	}
+}
+
+// The incoming side is a different matter: without the sender's account there is
+// nothing to build the AuthorizationPolicy principal from, so that IS reported.
+func TestGraphIngressPeerServiceAccountIsChecked(t *testing.T) {
+	schema := `{
+      "type": "object",
+      "properties": {
+        "policies": { "type": "array", "items": {
+          "type": "object",
+          "properties": {
+            "selector": { "type": "object" },
+            "ingress": { "type": "array", "items": {
+              "type": "object",
+              "properties": {
+                "from": { "type": "array", "items": {
+                  "type": "object",
+                  "properties": { "namespace": { "type": "string" }, "selector": { "type": "object" } }
+                }}
+              }
+            }}
+          }
+        }}
+      }
+    }`
+	issues := views.Validate([]byte(doc(`{"profile": "policies"}`)), []byte(schema))
+	if !hasIssue(issues, "/graph/peer/serviceAccount", "не найдено") {
+		t.Fatalf("want the missing sender account reported, got %+v", issues)
+	}
+}
+
 // A schema that stops describing its shape is not blamed: the rest of this
 // package only reports what it can prove wrong, and so does the graph block.
 func TestGraphFreeFormSchemaIsNotBlamed(t *testing.T) {
