@@ -83,9 +83,12 @@ export function PoliciesValuesEditor({
       packEditorState({ orderNs: namespace, topology: m.topology, positions: m.positions }),
     );
     if (readOnly) return;
+    // The current values are also the previous generation: passing their
+    // policies[] back in keeps entry names and any key the graph does not know
+    // (a newer chart, another editing mode) instead of rewriting the section.
     onValues({
       ...valuesRef.current,
-      policies: buildPolicies(m.topology, m.edges, namespace),
+      policies: buildPolicies(m.topology, m.edges, namespace, valuesRef.current.policies),
     });
   };
 

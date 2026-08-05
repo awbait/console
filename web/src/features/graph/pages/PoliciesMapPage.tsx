@@ -60,6 +60,10 @@ export function PoliciesMapPage() {
   // primary one opens in the order form afterwards.
   const [pendingGroups, setPendingGroups] = useState<EdgeGroup[] | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // policies[] of the values imported onto the canvas, with the namespace they
+  // described. Regenerating that same namespace writes back into those entries,
+  // so pasted values keep their names and the keys the graph does not know.
+  const [imported, setImported] = useState<{ ns: string; policies: unknown } | null>(null);
 
   useEffect(() => {
     provider.suggestNamespaces().then(setSuggestions).catch(() => setSuggestions([]));
@@ -116,15 +120,16 @@ export function PoliciesMapPage() {
   // every change: the edges are the model, there is no intermediate JSON.
   const valuesYaml = useMemo(() => {
     if (!previewGroup || !orderNs) return "";
+    const prev = imported?.ns === previewGroup.ns ? imported.policies : undefined;
     // noRefs: with bidirectional links the same selector object lands in the
     // values twice and js-yaml would emit &ref_0/*ref_0 anchors - dump plain
     // copies instead.
-    return yaml.dump(buildValues(topology, previewGroup.edges, identity, previewGroup.ns), {
+    return yaml.dump(buildValues(topology, previewGroup.edges, identity, previewGroup.ns, prev), {
       lineWidth: 100,
       sortKeys: false,
       noRefs: true,
     });
-  }, [topology, previewGroup, identity, orderNs]);
+  }, [topology, previewGroup, identity, orderNs, imported]);
 
   // Copy the generated values.yaml. navigator.clipboard needs a secure
   // context, which the dev stand over plain http lacks - fall back to the
@@ -157,6 +162,7 @@ export function PoliciesMapPage() {
         orderNs: r.orderNs,
         positions: r.parsed.positions,
       });
+      setImported({ ns: r.orderNs, policies: r.policies });
       const n = r.identity as Partial<Record<keyof IdentityTags, unknown>> | undefined;
       if (n && typeof n === "object") {
         setIdentity((prev) => ({
@@ -206,7 +212,13 @@ export function PoliciesMapPage() {
         display_name: `Policies (${g.ns})`,
         cluster: "in-cluster",
         namespace: g.ns,
-        values: buildValues(topology, g.edges, identity, g.ns),
+        values: buildValues(
+          topology,
+          g.edges,
+          identity,
+          g.ns,
+          imported?.ns === g.ns ? imported.policies : undefined,
+        ),
         // The canvas as drawn travels with the draft: workloads with no links,
         // their service accounts and ports and the box positions are not in the
         // values, and without this they would be gone when the draft is opened.
@@ -225,7 +237,7 @@ export function PoliciesMapPage() {
         : `Создано черновиков: ${groups.length}. Остальные - в списке заказов.`,
     );
     navigate(`/requests/${created[0]}/edit`);
-  }, [pendingGroups, team, charts, topology, identity, model.positions, toast, navigate]);
+  }, [pendingGroups, team, charts, topology, identity, imported, model.positions, toast, navigate]);
 
   return (
     <div className="flex h-[calc(100vh-1px)] flex-col">

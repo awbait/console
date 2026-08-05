@@ -1,15 +1,21 @@
 // Reverse mapping: a `policies` chart values object -> the graph model. Used
 // by the order-form graph mode (and read-only review) to draw what the values
-// already describe. The mapping is lossy by design: entry names are
-// regenerated on the way back (accepted canonicalization) and anything the
-// graph cannot represent is reported as an error so the caller can refuse
-// graph editing without touching the user's values.
+// already describe.
+//
+// The graph model is narrower than the values, so the parse cannot be total: an
+// entry the canvas has no shape for is reported as an error and the caller
+// refuses graph editing rather than touching the user's values. What the parse
+// does not carry is not lost either - buildPolicies writes back into the entries
+// these values already hold, so names and unknown keys survive the round trip.
+// Rule wording is the one accepted canonicalization: a link written as ingress
+// on the receiver comes back as egress on the sender, same semantics.
 
 import type { Edge } from "@xyflow/react";
 import type { XY } from "../../core/model";
 import type { SavedGraphState } from "./editorState";
 import {
   type PortProtocol,
+  selectorFingerprint,
   type TopoNamespace,
   type TopoPort,
   type TopoWorkload,
@@ -64,10 +70,7 @@ function parseRulePort(v: unknown): TopoPort | null {
 }
 
 const selectorKey = (ns: string, selector: Record<string, string>) =>
-  `${ns}|${Object.keys(selector)
-    .sort()
-    .map((k) => `${k}=${selector[k]}`)
-    .join(",")}`;
+  `${ns}|${selectorFingerprint(selector)}`;
 
 // parseValues maps values.policies back onto a graph centered on orderNs.
 export function parseValues(values: Record<string, unknown>, orderNs: string): ParsedGraph {
@@ -103,6 +106,11 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
     errors.push("Секция policies не является списком.");
   }
 
+  // Two entries with the same selector describe the same workload, and the graph
+  // has room for only one card. Merging them silently would drop one of the two
+  // on the way back to values, so such values are refused instead.
+  const ownerAt = new Map<string, number>();
+
   entries.forEach((entryRaw, i) => {
     const at = `policies[${i}]`;
     if (!isPlainObject(entryRaw)) {
@@ -119,6 +127,15 @@ export function parseValues(values: Record<string, unknown>, orderNs: string): P
       errors.push(`${label}: нет selector - на графе такую запись не отобразить.`);
       return;
     }
+    const fingerprint = selectorFingerprint(entry.selector);
+    const twin = ownerAt.get(fingerprint);
+    if (twin !== undefined) {
+      errors.push(
+        `${label}: тот же selector, что и у policies[${twin}] - для графа это один workload, и одна из записей потерялась бы.`,
+      );
+      return;
+    }
+    ownerAt.set(fingerprint, i);
     const owner = ensure(orderNs, entry.selector, {
       name: typeof entry.name === "string" ? entry.name : undefined,
       serviceAccount: typeof entry.serviceAccount === "string" ? entry.serviceAccount : undefined,

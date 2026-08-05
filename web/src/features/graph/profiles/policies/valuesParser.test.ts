@@ -100,4 +100,42 @@ describe("values round trip", () => {
     expect(byTarget.has(`${workloadId("ns2", "db")}:5432`)).toBe(true);
     for (const e of parsed.edges) expect(isBodyHandle(e.sourceHandle)).toBe(true);
   });
+
+  test("two entries with the same selector are refused, not merged", () => {
+    // Splitting the rules of one workload across two entries is a legitimate way
+    // to write these values, but the canvas has one card per workload: merging
+    // them would drop one entry on the way back. Refuse instead, so the values
+    // stay untouched and the user is told why.
+    const owner = {
+      serviceAccount: "api-sa",
+      selector: { "app.kubernetes.io/name": "api" },
+    };
+    const values = {
+      policies: [
+        {
+          ...owner,
+          name: "api-egress",
+          egress: [
+            {
+              to: [{ namespace: "ns2", selector: { "app.kubernetes.io/name": "db" } }],
+              ports: [{ port: 5432, protocol: "TCP" }],
+            },
+          ],
+        },
+        {
+          ...owner,
+          name: "api-ingress",
+          ingress: [
+            {
+              from: [{ namespace: "ns2", selector: { "app.kubernetes.io/name": "db" } }],
+              ports: [{ port: 8080, protocol: "TCP" }],
+            },
+          ],
+        },
+      ],
+    };
+    const parsed = parseValues(values, "ns1");
+    expect(parsed.errors).toHaveLength(1);
+    expect(parsed.errors[0]).toContain("policies[0]");
+  });
 });

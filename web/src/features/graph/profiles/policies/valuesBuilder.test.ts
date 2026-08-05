@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Edge } from "@xyflow/react";
 import { type TopoNamespace, type TopoWorkload, workloadId } from "./topology";
-import { partitionEdges } from "./valuesBuilder";
+import { buildPolicies, partitionEdges } from "./valuesBuilder";
+import { parseValues } from "./valuesParser";
 import { bodyHandleId, portHandleId } from "./WorkloadNode";
 
 function wl(ns: string, name: string, port: number): TopoWorkload {
@@ -84,5 +85,119 @@ describe("partitionEdges", () => {
     expect(groups.map((g) => g.ns)).toEqual(["b", "c"]);
     expect(groups[0].edges.map((e) => e.id).sort()).toEqual(["e1", "e2", "e3"]);
     expect(groups[1].edges.map((e) => e.id)).toEqual(["e4"]);
+  });
+});
+
+// The graph owns the selector, the service account and the rule lists of an
+// entry. Everything else in it belongs to whoever wrote it, and drawing on the
+// canvas must not quietly throw it away.
+describe("buildPolicies keeps what it does not own", () => {
+  type Entry = Record<string, unknown>;
+
+  function link(id: string, source: string, target: string, port: number): Edge {
+    return {
+      id,
+      source,
+      target,
+      sourceHandle: bodyHandleId("r"),
+      targetHandle: portHandleId(port, "l"),
+    };
+  }
+
+  const shop: TopoNamespace[] = [
+    { name: "ord", workloads: [wl("ord", "backend", 8080)] },
+    { name: "db", workloads: [wl("db", "pg", 5432)] },
+  ];
+  const toDb = [link("e1", "ord/backend", "db/pg", 5432)];
+  const fromDb = [link("e2", "db/pg", "ord/backend", 8080)];
+
+  const previous: Entry[] = [
+    {
+      name: "my-policy",
+      enabled: true,
+      priority: 10,
+      annotations: { owner: "team-core" },
+      serviceAccount: "backend-sa",
+      selector: { "app.kubernetes.io/name": "backend" },
+      egress: [
+        {
+          to: [{ namespace: "db", selector: { "app.kubernetes.io/name": "pg" } }],
+          ports: [{ port: 5432, protocol: "TCP" }],
+        },
+      ],
+    },
+  ];
+
+  test("an unknown key and the entry name survive regeneration", () => {
+    const [entry] = buildPolicies(shop, toDb, "ord", previous) as Entry[];
+    expect(entry.name).toBe("my-policy");
+    expect(entry.priority).toBe(10);
+    expect(entry.annotations).toEqual({ owner: "team-core" });
+  });
+
+  test("without the previous values the name is generated as before", () => {
+    const [entry] = buildPolicies(shop, toDb, "ord") as Entry[];
+    expect(entry.name).toBe("backe");
+    expect(entry.priority).toBeUndefined();
+  });
+
+  test("an owned key the graph no longer produces is dropped", () => {
+    // The arrow now points the other way: the entry keeps its unknown key but
+    // its egress rule must go, otherwise deleted traffic would stay allowed.
+    const [entry] = buildPolicies(shop, fromDb, "ord", previous) as Entry[];
+    expect(entry.ingress).toBeDefined();
+    expect("egress" in entry).toBe(false);
+    expect(entry.priority).toBe(10);
+  });
+
+  test("removing the service account on the canvas removes it from the entry", () => {
+    const noSa = shop.map((ns) =>
+      ns.name === "ord"
+        ? { name: ns.name, workloads: [{ ...ns.workloads[0], serviceAccount: null }] }
+        : ns,
+    );
+    const [entry] = buildPolicies(noSa, toDb, "ord", previous) as Entry[];
+    expect("serviceAccount" in entry).toBe(false);
+    expect(entry.priority).toBe(10);
+  });
+
+  test("a generated name cannot take the name of a kept entry", () => {
+    // Both workloads shorten to "backe"; the kept entry owns it, so the new one
+    // has to move aside instead of colliding.
+    const two: TopoNamespace[] = [
+      { name: "ord", workloads: [wl("ord", "backend", 8080), wl("ord", "backendx", 8081)] },
+      { name: "db", workloads: [wl("db", "pg", 5432)] },
+    ];
+    const edges = [
+      link("e1", "ord/backend", "db/pg", 5432),
+      link("e2", "ord/backendx", "db/pg", 5432),
+    ];
+    const kept: Entry[] = [{ name: "backe", selector: { "app.kubernetes.io/name": "backend" } }];
+    const out = buildPolicies(two, edges, "ord", kept) as Entry[];
+    expect(out.map((e) => e.name)).toEqual(["backe", "back1"]);
+  });
+
+  test("values already in canonical form come back byte for byte", () => {
+    const values = {
+      policies: [
+        {
+          name: "core",
+          enabled: true,
+          serviceAccount: "backend",
+          selector: { "app.kubernetes.io/name": "backend" },
+          egress: [
+            {
+              to: [{ namespace: "db", selector: { "app.kubernetes.io/name": "pg" } }],
+              ports: [{ port: 5432, protocol: "TCP" }],
+            },
+          ],
+        },
+      ],
+    };
+    const parsed = parseValues(values, "ord");
+    expect(parsed.errors).toEqual([]);
+    expect(buildPolicies(parsed.topology, parsed.edges, "ord", values.policies)).toEqual(
+      values.policies,
+    );
   });
 });
