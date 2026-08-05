@@ -625,6 +625,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         lockedPaths={upgrade && identity ? [identity] : undefined}
         plugins={plugins}
         pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
+        pluginChartVersion={effectiveVersion ?? ""}
         pluginInputError={pluginInputError}
         pluginState={pluginStateRef.current}
         onPluginState={(s) => {

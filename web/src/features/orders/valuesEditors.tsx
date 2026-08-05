@@ -13,6 +13,10 @@ export interface ValuesEditorProps {
   onValues: (v: Values) => void;
   // The order (destination) namespace; empty string until the user fills it.
   namespace: string;
+  // Chart version being ordered. Always one this plugin declares support for
+  // (see chartVersions below); plugins stamp it into whatever they persist so a
+  // later read can tell which values shape the state was produced against.
+  chartVersion: string;
   readOnly?: boolean;
   // Set when the raw YAML could not be parsed on switching into the plugin:
   // the plugin must show the error and leave the values untouched.
