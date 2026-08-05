@@ -133,3 +133,47 @@ func TestEditorStateNotInList(t *testing.T) {
 		t.Fatalf("want DRAFT, got %s", reqs[0].Status)
 	}
 }
+
+// TestServiceNameConflictExplains: renaming a draft onto a name another active
+// order already holds must say so, not surface the unique index's bare
+// "conflict". For a chart whose identity comes from the values (the policies
+// graph names the order after its first policy) the bare error left the user
+// with no idea which field to change.
+func TestServiceNameConflictExplains(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+
+	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "taken", DisplayName: "Занятый", Values: validValues(), Draft: true,
+	}); err != nil {
+		t.Fatalf("create first: %v", err)
+	}
+	other, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "free", Values: validValues(), Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create second: %v", err)
+	}
+
+	_, err = s.prov.Update(ctx, u, other.ID, provisioning.UpdateInput{
+		ServiceName: "taken", Values: validValues(),
+	})
+	if !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("want conflict, got %v", err)
+	}
+	if err.Error() == "conflict" || !strings.Contains(err.Error(), "taken") {
+		t.Fatalf("conflict does not explain itself: %q", err)
+	}
+
+	// Creating under a taken name explains itself too.
+	_, err = s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "taken", Values: validValues(), Draft: true,
+	})
+	if !errors.Is(err, models.ErrConflict) || err.Error() == "conflict" {
+		t.Fatalf("create with a taken name: %v", err)
+	}
+}

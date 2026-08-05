@@ -258,6 +258,32 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 // order of the same chart already deploys the same resource identity into the
 // same namespace+cluster. The DB partial unique index is the race-safe backstop;
 // this pre-check exists only to turn a bare 409 into an actionable message.
+// checkServiceName mirrors the uniq_active_service index (team, chart_name,
+// service_name, cluster among active orders). Without it the collision surfaces
+// as the index's bare "conflict", which tells the user nothing - and for a chart
+// whose view sources the identity from the values (the policies graph names the
+// order after its first policy) it is not even obvious which field to change.
+func (s *Service) checkServiceName(ctx context.Context, r *models.Request) error {
+	if r.ServiceName == "" {
+		return nil
+	}
+	list, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true, Team: r.Team, Chart: r.ChartName})
+	if err != nil {
+		return nil // best-effort; the unique index still guards
+	}
+	for _, ex := range list {
+		if ex.ID == r.ID || ex.DeletedAt != nil {
+			continue
+		}
+		if ex.Cluster == r.Cluster && ex.ServiceName == r.ServiceName {
+			return conflict(
+				"имя %q уже занято другим заказом этого продукта в кластере %q (%q). Выберите другое имя",
+				r.ServiceName, r.Cluster, ex.DisplayName)
+		}
+	}
+	return nil
+}
+
 func (s *Service) checkNamespaceIdentity(ctx context.Context, r *models.Request) error {
 	if r.Namespace == "" || r.ResourceIdentity == "" {
 		return nil
@@ -391,6 +417,9 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	}
 	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.ServiceName) // computed once
 	r.ResourceIdentity = s.resourceIdentity(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.ServiceName, in.Values)
+	if err := s.checkServiceName(ctx, r); err != nil {
+		return nil, err
+	}
 	if err := s.checkNamespaceIdentity(ctx, r); err != nil {
 		return nil, err
 	}
@@ -589,6 +618,9 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	r.ValuesYAML = valuesYAML
 	r.EditorState = in.EditorState // nil keeps what the store already holds
 	r.ResourceIdentity = s.resourceIdentity(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.ServiceName, in.Values)
+	if err := s.checkServiceName(ctx, r); err != nil {
+		return nil, err
+	}
 	if err := s.checkNamespaceIdentity(ctx, r); err != nil {
 		return nil, err
 	}
