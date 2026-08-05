@@ -10,20 +10,20 @@ import { useUser } from "../../auth/UserContext";
 import { Breadcrumbs } from "../../components/Breadcrumbs";
 import { FormErrors } from "../../components/FormErrors";
 import { NotFound } from "../../components/NotFound";
-import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
 } from "../../components/products/GenericProductTabs";
 import { actionViews, productTabs } from "../../components/products/genericView";
-import { valuesEditorPlugins } from "./valuesEditors";
 import { Button, Card, ErrorBox, Spinner } from "../../components/ui";
 import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../../form/namespace";
 import { collectErrors, pruneEmpty } from "../../form/SchemaForm";
 import { useAsync } from "../../hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
+import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";
+import { valuesEditorPlugins } from "./valuesEditors";
 
 type Values = Record<string, unknown>;
 
@@ -341,6 +341,18 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     return pluginStateRef.current ?? undefined;
   }
 
+  // sentName is the deploy identity to send with a save. A chart whose view
+  // sources it from the values (the policies graph names the order after its
+  // first policy) keeps the name it was created with: editing values must not
+  // rename the order behind the user's back. It renamed silently before, and
+  // since the name is unique per team/chart/cluster, two orders built from
+  // similar graphs collided on a name neither user ever typed. Charts with a
+  // "Service name" input keep sending it - there the user renames on purpose.
+  function sentName(svcName: string): string | undefined {
+    if (editing && identity) return undefined;
+    return svcName || undefined;
+  }
+
   function fail(e: unknown) {
     if (e instanceof HttpError) {
       // An open MR blocks the change: explain it in Russian instead of the bare
@@ -369,7 +381,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     try {
       if (editing) {
         await api.updateRequest(id!, {
-          service_name: c.svcName || undefined,
+          service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
@@ -411,7 +423,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     }
     const c = collectValues();
     if (!c) return;
-    if (!c.svcName) {
+    // Only block when the name is actually needed: an existing draft keeps the
+    // one it already has and does not send a new one.
+    if (!c.svcName && !(editing && identity)) {
       setShowErrors(true);
       setSubmitErr({ message: identity ? IDENTITY_MISSING : "Укажите имя сервиса." });
       return;
@@ -437,7 +451,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       if (editing) {
         // Persist the latest edits, then finalise (opens the create MR).
         await api.updateRequest(id!, {
-          service_name: c.svcName,
+          service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           cluster,
           namespace: c.destNamespace,
