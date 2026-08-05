@@ -70,6 +70,16 @@ export const manualProvider: TopologyProvider = {
 export const workloadId = (ns: string, name: string) => `${ns}/${name}`;
 export const nsOfWorkload = (id: string) => id.split("/")[0];
 
+// selectorFingerprint is the stable identity of a workload as the values see it:
+// the chart addresses pods by selector, not by the name shown on the canvas. Two
+// values entries with the same fingerprint describe the same workload.
+export function selectorFingerprint(selector: Record<string, string>): string {
+  return Object.keys(selector)
+    .sort()
+    .map((k) => `${k}=${selector[k]}`)
+    .join(",");
+}
+
 export function findWorkload(topology: TopoNamespace[], id: string): TopoWorkload | undefined {
   for (const ns of topology) {
     const w = ns.workloads.find((x) => x.id === id);

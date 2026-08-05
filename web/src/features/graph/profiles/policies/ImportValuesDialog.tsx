@@ -11,6 +11,10 @@ export interface ImportedValues {
   orderNs: string;
   // Raw identity section of the pasted values (validated by the caller).
   identity: unknown;
+  // Raw policies section as pasted. Kept so that ordering from the map writes
+  // back into these entries instead of regenerating them: names and keys the
+  // graph does not know survive the round trip.
+  policies: unknown;
   // The values carried netpol/authzpol sections the map cannot represent.
   hasOtherSections: boolean;
 }
@@ -66,6 +70,7 @@ export function ImportValuesDialog({
       parsed,
       orderNs: n,
       identity: obj.identity,
+      policies: obj.policies,
       hasOtherSections: !!(obj.netpol || obj.authzpol),
     });
     onOpenChange(false);

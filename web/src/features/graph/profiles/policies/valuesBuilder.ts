@@ -15,6 +15,7 @@ import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors
 import {
   findWorkload,
   nsOfWorkload,
+  selectorFingerprint,
   type TopoNamespace,
   type TopoPort,
   type TopoWorkload,
@@ -72,8 +73,9 @@ function edgeLinks(
   return { links, outOfScope: null };
 }
 
-// shortName derives a 2..6 char DNS-ish policy name from a workload name, so
-// generated values look plausible. Later the user may name policies explicitly.
+// shortName derives a 2..6 char DNS-ish policy name from a workload name. Used
+// only for an entry the values do not have yet: an existing entry keeps the name
+// it was written with, whoever wrote it.
 function shortName(workload: string, used: Set<string>): string {
   const base = workload.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 5) || "pol";
   let name = base;
@@ -91,15 +93,65 @@ const rulePort = (p: TopoPort) => ({
   protocol: p.protocol === "UDP" ? "UDP" : "TCP",
 });
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// previousEntries indexes the policies[] the values already hold by the workload
+// they describe, so regeneration can write into the existing entry instead of a
+// fresh one. Entries the graph could not have produced (no object, no selector)
+// are ignored here - parseValues refuses such values outright.
+function previousEntries(prev: unknown): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  if (!Array.isArray(prev)) return out;
+  for (const raw of prev) {
+    if (!isPlainObject(raw)) continue;
+    const selector = raw.selector;
+    if (!isPlainObject(selector)) continue;
+    if (!Object.values(selector).every((v) => typeof v === "string")) continue;
+    const key = selectorFingerprint(selector as Record<string, string>);
+    if (!out.has(key)) out.set(key, raw);
+  }
+  return out;
+}
+
+// rewrite merges what was drawn into the entry the values already had. The graph
+// is the source of truth for exactly four keys - selector, serviceAccount,
+// ingress, egress - so one it no longer produces is dropped (arrows deleted, the
+// service account removed) and everything else survives as written, in the order
+// it was written: entries edited on the canvas should still read as their author
+// left them.
+function rewrite(
+  before: Record<string, unknown>,
+  owner: TopoWorkload,
+  ingress: unknown[],
+  egress: unknown[],
+): Record<string, unknown> {
+  const entry = { ...before };
+  entry.selector = owner.selector;
+  if (owner.serviceAccount) entry.serviceAccount = owner.serviceAccount;
+  else delete entry.serviceAccount;
+  if (ingress.length > 0) entry.ingress = ingress;
+  else delete entry.ingress;
+  if (egress.length > 0) entry.egress = egress;
+  else delete entry.egress;
+  return entry;
+}
+
 // buildPolicies turns the drawn edges into the policies[] section. Links of
 // the same owner merge into one entry; edges out of the order namespace scope
 // are skipped (validateSubmit reports them).
+//
+// prev is the policies[] these values already carry for THIS namespace. Passing
+// it keeps the entries the user (or a newer chart) wrote: their names and any
+// key the graph knows nothing about survive editing, so drawing an arrow never
+// silently drops a field. Omit it only when generating into empty values.
 export function buildPolicies(
   topology: TopoNamespace[],
   edges: Edge[],
   orderNs: string | null,
+  prev?: unknown,
 ): unknown[] {
-  const used = new Set<string>();
   const byOwner = new Map<
     string,
     { owner: TopoWorkload; ingress: unknown[]; egress: unknown[] }
@@ -127,24 +179,43 @@ export function buildPolicies(
     }
   }
 
-  return [...byOwner.values()].map((g) => ({
-    name: shortName(g.owner.name, used),
-    enabled: true,
-    serviceAccount: g.owner.serviceAccount ?? undefined,
-    selector: g.owner.selector,
-    ...(g.ingress.length > 0 ? { ingress: g.ingress } : {}),
-    ...(g.egress.length > 0 ? { egress: g.egress } : {}),
-  }));
+  // Names already in the values are reserved before anything is generated, so a
+  // new entry cannot take the name of one that is being kept.
+  const groups = [...byOwner.values()];
+  const kept = previousEntries(prev);
+  const keptFor = new Map<string, Record<string, unknown>>();
+  const used = new Set<string>();
+  for (const g of groups) {
+    const before = kept.get(selectorFingerprint(g.owner.selector));
+    if (!before) continue;
+    keptFor.set(g.owner.id, before);
+    if (typeof before.name === "string" && before.name) used.add(before.name);
+  }
+
+  return groups.map((g) => {
+    const before = keptFor.get(g.owner.id);
+    if (before) return rewrite(before, g.owner, g.ingress, g.egress);
+    return {
+      name: shortName(g.owner.name, used),
+      enabled: true,
+      serviceAccount: g.owner.serviceAccount ?? undefined,
+      selector: g.owner.selector,
+      ...(g.ingress.length > 0 ? { ingress: g.ingress } : {}),
+      ...(g.egress.length > 0 ? { egress: g.egress } : {}),
+    };
+  });
 }
 
-// buildValues wraps buildPolicies into a full values object for the order.
+// buildValues wraps buildPolicies into a full values object for the order. prev
+// is the policies[] of the values this namespace was generated from, if any.
 export function buildValues(
   topology: TopoNamespace[],
   edges: Edge[],
   identity: IdentityTags,
   orderNs: string | null,
+  prev?: unknown,
 ): Record<string, unknown> {
-  return { identity, policies: buildPolicies(topology, edges, orderNs) };
+  return { identity, policies: buildPolicies(topology, edges, orderNs, prev) };
 }
 
 export interface EdgeGroup {
