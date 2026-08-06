@@ -1,4 +1,4 @@
-import { IconArrowLeft, IconBook, IconChevronRight, IconSearch } from "@tabler/icons-react";
+import { IconArrowLeft, IconChevronRight, IconSearch } from "@tabler/icons-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -287,7 +287,7 @@ function DocToc({ toc, scrollRef }: { toc: Heading[]; scrollRef: React.RefObject
 
   if (toc.length === 0) return <div />;
   return (
-    <nav className="sticky top-0 hidden max-h-[calc(100vh-3.5rem)] w-56 shrink-0 self-start overflow-y-auto py-8 pl-4 xl:block">
+    <nav className="scroll-slim sticky top-0 hidden max-h-[calc(100vh-8.5rem)] w-56 shrink-0 self-start overflow-y-auto pl-4 xl:block">
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">На этой странице</div>
       <ul className="border-l border-slate-200">
         {toc.map((h) => (
@@ -416,53 +416,62 @@ function DocsNav({ activeId, index }: { activeId: string; index: NavItem[] }) {
       return next;
     });
 
+  // The card itself never scrolls (overflow-hidden keeps its rounded corners
+  // from being cut by the scrolling child); the search box stays pinned and only
+  // the tree below it scrolls.
   return (
-    <nav className="flex w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-surface px-3 py-5">
-      <div className="relative mb-4">
-        <IconSearch size={16} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск по документации..."
-          className="w-full rounded-md border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2 text-sm outline-none focus:border-brand-500 focus:bg-surface"
-        />
+    <nav className="flex w-60 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
+      <div className="shrink-0 p-3">
+        <div className="relative">
+          <IconSearch size={16} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск по документации..."
+            className="w-full rounded-md border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2 text-sm outline-none focus:border-brand-500 focus:bg-surface"
+          />
+        </div>
       </div>
 
-      {results ? (
-        <ul className="flex flex-col gap-0.5">
-          {results.length === 0 && <li className="px-2 py-1.5 text-sm text-slate-400">Ничего не найдено</li>}
-          {results.map((r) => (
-            <li key={r.id}>
-              <Link
-                to={`/docs/${r.id}`}
-                onClick={() => setQuery("")}
-                className="block rounded-md px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-              >
-                <span className="font-medium text-slate-700">{r.title}</span>
-                <span className="block text-xs text-slate-400">{r.section}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {DOCS_NAV.map((sec) => (
-            <div key={sec.title}>
-              <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                {sec.title}
+      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        {results ? (
+          <ul className="flex flex-col gap-0.5">
+            {results.length === 0 && (
+              <li className="px-2 py-1.5 text-sm text-slate-400">Ничего не найдено</li>
+            )}
+            {results.map((r) => (
+              <li key={r.id}>
+                <Link
+                  to={`/docs/${r.id}`}
+                  onClick={() => setQuery("")}
+                  className="block rounded-md px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  <span className="font-medium text-slate-700">{r.title}</span>
+                  <span className="block text-xs text-slate-400">{r.section}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {DOCS_NAV.map((sec) => (
+              <div key={sec.title}>
+                <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {sec.title}
+                </div>
+                <NavNodes
+                  nodes={sec.children}
+                  parentKey={sec.title}
+                  depth={1}
+                  activeId={activeId}
+                  open={open}
+                  onToggle={toggle}
+                />
               </div>
-              <NavNodes
-                nodes={sec.children}
-                parentKey={sec.title}
-                depth={1}
-                activeId={activeId}
-                open={open}
-                onToggle={toggle}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </nav>
   );
 }
@@ -520,32 +529,38 @@ export function DocsPage() {
   const next = i >= 0 && i < flat.length - 1 ? flat[i + 1] : null;
 
   return (
+    // Same shell as the portal: full-width topbar, gutters on both sides, the
+    // navigation as a card of its own. Docs open standalone (no portal sidebar),
+    // so the bar carries its own identity and a way back.
     <div className="flex h-screen flex-col bg-app text-slate-800">
-      {/* Standalone docs chrome: its own bar with a button back to the portal. */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-surface px-4">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand-600 text-on-accent">
-            <IconBook size={20} stroke={1.8} />
-          </span>
-          <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-sm font-semibold text-slate-800">Документация</span>
-            <span className="truncate text-[11px] text-slate-400">Managed Services</span>
-          </div>
+      <header className="shrink-0 border-b border-slate-200 bg-surface">
+        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-4 lg:px-6">
+          <Link
+            to="/docs"
+            className="flex h-full items-center gap-2 truncate rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            <span className="text-2xl font-bold lowercase leading-none tracking-tight text-brand-600">
+              console
+            </span>
+            <span className="text-2xl font-bold lowercase leading-none tracking-tight text-slate-400">
+              docs
+            </span>
+          </Link>
+          <Link
+            to="/"
+            className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            <IconArrowLeft size={16} stroke={1.8} />
+            Портал
+          </Link>
         </div>
-        <Link
-          to="/"
-          className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-        >
-          <IconArrowLeft size={16} stroke={1.8} />
-          Портал
-        </Link>
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 gap-10 px-4 py-8 lg:px-6">
         <DocsNav activeId={activeId} index={searchIndex} />
 
-        <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
-              <div className="mx-auto flex max-w-6xl gap-8 px-8 py-8">
+        <div ref={scrollRef} className="scroll-slim min-w-0 flex-1 overflow-y-auto">
+              <div className="flex w-full gap-8">
                 <article className="min-w-0 flex-1">
                   <Breadcrumbs
                     className="mb-4"

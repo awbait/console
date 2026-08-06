@@ -29,14 +29,13 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   Button,
-  Disclosure,
-  DisclosureGroup,
-  DisclosurePanel,
-  Heading,
+  Focusable,
   Menu,
   MenuItem,
   MenuTrigger,
   Popover,
+  Tooltip,
+  TooltipTrigger,
 } from "react-aria-components";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -46,7 +45,7 @@ import { useTeam } from "../app/TeamContext";
 import { THEME_LABELS, THEMES, type Theme, useTheme } from "../app/ThemeContext";
 import { useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
-import { categoryIcon } from "./icons";
+import { categoryIcon, type TablerIcon } from "./icons";
 import { Spinner } from "./ui";
 
 const navItems = [
@@ -89,6 +88,125 @@ const adminSectionNav: SectionNavItem[] = [
   { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
   { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
 ];
+
+// SideTip labels a sidebar item while the menu is collapsed, where only the
+// icon is left. It replaces the native `title` attribute: that one is slow,
+// unstyled and cannot be themed. Rendered through react-aria's overlay (a
+// portal), so the label escapes the card's `overflow-hidden` instead of being
+// clipped by it. Expanded, the item speaks for itself and the tip is skipped.
+function SideTip({
+  label,
+  enabled,
+  children,
+}: {
+  label: string;
+  enabled: boolean;
+  children: React.ReactElement<React.DOMAttributes<HTMLElement>, string>;
+}) {
+  if (!enabled) return <>{children}</>;
+  return (
+    <TooltipTrigger delay={200} closeDelay={0}>
+      {/* Focusable passes the trigger's hover/focus props down to a plain
+          element - the router's Link is not a react-aria component. */}
+      <Focusable>{children}</Focusable>
+      <Tooltip
+        placement="right"
+        offset={10}
+        className="z-20 rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-sm font-medium text-slate-700 shadow-lg outline-none entering:animate-in entering:fade-in entering:zoom-in-95 entering:slide-in-from-left-1"
+      >
+        {label}
+      </Tooltip>
+    </TooltipTrigger>
+  );
+}
+
+// One geometry for every sidebar row, collapsed or not, so switching states
+// never nudges an icon: it always starts 26px from the card's left edge, which
+// is the centre line of the 72px collapsed column. Plain rows reach it with
+// 1px of card border + 12px of nav wrapper + 13px of their own padding; the
+// framed ones with 1px of card border + 12px of wrapper + 1px of their own
+// border + 12px of padding. The collapsed column is sized from that padding,
+// not the other way round: widening the menu's inner padding widens it too.
+// Padding rather than justify-center: a centred icon would slide across the row
+// while the width animates, and a scrollbar on the right would shift it too.
+const ROW = "py-2 pl-[13px] pr-3.5";
+const SELECT_ROW = "px-3 py-2";
+
+// Labels fade with the width instead of popping in and out. Leaving is quicker
+// than arriving so the text is gone before the column gets narrow enough to
+// clip it. No transition-delay here: tailwindcss-animate rebinds delay-* to
+// animation-delay, so a staggered variant would need an arbitrary value.
+function labelFade(collapsed: boolean): string {
+  return `transition-opacity motion-reduce:transition-none ${
+    collapsed ? "opacity-0 duration-100" : "opacity-100 duration-200"
+  }`;
+}
+
+// A sidebar section that opens in place: its header toggles the list below it.
+// Built by hand rather than on react-aria's Disclosure because that one hides
+// the panel with the `hidden` attribute (display: none), which no transition
+// can touch. The grid 0fr -> 1fr trick animates a height nobody has to measure
+// in advance. The panel mounts closed and opens on the next frame, so expanding
+// the whole sidebar plays the same opening as clicking a header does.
+function NavSection({
+  Icon,
+  label,
+  open,
+  onToggle,
+  framed = false,
+  children,
+}: {
+  Icon: TablerIcon;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  framed?: boolean;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const shown = mounted && open;
+
+  return (
+    <div>
+      <Button
+        onPress={onToggle}
+        aria-expanded={open}
+        /* framed: a transparent border of the same weight as the select this
+           header turns into when the sidebar collapses. The box then matches
+           in both states, so folding the menu does not resize the card. */
+        className={`flex w-full items-center justify-between overflow-hidden whitespace-nowrap rounded-md text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 ${
+          framed ? `border border-transparent ${SELECT_ROW}` : ROW
+        }`}
+      >
+        <span className="flex items-center gap-3">
+          <Icon size={20} stroke={1.7} className="shrink-0" />
+          <span className="shrink-0">{label}</span>
+        </span>
+        <IconChevronRight
+          size={16}
+          className={`shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none ${
+            shown ? "rotate-90" : ""
+          }`}
+        />
+      </Button>
+      {/* visibility rides the same transition on purpose: it flips to visible
+          at the start of the opening and back to hidden only at the end of the
+          closing, so a folded list is out of the tab order without cutting the
+          animation short. */}
+      <div
+        className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none ${
+          shown ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 // Human-readable role labels for the profile menu.
 const ROLE_LABELS: Record<string, string> = {
@@ -159,6 +277,12 @@ export function Layout() {
       setExpanded((prev) => (prev.has(activeCategory) ? prev : new Set(prev).add(activeCategory)));
     }
   }, [activeCategory]);
+  const toggleCategory = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   // Top-level nav active state. "Charts"/"Orders list" must NOT light up when
   // the route belongs to a product (ordering a gateway under /catalog/…, or
@@ -241,15 +365,7 @@ export function Layout() {
           </Link>
           <div className="flex items-center gap-1">
             <ThemeMenu />
-            <Link
-              to="/docs"
-              aria-label="Документация"
-              title="Документация"
-              aria-current={pathname.startsWith("/docs") ? "page" : undefined}
-              className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-            >
-              <IconBook size={20} stroke={1.7} />
-            </Link>
+            {/* Docs live at the bottom of the sidebar; no duplicate here. */}
             <Link
               to="/about"
               aria-label="О портале"
@@ -276,98 +392,129 @@ export function Layout() {
         {/* LEFT COLUMN - a stack of cards: the current project on top, the
             navigation below. Width animates (px->px) for a smooth collapse. */}
         <div
-          className={`flex shrink-0 flex-col gap-4 transition-[width] duration-300 ease-in-out ${
-            collapsed ? "w-16" : "w-[260px]"
+          className={`flex shrink-0 flex-col transition-[width] duration-300 ease-in-out ${
+            collapsed ? "w-[72px]" : "w-[260px]"
           }`}
         >
-          {/* The project selector is a platform concept; hide it in the admin,
-              support and security sections, which are not scoped to a team. */}
-          {activeSection === "platform" && (
-            <div className="shrink-0 rounded-xl border border-slate-200 bg-surface p-2 shadow-sm">
-              <OrgSelector collapsed={collapsed} />
-            </div>
-          )}
+          {/* The project selector is a platform concept: the admin, support and
+              security sections are not scoped to a team, so it folds away there.
+              Height animates via grid-rows 0fr->1fr (the card has no fixed
+              height); the card itself only fades, and the two are staggered so no
+              half-revealed card is ever on screen: leaving, it fades out first
+              and the space closes after; arriving, the space opens first and the
+              card fades in. The gap to the menu below lives inside the collapsing
+              row (pb-4), so it folds away with it - hence no gap on the column. */}
+          {(() => {
+            const shown = activeSection === "platform";
+            return (
+              <div
+                className={`grid shrink-0 transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${
+                  shown ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <div
+                    aria-hidden={!shown}
+                    className={`pb-4 transition-opacity motion-reduce:transition-none ${
+                      shown ? "opacity-100 duration-200 delay-150" : "opacity-0 duration-100"
+                    }`}
+                  >
+                    <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+                      <OrgSelector collapsed={collapsed} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           <aside className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
             {/* Nav scrolls on its own so the collapse toggle stays pinned to the
-                bottom of the card even with a long product taxonomy. */}
-            <div className="scroll-slim flex min-h-0 flex-1 flex-col overflow-y-auto">
-              {/* section switcher (only when a role can see more than one section) */}
-              {availableSections.length > 1 &&
-                (collapsed ? (
-                  <nav className="flex flex-col gap-1 px-2 pt-3">
-                    {availableSections.map((s) => {
-                      const Icon = s.Icon;
-                      return (
-                        <Link
-                          key={s.id}
-                          to={s.home}
-                          title={s.label}
-                          aria-current={activeSection === s.id ? "page" : undefined}
-                          className="flex justify-center rounded-md px-3 py-2 text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                        >
-                          <Icon size={20} stroke={1.7} />
-                        </Link>
-                      );
-                    })}
-                  </nav>
-                ) : (
-                  /* dropdown: section labels don't fit as a pill row once there are
-                     three of them, so switch via a menu showing the active section */
-                  <div className="px-3 pt-3">
-                    <MenuTrigger>
-                      <Button className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50">
-                        <span className="flex items-center gap-2">
-                          <currentSection.Icon size={18} stroke={1.7} className="text-brand-600" />
-                          {currentSection.label}
+                bottom of the card even with a long product taxonomy.
+                overflow-x-hidden is not redundant: with overflow-y set, the other
+                axis computes to auto, so while the width animates the nowrap
+                labels overflow sideways and flash a horizontal scrollbar. */}
+            <div className="scroll-slim flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+              {/* Section switcher (only when a role can see more than one).
+                  A dropdown in both states: the labels don't fit as a pill row
+                  once there are three of them, and collapsing must not turn one
+                  control into a stack of look-alike icons. Collapsed, the
+                  trigger shows the active section's icon and the menu carries
+                  the labels. */}
+              {availableSections.length > 1 && (
+                <div className="px-3 pt-2">
+                  <MenuTrigger>
+                    <SideTip label={currentSection.label} enabled={collapsed}>
+                      <Button
+                        aria-label={collapsed ? `Раздел: ${currentSection.label}` : undefined}
+                        className={`group flex w-full items-center justify-between gap-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 ${SELECT_ROW} text-sm font-medium text-slate-700 outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50`}
+                      >
+                        {/* Same markup in both states - the frame stays so the
+                            control still reads as a select, and only the label
+                            and the chevron fade. Swapping the markup instead
+                            would teleport the icon mid-animation.
+                            overflow-hidden clips the two of them while the
+                            column is narrow: they do not fit next to the icon
+                            and would otherwise spill past the frame. */}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <currentSection.Icon size={20} stroke={1.7} className="shrink-0 text-brand-600" />
+                          <span className={`truncate ${labelFade(collapsed)}`}>{currentSection.label}</span>
                         </span>
                         <IconChevronDown
                           size={16}
-                          className="text-slate-400 transition-transform duration-200 group-data-[pressed]:rotate-180"
+                          className={`shrink-0 text-slate-400 transition-[transform,opacity] duration-200 group-data-[pressed]:rotate-180 ${
+                            collapsed ? "opacity-0" : "opacity-100"
+                          }`}
                         />
                       </Button>
-                      <Popover className="w-[var(--trigger-width)] rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
-                        <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
-                          {availableSections.map((s) => {
-                            const Icon = s.Icon;
-                            return (
-                              <MenuItem
-                                key={s.id}
-                                id={s.home}
-                                className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
-                              >
-                                <span className="flex items-center gap-2">
-                                  <Icon size={18} stroke={1.7} className="text-slate-500" />
-                                  {s.label}
-                                </span>
-                                {activeSection === s.id && <IconCheck size={15} className="text-brand-600" />}
-                              </MenuItem>
-                            );
-                          })}
-                        </Menu>
-                      </Popover>
-                    </MenuTrigger>
-                  </div>
-                ))}
+                    </SideTip>
+                    <Popover
+                      className={`rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in ${
+                        collapsed ? "min-w-52" : "w-[var(--trigger-width)]"
+                      }`}
+                    >
+                      <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
+                        {availableSections.map((s) => {
+                          const Icon = s.Icon;
+                          return (
+                            <MenuItem
+                              key={s.id}
+                              id={s.home}
+                              className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+                            >
+                              <span className="flex items-center gap-2">
+                                <Icon size={20} stroke={1.7} className="shrink-0 text-slate-500" />
+                                {s.label}
+                              </span>
+                              {activeSection === s.id && <IconCheck size={16} className="text-brand-600" />}
+                            </MenuItem>
+                          );
+                        })}
+                      </Menu>
+                    </Popover>
+                  </MenuTrigger>
+                </div>
+              )}
 
               {sectionNav ? (
                 /* security/admin section: its own flat nav, no product categories */
-                <nav className="px-2 py-3">
+                <nav className="px-3 py-2">
                   <ul className="flex flex-col gap-0.5">
                     {sectionNav.map((n) => {
                       const Icon = n.Icon;
                       const active = n.exact ? pathname === n.to : navActive(n.to);
                       return (
                         <li key={n.to}>
-                          <Link
-                            to={n.to}
-                            title={collapsed ? n.label : undefined}
-                            aria-current={active ? "page" : undefined}
-                            className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                          >
-                            <Icon size={20} stroke={1.7} className="shrink-0" />
-                            {!collapsed && <span className="shrink-0">{n.label}</span>}
-                          </Link>
+                          <SideTip label={n.label} enabled={collapsed}>
+                            <Link
+                              to={n.to}
+                              aria-current={active ? "page" : undefined}
+                              className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
+                            >
+                              <Icon size={20} stroke={1.7} className="shrink-0" />
+                              <span className={`shrink-0 ${labelFade(collapsed)}`}>{n.label}</span>
+                            </Link>
+                          </SideTip>
                         </li>
                       );
                     })}
@@ -376,21 +523,22 @@ export function Layout() {
               ) : (
                 <>
                   {/* flat group: Resources / Charts (active via navActive aria-current) */}
-                  <nav className="px-2 py-3">
+                  <nav className="px-3 py-2">
                     <ul className="flex flex-col gap-0.5">
                       {navItems.map((n) => {
                         const Icon = n.Icon;
                         return (
                           <li key={n.to}>
-                            <Link
-                              to={n.to}
-                              title={collapsed ? n.label : undefined}
-                              aria-current={navActive(n.to) ? "page" : undefined}
-                              className="flex items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                            >
-                              <Icon size={20} stroke={1.7} className="shrink-0" />
-                              {!collapsed && <span className="shrink-0">{n.label}</span>}
-                            </Link>
+                            <SideTip label={n.label} enabled={collapsed}>
+                              <Link
+                                to={n.to}
+                                aria-current={navActive(n.to) ? "page" : undefined}
+                                className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
+                              >
+                                <Icon size={20} stroke={1.7} className="shrink-0" />
+                                <span className={`shrink-0 ${labelFade(collapsed)}`}>{n.label}</span>
+                              </Link>
+                            </SideTip>
                           </li>
                         );
                       })}
@@ -399,90 +547,114 @@ export function Layout() {
 
                   <div className="mx-3 border-t border-slate-100" />
 
-                  {/* product categories (dynamic: published charts with an order view) */}
+                  {/* Product categories (dynamic: published charts with an order
+                      view). Collapsed, a category opens its services in a menu -
+                      it used to be a plain link to the first chart, which left
+                      every other service in the category unreachable. */}
                   {collapsed ? (
-                    <nav className="flex flex-col gap-0.5 px-2 py-3">
+                    <nav className="flex flex-col gap-0.5 px-3 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
-                        const first = g.charts[0];
                         return (
-                          <Link
-                            key={g.id}
-                            to={first ? `/products/${first.project}/${first.name}` : "/catalog"}
-                            title={g.label}
-                            aria-current={activeCategory === g.id ? "page" : undefined}
-                            className="flex rounded-md px-3 py-2 text-slate-600 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
-                          >
-                            <Icon size={20} stroke={1.7} />
-                          </Link>
+                          <MenuTrigger key={g.id}>
+                            <SideTip label={g.label} enabled>
+                              <Button
+                                aria-label={g.label}
+                                aria-current={activeCategory === g.id ? "page" : undefined}
+                                className={`flex w-full rounded-md ${ROW} text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
+                              >
+                                <Icon size={20} stroke={1.7} className="shrink-0" />
+                              </Button>
+                            </SideTip>
+                            <Popover className="min-w-52 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+                              <div className="border-b border-slate-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                {g.label}
+                              </div>
+                              <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
+                                {g.charts.map((c) => (
+                                  <MenuItem
+                                    key={`${c.project}/${c.name}`}
+                                    id={`/products/${c.project}/${c.name}`}
+                                    className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+                                  >
+                                    {chartLabel(c.name)}
+                                    {chartActive(c) && <IconCheck size={16} className="text-brand-600" />}
+                                  </MenuItem>
+                                ))}
+                              </Menu>
+                            </Popover>
+                          </MenuTrigger>
                         );
                       })}
                     </nav>
                   ) : (
-                    <DisclosureGroup
-                      allowsMultipleExpanded
-                      expandedKeys={expanded}
-                      onExpandedChange={(keys) => setExpanded(new Set([...keys].map(String)))}
-                      className="px-2 py-3"
-                    >
+                    <nav className="px-3 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
                         return (
-                          <Disclosure key={g.id} id={g.id} className="group">
-                            <Heading>
-                              <Button
-                                slot="trigger"
-                                className="flex w-full items-center justify-between whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-                              >
-                                <span className="flex items-center gap-3">
-                                  <Icon size={20} stroke={1.7} />
-                                  {g.label}
-                                </span>
-                                <IconChevronRight
-                                  size={16}
-                                  className="text-slate-400 transition-transform duration-200 group-data-[expanded]:rotate-90"
-                                />
-                              </Button>
-                            </Heading>
-                            <DisclosurePanel>
-                              <ul className="ml-[22px] flex flex-col gap-0.5 border-l border-slate-100 py-1 pl-2">
-                                {g.charts.map((c) => (
-                                  <li key={`${c.project}/${c.name}`}>
-                                    <Link
-                                      to={`/products/${c.project}/${c.name}`}
-                                      aria-current={chartActive(c) ? "page" : undefined}
-                                      className="block whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700"
-                                    >
-                                      {chartLabel(c.name)}
-                                    </Link>
-                                  </li>
-                                ))}
-                              </ul>
-                            </DisclosurePanel>
-                          </Disclosure>
+                          <NavSection
+                            key={g.id}
+                            Icon={Icon}
+                            label={g.label}
+                            open={expanded.has(g.id)}
+                            onToggle={() => toggleCategory(g.id)}
+                          >
+                            <ul className="ml-[24px] flex flex-col gap-0.5 py-1">
+                              {g.charts.map((c) => (
+                                <li key={`${c.project}/${c.name}`}>
+                                  <Link
+                                    to={`/products/${c.project}/${c.name}`}
+                                    aria-current={chartActive(c) ? "page" : undefined}
+                                    className="block whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700"
+                                  >
+                                    {chartLabel(c.name)}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </NavSection>
                         );
                       })}
-                    </DisclosureGroup>
+                    </nav>
                   )}
                 </>
               )}
             </div>
 
-            {/* collapse toggle */}
-            <div className="shrink-0 border-t border-slate-100 p-2">
-              <Button
-                onPress={() => setCollapsed((c) => !c)}
-                aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
-                aria-pressed={collapsed}
-                className="flex w-full items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-sm text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                {collapsed ? (
-                  <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
-                ) : (
-                  <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
-                )}
-                {!collapsed && <span className="shrink-0">Свернуть меню</span>}
-              </Button>
+            {/* Docs closes the navigation: a destination like the items above,
+                just a secondary one, so it stays inside the menu block with no
+                divider of its own. */}
+            <div className="shrink-0 px-3 pb-2">
+              <SideTip label="Документация" enabled={collapsed}>
+                <Link
+                  to="/docs"
+                  aria-current={pathname.startsWith("/docs") ? "page" : undefined}
+                  className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700`}
+                >
+                  <IconBook size={20} stroke={1.7} className="shrink-0" />
+                  <span className={`shrink-0 ${labelFade(collapsed)}`}>Документация</span>
+                </Link>
+              </SideTip>
+            </div>
+
+            {/* Collapsing is shell chrome, not a place to go: it sits below the
+                divider, on its own, and never looks active. */}
+            <div className="shrink-0 border-t border-slate-100 px-3 py-2">
+              <SideTip label="Развернуть меню" enabled={collapsed}>
+                <Button
+                  onPress={() => setCollapsed((c) => !c)}
+                  aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+                  aria-pressed={collapsed}
+                  className={`flex w-full items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-400 outline-none hover:bg-slate-50 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500`}
+                >
+                  {collapsed ? (
+                    <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
+                  ) : (
+                    <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
+                  )}
+                  <span className={`shrink-0 ${labelFade(collapsed)}`}>Свернуть меню</span>
+                </Button>
+              </SideTip>
             </div>
           </aside>
         </div>
@@ -522,124 +694,101 @@ export function Layout() {
 }
 
 // OrgSelector lives in its own sidebar card, so it fills the card's width and
-// draws no frame of its own. Expanded, the groups are a plain list under a
-// "Проекты" header that folds away; collapsed, there is no room for the list, so
-// the same groups open in a popover next to the icon.
+// draws no card of its own. It takes the shape the width allows: a foldable
+// section listing the projects while the sidebar is open, a framed select once
+// it is collapsed.
 function OrgSelector({ collapsed }: { collapsed: boolean }) {
   const { team, teams, setTeam } = useTeam();
   const [open, setOpen] = useState(true);
 
   if (teams.length === 0) {
     return (
-      <span
-        title={collapsed ? "нет группы" : undefined}
-        className={`flex items-center gap-2 rounded-lg py-2 text-sm text-slate-400 ${
-          collapsed ? "justify-center px-2" : "px-2.5"
-        }`}
-      >
-        <IconUsersGroup size={20} stroke={1.7} className="shrink-0" />
-        {!collapsed && "нет группы"}
-      </span>
+      <SideTip label="Нет группы" enabled={collapsed}>
+        <span
+          className={`flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg ${ROW} text-sm text-slate-400`}
+        >
+          <IconUsersGroup size={20} stroke={1.7} className="shrink-0" />
+          <span className={`shrink-0 ${labelFade(collapsed)}`}>нет группы</span>
+        </span>
+      </SideTip>
     );
   }
 
-  if (collapsed) {
-    // A single group is context, not a control: no popover to open.
-    if (teams.length === 1) {
-      return (
-        <span
-          title={team ?? undefined}
-          className="flex justify-center rounded-lg px-2 py-2 text-brand-600"
-        >
-          <IconUsersGroup size={20} stroke={1.7} />
-        </span>
-      );
-    }
+  // A single group is context, not a control: no menu to open.
+  if (teams.length === 1) {
     return (
-      <MenuTrigger>
+      <SideTip label={`Проект: ${team}`} enabled={collapsed}>
+        <span
+          className={`flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg ${ROW} text-sm`}
+        >
+          <IconUsersGroup size={20} stroke={1.7} className="shrink-0 text-brand-600" />
+          <span className={`truncate font-medium text-slate-700 ${labelFade(collapsed)}`}>{team}</span>
+        </span>
+      </SideTip>
+    );
+  }
+
+  // Expanded, the projects are a section of the navigation like a product
+  // category: the header folds, the list sits under it and the current project
+  // is simply the lit-up row. Collapsed there is no room for a list, so the
+  // same choice becomes a framed select with the menu in a popover.
+  if (!collapsed) {
+    return (
+      <NavSection
+        Icon={IconUsersGroup}
+        label="Проекты"
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        framed
+      >
+        <ul className="ml-[24px] flex flex-col gap-0.5 py-1">
+          {teams.map((t) => (
+            <li key={t}>
+              <Button
+                onPress={() => setTeam(t)}
+                aria-pressed={t === team}
+                className="flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 outline-none hover:bg-slate-50 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 aria-pressed:bg-brand-50 aria-pressed:font-medium aria-pressed:text-brand-700"
+              >
+                <IconHash size={20} stroke={1.7} className="shrink-0 text-slate-400" />
+                <span className="truncate">{t}</span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </NavSection>
+    );
+  }
+
+  return (
+    <MenuTrigger>
+      <SideTip label={`Проект: ${team}`} enabled>
         <Button
           aria-label={`Проект: ${team}`}
-          className="flex w-full justify-center rounded-lg px-2 py-2 text-brand-600 outline-none transition-colors hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:bg-brand-50"
+          className={`flex w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 ${SELECT_ROW} outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500 data-[pressed]:border-brand-300 data-[pressed]:bg-brand-50`}
         >
-          <IconUsersGroup size={20} stroke={1.7} />
-        </Button>
-        <Popover className="min-w-52 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
-          <Menu className="outline-none" onAction={(key) => setTeam(String(key))}>
-            {teams.map((t) => (
-              <MenuItem
-                key={t}
-                id={t}
-                className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
-              >
-                <span className="flex items-center gap-2">
-                  <IconUsersGroup size={18} stroke={1.7} className="text-slate-500" />
-                  {t}
-                </span>
-                {t === team && <IconCheck size={15} className="text-brand-600" />}
-              </MenuItem>
-            ))}
-          </Menu>
-        </Popover>
-      </MenuTrigger>
-    );
-  }
-
-  // Hand-rolled disclosure instead of react-aria's: its panel is hidden with the
-  // `hidden` attribute (display:none), which cannot be transitioned. The
-  // grid-rows 0fr->1fr trick animates to the list's natural height without
-  // measuring it. Closed, the list keeps its DOM node but leaves the tab order.
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls="org-projects"
-        className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-      >
-        <span className="flex min-w-0 items-center gap-2">
+          {/* No label and no chevron: neither fits beside the icon at 64px,
+              and the frame alone is enough to keep it reading as a select. */}
           <IconUsersGroup size={20} stroke={1.7} className="shrink-0 text-brand-600" />
-          Проекты
-        </span>
-        <IconChevronDown
-          size={16}
-          className={`shrink-0 text-slate-400 transition-transform duration-200 ease-out ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
-      <div
-        className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        }`}
-      >
-        <div className="overflow-hidden">
-          <ul
-            id="org-projects"
-            aria-hidden={!open}
-            className="flex max-h-64 flex-col gap-0.5 overflow-y-auto pt-1"
-          >
-            {teams.map((t) => (
-              <li key={t}>
-                <button
-                  type="button"
-                  onClick={() => setTeam(t)}
-                  tabIndex={open ? undefined : -1}
-                  aria-current={t === team ? "true" : undefined}
-                  className="flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current]:bg-brand-50 aria-[current]:font-medium aria-[current]:text-brand-700"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <IconHash size={18} stroke={1.7} className="shrink-0 text-slate-400" />
-                    <span className="truncate">{t}</span>
-                  </span>
-                  {t === team && <IconCheck size={15} className="shrink-0 text-brand-600" />}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </div>
+        </Button>
+      </SideTip>
+      <Popover className="min-w-52 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu className="max-h-72 overflow-auto outline-none" onAction={(key) => setTeam(String(key))}>
+          {teams.map((t) => (
+            <MenuItem
+              key={t}
+              id={t}
+              className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <IconHash size={20} stroke={1.7} className="shrink-0 text-slate-500" />
+                <span className="truncate">{t}</span>
+              </span>
+              {t === team && <IconCheck size={16} className="shrink-0 text-brand-600" />}
+            </MenuItem>
+          ))}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
   );
 }
 
@@ -675,7 +824,7 @@ function ThemeMenu() {
               className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
             >
               {THEME_LABELS[t]}
-              {theme === t && <IconCheck size={15} className="text-brand-600" />}
+              {theme === t && <IconCheck size={16} className="text-brand-600" />}
             </MenuItem>
           ))}
         </Menu>
@@ -692,7 +841,7 @@ function UserMenu() {
     <MenuTrigger>
       <Button className="ml-2 flex items-center gap-2 rounded-md py-1 pl-1 pr-2 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-          <IconUser size={18} stroke={1.7} />
+          <IconUser size={20} stroke={1.7} />
         </span>
         <span className="text-left text-xs leading-tight">
           <span className="block font-medium text-slate-800">{user.name || user.preferred_username}</span>
@@ -712,7 +861,7 @@ function UserMenu() {
             id="logout"
             className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
           >
-            <IconLogout size={16} stroke={1.7} />
+            <IconLogout size={20} stroke={1.7} />
             Выйти
           </MenuItem>
         </Menu>
