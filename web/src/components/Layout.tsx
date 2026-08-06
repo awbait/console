@@ -45,6 +45,7 @@ import { useTeam } from "../app/TeamContext";
 import { THEME_LABELS, THEMES, type Theme, useTheme } from "../app/ThemeContext";
 import { useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
+import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
 import { Skeleton, SkeletonText } from "./ui";
 
@@ -219,7 +220,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function Layout() {
   const { user, loading, unauthenticated } = useUser();
-  const [collapsed, setCollapsed] = useState(false);
+  // Whether the menu is folded is a preference too: a user who works with it
+  // collapsed should not have to collapse it on every visit.
+  const [collapsed, setCollapsed] = useStored("sidebar.collapsed", false);
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
@@ -261,28 +264,20 @@ export function Layout() {
     !!navReq && menu.some((g) => g.charts.some((c) => c.project === navReq.chart_project && c.name === navReq.chart_name));
   const activeCategory = menu.find((g) => g.charts.some(chartActive))?.id;
 
-  // Controlled category expansion: all categories open by default, user toggles
-  // persist, and the active category auto-expands (menu resolves async, so
-  // defaultExpandedKeys alone wouldn't reopen it).
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [expandedInit, setExpandedInit] = useState(false);
+  // Category expansion: open by default, and what the browser remembers is the
+  // set of categories the user folded away, not the ones left open. That way a
+  // category published later shows up open instead of hidden behind a
+  // preference written before it existed.
+  const [foldedCategories, setFoldedCategories] = useStored<string[]>("sidebar.folded-categories", []);
+  const folded = useMemo(() => new Set(foldedCategories), [foldedCategories]);
+  // The category of the page being viewed opens itself - a folded one would
+  // otherwise hide the item that is currently active.
   useEffect(() => {
-    if (!expandedInit && menu.length > 0) {
-      setExpanded(new Set(menu.map((g) => g.id)));
-      setExpandedInit(true);
-    }
-  }, [expandedInit, menu]);
-  useEffect(() => {
-    if (activeCategory) {
-      setExpanded((prev) => (prev.has(activeCategory) ? prev : new Set(prev).add(activeCategory)));
-    }
-  }, [activeCategory]);
+    if (!activeCategory) return;
+    setFoldedCategories((prev) => (prev.includes(activeCategory) ? prev.filter((id) => id !== activeCategory) : prev));
+  }, [activeCategory, setFoldedCategories]);
   const toggleCategory = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+    setFoldedCategories((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   // Top-level nav active state. "Charts"/"Orders list" must NOT light up when
   // the route belongs to a product (ordering a gateway under /catalog/…, or
@@ -596,7 +591,7 @@ export function Layout() {
                             key={g.id}
                             Icon={Icon}
                             label={g.label}
-                            open={expanded.has(g.id)}
+                            open={!folded.has(g.id)}
                             onToggle={() => toggleCategory(g.id)}
                           >
                             <ul className="ml-[24px] flex flex-col gap-0.5 py-1">
@@ -736,7 +731,7 @@ function ShellSkeleton({ width }: { width: string }) {
 // it is collapsed.
 function OrgSelector({ collapsed }: { collapsed: boolean }) {
   const { team, teams, setTeam } = useTeam();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useStored("sidebar.projects-open", true);
 
   if (teams.length === 0) {
     return (
