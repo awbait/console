@@ -427,11 +427,16 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err := s.store.CreateRequest(ctx, r); err != nil {
 		return nil, err // ErrConflict -> 409
 	}
-	s.event(ctx, r, byUser(u), "created", "", "")
-
+	// A draft and an order are the same row at this point, but not the same
+	// event to the person reading the history later: one is "I started filling
+	// this in", the other is "I ordered it". The type carries that apart -
+	// nothing downstream can reconstruct it from the row, because a draft that
+	// was later submitted looks exactly like an order that never was one.
 	if in.Draft {
+		s.event(ctx, r, byUser(u), "draft_created", "", "")
 		return r, nil // stays DRAFT until Submit
 	}
+	s.event(ctx, r, byUser(u), "created", "", "")
 
 	proj, err := s.ensureRepo(ctx, r.Team, r.ChartName)
 	if err != nil {
@@ -543,6 +548,29 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true)
 	if err != nil {
 		return nil, err
+	}
+
+	// An update with nothing in it: the form was opened and saved as it was. A
+	// merge request for that diff is empty, and it is not harmless - the order
+	// sits in MR_CREATED waiting on a review of nothing, and every real edit is
+	// refused until someone closes it. Compared after marshalling, so a change
+	// the schema normalises away (reordered keys, a value respelled into the
+	// same YAML) counts as no change, which is what it is in Git.
+	//
+	// The visual editor's own state is not in Git at all - a moved node or a
+	// workload parked outside the values is still worth persisting, it just
+	// does not need a merge request.
+	if valuesYAML == r.ValuesYAML && version == r.ChartVersion {
+		if len(in.EditorState) > 0 && !bytes.Equal(in.EditorState, r.EditorState) {
+			r.EditorState = in.EditorState
+			if err := s.store.UpdateRequest(ctx, r); err != nil {
+				return nil, err
+			}
+			return r, nil
+		}
+		return nil, &ValidationError{
+			Message: "в заказе ничего не изменилось, отправлять на согласование нечего",
+		}
 	}
 
 	proj, err := s.ensureRepo(ctx, r.Team, r.ChartName)
