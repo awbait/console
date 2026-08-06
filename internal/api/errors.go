@@ -63,7 +63,11 @@ func writeDomainErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusConflict, "conflict", msgOf(err))
 	case errors.Is(err, provisioning.ErrForbidden), errors.Is(err, publications.ErrForbidden):
 		writeErr(w, http.StatusForbidden, "forbidden", "")
-	case errors.Is(err, provisioning.ErrUpstream):
+	case errors.Is(err, models.ErrUpstream):
+		// The message is the internal chain ("upstream unavailable: harbor: ...")
+		// and stays for logs and support; the UI renders its own text per code,
+		// because what the user can do about it depends on the page, not on which
+		// upstream failed.
 		writeErr(w, http.StatusBadGateway, "upstream_unavailable", msgOf(err))
 	case errors.Is(err, auth.ErrUnauthenticated):
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "")

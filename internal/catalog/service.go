@@ -24,6 +24,19 @@ func New(hb harbor.Port, c cache.Cache) *Service {
 	return &Service{hb: hb, cache: c}
 }
 
+// upstream marks a Harbor failure as an upstream outage, so the API answers 502
+// "upstream_unavailable" instead of a bare 500 "internal" the user cannot act
+// on. A missing chart keeps its ErrNotFound - that is the caller's problem, not
+// an outage. Everything else (registry unreachable, auth refused, malformed
+// answer) means the catalog cannot be served right now, and since neither the
+// listing nor a version is cached, nothing can be ordered until it recovers.
+func upstream(err error) error {
+	if err == nil || errors.Is(err, models.ErrNotFound) {
+		return err
+	}
+	return fmt.Errorf("%w: harbor: %v", models.ErrUpstream, err)
+}
+
 // VisibleTo reports whether a chart is allowed for the user (allowlist + admin).
 func VisibleTo(c *models.Chart, u *models.User) bool {
 	if u != nil && u.IsAdmin() {
@@ -47,7 +60,7 @@ func VisibleTo(c *models.Chart, u *models.User) bool {
 func (s *Service) ListCharts(ctx context.Context, u *models.User) ([]models.Chart, error) {
 	all, err := s.hb.ListCharts(ctx)
 	if err != nil {
-		return nil, err
+		return nil, upstream(err)
 	}
 	out := make([]models.Chart, 0, len(all))
 	for i := range all {
@@ -71,7 +84,7 @@ func (s *Service) ListCharts(ctx context.Context, u *models.User) ([]models.Char
 func (s *Service) Authorize(ctx context.Context, u *models.User, project, name string) (*models.Chart, error) {
 	chart, err := s.hb.GetChart(ctx, project, name)
 	if err != nil {
-		return nil, err
+		return nil, upstream(err)
 	}
 	if !VisibleTo(chart, u) {
 		return nil, models.ErrNotFound
@@ -81,17 +94,20 @@ func (s *Service) Authorize(ctx context.Context, u *models.User, project, name s
 
 // GetChart returns a chart's details (with version list).
 func (s *Service) GetChart(ctx context.Context, project, name string) (*models.Chart, error) {
-	return s.hb.GetChart(ctx, project, name)
+	chart, err := s.hb.GetChart(ctx, project, name)
+	return chart, upstream(err)
 }
 
 // ListVersions returns the versions of a chart.
 func (s *Service) ListVersions(ctx context.Context, project, name string) ([]models.ChartVersion, error) {
-	return s.hb.ListVersions(ctx, project, name)
+	vs, err := s.hb.ListVersions(ctx, project, name)
+	return vs, upstream(err)
 }
 
 // GetVersion returns one version's details.
 func (s *Service) GetVersion(ctx context.Context, project, name, version string) (*models.ChartVersion, error) {
-	return s.hb.GetVersion(ctx, project, name, version)
+	v, err := s.hb.GetVersion(ctx, project, name, version)
+	return v, upstream(err)
 }
 
 // blob fetches a per-version file body, cached by content digest for 30 days.
@@ -100,7 +116,7 @@ func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 
 	ver, err := s.hb.GetVersion(ctx, project, name, version)
 	if err != nil {
-		return nil, err
+		return nil, upstream(err)
 	}
 	key := kind + ":" + ver.Digest
 	if b, ok, _ := s.cache.Get(ctx, key); ok {
@@ -108,7 +124,7 @@ func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 	}
 	b, err := fetch(ctx, project, name, version)
 	if err != nil {
-		return nil, err
+		return nil, upstream(err)
 	}
 	_ = s.cache.Set(ctx, key, b, 30*24*time.Hour)
 	return b, nil
@@ -134,7 +150,7 @@ func (s *Service) GetSchema(ctx context.Context, project, name, version string) 
 func (s *Service) LatestSchema(ctx context.Context, project, name string) ([]byte, error) {
 	chart, err := s.hb.GetChart(ctx, project, name)
 	if err != nil {
-		return nil, err
+		return nil, upstream(err)
 	}
 	if chart.LatestVersion == "" {
 		return nil, models.ErrNotFound
@@ -147,7 +163,7 @@ func (s *Service) LatestSchema(ctx context.Context, project, name string) ([]byt
 func (s *Service) LatestVersion(ctx context.Context, project, name string) (string, error) {
 	chart, err := s.hb.GetChart(ctx, project, name)
 	if err != nil {
-		return "", err
+		return "", upstream(err)
 	}
 	if chart.LatestVersion == "" {
 		return "", models.ErrNotFound
@@ -160,7 +176,7 @@ func (s *Service) LatestVersion(ctx context.Context, project, name string) (stri
 func (s *Service) LatestDescription(ctx context.Context, project, name string) (string, error) {
 	chart, err := s.hb.GetChart(ctx, project, name)
 	if err != nil {
-		return "", err
+		return "", upstream(err)
 	}
 	return chart.Description, nil
 }
@@ -171,7 +187,7 @@ func (s *Service) LatestDescription(ctx context.Context, project, name string) (
 func (s *Service) LatestIcon(ctx context.Context, project, name string) (string, error) {
 	chart, err := s.hb.GetChart(ctx, project, name)
 	if err != nil {
-		return "", err
+		return "", upstream(err)
 	}
 	return chart.IconURL, nil
 }
@@ -236,7 +252,7 @@ func (s *Service) CheckChart(ctx context.Context, project, name string) (*CheckR
 					"Сделайте проект публичным или выдайте доступ роботу портала (HARBOR_ROBOT_USER)",
 				project, name)}, nil
 		}
-		return nil, err
+		return nil, upstream(err)
 	}
 	if chart.LatestVersion == "" {
 		return &CheckResult{Chart: chart, Error: "у чарта нет ни одной версии"}, nil
@@ -271,7 +287,7 @@ func (s *Service) CheckChart(ctx context.Context, project, name string) (*CheckR
 func (s *Service) GetAggregatedChangelog(ctx context.Context, project, name string, limit int) ([]models.ChangelogEntry, error) {
 	chart, err := s.hb.GetChart(ctx, project, name)
 	if err != nil {
-		return nil, err
+		return nil, upstream(err)
 	}
 	if chart.LatestVersion == "" {
 		return nil, models.ErrNotFound

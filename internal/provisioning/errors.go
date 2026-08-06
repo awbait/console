@@ -11,7 +11,10 @@ import (
 var (
 	ErrForbidden = errors.New("forbidden")
 	ErrOpenMR    = errors.New("an open merge request already exists for this order")
-	ErrUpstream  = errors.New("upstream unavailable")
+	// ErrUpstream is an alias: the sentinel is shared with every other domain
+	// that talks to an upstream, so a caller wrapping either name produces the
+	// same 502.
+	ErrUpstream = models.ErrUpstream
 )
 
 // FieldError is one schema-validation failure pinned to a values field.
