@@ -420,7 +420,7 @@ function DocsNav({ activeId, index }: { activeId: string; index: NavItem[] }) {
   // from being cut by the scrolling child); the search box stays pinned and only
   // the tree below it scrolls.
   return (
-    <nav className="flex w-60 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
+    <nav className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
       <div className="shrink-0 p-3">
         <div className="relative">
           <IconSearch size={16} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" />
