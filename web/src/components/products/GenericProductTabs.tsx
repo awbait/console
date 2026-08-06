@@ -22,7 +22,14 @@ import {
 import { api, HttpError } from "../../api/client";
 import type { OrderRequest, ViewDocument, ViewTab } from "../../api/types";
 import { chartLabel } from "../../app/CatalogContext";
-import { collectErrors, pruneEmpty, SchemaForm, seedDefaults, type View } from "../../form/SchemaForm";
+import {
+  collectErrors,
+  pruneEmpty,
+  sameValues,
+  SchemaForm,
+  seedDefaults,
+  type View,
+} from "../../form/SchemaForm";
 import { useAsync } from "../../hooks/useAsync";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { FormErrors, type SubmitError, toSubmitError } from "../FormErrors";
@@ -531,6 +538,10 @@ function ItemModal({
   // from the order's full values before the form renders and validates.
   const schema = useMemo(() => applyEnums(itemSchema, enums, full), [itemSchema, enums, full]);
   const errors = useMemo(() => collectErrors(schema, item, view), [schema, item, view]);
+  // Saving an element back exactly as it was opens a merge request with an
+  // empty diff, which then blocks every real edit until someone closes it. A
+  // new element is a change by definition, so only editing is guarded.
+  const changed = !initial || !sameValues(pruneEmpty(item), pruneEmpty(initial));
 
   async function save() {
     if (errors.size > 0) {
@@ -569,7 +580,7 @@ function ItemModal({
           >
             Отмена
           </button>
-          <Button variant="primary" isDisabled={saving} onPress={save}>
+          <Button variant="primary" isDisabled={saving || !changed} onPress={save}>
             {saving ? "Сохраняем…" : "Сохранить"}
           </Button>
         </>
@@ -708,12 +719,18 @@ function ViewFormModal({
     [schema, value, view],
   );
 
+  // What the dialog was opened on, kept to compare against: saving the order
+  // exactly as it stands opens a merge request with an empty diff, which then
+  // blocks every real edit until someone closes it.
+  const saved = useMemo(() => parseValues(request.values_yaml), [request.values_yaml]);
+  const changed = !sameValues(pruneEmpty(value), pruneEmpty(saved));
+
   useEffect(() => {
     if (!isOpen) return;
-    setValue(parseValues(request.values_yaml));
+    setValue(saved);
     setShowErrors(false);
     setErr(null);
-  }, [isOpen, request.values_yaml]);
+  }, [isOpen, saved]);
 
   async function save() {
     if (errors.size > 0) {
@@ -754,7 +771,7 @@ function ViewFormModal({
           >
             Отмена
           </button>
-          <Button variant="primary" isDisabled={saving || !schema} onPress={save}>
+          <Button variant="primary" isDisabled={saving || !schema || !changed} onPress={save}>
             {saving ? "Сохраняем…" : "Сохранить"}
           </Button>
         </>
