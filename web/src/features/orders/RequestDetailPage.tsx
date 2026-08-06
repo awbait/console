@@ -239,7 +239,11 @@ export function RequestDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    // The page takes the height of the content column instead of growing past
+    // it: the breadcrumbs, the header and the tab strip stay where they are and
+    // the tab below them fills what is left, down to the bottom of the window.
+    // That is what lets the history page itself rather than scroll.
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
       <Breadcrumbs
         items={[
           { label: chartLabel(r.chart_name), to: `/products/${r.chart_project}/${r.chart_name}` },

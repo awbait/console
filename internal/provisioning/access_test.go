@@ -46,7 +46,11 @@ func TestAccessSupport(t *testing.T) {
 	if _, err := s.prov.Get(ctx, sup, req.ID); err != nil {
 		t.Fatalf("support Get should be allowed, got %v", err)
 	}
-	if _, err := s.prov.Update(ctx, sup, req.ID, provisioning.UpdateInput{Values: validValues()}); err != nil {
+	// Values that differ from the seeded ones: an update that changes nothing is
+	// refused for everyone, which would say nothing about support's access.
+	if _, err := s.prov.Update(ctx, sup, req.ID, provisioning.UpdateInput{
+		Values: map[string]any{"auth": map[string]any{"database": "edited"}},
+	}); err != nil {
 		t.Fatalf("support Update should be allowed, got %v", err)
 	}
 	if _, err := s.prov.Create(ctx, sup, provisioning.CreateInput{

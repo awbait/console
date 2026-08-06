@@ -1,7 +1,7 @@
 // Shared presentational pieces of the request (product) detail page (RequestDetailPage):
 // detail actions, tabs, fields, history, the raw-values modal and date formatting.
 // Kept as a separate module so the page component stays focused on data flow.
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import {
   Button as AriaButton,
   Dialog,
@@ -19,6 +19,7 @@ import {
 } from "react-aria-components";
 import Editor from "@monaco-editor/react";
 import {
+  IconArrowRight,
   IconChevronLeft,
   IconChevronRight,
   IconCircleX,
@@ -27,12 +28,8 @@ import {
   IconFileCode,
   IconForms,
   IconAlertTriangle,
-  IconGitBranch,
-  IconGitCommit,
   IconGitFork,
   IconGitMerge,
-  IconGitPullRequest,
-  IconGitPullRequestClosed,
   IconHistory,
   IconPencil,
   IconRefresh,
@@ -41,8 +38,10 @@ import {
   IconUser,
   IconX,
 } from "@tabler/icons-react";
-import { Card } from "../../components/ui";
+import { Card, Checkbox } from "../../components/ui";
+import { useUser } from "../../auth/UserContext";
 import { safeHref } from "../../lib/href";
+import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
 import { statusMeta } from "../../components/StatusBadge";
 import { useTheme } from "../../app/ThemeContext";
 import { productTabs } from "../../components/products/genericView";
@@ -51,7 +50,14 @@ import {
   GenericListTab,
   type PersistValues,
 } from "../../components/products/GenericProductTabs";
-import type { OrderRequest, RequestDetail, RequestEvent, RequestMR, ViewDocument } from "../../api/types";
+import type {
+  OrderRequest,
+  RequestDetail,
+  RequestEvent,
+  RequestMR,
+  RequestStatus,
+  ViewDocument,
+} from "../../api/types";
 
 export function Meta({
   label,
@@ -324,23 +330,6 @@ export function fmtRelative(iso: string, now: number = Date.now()): string {
 
 type TablerIcon = typeof IconHistory;
 
-const TL_PREVIEW = 8; // events shown inline before "show all"
-// Starting guesses only. The real heights come from the rendered rows (see
-// useBodyMetrics): a row is one line by construction, but its exact height
-// depends on the font the browser ended up using, and guessing it low costs a
-// scrollbar while guessing it high leaves a gap the user can see is free.
-const ROW_H = 36;
-const DAY_H = 34;
-
-// Fallback page size for the first frame, before the body has been measured.
-const MODAL_PAGE = 12;
-// Merge requests are boxed rows, roughly twice as tall as a timeline line, so
-// the same dialog holds about half as many of them. The height includes the
-// gap between rows; MR_MODAL_PAGE is the fallback until the body is measured.
-const MR_ROW_H = 68;
-const MR_GAP = 8; // gap-2 between merge-request rows
-const MR_MODAL_PAGE = 6;
-
 const tints: Record<string, string> = {
   slate: "bg-slate-100 text-slate-600",
   indigo: "bg-indigo-100 text-indigo-600",
@@ -352,16 +341,17 @@ const tints: Record<string, string> = {
 };
 
 const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string }> = {
+  draft_created: { label: "Черновик создан", Icon: IconPencil, tint: "slate" },
   created: { label: "Заказ создан", Icon: IconSparkles, tint: "indigo" },
   draft_updated: { label: "Черновик изменён", Icon: IconPencil, tint: "slate" },
-  renamed: { label: "Переименован", Icon: IconForms, tint: "slate" },
-  draft_discarded: { label: "Черновик отброшен", Icon: IconTrash, tint: "slate" },
+  renamed: { label: "Заказ переименован", Icon: IconForms, tint: "slate" },
+  draft_discarded: { label: "Черновик удалён", Icon: IconTrash, tint: "slate" },
   sync_forced: { label: "Запрошена синхронизация", Icon: IconRefresh, tint: "blue" },
-  deleted: { label: "Сервис удалён", Icon: IconCircleX, tint: "rose" },
-  drift_detected: { label: "Обнаружено изменение в Git", Icon: IconAlertTriangle, tint: "amber" },
+  deleted: { label: "Заказ удалён", Icon: IconCircleX, tint: "rose" },
+  drift_detected: { label: "Заказ изменили в обход портала", Icon: IconAlertTriangle, tint: "amber" },
   drift_cleared: { label: "Расхождение с Git устранено", Icon: IconGitMerge, tint: "emerald" },
-  git_pulled: { label: "Обновлено из Git", Icon: IconGitFork, tint: "sky" },
-  imported: { label: "Импортировано из Git", Icon: IconGitFork, tint: "sky" },
+  git_pulled: { label: "Заказ обновлён из Git", Icon: IconGitFork, tint: "sky" },
+  imported: { label: "Заказ импортирован из Git", Icon: IconGitFork, tint: "sky" },
 };
 
 // What a status change means, phrased as an event. StatusBadge keeps its own
@@ -369,33 +359,68 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
 // answers "what happened to it".
 const STATUS_EVENT: Record<string, string> = {
   DRAFT: "Черновик создан",
-  MR_CREATED: "Отправлен на согласование",
-  MR_MERGED: "Согласован",
+  MR_CREATED: "Заказ отправлен на согласование",
+  MR_MERGED: "Заказ согласован",
   MR_CLOSED: "Согласование отклонено",
-  DEPLOYING: "Выкатывается",
-  HEALTHY: "Работает",
-  DEGRADED: "Работает с ошибками",
-  ARGO_MISSING: "Не найден в кластере",
-  DELETE_REQUESTED: "Запрошено удаление",
+  DEPLOYING: "Заказ разворачивается",
+  HEALTHY: "Заказ развёрнут",
+  DEGRADED: "Заказ работает с ошибками",
+  ARGO_MISSING: "Заказ не найден в кластере",
+  DELETE_REQUESTED: "Запрошено удаление заказа",
   DELETE_MR_MERGED: "Удаление согласовано",
-  DELETED: "Удалён",
+  DELETED: "Заказ удалён",
 };
 
-// Events a person recognises as their own action or as a change worth knowing
-// about. Everything else is the pipeline talking to itself: a draft saved on
-// every keystroke-ish save, and the intermediate transitions it makes to get
-// from one meaningful state to the next. Those stay in the trail but fold away.
-const TECHNICAL_EVENTS = new Set(["draft_updated"]);
-const TECHNICAL_STATUSES = new Set(["DRAFT", "DEPLOYING", "DELETE_MR_MERGED"]);
+// One merge request is opened per action, and its action says which action that
+// was. That is the difference between an edit and a first order, which the
+// status alone cannot tell apart - both are the same FSM edge into MR_CREATED.
+// A first order says it went for approval, because the row above it already
+// said it was created; an edit has no such row and names itself.
+const MR_ACTION_EVENT: Record<string, string> = {
+  create: "Заказ отправлен на согласование",
+  update: "Заказ отредактирован",
+  delete: "Запрошено удаление заказа",
+};
+
+// What the person who ordered the service needs: their own actions, and what
+// became of the service. Everything else is the pipeline talking to itself -
+// the row it writes when it picks the work up, the intermediate states it
+// passes through on the way to a result, the draft saved on every edit. Those
+// stay in the trail and appear under "Подробно", which is for whoever is
+// working out why an order is where it is.
+const NOTABLE_EVENTS = new Set([
+  "created",
+  "draft_created",
+  "draft_discarded",
+  "renamed",
+  "deleted",
+  "drift_detected",
+]);
+const NOTABLE_STATUSES = new Set([
+  "MR_CREATED",
+  "DELETE_REQUESTED",
+  "MR_CLOSED",
+  "DEPLOYING",
+  "HEALTHY",
+  "DEGRADED",
+  "ARGO_MISSING",
+  "DELETED",
+]);
 
 function isNotable(e: RequestEvent): boolean {
-  if (e.event_type === "status_changed") return !TECHNICAL_STATUSES.has(e.to_status ?? "");
-  return !TECHNICAL_EVENTS.has(e.event_type);
+  if (e.event_type === "status_changed") return NOTABLE_STATUSES.has(e.to_status ?? "");
+  return NOTABLE_EVENTS.has(e.event_type);
 }
 
-function eventLabel(e: RequestEvent): string {
+function eventLabel(e: TimelineEvent): string {
   if (e.event_type === "status_changed") {
     const to = e.to_status ?? "";
+    // An order going for approval is named by what was asked for, not by the
+    // state it entered: "Заказ отредактирован" is the event, MR_CREATED is the
+    // machinery behind it.
+    if ((to === "MR_CREATED" || to === "DELETE_REQUESTED") && e.mr) {
+      return MR_ACTION_EVENT[e.mr.action] ?? STATUS_EVENT[to];
+    }
     return STATUS_EVENT[to] ?? statusMeta(to).label;
   }
   return EVENT_META[e.event_type]?.label ?? e.event_type;
@@ -443,7 +468,15 @@ export function ProductView({
   const setActive = controlled ? onTab! : setInternalTab;
 
   return (
-    <Tabs selectedKey={active} onSelectionChange={(key) => setActive(String(key))}>
+    // The tab strip stays put and the panel under it takes the rest of the
+    // column, so each tab scrolls inside itself instead of scrolling the page
+    // out from under its own header. The history tab needs it for a different
+    // reason: it pages rather than scrolls, and paging needs a known height.
+    <Tabs
+      selectedKey={active}
+      onSelectionChange={(key) => setActive(String(key))}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200">
         <TabList aria-label="Разделы заказа" className="flex gap-1">
           <DetailTab id="info">Общая информация</DetailTab>
@@ -457,7 +490,7 @@ export function ProductView({
         <ValuesModalButton request={r} />
       </div>
 
-      <TabPanel id="info" className="pt-5 outline-none">
+      <TabPanel id="info" className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none">
         <InfoTab
           request={r}
           argocdUrl={argocdUrl}
@@ -469,7 +502,11 @@ export function ProductView({
         />
       </TabPanel>
       {tabs.map((t) => (
-        <TabPanel key={t.id} id={t.id} className="pt-5 outline-none">
+        <TabPanel
+          key={t.id}
+          id={t.id}
+          className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none"
+        >
           <Card>
             <GenericListTab
               request={r}
@@ -483,7 +520,14 @@ export function ProductView({
           </Card>
         </TabPanel>
       ))}
-      <TabPanel id="history" className="pt-5 outline-none">
+      {/* The history does not scroll: from lg up it fills the column to the
+          bottom of the window and pages through itself. Narrower than that the
+          card keeps its own minimum height and the panel scrolls like any other
+          tab, because a page of two rows is not a page. */}
+      <TabPanel
+        id="history"
+        className="scroll-slim min-h-0 flex-1 overflow-y-auto pb-1 pt-5 outline-none lg:overflow-hidden"
+      >
         <HistoryTab events={events} mrs={mrs} request={r} />
       </TabPanel>
     </Tabs>
@@ -546,30 +590,43 @@ export function HistoryTab({
   // Events written before actor_name existed carry only the subject. When that
   // subject is the person who created the order, the order itself knows their
   // name - enough to keep the history readable instead of anonymous.
-  const evts = [...events]
-    .sort((a, b) => b.id - a.id)
-    .map((e) =>
-      e.actor_name || e.actor !== request.created_by
-        ? e
-        : { ...e, actor_name: request.created_by_name },
-    );
-  const mrList = [...mrs].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
-  // Two columns, history the wider one: it is what the tab is for, and the
-  // merge requests are a short reference list beside it. Stretching them to a
-  // common height is what keeps the pair from looking torn - the alternative,
-  // one column, left a dead strip down the right of the page. Below lg they
-  // stack, where a 1/3 column would be unreadable anyway.
-  return (
-    <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[2fr_1fr]">
-      <TimelineCard events={evts} />
-      <MergeRequestsCard mrs={mrList} />
-    </div>
-  );
+  const named = (e: RequestEvent) =>
+    e.actor_name || e.actor !== request.created_by ? e : { ...e, actor_name: request.created_by_name };
+  const evts = [...events].sort((a, b) => b.id - a.id).map(named).map((e) => withMR(e, mrs));
+  return <TimelineCard events={evts} />;
 }
 
-// `action` fills the right side of the header - the card's own control belongs
-// on the line that names it, not floating under the list where it left the
-// header half empty.
+// Every merge request an order ever opened is already a moment in its history:
+// the row that says it went for approval, and the row that says the approval
+// went through. So the link belongs on those rows rather than in a list beside
+// them, which repeated the same events in a second vocabulary and left the
+// reader matching one against the other.
+//
+// Which merge request a row is about is not a guess: an order opens one at a
+// time (a second is refused while one is open), and the row's own moment picks
+// it - the last one opened at or before it. The rows that are not about a merge
+// request get nothing.
+const MR_STATUSES = new Set([
+  "MR_CREATED",
+  "DELETE_REQUESTED",
+  "MR_MERGED",
+  "MR_CLOSED",
+  "DELETE_MR_MERGED",
+]);
+
+function withMR(e: RequestEvent, mrs: RequestMR[]): TimelineEvent {
+  if (e.event_type !== "status_changed" || !MR_STATUSES.has(e.to_status ?? "")) return e;
+  const at = +new Date(e.created_at);
+  let found: RequestMR | undefined;
+  for (const m of mrs) {
+    const t = +new Date(m.created_at);
+    if (t <= at && (!found || t > +new Date(found.created_at))) found = m;
+  }
+  return found ? { ...e, mr: found } : e;
+}
+
+type TimelineEvent = RequestEvent & { mr?: RequestMR };
+
 function SectionHeader({
   Icon,
   title,
@@ -580,7 +637,7 @@ function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-3 flex items-center gap-2">
+    <div className="mb-3 flex shrink-0 items-center gap-2">
       <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50 text-brand-600">
         <Icon size={16} stroke={1.8} />
       </span>
@@ -594,72 +651,34 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
   return <p className="py-2 text-sm text-slate-400">{children}</p>;
 }
 
-function TimelineCard({ events }: { events: RequestEvent[] }) {
-  const [showAll, setShowAll] = useState(false);
-  // Technical rows are dropped outright rather than hidden behind a toggle: an
-  // extra control on the page is a worse trade than the completeness it buys,
-  // and the trail itself is intact in the database for support.
-  const shown = events.filter(isNotable);
-  return (
-    <Card className="h-full">
-      <SectionHeader
-        Icon={IconHistory}
-        title="Хронология"
-        action={
-          shown.length > TL_PREVIEW && (
-            <button
-              type="button"
-              onClick={() => setShowAll(true)}
-              className="rounded-md px-2 py-1 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-            >
-              Показать все
-            </button>
-          )
-        }
-      />
-      {shown.length === 0 ? (
-        <EmptyHint>Событий пока нет.</EmptyHint>
-      ) : (
-        <Timeline items={shown.slice(0, TL_PREVIEW)} />
-      )}
-      <TimelineModal events={shown} isOpen={showAll} onOpenChange={setShowAll} />
-    </Card>
-  );
-}
-
-// The full history lives in a modal, paged. Two things the plain version got
-// wrong: the body shrank on a short last page, so the dialog resized under the
-// pointer just as it was being clicked, and pages swapped instantly, which
-// reads as a redraw rather than as movement. The body is now a fixed height
-// with its own scroll, and a page slides in from the side it came from.
-function TimelineModal({
-  events,
-  isOpen,
-  onOpenChange,
-}: {
-  events: RequestEvent[];
-  isOpen: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
+// The whole history is here, paged rather than scrolled or hidden behind a
+// dialog. The card fills the column to the bottom of the window, the list takes
+// what is left of the card, and a page is cut to fit that list exactly - as
+// many events as it holds, the rest carried to the next page.
+//
+// The one rule that keeps this honest: the arithmetic reads the layout and
+// never writes it. The card's height comes from the page, not from the events,
+// so a page can be sized against it without the two chasing each other. That is
+// also why the pagination bar keeps its place with a single page - taking it
+// away would hand the next measurement room that is about to disappear.
+function TimelineCard({ events }: { events: TimelineEvent[] }) {
   const [page, setPage] = useState(1);
   const [back, setBack] = useState(false);
   const now = useNow();
-  // The page size follows the dialog, not a constant: a fixed count either
-  // leaves the bottom of the body empty while a "next page" button waits below
-  // it, or overflows into a scrollbar. Measure the body, fill it.
+  const { user } = useUser();
+  // The full trail is a support tool: it answers "why is this order stuck",
+  // which is a question the platform team gets and the person who ordered the
+  // service does not ask. So it is theirs to switch on, and it is remembered -
+  // whoever works in it works in it all day.
+  const canSeeAll = user?.role === "admin" || user?.role === "support";
+  const [detailed, setDetailed] = useDetailedHistory(canSeeAll);
+  const shown = detailed ? events : events.filter(isNotable);
   const [body, setBody] = useState<HTMLDivElement | null>(null);
-  const { height, rowH, dayH } = useBodyMetrics(body, isOpen);
-
-  const pageList = paginate(events, height, now, rowH, dayH);
+  const { height, ...metrics } = useBodyMetrics(body);
+  const pageList = paginate(shown, height, (e) => dayLabel(e.created_at, now), metrics);
   const pages = pageList.length;
-  // The body takes the height of the tallest page, so no page leaves a gap the
-  // reader can see is free, and paging does not resize the dialog under them.
-  // Only a short last page falls short of it.
-  const bodyHeight = height > 0 ? Math.max(...pageList.map((p) => pageCost(p, now, rowH, dayH))) : 0;
-  useEffect(() => {
-    if (isOpen) setPage(1);
-  }, [isOpen]);
-  // A resize can shrink the page count under a reader who is on the last page.
+  // A viewport change can shrink the page count under a reader who is on the
+  // last page.
   const current = Math.min(page, pages);
   const slice = pageList[current - 1] ?? [];
   const goto = (next: number) => {
@@ -667,87 +686,121 @@ function TimelineModal({
     setPage(next);
   };
   return (
-    <ModalOverlay
-      isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in"
-    >
-      {/* Two passes: while the body is unmeasured the dialog is given a fixed
-          height so the body can report how much room there is; once measured,
-          the dialog follows its content and the body carries the height of the
-          tallest page. The cap keeps a long history from filling the screen. */}
-      <Modal
-        className={`flex w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95 ${
-          bodyHeight > 0 ? "max-h-[min(85vh,34rem)]" : "h-[min(85vh,34rem)]"
-        }`}
-      >
-        <Dialog className="flex min-h-0 flex-1 flex-col outline-none">
-          {({ close }) => (
-            <>
-              <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <SectionHeaderInline Icon={IconHistory} title="Хронология" />
-                <button
-                  onClick={close}
-                  aria-label="Закрыть"
-                  className="rounded-md p-1 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  <IconX size={18} stroke={2} />
-                </button>
-              </header>
-              <div
-                ref={setBody}
-                style={bodyHeight > 0 ? { height: bodyHeight } : undefined}
-                className={`scroll-slim overflow-y-auto px-5 py-4 ${bodyHeight > 0 ? "" : "min-h-0 flex-1"}`}
-              >
-                {/* key restarts the animation on every page change; the
-                    direction follows the button that was pressed, so the list
-                    moves the way the pagination does. */}
-                <div
-                  key={page}
-                  className={`animate-in fade-in duration-200 motion-reduce:animate-none ${
-                    back ? "slide-in-from-left-3" : "slide-in-from-right-3"
-                  }`}
-                >
-                  <Timeline items={slice} />
-                </div>
-              </div>
-              {pages > 1 && (
-                <footer className="border-t border-slate-200 px-5 py-3">
-                  <Pagination page={current} pages={pages} onChange={goto} />
-                </footer>
-              )}
-            </>
-          )}
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
+    <Card className="flex min-h-0 flex-col lg:h-full">
+      <SectionHeader
+        Icon={IconHistory}
+        title="Хронология заказа"
+        action={
+          canSeeAll && (
+            <Checkbox
+              label="Подробно"
+              isSelected={detailed}
+              onChange={(v) => {
+                setDetailed(v);
+                setPage(1); // the rows change under the reader, the page number should not survive it
+              }}
+              aria-label="Показывать все события заказа"
+            />
+          )
+        }
+      />
+      {shown.length === 0 ? (
+        <EmptyHint>Событий пока нет.</EmptyHint>
+      ) : (
+        <>
+          {/* overflow-hidden, not auto: the page was cut to this height, so a
+              scrollbar here would only mean the arithmetic was wrong, and a
+              scrollbar next to pagination is two ways through one list.
+              min-h keeps the stacked layout readable, where the card has no
+              column height to take. */}
+          <div ref={setBody} className="min-h-72 flex-1 overflow-hidden lg:min-h-0">
+            {/* key restarts the animation on every page change; the direction
+                follows the button that was pressed, so the list moves the way
+                the pagination does. */}
+            <div
+              key={current}
+              className={`animate-in fade-in duration-200 motion-reduce:animate-none ${
+                back ? "slide-in-from-left-3" : "slide-in-from-right-3"
+              }`}
+            >
+              <Timeline items={slice} detailed={detailed} />
+            </div>
+          </div>
+          <CardPagination page={current} pages={pages} onChange={goto} />
+        </>
+      )}
+    </Card>
   );
 }
 
-// useBodyMetrics reports how much room a scrollable modal body has and how tall
-// its rows actually render. Content-box height (clientHeight minus padding, as
-// the browser computed it) rather than a hardcoded padding, and row heights
-// read off the DOM rather than assumed - together that is the difference
-// between a page that fills the dialog and one that stops two rows short.
-function useBodyMetrics(body: HTMLDivElement | null, isOpen: boolean) {
-  const [m, setM] = useState({ height: 0, rowH: ROW_H, dayH: DAY_H });
-  // Measuring happens once per opening, in the pass where the body is still
-  // free to fill the dialog. After that the body is given the height of its
-  // tallest page, so measuring it again would only report back what was just
-  // written to it. A window resize throws the measurement away and the cycle
-  // starts over.
-  useEffect(() => {
-    if (!isOpen) {
-      setM((prev) => (prev.height === 0 ? prev : { ...prev, height: 0 }));
-      return;
-    }
-    const reset = () => setM((prev) => ({ ...prev, height: 0 }));
-    window.addEventListener("resize", reset);
-    return () => window.removeEventListener("resize", reset);
-  }, [isOpen]);
+// Remembered across orders and sessions, not per order: it is a way of working,
+// not a property of the thing being looked at. Reading is guarded because a
+// browser with storage disabled must not take the page down with it.
+const DETAILED_KEY = "order-history-detailed";
 
-  useEffect(() => {
-    if (!body || m.height > 0) return;
+function useDetailedHistory(enabled: boolean): [boolean, (v: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(DETAILED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (v: boolean) => {
+    setOn(v);
+    try {
+      localStorage.setItem(DETAILED_KEY, v ? "1" : "0");
+    } catch {
+      /* no storage - the choice just does not survive a reload */
+    }
+  };
+  return [enabled && on, set];
+}
+
+// The pagination bar of a card: a rule across the card's width, the controls
+// under it. It stays in the layout with a single page so the list above it is
+// measured against the room it will actually keep.
+function CardPagination({
+  page,
+  pages,
+  onChange,
+}: {
+  page: number;
+  pages: number;
+  onChange: (p: number) => void;
+}) {
+  return (
+    <div
+      aria-hidden={pages < 2}
+      className={`-mx-4 mt-3 shrink-0 border-t border-slate-200 px-4 pt-3 ${
+        pages < 2 ? "invisible" : ""
+      }`}
+    >
+      <Pagination page={page} pages={pages} onChange={onChange} />
+    </div>
+  );
+}
+
+// useBodyMetrics reports how much room a card body has and how tall its rows
+// actually render. Content-box height (clientHeight minus the padding the
+// browser computed) rather than a hardcoded inset, and row heights read off the
+// DOM rather than assumed - together that is the difference between a page that
+// fills the dialog and one that stops two rows short.
+//
+// The measurement is only trustworthy because the dialog it measures cannot be
+// moved by what the measurement produces: the dialog is always the same height
+// and the footer is always standing, so the body has the same room whether the
+// history is two events or two hundred. Anything else feeds back - size a page
+// to a body measured without the footer, and the footer then appears and pushes
+// those rows out of the dialog. That is why this only reads the layout and
+// never writes it, and why a ResizeObserver can be left running: it fires when
+// the window changes and stays quiet otherwise.
+function useBodyMetrics(body: HTMLDivElement | null) {
+  const [m, setM] = useState({ height: 0, rowH: ROW_H, dayH: DAY_H, daySep: DAY_SEP });
+  // Layout effect, not effect: the first pass renders a fallback page that is
+  // the wrong size by definition, and it must never reach the screen.
+  useLayoutEffect(() => {
+    if (!body) return;
     const measure = () => {
       const cs = getComputedStyle(body);
       const height =
@@ -758,84 +811,33 @@ function useBodyMetrics(body: HTMLDivElement | null, isOpen: boolean) {
       // that with clientHeight, which ignores transforms, produces a page size
       // that fits nothing.
       const row = body.querySelector<HTMLElement>("[data-timeline-row]");
-      // A heading's cost includes the margins that separate one day from the
-      // next, and the first heading has its top margin removed - so measure the
-      // last one, and never take less than the fallback: underestimating here
-      // means a page that overflows into a scrollbar.
-      const days = body.querySelectorAll<HTMLElement>("[data-timeline-day]");
-      const day = days[days.length - 1];
+      const day = body.querySelector<HTMLElement>("[data-timeline-day]");
       const dayCs = day && getComputedStyle(day);
-      setM({
-        height,
-        rowH: row?.offsetHeight || ROW_H,
-        dayH: dayCs
-          ? Math.max(
-              day.offsetHeight +
-                Number.parseFloat(dayCs.marginTop) +
-                Number.parseFloat(dayCs.marginBottom),
-              DAY_H,
-            )
-          : DAY_H,
+      // The gap between day groups is read off a heading that has one - the
+      // heading opening a page has no gap above it and would report zero.
+      const sep = body.querySelector<HTMLElement>("[data-timeline-sep]");
+      const sepCs = sep && getComputedStyle(sep);
+      setM((prev) => {
+        const next = {
+          height,
+          rowH: row?.offsetHeight || prev.rowH,
+          dayH: dayCs ? day.offsetHeight + Number.parseFloat(dayCs.marginBottom) : prev.dayH,
+          daySep: sepCs ? Number.parseFloat(sepCs.marginTop) : prev.daySep,
+        };
+        const same =
+          next.height === prev.height &&
+          next.rowH === prev.rowH &&
+          next.dayH === prev.dayH &&
+          next.daySep === prev.daySep;
+        return same ? prev : next;
       });
     };
     measure();
-    // And once more after the entrance animation has settled, in case the
-    // first pass caught the dialog mid-flight.
-    const settled = setTimeout(measure, 250);
-    return () => clearTimeout(settled);
-  }, [body, m.height]);
+    const ro = new ResizeObserver(measure);
+    ro.observe(body);
+    return () => ro.disconnect();
+  }, [body]);
   return m;
-}
-
-// pageCost is what one page of rows plus its day headings occupies.
-function pageCost(page: RequestEvent[], now: number, rowH: number, dayH: number): number {
-  let day = "";
-  let total = 0;
-  for (const e of page) {
-    const d = dayLabel(e.created_at, now);
-    total += rowH + (d === day ? 0 : dayH);
-    day = d;
-  }
-  return total;
-}
-
-// paginate fills each page to the height it actually has. A day heading costs
-// extra, and it repeats when a day is split across two pages, so the split has
-// to account for it as it goes rather than divide by a constant.
-function paginate(
-  events: RequestEvent[],
-  height: number,
-  now: number,
-  rowH: number,
-  dayH: number,
-): RequestEvent[][] {
-  if (events.length === 0) return [[]];
-  if (height <= 0) return chunk(events, MODAL_PAGE);
-  const pages: RequestEvent[][] = [];
-  let page: RequestEvent[] = [];
-  let used = 0;
-  let day = "";
-  for (const e of events) {
-    const d = dayLabel(e.created_at, now);
-    const cost = rowH + (d === day ? 0 : dayH);
-    if (page.length > 0 && used + cost > height) {
-      pages.push(page);
-      page = [];
-      used = rowH + dayH; // the new page reopens with its own heading
-    } else {
-      used += cost;
-    }
-    day = d;
-    page.push(e);
-  }
-  if (page.length > 0) pages.push(page);
-  return pages;
-}
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
 }
 
 // The history is grouped by day. Which day something happened is the one
@@ -843,26 +845,37 @@ function chunk<T>(items: T[], size: number): T[][] {
 // which the portal cannot know: an order carries no link between an edit and
 // the deployment that followed it, so any such grouping would be a guess
 // dressed up as a fact.
-function Timeline({ items }: { items: RequestEvent[] }) {
+function Timeline({ items, detailed }: { items: TimelineEvent[]; detailed?: boolean }) {
   const now = useNow();
   let lastDay = "";
   return (
     <ol className="flex flex-col">
-      {items.map((e) => {
+      {items.map((e, i) => {
         const day = dayLabel(e.created_at, now);
         const openDay = day !== lastDay;
+        // The gap above a day belongs to the days after the first one: the
+        // first sits right under the top padding and needs nothing. It cannot
+        // be a `first:` rule - every heading is the first child of its own row,
+        // so the rule would fire on all of them (and did, which is why the days
+        // used to run together). The separation is also priced per page in
+        // paginate, so it has to be decided here, not in CSS.
+        const sep = openDay && lastDay !== "";
         lastDay = day;
         return (
           <li key={e.id}>
             {openDay && (
-              <div data-timeline-day className="mb-1.5 mt-3 flex items-center gap-3 first:mt-0">
+              <div
+                data-timeline-day
+                data-timeline-sep={sep ? "" : undefined}
+                className={`mb-1.5 flex items-center gap-3 px-3 ${sep ? "mt-3" : ""}`}
+              >
                 <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {day}
                 </span>
                 <span className="h-px flex-1 bg-slate-100" aria-hidden />
               </div>
             )}
-            <TimelineRow e={e} now={now} />
+            <TimelineRow e={e} now={now} alt={i % 2 === 1} detailed={detailed} />
           </li>
         );
       })}
@@ -870,22 +883,63 @@ function Timeline({ items }: { items: RequestEvent[] }) {
   );
 }
 
-// One event, one line: what happened, who did it, when. The status pair
-// (from -> to) is gone - a person reading their order's history wants the
-// event, not the state machine's edge, and the badges answered a question
-// nobody was asking here.
-function TimelineRow({ e, now }: { e: RequestEvent; now: number }) {
+// One event, one line: what happened, who did it, when, and - when the event is
+// about one - the merge request it went through. The FSM edge behind the row is
+// shown only under "Подробно": a person reading their order's history wants the
+// event, not the state machine.
+//
+// The banding is per row, not per day, so it survives a page break in the
+// middle of a day; it is what carries the eye across a wide row from the label
+// on the left to the time on the right. Hover is a step darker than the band so
+// the row under the pointer reads on both the light and the dark stripe.
+//
+// The padding is plain, with no negative margin against it: the band keeps the
+// width the card gives it and the row moves inward, which is the point - the
+// icon and the time need room between them and the edge of their own stripe.
+function TimelineRow({
+  e,
+  now,
+  alt,
+  detailed,
+}: {
+  e: TimelineEvent;
+  now: number;
+  alt: boolean;
+  detailed?: boolean;
+}) {
   const isStatus = e.event_type === "status_changed";
   const sMeta = e.to_status ? statusMeta(e.to_status) : null;
   const meta = EVENT_META[e.event_type];
   const circle = isStatus && sMeta ? sMeta.badge : tints[meta?.tint ?? "slate"];
   const Icon = (isStatus && sMeta ? (sMeta.staticIcon ?? sMeta.Icon) : meta?.Icon) ?? IconHistory;
   return (
-    <div data-timeline-row className="flex items-center gap-2.5 py-1.5">
+    <div
+      data-timeline-row
+      className={`flex items-center gap-3 rounded-md px-3 py-1.5 transition-colors hover:bg-slate-100 ${
+        alt ? "bg-slate-50" : ""
+      }`}
+    >
       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${circle}`}>
         <Icon size={14} stroke={1.8} />
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{eventLabel(e)}</span>
+      {detailed && isStatus && <StatusEdge from={e.from_status} to={e.to_status} />}
+      {/* A chip, not a link in a sentence: it is a destination sitting at the
+          end of a row, so it carries its own outline and lifts on hover. The
+          underline is what a link inside running text needs to be found - here
+          it would only add a line across an already busy row. */}
+      {e.mr && (
+        <a
+          href={safeHref(e.mr.mr_url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Открыть запрос на слияние в GitLab"
+          className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-surface px-1.5 py-0.5 text-xs font-medium text-slate-500 no-underline outline-none transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          <IconGitMerge size={13} stroke={1.8} />
+          {e.mr.mr_iid}
+        </a>
+      )}
       {/* A person is named, the platform is not: an automatic event with
           "system" beside it reads as if someone by that name did it. The icon
           replaces a separator - it says "person" without a character that
@@ -907,14 +961,37 @@ function TimelineRow({ e, now }: { e: RequestEvent; now: number }) {
   );
 }
 
-function SectionHeaderInline({ Icon, title }: { Icon: TablerIcon; title: string }) {
+// The FSM edge the row rode in on, for the "Подробно" view: which state the
+// order left and which it entered. Icons rather than the status names - the row
+// already says in words what happened, and two more phrases would bury it.
+// Each carries its name in the tooltip.
+function StatusEdge({ from, to }: { from?: RequestStatus; to?: RequestStatus }) {
+  if (!to) return null;
   return (
-    <div className="flex items-center gap-2">
-      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50 text-brand-600">
-        <Icon size={16} stroke={1.8} />
-      </span>
-      <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-    </div>
+    <span className="flex shrink-0 items-center gap-1" aria-hidden>
+      {from && from !== to && (
+        <>
+          <StatusDot status={from} muted />
+          <IconArrowRight size={12} stroke={2} className="text-slate-300" />
+        </>
+      )}
+      <StatusDot status={to} />
+    </span>
+  );
+}
+
+function StatusDot({ status, muted = false }: { status: RequestStatus; muted?: boolean }) {
+  const m = statusMeta(status);
+  const Icon = m.staticIcon ?? m.Icon;
+  return (
+    <span
+      title={m.label}
+      className={`flex h-5 w-5 items-center justify-center rounded-full ${m.badge} ${
+        muted ? "opacity-50" : ""
+      }`}
+    >
+      <Icon size={12} stroke={1.8} />
+    </span>
   );
 }
 
@@ -965,151 +1042,3 @@ function pageWindow(page: number, pages: number): number[] {
   return out;
 }
 
-const MR_ACTION: Record<string, { label: string; Icon: TablerIcon; tint: string }> = {
-  create: { label: "Создание сервиса", Icon: IconGitBranch, tint: "indigo" },
-  update: { label: "Обновление", Icon: IconGitCommit, tint: "blue" },
-  delete: { label: "Удаление", Icon: IconTrash, tint: "rose" },
-};
-
-const MR_STATUS: Record<string, { label: string; className: string; Icon: TablerIcon }> = {
-  opened: { label: "Открыт", className: "bg-amber-100 text-amber-800", Icon: IconGitPullRequest },
-  merged: { label: "Влит", className: "bg-indigo-100 text-indigo-800", Icon: IconGitMerge },
-  closed: { label: "Закрыт", className: "bg-slate-200 text-slate-600", Icon: IconGitPullRequestClosed },
-};
-
-function MergeRequestsCard({ mrs }: { mrs: RequestMR[] }) {
-  const [showAll, setShowAll] = useState(false);
-  return (
-    <Card className="h-full">
-      <SectionHeader Icon={IconGitMerge} title="Запросы на слияние" />
-      {mrs.length === 0 ? (
-        <EmptyHint>Запросов на слияние пока нет.</EmptyHint>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {mrs.slice(0, TL_PREVIEW).map((m) => (
-            <MrRow key={m.id} m={m} />
-          ))}
-        </ul>
-      )}
-      {mrs.length > TL_PREVIEW && (
-        <button
-          onClick={() => setShowAll(true)}
-          className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-        >
-          Показать все
-        </button>
-      )}
-      <MergeRequestsModal mrs={mrs} isOpen={showAll} onOpenChange={setShowAll} />
-    </Card>
-  );
-}
-
-function MergeRequestsModal({
-  mrs,
-  isOpen,
-  onOpenChange,
-}: {
-  mrs: RequestMR[];
-  isOpen: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const [page, setPage] = useState(1);
-  const [body, setBody] = useState<HTMLDivElement | null>(null);
-  const { height, rowH } = useBodyMetrics(body, isOpen);
-  useEffect(() => {
-    if (isOpen) setPage(1);
-  }, [isOpen]);
-  const step = (rowH || MR_ROW_H) + MR_GAP;
-  const perPage = height > 0 ? Math.max(1, Math.floor((height + MR_GAP) / step)) : MR_MODAL_PAGE;
-  const pages = Math.max(1, Math.ceil(mrs.length / perPage));
-  const current = Math.min(page, pages);
-  const slice = mrs.slice((current - 1) * perPage, current * perPage);
-  const fullPage = Math.min(perPage, mrs.length);
-  const bodyHeight = height > 0 ? fullPage * step - MR_GAP : 0;
-  return (
-    <ModalOverlay
-      isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in"
-    >
-      <Modal
-        className={`flex w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95 ${
-          bodyHeight > 0 ? "max-h-[min(85vh,34rem)]" : "h-[min(85vh,34rem)]"
-        }`}
-      >
-        <Dialog className="flex min-h-0 flex-1 flex-col outline-none">
-          {({ close }) => (
-            <>
-              <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <SectionHeaderInline Icon={IconGitMerge} title="Запросы на слияние" />
-                <button
-                  onClick={close}
-                  aria-label="Закрыть"
-                  className="rounded-md p-1 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  <IconX size={18} stroke={2} />
-                </button>
-              </header>
-              <div
-                ref={setBody}
-                style={bodyHeight > 0 ? { height: bodyHeight } : undefined}
-                className={`scroll-slim overflow-y-auto px-5 py-4 ${bodyHeight > 0 ? "" : "min-h-0 flex-1"}`}
-              >
-                <ul key={current} className="flex animate-in flex-col gap-2 fade-in duration-200 motion-reduce:animate-none">
-                  {slice.map((m) => (
-                    <MrRow key={m.id} m={m} />
-                  ))}
-                </ul>
-              </div>
-              {pages > 1 && (
-                <footer className="border-t border-slate-200 px-5 py-3">
-                  <Pagination page={current} pages={pages} onChange={setPage} />
-                </footer>
-              )}
-            </>
-          )}
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
-  );
-}
-
-function MrRow({ m }: { m: RequestMR }) {
-  const now = useNow();
-  const a = MR_ACTION[m.action] ?? { label: m.action, Icon: IconGitCommit, tint: "slate" };
-  const s =
-    MR_STATUS[m.mr_status] ?? { label: m.mr_status, className: "bg-slate-100 text-slate-600", Icon: IconGitPullRequest };
-  return (
-    <li>
-      <a
-        data-timeline-row
-        href={safeHref(m.mr_url)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 outline-none transition-colors hover:border-brand-300 hover:bg-brand-50/50 focus-visible:ring-2 focus-visible:ring-brand-500"
-      >
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tints[a.tint]}`}>
-          <a.Icon size={16} stroke={1.8} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-slate-800">{a.label}</span>
-            <span className="shrink-0 text-xs text-slate-400">!{m.mr_iid}</span>
-          </div>
-          <div className="text-xs text-slate-400" title={fmtDateTime(m.created_at)}>
-            {fmtRelative(m.created_at, now)}
-          </div>
-        </div>
-        <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${s.className}`}>
-          <s.Icon size={12} stroke={2} />
-          {s.label}
-        </span>
-        <IconExternalLink
-          size={16}
-          stroke={1.8}
-          className="shrink-0 text-slate-300 transition-colors group-hover:text-brand-500"
-        />
-      </a>
-    </li>
-  );
-}

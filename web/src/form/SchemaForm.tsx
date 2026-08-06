@@ -1002,6 +1002,28 @@ export function pruneEmpty(obj: Values): Values {
   return prune(obj) as Values;
 }
 
+// sameValues answers "is this still the document I opened", which is what says
+// whether there is anything to save. It compares meaning, not construction:
+// retyping a field lands its key at the end of the object, and none of that
+// survives the trip to Git, where the values are marshalled fresh. Lists are
+// the exception - their order is part of the document, so it is compared.
+export function sameValues(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((x, i) => sameValues(x, b[i]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    return ka.every(
+      (k) => k in b && sameValues((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
+    );
+  }
+  return false;
+}
+
 function prune(v: any): any {
   if (Array.isArray(v)) return v.map(prune).filter((x) => x !== undefined && x !== "");
   if (v && typeof v === "object") {
