@@ -13,9 +13,9 @@ import { api } from "../api/client";
 import type { OrderRequest, RequestStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
 import { ProductIcon } from "../components/icons";
-import { OrdersTable } from "../features/orders/OrdersTable";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorBox, Spinner } from "../components/ui";
+import { OrdersTable } from "../features/orders/OrdersTable";
 import { useAsync } from "../hooks/useAsync";
 
 // SupportSection guards every /support/* route: only the support role and
@@ -84,9 +84,9 @@ function needsAttention(r: OrderRequest): boolean {
 // ---------------------------------------------------------------------------
 
 export function SupportOverviewPage() {
-  const { data, error, loading } = useAsync(() => api.listRequests(), []);
+  const { data, error, loading, reload } = useAsync(() => api.listRequests(), []);
   if (loading) return <Spinner />;
-  if (error) return <ErrorBox error={error} />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
 
   const orders = data ?? [];
   const live = orders.filter((r) => LIVE.includes(r.status));
