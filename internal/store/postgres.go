@@ -303,15 +303,16 @@ func (p *Postgres) AddEvent(ctx context.Context, e *models.RequestEvent) error {
 		payload = b
 	}
 	return p.db.QueryRow(ctx, `
-		INSERT INTO request_events (request_id, actor, event_type, from_status, to_status, payload)
-		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at`,
-		e.RequestID, nullStr(e.Actor), e.EventType, nullStatus(e.FromStatus), nullStatus(e.ToStatus), payload).
+		INSERT INTO request_events (request_id, actor, actor_name, event_type, from_status, to_status, payload)
+		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
+		e.RequestID, nullStr(e.Actor), e.ActorName, e.EventType, nullStatus(e.FromStatus),
+		nullStatus(e.ToStatus), payload).
 		Scan(&e.ID, &e.CreatedAt)
 }
 
 func (p *Postgres) ListEvents(ctx context.Context, requestID string) ([]*models.RequestEvent, error) {
 	rows, err := p.db.Query(ctx, `
-		SELECT id, request_id, COALESCE(actor,''), event_type, COALESCE(from_status,''),
+		SELECT id, request_id, COALESCE(actor,''), actor_name, event_type, COALESCE(from_status,''),
 		       COALESCE(to_status,''), payload, created_at
 		FROM request_events WHERE request_id=$1 ORDER BY created_at, id`, requestID)
 	if err != nil {
@@ -322,7 +323,7 @@ func (p *Postgres) ListEvents(ctx context.Context, requestID string) ([]*models.
 	for rows.Next() {
 		var e models.RequestEvent
 		var payload []byte
-		if err := rows.Scan(&e.ID, &e.RequestID, &e.Actor, &e.EventType, &e.FromStatus,
+		if err := rows.Scan(&e.ID, &e.RequestID, &e.Actor, &e.ActorName, &e.EventType, &e.FromStatus,
 			&e.ToStatus, &payload, &e.CreatedAt); err != nil {
 			return nil, err
 		}

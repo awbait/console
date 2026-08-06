@@ -427,7 +427,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err := s.store.CreateRequest(ctx, r); err != nil {
 		return nil, err // ErrConflict -> 409
 	}
-	s.event(ctx, r, u.Subject, "created", "", "")
+	s.event(ctx, r, byUser(u), "created", "", "")
 
 	if in.Draft {
 		return r, nil // stays DRAFT until Submit
@@ -445,7 +445,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if _, err := s.openChange(ctx, r, proj, models.ActionCreate, actions); err != nil {
 		return r, err
 	}
-	if err := s.transition(ctx, r, models.StatusMRCreated, u.Subject); err != nil {
+	if err := s.transition(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -494,7 +494,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if _, err := s.openChange(ctx, r, proj, models.ActionCreate, actions); err != nil {
 		return r, err
 	}
-	if err := s.transition(ctx, r, models.StatusMRCreated, u.Subject); err != nil {
+	if err := s.transition(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -560,7 +560,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	if _, err := s.openChange(ctx, r, proj, models.ActionUpdate, actions); err != nil {
 		return nil, err
 	}
-	if err := s.transition(ctx, r, models.StatusMRCreated, u.Subject); err != nil {
+	if err := s.transition(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return nil, err
 	}
 	return r, nil
@@ -627,7 +627,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	if err := s.store.UpdateRequest(ctx, r); err != nil {
 		return nil, err // ErrConflict (identity collision) / ErrStaleVersion
 	}
-	s.event(ctx, r, u.Subject, "draft_updated", "", "")
+	s.event(ctx, r, byUser(u), "draft_updated", "", "")
 	return r, nil
 }
 
@@ -652,7 +652,7 @@ func (s *Service) Rename(ctx context.Context, u *models.User, id, displayName st
 	if err := s.store.UpdateRequest(ctx, r); err != nil {
 		return nil, err
 	}
-	s.event(ctx, r, u.Subject, "renamed", "", "")
+	s.event(ctx, r, byUser(u), "renamed", "", "")
 	return r, nil
 }
 
@@ -678,7 +678,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		if err := s.store.UpdateRequest(ctx, r); err != nil {
 			return nil, err
 		}
-		s.event(ctx, r, u.Subject, "draft_discarded", "", "")
+		s.event(ctx, r, byUser(u), "draft_discarded", "", "")
 		return r, nil
 	}
 	// Guard the FSM edge BEFORE touching Git: delete is only valid once the create
@@ -712,7 +712,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		if err := s.store.UpdateRequest(ctx, r); err != nil {
 			return nil, err
 		}
-		s.event(ctx, r, u.Subject, "deleted", "", models.StatusDeleted)
+		s.event(ctx, r, byUser(u), "deleted", "", models.StatusDeleted)
 		s.publishStatus(r.ID, string(models.StatusDeleted))
 		return r, nil
 	}
@@ -723,7 +723,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	if _, err := s.openChange(ctx, r, proj, models.ActionDelete, actions); err != nil {
 		return nil, err
 	}
-	if err := s.transition(ctx, r, models.StatusDeleteRequested, u.Subject); err != nil {
+	if err := s.transition(ctx, r, models.StatusDeleteRequested, byUser(u)); err != nil {
 		return nil, err
 	}
 	return r, nil
@@ -752,7 +752,7 @@ func (s *Service) ForceSync(ctx context.Context, u *models.User, id string) erro
 	s.logger().Info("sync forced",
 		"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName,
 		"actor", u.Subject, "duration_ms", time.Since(start).Milliseconds())
-	s.event(ctx, r, u.Subject, "sync_forced", "", "")
+	s.event(ctx, r, byUser(u), "sync_forced", "", "")
 	return nil
 }
 
@@ -927,7 +927,21 @@ func (s *Service) openChange(ctx context.Context, r *models.Request, proj *gitla
 }
 
 // transition persists a status change with optimistic locking and emits events.
-func (s *Service) transition(ctx context.Context, r *models.Request, to models.RequestStatus, actor string) error {
+// actorRef is who an audit event is attributed to. The subject is what the
+// trail is keyed by; the name rides along because the portal keeps no user
+// directory to resolve it later, and the timeline has to show a person, not a
+// UUID. bySystem leaves the name empty - that is how the UI tells "the platform
+// did this" from "someone did this".
+type actorRef struct {
+	subject string
+	name    string
+}
+
+func byUser(u *models.User) actorRef { return actorRef{subject: u.Subject, name: u.Name} }
+
+func bySystem() actorRef { return actorRef{subject: "system"} }
+
+func (s *Service) transition(ctx context.Context, r *models.Request, to models.RequestStatus, a actorRef) error {
 	from := r.Status
 	if !CanTransition(from, to) {
 		return fmt.Errorf("invalid transition %s -> %s", from, to)
@@ -940,14 +954,15 @@ func (s *Service) transition(ctx context.Context, r *models.Request, to models.R
 			return err
 		}
 		return tx.AddEvent(ctx, &models.RequestEvent{
-			RequestID: r.ID, Actor: actor, EventType: "status_changed", FromStatus: from, ToStatus: to,
+			RequestID: r.ID, Actor: a.subject, ActorName: a.name,
+			EventType: "status_changed", FromStatus: from, ToStatus: to,
 		})
 	}); err != nil {
 		return err
 	}
 	s.publishStatus(r.ID, string(to))
 	s.logger().Debug("order transition",
-		"order_id", r.ID, "from", from, "to", to, "actor", actor)
+		"order_id", r.ID, "from", from, "to", to, "actor", a.subject)
 	return nil
 }
 
@@ -963,9 +978,10 @@ func (s *Service) publishStatus(id, status string) {
 // committed (create, rename, delete, ...). A failure here must not fail the
 // action, but it is no longer swallowed silently: losing an audit row is logged
 // at Warn so it is visible. Transitions use Tx (above) for atomicity instead.
-func (s *Service) event(ctx context.Context, r *models.Request, actor, typ string, from, to models.RequestStatus) {
+func (s *Service) event(ctx context.Context, r *models.Request, a actorRef, typ string, from, to models.RequestStatus) {
 	if err := s.store.AddEvent(ctx, &models.RequestEvent{
-		RequestID: r.ID, Actor: actor, EventType: typ, FromStatus: from, ToStatus: to,
+		RequestID: r.ID, Actor: a.subject, ActorName: a.name,
+		EventType: typ, FromStatus: from, ToStatus: to,
 	}); err != nil {
 		s.logger().Warn("audit event not recorded", "order_id", r.ID, "event_type", typ, "err", err)
 	}

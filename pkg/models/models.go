@@ -107,21 +107,21 @@ type Request struct {
 	// chart view's "identity" pointer, e.g. gateways[0].name), or service_name as
 	// a fallback. Unique per (cluster, namespace, chart_name): prevents two orders
 	// of one chart from colliding on resource names in a namespace.
-	ResourceIdentity string        `json:"resource_identity"`
-	ValuesYAML       string        `json:"values_yaml"`
+	ResourceIdentity string `json:"resource_identity"`
+	ValuesYAML       string `json:"values_yaml"`
 	// EditorState is opaque UI state of the visual values editor that produced
 	// the values (the policies graph and any future graph profile): a
 	// {profile, version, data} document holding what values cannot express -
 	// unlinked workloads, their service accounts and ports, empty namespaces,
 	// node positions. The backend stores and returns it untouched; only single
 	// order reads carry it, lists leave it out.
-	EditorState json.RawMessage `json:"editor_state,omitempty"`
-	Status           RequestStatus `json:"status"`
-	ArgoCDAppName    string        `json:"argocd_app_name"`
-	Version          int           `json:"version"` // optimistic lock
-	CreatedAt        time.Time     `json:"created_at"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-	DeletedAt        *time.Time    `json:"deleted_at,omitempty"`
+	EditorState   json.RawMessage `json:"editor_state,omitempty"`
+	Status        RequestStatus   `json:"status"`
+	ArgoCDAppName string          `json:"argocd_app_name"`
+	Version       int             `json:"version"` // optimistic lock
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	DeletedAt     *time.Time      `json:"deleted_at,omitempty"`
 	// Drifted is set by the drift reconciler when the order's committed Git state
 	// (values.yaml / chart version) was changed outside the portal. DriftDetail
 	// holds a human-readable summary of what diverged. Read-only signal - the
@@ -147,9 +147,15 @@ type RequestMR struct {
 
 // RequestEvent is an audit-log / state-transition record.
 type RequestEvent struct {
-	ID         int64          `json:"id"`
-	RequestID  string         `json:"request_id"`
-	Actor      string         `json:"actor"`
+	ID        int64  `json:"id"`
+	RequestID string `json:"request_id"`
+	// Actor is the OIDC subject of the person who acted, or "system" for
+	// anything the platform did on its own (reconcile, drift, import).
+	Actor string `json:"actor"`
+	// ActorName is that person's display name, recorded here because the portal
+	// keeps no user directory to look it up in later. Empty for "system" - the
+	// UI reads that as "nobody to name".
+	ActorName  string         `json:"actor_name,omitempty"`
 	EventType  string         `json:"event_type"`
 	FromStatus RequestStatus  `json:"from_status,omitempty"`
 	ToStatus   RequestStatus  `json:"to_status,omitempty"`

@@ -93,7 +93,12 @@ export interface RequestMR {
 export interface RequestEvent {
   id: number;
   request_id: string;
+  // OIDC subject of the person who acted, or "system" when the platform did it
+  // on its own. Never shown - it is a UUID; actor_name is what a person reads.
   actor: string;
+  // Display name, recorded with the event. Absent for anything automatic, and
+  // the timeline treats that absence as "nobody to name here".
+  actor_name?: string;
   event_type: string;
   from_status?: RequestStatus;
   to_status?: RequestStatus;
