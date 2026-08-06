@@ -368,16 +368,28 @@ function NavNodes({
                 className={`shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
               />
             </button>
-            {isOpen && (
-              <NavNodes
-                nodes={node.children}
-                parentKey={key}
-                depth={depth + 1}
-                activeId={activeId}
-                open={open}
-                onToggle={onToggle}
-              />
-            )}
+            {/* Same opening as a catalog category in the portal: the height
+                rides grid-rows 0fr -> 1fr, which animates a height nobody has
+                to measure, and visibility rides the same transition so a folded
+                group leaves the tab order only once it has finished closing.
+                The children stay mounted - that is what makes the close
+                animate at all. */}
+            <div
+              className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none ${
+                isOpen ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <NavNodes
+                  nodes={node.children}
+                  parentKey={key}
+                  depth={depth + 1}
+                  activeId={activeId}
+                  open={open}
+                  onToggle={onToggle}
+                />
+              </div>
+            </div>
           </li>
         );
       })}
@@ -420,7 +432,7 @@ function DocsNav({ activeId, index }: { activeId: string; index: NavItem[] }) {
   // from being cut by the scrolling child); the search box stays pinned and only
   // the tree below it scrolls.
   return (
-    <nav className="flex w-60 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
+    <nav className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
       <div className="shrink-0 p-3">
         <div className="relative">
           <IconSearch size={16} className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" />
@@ -471,6 +483,19 @@ function DocsNav({ activeId, index }: { activeId: string; index: NavItem[] }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Docs open standalone, outside the portal shell, so the way back has to
+          live here. Mirrors the portal's own footer row, where the docs link
+          sits in the same place. */}
+      <div className="shrink-0 border-t border-slate-100 p-3">
+        <Link
+          to="/"
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+        >
+          <IconArrowLeft size={20} stroke={1.7} className="shrink-0" />
+          Портал
+        </Link>
       </div>
     </nav>
   );
