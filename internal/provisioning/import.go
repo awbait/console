@@ -98,7 +98,7 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 			continue
 		}
 		known[r.ArgoCDAppName] = struct{}{}
-		s.event(ctx, r, "system", "imported", "", r.Status)
+		s.event(ctx, r, bySystem(), "imported", "", r.Status)
 		s.publishStatus(r.ID, string(r.Status))
 	}
 	return nil

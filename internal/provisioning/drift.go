@@ -95,7 +95,7 @@ func (s *Service) checkDriftOne(ctx context.Context, r *models.Request) {
 	if drifted {
 		typ = "drift_detected"
 	}
-	s.event(ctx, r, "system", typ, r.Status, r.Status)
+	s.event(ctx, r, bySystem(), typ, r.Status, r.Status)
 	s.publishStatus(r.ID, string(r.Status))
 }
 

@@ -152,7 +152,7 @@ func (s *Service) tryTransition(ctx context.Context, r *models.Request, to model
 	if !CanTransition(r.Status, to) {
 		return
 	}
-	_ = s.transition(ctx, r, to, "system")
+	_ = s.transition(ctx, r, to, bySystem())
 }
 
 func (s *Service) markDeleted(ctx context.Context, r *models.Request) {
@@ -165,7 +165,7 @@ func (s *Service) markDeleted(ctx context.Context, r *models.Request) {
 	if err := s.store.UpdateRequest(ctx, r); err != nil {
 		return
 	}
-	s.event(ctx, r, "system", "deleted", models.StatusDeleteMRMerged, models.StatusDeleted)
+	s.event(ctx, r, bySystem(), "deleted", models.StatusDeleteMRMerged, models.StatusDeleted)
 	s.publishStatus(r.ID, string(models.StatusDeleted))
 	s.logger().Debug("order deleted", "order_id", r.ID)
 }

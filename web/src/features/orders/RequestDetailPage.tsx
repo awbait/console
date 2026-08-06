@@ -517,7 +517,7 @@ function UpgradeDialog({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       isDismissable
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in"
     >
       <Modal className="w-full max-w-md rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
         <Dialog className="outline-none">

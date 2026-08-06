@@ -387,7 +387,7 @@ export function AdminApprovalsPage() {
             }`}
           >
             {f.label}
-            <span className="rounded-full bg-black/5 px-1.5 text-[11px] text-slate-500">{count(f.id)}</span>
+            <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">{count(f.id)}</span>
           </button>
         ))}
       </div>
@@ -865,7 +865,7 @@ function DeleteCategoryButton({
       </AriaButton>
       <ModalOverlay
         isDismissable
-        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-24 entering:animate-in entering:fade-in"
+        className="fixed inset-0 z-10 flex items-start justify-center scrim p-4 pt-24 entering:animate-in entering:fade-in"
       >
         <Modal className="w-full max-w-md rounded-lg border border-slate-200 bg-surface shadow-xl">
           <Dialog className="outline-none">

@@ -62,7 +62,7 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 		if err := s.store.UpdateRequest(ctx, r); err != nil {
 			return nil, err
 		}
-		s.event(ctx, r, u.Subject, "git_pulled", "", "")
+		s.event(ctx, r, byUser(u), "git_pulled", "", "")
 	}
 	// We are now in sync with Git either way - clear any drift flag.
 	_ = s.store.SetDrift(ctx, r.ID, false, "")

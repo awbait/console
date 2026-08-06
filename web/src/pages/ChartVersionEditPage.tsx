@@ -611,7 +611,7 @@ function FormatHelp() {
       </AriaButton>
       <ModalOverlay
         isDismissable
-        className="fixed inset-0 z-10 flex items-start justify-center bg-black/20 p-4 pt-16 entering:animate-in entering:fade-in"
+        className="fixed inset-0 z-10 flex items-start justify-center scrim p-4 pt-16 entering:animate-in entering:fade-in"
       >
         <Modal className="w-full max-w-2xl rounded-lg border border-slate-200 bg-surface shadow-xl">
           <Dialog className="outline-none">
