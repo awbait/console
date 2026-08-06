@@ -4,7 +4,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Spinner } from "../components/ui";
+import { SkeletonText } from "../components/ui";
 import { DOCS_NAV, type DocNode, flattenNav, pathToActive } from "./docsNav";
 
 const BASE = `${import.meta.env.BASE_URL}docs-content/`;
@@ -570,7 +570,7 @@ export function DocsPage() {
                     ]}
                   />
                   {content === null ? (
-                    <Spinner />
+                    <SkeletonText lines={8} />
                   ) : (
                     <>
                       <DocContent content={content} headings={headings} />

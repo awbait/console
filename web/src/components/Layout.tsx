@@ -46,7 +46,7 @@ import { THEME_LABELS, THEMES, type Theme, useTheme } from "../app/ThemeContext"
 import { useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
 import { categoryIcon, type TablerIcon } from "./icons";
-import { Spinner } from "./ui";
+import { Skeleton, SkeletonText } from "./ui";
 
 const navItems = [
   { to: "/requests", label: "Список заказов", Icon: IconBox },
@@ -309,7 +309,7 @@ export function Layout() {
     isWide ? "max-w-full" : "max-w-[1440px]"
   }`;
 
-  if (loading) return <Spinner />;
+  if (loading) return <ShellSkeleton width={shellWidth} />;
   if (unauthenticated || !user) return <LoginScreen />;
 
   // Sections by role: security sees only its own section, admin sees all three,
@@ -687,6 +687,43 @@ export function Layout() {
           >
             <Outlet />
           </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// While the session is being resolved the shell itself is already known - the
+// bar, the menu card, the content column do not depend on who is signed in.
+// Drawing it right away means one continuous page instead of a bare word on
+// white that is then replaced by the whole portal.
+function ShellSkeleton({ width }: { width: string }) {
+  return (
+    <div className="flex h-screen flex-col bg-app">
+      <header className="shrink-0 border-b border-slate-200 bg-surface">
+        <div className={`mx-auto flex h-14 w-full items-center px-4 lg:px-6 ${width}`}>
+          <span className="text-2xl font-bold lowercase leading-none tracking-tight text-brand-600">
+            console
+          </span>
+        </div>
+      </header>
+      <div className={`mx-auto flex min-h-0 w-full flex-1 gap-10 px-4 py-8 lg:px-6 ${width}`}>
+        <div className="hidden w-[260px] shrink-0 flex-col gap-4 sm:flex">
+          <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+            <Skeleton className="h-9 w-full rounded-lg" />
+          </div>
+          <div className="flex flex-1 flex-col gap-2 rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton
+                // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
+                key={i}
+                className="h-9 w-full rounded-md"
+              />
+            ))}
+          </div>
+        </div>
+        <main className="min-w-0 flex-1">
+          <SkeletonText lines={6} />
         </main>
       </div>
     </div>

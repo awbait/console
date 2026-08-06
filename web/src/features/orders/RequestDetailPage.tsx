@@ -28,7 +28,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ProductIcon } from "../../components/icons";
 import { NotFound } from "../../components/NotFound";
 import { StatusBadge } from "../../components/StatusBadge";
-import { Button, Card, Select, Spinner } from "../../components/ui";
+import { Button, Card, Select, SkeletonRows } from "../../components/ui";
 import { useAsync } from "../../hooks/useAsync";
 import { safeHref } from "../../lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
@@ -117,7 +117,7 @@ export function RequestDetailPage() {
     }
   }, [team, data, user, navigate]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonRows rows={5} />;
   if (error instanceof HttpError && error.status === 404)
     return (
       <NotFound

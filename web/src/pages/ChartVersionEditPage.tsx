@@ -51,7 +51,7 @@ import { OrderMetaCard, OrderValuesCard } from "../features/orders/OrderFormPart
 import { valuesEditorFor } from "../features/orders/valuesEditors";
 import type { PersistValues } from "../components/products/GenericProductTabs";
 import { StatusBadge } from "../components/StatusBadge";
-import { Button, Card, Chip, ErrorBox, Spinner } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
 import { parseNamespaceDirective, resolveDestNamespace } from "../form/namespace";
 import { pruneEmpty, type View } from "../form/SchemaForm";
 import { useAsync } from "../hooks/useAsync";
@@ -88,7 +88,7 @@ export function ChartVersionEditPage() {
     qk.publication(project, name),
   );
 
-  if (pubLoading && !pub) return <Spinner />;
+  if (pubLoading && !pub) return <Loading label="Загружаем версию" />;
   if (pubError && !pub) return <ErrorBox error={pubError} />;
   // No publication yet: the overview page hosts the registration form.
   if (!pub) return <Navigate to={`/catalog/${project}/${name}/manage`} replace />;

@@ -14,7 +14,7 @@ import type { OrderRequest, RequestStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
 import { ProductIcon } from "../components/icons";
 import { StatusBadge } from "../components/StatusBadge";
-import { ErrorBox, Spinner } from "../components/ui";
+import { ErrorBox, SkeletonRows } from "../components/ui";
 import { OrdersTable } from "../features/orders/OrdersTable";
 import { useAsync } from "../hooks/useAsync";
 
@@ -85,7 +85,7 @@ function needsAttention(r: OrderRequest): boolean {
 
 export function SupportOverviewPage() {
   const { data, error, loading, reload } = useAsync(() => api.listRequests(), []);
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonRows rows={5} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
 
   const orders = data ?? [];
