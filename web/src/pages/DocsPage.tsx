@@ -9,6 +9,11 @@ import { DOCS_NAV, type DocNode, flattenNav, pathToActive } from "./docsNav";
 
 const BASE = `${import.meta.env.BASE_URL}docs-content/`;
 
+// Shared geometry of the two halves of the header wordmark, so they keep
+// looking like one word while each carries its own link, hover and focus ring.
+const WORDMARK =
+  "rounded-md text-2xl font-bold lowercase leading-none tracking-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500";
+
 interface NavItem {
   id: string;
   title: string;
@@ -559,25 +564,23 @@ export function DocsPage() {
     // so the bar carries its own identity and a way back.
     <div className="flex h-screen flex-col bg-app text-slate-800">
       <header className="shrink-0 border-b border-slate-200 bg-surface">
-        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-4 lg:px-6">
-          <Link
-            to="/docs"
-            className="flex h-full items-center gap-2 truncate rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-          >
-            <span className="text-2xl font-bold lowercase leading-none tracking-tight text-brand-600">
+        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center px-4 lg:px-6">
+          {/* The wordmark reads as one thing but leads to two: "console" is the
+              way back to the portal, "docs" the way back to the doc home. */}
+          <div className="flex h-full items-center gap-2 truncate">
+            <Link
+              to="/"
+              className={`${WORDMARK} text-brand-600 hover:text-brand-700`}
+            >
               console
-            </span>
-            <span className="text-2xl font-bold lowercase leading-none tracking-tight text-slate-400">
+            </Link>
+            <Link
+              to="/docs"
+              className={`${WORDMARK} text-slate-400 hover:text-slate-600`}
+            >
               docs
-            </span>
-          </Link>
-          <Link
-            to="/"
-            className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-          >
-            <IconArrowLeft size={16} stroke={1.8} />
-            Портал
-          </Link>
+            </Link>
+          </div>
         </div>
       </header>
 
