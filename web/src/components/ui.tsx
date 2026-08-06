@@ -127,7 +127,10 @@ export function TextField({
         inputMode={rest.inputMode}
         placeholder={rest.placeholder}
         onBlur={onBlur}
-        className={`rounded-md border px-2 py-1.5 text-sm outline-none focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+        // bg-surface, not the browser's default: an unstyled control keeps the
+        // UA field colour, which is a light box on a near-black card in the dark
+        // themes. The field reads as a field by its border (see index.css).
+        className={`rounded-md border bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
           invalid
             ? "border-red-500 focus:border-red-500 focus:ring-red-500"
             : "border-gray-300 focus:border-brand-500 focus:ring-brand-500"
@@ -217,7 +220,7 @@ export function Select<T extends string>({
         </Label>
       )}
       <AriaButton
-        className={`flex items-center justify-between rounded-md border outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+        className={`flex items-center justify-between rounded-md border bg-surface outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
           compact ? "gap-1 px-2 py-1 text-xs" : "px-2 py-1.5 text-sm"
         } ${invalid ? "border-red-500" : "border-gray-300 focus:border-brand-500"}`}
       >

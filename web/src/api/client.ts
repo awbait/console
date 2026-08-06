@@ -5,7 +5,6 @@ import type {
   CatalogResponse,
   Category,
   ChangelogEntry,
-  ChangelogRelease,
   Chart,
   ChartCheckResult,
   ChartPublication,
@@ -260,7 +259,7 @@ export const api = {
 
   // about: portal version + changelog
   getAbout: () => req<AboutInfo>("GET", "/info"),
-  getChangelog: () => req<ChangelogRelease[]>("GET", "/changelog"),
+  getChangelog: () => req<ChangelogEntry[]>("GET", "/changelog"),
 };
 
 function enc(s: string) {

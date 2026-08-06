@@ -26,9 +26,6 @@ on top:
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
 
 ### Added
@@ -51,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Categories, in this order, and only the ones that have entries: **Added**,
 **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security**.
+
+One line under the title says what the file is; there is no boilerplate about
+the format or the versioning scheme, since it is written for the reader of the
+product, not for the reader of the standard.
 
 ## Step 1: an entry per change
 
@@ -84,7 +85,9 @@ or what to do about it.
   improvements" say nothing.
 - Do not paste commit subjects. A conventional-commit line is written for
   developers; rewrite it.
-- Name the visible thing the way the interface names it.
+- Name the visible thing the way the interface names it. A setting the reader
+  has to write themselves is part of that surface: name it exactly, the way it
+  is written in the configuration.
 
 | Instead of | Write |
 | --- | --- |

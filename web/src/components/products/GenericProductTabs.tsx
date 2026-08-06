@@ -25,8 +25,8 @@ import { chartLabel } from "../../app/CatalogContext";
 import {
   collectErrors,
   pruneEmpty,
-  sameValues,
   SchemaForm,
+  sameValues,
   seedDefaults,
   type View,
 } from "../../form/SchemaForm";
@@ -88,7 +88,10 @@ function FormDialogShell({
     <ModalOverlay
       isOpen={isOpen}
       onOpenChange={(o) => !o && onClose()}
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px] entering:animate-in entering:fade-in entering:duration-200 exiting:animate-out exiting:fade-out exiting:duration-200 exiting:fill-mode-forwards"
+      // scrim, not a slate tint: the neutral ramp is inverted in the dark
+      // themes, so slate-900 there is nearly white and the dimming became a
+      // bright veil. scrim is plain black and dims harder on a black page.
+      className="scrim fixed inset-0 z-50 backdrop-blur-[2px] entering:animate-in entering:fade-in entering:duration-200 exiting:animate-out exiting:fade-out exiting:duration-200 exiting:fill-mode-forwards"
     >
       <Modal
         className={`fixed inset-y-0 right-0 w-full ${maxWidth} border-l border-slate-200 bg-surface shadow-2xl outline-none entering:animate-in entering:slide-in-from-right entering:duration-300 entering:ease-out exiting:animate-out exiting:slide-out-to-right exiting:duration-200 exiting:fill-mode-forwards`}
@@ -105,6 +108,7 @@ function FormDialogShell({
                   {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
                 </div>
                 <button
+                  type="button"
                   onClick={close}
                   aria-label="Закрыть"
                   className="rounded-md p-1.5 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -407,6 +411,7 @@ function ListEditor({
           </thead>
           <tbody>
             {items.map((it, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the row is its position - edit and delete address the element by index, and the values carry no identity of their own
               <tr key={i} className="border-t border-gray-100">
                 {cols.map((c, ci) => (
                   <td
@@ -420,6 +425,7 @@ function ListEditor({
                   <td className="py-1.5">
                     <div className="flex items-center gap-1">
                       <button
+                        type="button"
                         onClick={() => setEditIndex(i)}
                         aria-label="Редактировать"
                         className="rounded-md p-1 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -574,6 +580,7 @@ function ItemModal({
       footer={(close) => (
         <>
           <button
+            type="button"
             onClick={close}
             disabled={saving}
             className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
@@ -765,6 +772,7 @@ function ViewFormModal({
       footer={(close) => (
         <>
           <button
+            type="button"
             onClick={close}
             disabled={saving}
             className="rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"

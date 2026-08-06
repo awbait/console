@@ -1,7 +1,3 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   IconArrowUpRight,
   IconBook,
@@ -9,34 +5,13 @@ import {
   IconInfoCircle,
   IconPackages,
 } from "@tabler/icons-react";
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import { safeHref } from "../lib/href";
-import { useAsync } from "../hooks/useAsync";
 import { useUser } from "../auth/UserContext";
+import { Changelog } from "../components/Changelog";
 import { Card, ErrorBox, SkeletonText } from "../components/ui";
-
-// Markdown styling for changelog bodies (subheadings + bullets + inline code).
-const MD: Components = {
-  h3: ({ children }) => (
-    <div className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-      {children}
-    </div>
-  ),
-  ul: ({ children }) => <ul className="ml-4 list-disc space-y-1">{children}</ul>,
-  li: ({ children }) => <li className="text-sm text-slate-700 marker:text-slate-300">{children}</li>,
-  p: ({ children }) => <p className="text-sm text-slate-700">{children}</p>,
-  a: ({ href, children }) => (
-    <a href={safeHref(href)} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
-      {children}
-    </a>
-  ),
-  code: ({ children }) => (
-    <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-800">
-      {children}
-    </code>
-  ),
-  strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
-};
+import { useAsync } from "../hooks/useAsync";
 
 export function AboutPage() {
   const { user } = useUser();
@@ -59,9 +34,12 @@ export function AboutPage() {
   const info = about.data;
   const hasBuild = info && (info.commit || info.build_date);
 
+  // Side by side (lg), the page takes the height of its column and the changelog
+  // scrolls inside its card, so the build info and the links stay in sight.
+  // Stacked, the height lock would crush the card, so the page scrolls instead.
   return (
-    <div className="flex max-w-5xl flex-col gap-6">
-      <h1 className="text-xl font-semibold text-slate-900">О портале</h1>
+    <div className="flex max-w-5xl flex-col gap-6 lg:min-h-0 lg:flex-1">
+      <h1 className="shrink-0 text-xl font-semibold text-slate-900">О портале</h1>
 
       {about.loading && !info ? (
         <SkeletonText lines={4} />
@@ -70,7 +48,7 @@ export function AboutPage() {
       ) : info ? (
         <>
           {/* Hero */}
-          <Card className="flex items-center justify-between gap-4">
+          <Card className="flex shrink-0 items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
                 <IconInfoCircle size={24} stroke={1.7} />
@@ -85,32 +63,20 @@ export function AboutPage() {
             </span>
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-3">
             {/* Main column: changelog */}
-            <div className="lg:col-span-2">
-              <Section title="Журнал изменений">
+            <div className="flex flex-col lg:col-span-2 lg:min-h-0">
+              <Section title="Журнал изменений" fill>
                 {changelog.loading && !changelog.data ? (
                   <SkeletonText lines={6} />
                 ) : changelog.error ? (
                   <ErrorBox error={changelog.error} />
                 ) : changelog.data && changelog.data.length > 0 ? (
-                  <div className="flex flex-col gap-3">
-                    {changelog.data.map((r) => (
-                      <Card key={r.version}>
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="font-mono text-sm font-semibold text-slate-900">
-                            {r.version}
-                          </span>
-                          {r.date && <span className="text-xs text-slate-400">{r.date}</span>}
-                        </div>
-                        <div className="mt-2">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD}>
-                            {r.body}
-                          </ReactMarkdown>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
+                  <Card padded={false} className="flex flex-col lg:min-h-0 lg:flex-1">
+                    <div className="scroll-slim p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                      <Changelog entries={changelog.data} />
+                    </div>
+                  </Card>
                 ) : (
                   <Card className="text-sm text-slate-400">Пока нет записей.</Card>
                 )}
@@ -118,7 +84,7 @@ export function AboutPage() {
             </div>
 
             {/* Sidebar: build info + links */}
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto">
               {hasBuild && (
                 <Section title="Сборка">
                   <Card className="flex flex-col gap-2">
@@ -143,10 +109,22 @@ export function AboutPage() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+// fill: the section takes the height it is given and hands it to its child, so
+// the child can scroll inside instead of growing the page.
+function Section({
+  title,
+  fill = false,
+  children,
+}: {
+  title: string;
+  fill?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
+    <div className={fill ? "flex flex-col lg:min-h-0 lg:flex-1" : ""}>
+      <h2 className="mb-2 shrink-0 text-sm font-semibold uppercase tracking-wide text-slate-500">
+        {title}
+      </h2>
       {children}
     </div>
   );

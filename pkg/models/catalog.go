@@ -30,7 +30,16 @@ type ChartVersion struct {
 
 // ChangelogEntry is one parsed CHANGELOG.md section (Keep a Changelog).
 type ChangelogEntry struct {
-	Version  string              `json:"version"`
-	Date     string              `json:"date,omitempty"`
-	Sections map[string][]string `json:"sections"` // "Added"->[...], "Fixed"->[...]
+	Version  string             `json:"version"`
+	Date     string             `json:"date,omitempty"`
+	Intro    string             `json:"intro,omitempty"` // prose opening the release, before the first category
+	Sections []ChangelogSection `json:"sections"`
+}
+
+// ChangelogSection is one category of an entry (Added, Fixed, ...). A slice
+// rather than a map: the categories are read in the order the changelog lists
+// them, and a map would hand them over alphabetically.
+type ChangelogSection struct {
+	Title string   `json:"title"`
+	Items []string `json:"items"`
 }

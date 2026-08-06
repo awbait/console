@@ -962,14 +962,14 @@ function MapField({
           <div key={r.id} className="flex items-center gap-2">
             <input
               disabled={locked}
-              className="w-1/3 rounded-md border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+              className="w-1/3 rounded-md border border-gray-300 bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
               placeholder="ключ"
               value={r.k}
               onChange={(e) => push(rows.map((x) => (x.id === r.id ? { ...x, k: e.target.value } : x)))}
             />
             <input
               disabled={locked}
-              className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+              className="flex-1 rounded-md border border-gray-300 bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
               placeholder="значение"
               value={r.v}
               onChange={(e) => push(rows.map((x) => (x.id === r.id ? { ...x, v: e.target.value } : x)))}

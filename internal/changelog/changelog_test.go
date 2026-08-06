@@ -2,34 +2,23 @@ package changelog
 
 import "testing"
 
-func TestParseHeading(t *testing.T) {
-	cases := []struct {
-		line, version, date string
-		ok                  bool
-	}{
-		{"## [0.1.0] - 2026-06-19", "0.1.0", "2026-06-19", true},
-		{"## 0.2.0 - 2026-07-01", "0.2.0", "2026-07-01", true},
-		{"## [Unreleased]", "Unreleased", "", true},
-		{"# Журнал изменений", "", "", false},
-		{"### Добавлено", "", "", false},
-		{"- какой-то пункт", "", "", false},
+// TestPortalEmbedded checks the embedded changelog parses into versions with
+// items (guards against an unparseable file shape reaching the About page).
+func TestPortalEmbedded(t *testing.T) {
+	rels := Portal()
+	if len(rels) == 0 {
+		t.Fatal("no releases parsed from the embedded changelog")
 	}
-	for _, c := range cases {
-		v, d, ok := parseHeading(c.line)
-		if ok != c.ok || v != c.version || d != c.date {
-			t.Errorf("parseHeading(%q) = (%q,%q,%t), want (%q,%q,%t)", c.line, v, d, ok, c.version, c.date, c.ok)
+	var items int
+	for _, r := range rels {
+		if r.Version == "" {
+			t.Fatalf("release without a version: %+v", r)
+		}
+		for _, s := range r.Sections {
+			items += len(s.Items)
 		}
 	}
-}
-
-// TestReleasesEmbedded checks the embedded CHANGELOG.md parses into at least one
-// section with a non-empty body (guards against an unparseable file shape).
-func TestReleasesEmbedded(t *testing.T) {
-	rels := Releases()
-	if len(rels) == 0 {
-		t.Fatal("no releases parsed from embedded CHANGELOG.md")
-	}
-	if rels[0].Version == "" || rels[0].Body == "" {
-		t.Fatalf("first release malformed: %+v", rels[0])
+	if items == 0 {
+		t.Fatal("embedded changelog parsed into no items")
 	}
 }
