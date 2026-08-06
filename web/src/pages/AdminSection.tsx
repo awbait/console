@@ -35,7 +35,7 @@ import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon } from "../components/icons";
 import { PublicationReview, VersionReview } from "../components/PublicationReview";
-import { Button, ErrorBox, Spinner } from "../components/ui";
+import { Button, ErrorBox, Loading, SkeletonRows } from "../components/ui";
 import { fieldMsg } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
@@ -136,7 +136,7 @@ export function AdminSection() {
 export function AdminOverviewPage() {
   const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonRows rows={5} />;
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
@@ -313,7 +313,7 @@ export function AdminApprovalsPage() {
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
   const [filter, setFilter] = useState<Filter>("ALL");
 
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonRows rows={5} />;
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
@@ -493,7 +493,7 @@ export function AdminApprovalDetailPage() {
     </Link>
   );
 
-  if (loading && !pub) return <Spinner />;
+  if (loading && !pub) return <Loading label="Загружаем публикацию" />;
   if (error && !pub) return <ErrorBox error={error} />;
   if (!pub) {
     return (

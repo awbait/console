@@ -13,7 +13,7 @@ import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
-import { Button, Card, Chip, ErrorBox, LinkButton, Spinner } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, LinkButton, Skeleton, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
 
@@ -60,7 +60,7 @@ export function ChartDetailPage() {
       });
   }, [queryClient, manageable, project, name]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <ChartSkeleton />;
   if (error) return <ErrorBox error={error} hint={CATALOG_DOWN_HINT} onRetry={reload} />;
   if (!chart) return null;
 
@@ -174,6 +174,31 @@ export function ChartDetailPage() {
   );
 }
 
+// The page's own shape while it loads: title, description, chips, tabs. Sized
+// like the real header so the content does not jump when it lands.
+function ChartSkeleton() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
+      <div className="shrink-0">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="mt-3 h-7 w-72" />
+        <Skeleton className="mt-3 h-4 w-full max-w-2xl" />
+        <Skeleton className="mt-2 h-4 w-2/3 max-w-md" />
+        <div className="mt-4 flex gap-2">
+          <Skeleton className="h-6 w-24 rounded-full" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="h-6 w-28 rounded-full" />
+        </div>
+      </div>
+      <div className="flex gap-2 border-b border-gray-200 pb-2">
+        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-5 w-24" />
+      </div>
+      <SkeletonText lines={7} />
+    </div>
+  );
+}
+
 function DocTab({ id, children }: { id: string; children: React.ReactNode }) {
   return (
     <Tab
@@ -195,7 +220,7 @@ function Readme({ project, name, version }: { project: string; name: string; ver
     <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
         {loading ? (
-          <Spinner />
+          <SkeletonText lines={8} />
         ) : error || !data?.trim() ? (
           <p className="text-sm text-gray-500">Описание недоступно.</p>
         ) : (
@@ -228,7 +253,7 @@ function Changelog({ project, name }: { project: string; name: string }) {
     [project, name],
     qk.changelog(project, name),
   );
-  if (loading) return <Spinner label="Загрузка истории изменений…" />;
+  if (loading) return <SkeletonText lines={6} />;
   if (error || !data?.length)
     return <p className="text-sm text-gray-500">История изменений недоступна.</p>;
   return (

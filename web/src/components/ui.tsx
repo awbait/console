@@ -282,18 +282,142 @@ export function Chip({ className = "", children }: { className?: string; childre
   );
 }
 
-// Spinner appears only if the wait actually lasts. A loading state that comes
-// and goes within a few hundred milliseconds reads as a flash, not as feedback,
-// so nothing is rendered until the delay passes - a cached page then swaps in
-// silently, and a genuinely slow one still says it is working.
-export function Spinner({ label = "Loading…", delayMs = 300 }: { label?: string; delayMs?: number }) {
-  const [show, setShow] = useState(false);
+// A loading state that comes and goes within a few hundred milliseconds reads
+// as a flash, not as feedback, so nothing is rendered until this delay passes.
+// A cached page then swaps in silently and only a genuinely slow one says it is
+// working.
+const LOADING_DELAY_MS = 300;
+
+// useDelayed reports whether the wait has lasted long enough to be worth
+// showing. Shared by every loading state below so they all appear on the same
+// beat instead of one panel flashing ahead of another.
+function useDelayed(ms = LOADING_DELAY_MS): boolean {
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setShow(true), delayMs);
+    const t = setTimeout(() => setReady(true), ms);
     return () => clearTimeout(t);
-  }, [delayMs]);
-  if (!show) return null;
-  return <div className="p-6 text-sm text-gray-500">{label}</div>;
+  }, [ms]);
+  return ready;
+}
+
+// Skeleton is one grey block standing in for content that is on its way. Give
+// it the size of what it replaces: the point is that nothing moves when the
+// real thing arrives. Silent to screen readers - the wrapper announces the wait
+// once, and a dozen announced boxes would be noise.
+export function Skeleton({ className = "" }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={`animate-pulse rounded bg-slate-100 motion-reduce:animate-none ${className}`}
+    />
+  );
+}
+
+// Placeholder wraps a skeleton layout: it holds the delay and makes the whole
+// group one polite announcement.
+function Placeholder({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const ready = useDelayed();
+  if (!ready) return null;
+  return (
+    <output aria-label={label} className={`block ${className}`}>
+      {children}
+    </output>
+  );
+}
+
+// SkeletonText stands in for a block of prose (a readme, a changelog entry).
+// The last line is short, like a real paragraph's is.
+export function SkeletonText({ lines = 5, className = "" }: { lines?: number; className?: string }) {
+  return (
+    <Placeholder label="Загружаем текст" className={className}>
+      <div className="flex flex-col gap-2.5">
+        {Array.from({ length: lines }, (_, i) => (
+          <Skeleton
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
+            key={i}
+            className={`h-3.5 ${i === lines - 1 ? "w-2/5" : i % 3 === 1 ? "w-11/12" : "w-full"}`}
+          />
+        ))}
+      </div>
+    </Placeholder>
+  );
+}
+
+// SkeletonRows stands in for a list or a table body - one row per record.
+export function SkeletonRows({ rows = 6, className = "" }: { rows?: number; className?: string }) {
+  return (
+    <Placeholder label="Загружаем список" className={className}>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+        {Array.from({ length: rows }, (_, i) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
+            key={i}
+            className="flex items-center gap-4 border-b border-slate-100 px-4 py-3.5 last:border-b-0"
+          >
+            <Skeleton className="h-4 w-2/5" />
+            <Skeleton className="h-4 w-1/5" />
+            <Skeleton className="ml-auto h-5 w-20 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </Placeholder>
+  );
+}
+
+// SkeletonCards stands in for a grid of cards (the catalog). Same grid as the
+// real one, so the page does not reflow when the data lands.
+export function SkeletonCards({ count = 6, className = "" }: { count?: number; className?: string }) {
+  return (
+    <Placeholder label="Загружаем каталог" className={className}>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: count }, (_, i) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
+            key={i}
+            className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-md" />
+              <Skeleton className="h-4 w-1/2" />
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+            <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-5 w-12 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Placeholder>
+  );
+}
+
+// Loading is the honest wait, for cases where the shape of what is coming is
+// unknown (a lazy-loaded editor, an action in flight) and a skeleton would be a
+// guess. Everywhere the layout is known, a skeleton is the better answer.
+export function Loading({ label = "Загружаем данные" }: { label?: string }) {
+  const ready = useDelayed();
+  if (!ready) return null;
+  return (
+    <output className="flex items-center gap-2.5 p-6 text-sm text-slate-500">
+      <span
+        aria-hidden
+        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500 motion-reduce:animate-none"
+      />
+      {label}
+    </output>
+  );
 }
 
 // ErrorBox states a failure in one sentence (HttpError already carries product

@@ -13,7 +13,7 @@ import { api } from "../api/client";
 import { safeHref } from "../lib/href";
 import { useAsync } from "../hooks/useAsync";
 import { useUser } from "../auth/UserContext";
-import { Card, ErrorBox, Spinner } from "../components/ui";
+import { Card, ErrorBox, SkeletonText } from "../components/ui";
 
 // Markdown styling for changelog bodies (subheadings + bullets + inline code).
 const MD: Components = {
@@ -64,7 +64,7 @@ export function AboutPage() {
       <h1 className="text-xl font-semibold text-slate-900">О портале</h1>
 
       {about.loading && !info ? (
-        <Spinner />
+        <SkeletonText lines={4} />
       ) : about.error ? (
         <ErrorBox error={about.error} />
       ) : info ? (
@@ -90,7 +90,7 @@ export function AboutPage() {
             <div className="lg:col-span-2">
               <Section title="Журнал изменений">
                 {changelog.loading && !changelog.data ? (
-                  <Spinner />
+                  <SkeletonText lines={6} />
                 ) : changelog.error ? (
                   <ErrorBox error={changelog.error} />
                 ) : changelog.data && changelog.data.length > 0 ? (

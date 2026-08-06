@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { api } from "../api/client";
 import type { ComponentStatus, ReconcilerStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
-import { Button, buttonClass, ErrorBox, Spinner } from "../components/ui";
+import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { safeHref } from "../lib/href";
 
@@ -104,7 +104,7 @@ export function StatusPage() {
       </div>
 
       {loading && !data ? (
-        <Spinner />
+        <SkeletonRows rows={4} />
       ) : error ? (
         <ErrorBox error={error} />
       ) : (

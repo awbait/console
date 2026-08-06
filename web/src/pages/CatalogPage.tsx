@@ -25,7 +25,7 @@ import { useTeam } from "../app/TeamContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { AddChartDialog } from "../components/AddChartDialog";
 import { categoryIcon, ProductIcon } from "../components/icons";
-import { Button, Card, ErrorBox, Spinner } from "../components/ui";
+import { Button, Card, ErrorBox, SkeletonCards } from "../components/ui";
 import { isNewer } from "../lib/semver";
 
 type CategoryOf = (id?: string) => Category | undefined;
@@ -55,7 +55,7 @@ export function CatalogPage() {
   const query = params.get("q") ?? "";
   const activeCat = params.get("cat") ?? "";
 
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonCards count={6} className="mt-2" />;
   if (error) return <ErrorBox error={error} hint={CATALOG_DOWN_HINT} onRetry={reload} />;
 
   function setParam(key: "q" | "cat", value: string) {

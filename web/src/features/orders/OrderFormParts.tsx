@@ -10,7 +10,7 @@ import { dnsLabelError, fieldMsg } from "../../form/fieldErrors";
 import { namespaceError } from "../../form/namespace";
 import { SchemaForm, type View } from "../../form/SchemaForm";
 import type { ActiveValuesEditor } from "./valuesEditors";
-import { Card, Select, Spinner, TextField } from "../../components/ui";
+import { Card, Loading, Select, TextField } from "../../components/ui";
 
 type Values = Record<string, unknown>;
 
@@ -251,7 +251,7 @@ export function OrderValuesCard({
       </div>
 
       {active ? (
-        <Suspense fallback={<Spinner label="Загрузка редактора…" />}>
+        <Suspense fallback={<Loading label="Загружаем редактор" />}>
           <active.plugin.Component
             values={values}
             onValues={onValues}

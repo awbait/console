@@ -36,7 +36,7 @@ import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
-import { Button, Card, Chip, ErrorBox, Select, Spinner, TextField } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
 
@@ -83,7 +83,7 @@ export function ChartManagePage() {
     qk.publication(project, name),
   );
 
-  if (pubLoading && !pub) return <Spinner />;
+  if (pubLoading && !pub) return <Loading label="Загружаем публикацию" />;
   if (pubError && !pub) return <ErrorBox error={pubError} />;
 
   return (
@@ -388,7 +388,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
       {/* Versions: one row per chart version, per-version status + availability.
           Editing a version's view opens its own page (deep-linkable). */}
       {!chart && versions === null ? (
-        <Spinner />
+        <Loading label="Загружаем версии" />
       ) : harborVersions.length === 0 && orphanRows.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-surface py-10 text-center text-sm text-slate-500 shadow-sm">
           Версии чарта не найдены в Harbor.

@@ -26,7 +26,7 @@ import { canModify, useUser } from "../../auth/UserContext";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ProductIcon } from "../../components/icons";
 import { StatusBadge, StatusDot } from "../../components/StatusBadge";
-import { ErrorBox, LinkButton, Spinner } from "../../components/ui";
+import { ErrorBox, LinkButton, SkeletonRows } from "../../components/ui";
 import { useAsync } from "../../hooks/useAsync";
 import { isNewer } from "../../lib/semver";
 import { attachSseLogger } from "../../lib/sse";
@@ -145,7 +145,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     });
   }, [data, team, filter, shown, newestFirst, allTeams, teamFilter, productFilter]);
 
-  if (loading) return <Spinner />;
+  if (loading) return <SkeletonRows rows={6} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
 
   async function onSync(r: OrderRequest) {
