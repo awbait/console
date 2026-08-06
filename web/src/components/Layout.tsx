@@ -132,6 +132,10 @@ function SideTip({
 // while the width animates, and a scrollbar on the right would shift it too.
 const ROW = "py-2 pl-[13px] pr-3.5";
 const SELECT_ROW = "px-3 py-2";
+// Rows inside a section share the horizontal geometry of a plain row - so a
+// child lines up with the header above it - but stay 32px tall instead of 36:
+// a shorter row keeps a long list compact and the section header taller.
+const SUB_ROW = "py-1.5 pl-[13px] pr-3.5";
 
 // Labels fade with the width instead of popping in and out. Leaving is quicker
 // than arriving so the text is gone before the column gets narrow enough to
@@ -594,13 +598,13 @@ export function Layout() {
                             open={!folded.has(g.id)}
                             onToggle={() => toggleCategory(g.id)}
                           >
-                            <ul className="ml-[24px] flex flex-col gap-0.5 py-1">
+                            <ul className="flex flex-col gap-0.5 py-1">
                               {g.charts.map((c) => (
                                 <li key={`${c.project}/${c.name}`}>
                                   <Link
                                     to={`/products/${c.project}/${c.name}`}
                                     aria-current={chartActive(c) ? "page" : undefined}
-                                    className="block whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700"
+                                    className={`block whitespace-nowrap rounded-md ${SUB_ROW} text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700`}
                                   >
                                     {chartLabel(c.name)}
                                   </Link>
@@ -773,16 +777,19 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
         onToggle={() => setOpen((o) => !o)}
         framed
       >
-        <ul className="ml-[24px] flex flex-col gap-0.5 py-1">
+        {/* No nesting indent: the rows carry their own icon, so aligning them
+            with the header's icon reads as one list instead of a sub-list. */}
+        <ul className="flex flex-col gap-0.5 py-1">
           {teams.map((t) => (
             <li key={t}>
               <Button
                 onPress={() => setTeam(t)}
                 aria-pressed={t === team}
-                className="flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-slate-500 outline-none hover:bg-slate-50 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 aria-pressed:bg-brand-50 aria-pressed:font-medium aria-pressed:text-brand-700"
+                className={`flex w-full items-center gap-3 whitespace-nowrap rounded-md ${SUB_ROW} text-sm text-slate-500 outline-none hover:bg-slate-50 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 aria-pressed:bg-brand-50 aria-pressed:font-medium aria-pressed:text-brand-700`}
               >
                 <IconHash size={20} stroke={1.7} className="shrink-0 text-slate-400" />
                 <span className="truncate">{t}</span>
+                {t === team && <IconCheck size={16} className="ml-auto shrink-0 text-brand-600" />}
               </Button>
             </li>
           ))}
