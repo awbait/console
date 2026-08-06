@@ -19,7 +19,6 @@ import {
 } from "react-aria-components";
 import Editor from "@monaco-editor/react";
 import {
-  IconArrowRight,
   IconChevronLeft,
   IconChevronRight,
   IconCircleX,
@@ -39,11 +38,12 @@ import {
   IconRefresh,
   IconSparkles,
   IconTrash,
+  IconUser,
   IconX,
 } from "@tabler/icons-react";
 import { Card } from "../../components/ui";
 import { safeHref } from "../../lib/href";
-import { StatusBadge, statusMeta } from "../../components/StatusBadge";
+import { statusMeta } from "../../components/StatusBadge";
 import { useTheme } from "../../app/ThemeContext";
 import { productTabs } from "../../components/products/genericView";
 import {
@@ -189,7 +189,7 @@ export function ValuesModalButton({ request: r }: { request: RequestDetail["requ
         <IconFileCode size={16} stroke={1.8} className="text-gray-400" />
         values.yaml
       </AriaButton>
-      <ModalOverlay className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in">
+      <ModalOverlay className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in">
         <Modal className="w-full max-w-3xl rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
           <Dialog className="outline-none">
             {({ close }) => (
@@ -233,11 +233,84 @@ export function fmtDateTime(iso: string): string {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// useNow ticks so that relative timestamps stay true on a page nobody reloads.
+// An order page is left open while the pipeline works, and "только что" that is
+// half an hour old is simply wrong.
+//
+// The tick is well under the minute these labels step by: a label has to change
+// shortly after the boundary it crosses, not up to a minute later, or the page
+// reads as frozen. It also recomputes when the tab comes back - a background
+// tab has its timers throttled, so the first thing a returning user sees would
+// otherwise be a stale label.
+function useNow(ms = 15_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const t = setInterval(tick, ms);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", tick);
+    };
+  }, [ms]);
+  return now;
+}
+
+const MONTHS_GEN = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
+
+// dayLabel names the day an event belongs to: today and yesterday by name, the
+// rest by date. It is what makes a flat list read as a sequence.
+function dayLabel(iso: string, now: number): string {
+  const d = new Date(iso);
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(new Date(now)) - startOf(d)) / 86_400_000);
+  if (days === 0) return "Сегодня";
+  if (days === 1) return "Вчера";
+  const date = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
+  return d.getFullYear() === new Date(now).getFullYear() ? date : `${date} ${d.getFullYear()}`;
+}
+
+// Time of one row. The day it happened is already written above the group, so
+// repeating a full date here says nothing new - past today the clock time is
+// the only part that adds anything, and it is what puts the rows in order
+// within their day. Today keeps the relative label, which is the form that
+// actually answers "how long ago" and the one that ticks.
+function fmtEventTime(iso: string, now: number): string {
+  const d = new Date(iso);
+  const t = new Date(now);
+  const sameDay =
+    d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+  if (sameDay) return fmtRelative(iso, now);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 // fmtRelative renders a compact "X ago" label (abbreviations dodge RU plural
 // forms); falls back to the absolute date past a week. Full date is in title=.
-export function fmtRelative(iso: string): string {
-  const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (sec < 60) return "только что";
+// `now` is passed in rather than read here so a caller can re-render on a tick
+// and have every row move together (see useNow).
+export function fmtRelative(iso: string, now: number = Date.now()): string {
+  const sec = Math.floor((now - new Date(iso).getTime()) / 1000);
+  if (sec < 5) return "только что";
+  if (sec < 60) return `${sec} сек назад`;
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min} мин назад`;
   const hr = Math.floor(min / 60);
@@ -251,8 +324,22 @@ export function fmtRelative(iso: string): string {
 
 type TablerIcon = typeof IconHistory;
 
-const TL_PREVIEW = 5; // events shown inline before "show all"
-const MODAL_PAGE = 10; // events per page in the modal
+const TL_PREVIEW = 8; // events shown inline before "show all"
+// Starting guesses only. The real heights come from the rendered rows (see
+// useBodyMetrics): a row is one line by construction, but its exact height
+// depends on the font the browser ended up using, and guessing it low costs a
+// scrollbar while guessing it high leaves a gap the user can see is free.
+const ROW_H = 36;
+const DAY_H = 34;
+
+// Fallback page size for the first frame, before the body has been measured.
+const MODAL_PAGE = 12;
+// Merge requests are boxed rows, roughly twice as tall as a timeline line, so
+// the same dialog holds about half as many of them. The height includes the
+// gap between rows; MR_MODAL_PAGE is the fallback until the body is measured.
+const MR_ROW_H = 68;
+const MR_GAP = 8; // gap-2 between merge-request rows
+const MR_MODAL_PAGE = 6;
 
 const tints: Record<string, string> = {
   slate: "bg-slate-100 text-slate-600",
@@ -276,6 +363,43 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
   git_pulled: { label: "Обновлено из Git", Icon: IconGitFork, tint: "sky" },
   imported: { label: "Импортировано из Git", Icon: IconGitFork, tint: "sky" },
 };
+
+// What a status change means, phrased as an event. StatusBadge keeps its own
+// wording on purpose: a badge answers "where is the order now", a timeline row
+// answers "what happened to it".
+const STATUS_EVENT: Record<string, string> = {
+  DRAFT: "Черновик создан",
+  MR_CREATED: "Отправлен на согласование",
+  MR_MERGED: "Согласован",
+  MR_CLOSED: "Согласование отклонено",
+  DEPLOYING: "Выкатывается",
+  HEALTHY: "Работает",
+  DEGRADED: "Работает с ошибками",
+  ARGO_MISSING: "Не найден в кластере",
+  DELETE_REQUESTED: "Запрошено удаление",
+  DELETE_MR_MERGED: "Удаление согласовано",
+  DELETED: "Удалён",
+};
+
+// Events a person recognises as their own action or as a change worth knowing
+// about. Everything else is the pipeline talking to itself: a draft saved on
+// every keystroke-ish save, and the intermediate transitions it makes to get
+// from one meaningful state to the next. Those stay in the trail but fold away.
+const TECHNICAL_EVENTS = new Set(["draft_updated"]);
+const TECHNICAL_STATUSES = new Set(["DRAFT", "DEPLOYING", "DELETE_MR_MERGED"]);
+
+function isNotable(e: RequestEvent): boolean {
+  if (e.event_type === "status_changed") return !TECHNICAL_STATUSES.has(e.to_status ?? "");
+  return !TECHNICAL_EVENTS.has(e.event_type);
+}
+
+function eventLabel(e: RequestEvent): string {
+  if (e.event_type === "status_changed") {
+    const to = e.to_status ?? "";
+    return STATUS_EVENT[to] ?? statusMeta(to).label;
+  }
+  return EVENT_META[e.event_type]?.label ?? e.event_type;
+}
 
 // ProductView is the view-driven body of the product (order) page: the tab strip
 // (Info + one tab per product view + Activity history) and the
@@ -360,7 +484,7 @@ export function ProductView({
         </TabPanel>
       ))}
       <TabPanel id="history" className="pt-5 outline-none">
-        <HistoryTab events={events} mrs={mrs} />
+        <HistoryTab events={events} mrs={mrs} request={r} />
       </TabPanel>
     </Tabs>
   );
@@ -413,28 +537,55 @@ function InfoTab({
 export function HistoryTab({
   events,
   mrs,
+  request,
 }: {
   events: NonNullable<RequestDetail["events"]>;
   mrs: NonNullable<RequestDetail["merge_requests"]>;
+  request: RequestDetail["request"];
 }) {
-  const evts = [...events].sort((a, b) => b.id - a.id);
+  // Events written before actor_name existed carry only the subject. When that
+  // subject is the person who created the order, the order itself knows their
+  // name - enough to keep the history readable instead of anonymous.
+  const evts = [...events]
+    .sort((a, b) => b.id - a.id)
+    .map((e) =>
+      e.actor_name || e.actor !== request.created_by
+        ? e
+        : { ...e, actor_name: request.created_by_name },
+    );
   const mrList = [...mrs].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+  // Two columns, history the wider one: it is what the tab is for, and the
+  // merge requests are a short reference list beside it. Stretching them to a
+  // common height is what keeps the pair from looking torn - the alternative,
+  // one column, left a dead strip down the right of the page. Below lg they
+  // stack, where a 1/3 column would be unreadable anyway.
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-[2fr_1fr]">
       <TimelineCard events={evts} />
       <MergeRequestsCard mrs={mrList} />
     </div>
   );
 }
 
-function SectionHeader({ Icon, title, count }: { Icon: TablerIcon; title: string; count: number }) {
+// `action` fills the right side of the header - the card's own control belongs
+// on the line that names it, not floating under the list where it left the
+// header half empty.
+function SectionHeader({
+  Icon,
+  title,
+  action,
+}: {
+  Icon: TablerIcon;
+  title: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="mb-3 flex items-center gap-2">
       <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50 text-brand-600">
         <Icon size={16} stroke={1.8} />
       </span>
       <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">{count}</span>
+      {action && <div className="ml-auto">{action}</div>}
     </div>
   );
 }
@@ -445,67 +596,42 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
 
 function TimelineCard({ events }: { events: RequestEvent[] }) {
   const [showAll, setShowAll] = useState(false);
+  // Technical rows are dropped outright rather than hidden behind a toggle: an
+  // extra control on the page is a worse trade than the completeness it buys,
+  // and the trail itself is intact in the database for support.
+  const shown = events.filter(isNotable);
   return (
-    <Card>
-      <SectionHeader Icon={IconHistory} title="Хронология" count={events.length} />
-      {events.length === 0 ? (
+    <Card className="h-full">
+      <SectionHeader
+        Icon={IconHistory}
+        title="Хронология"
+        action={
+          shown.length > TL_PREVIEW && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="rounded-md px-2 py-1 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              Показать все
+            </button>
+          )
+        }
+      />
+      {shown.length === 0 ? (
         <EmptyHint>Событий пока нет.</EmptyHint>
       ) : (
-        <Timeline items={events.slice(0, TL_PREVIEW)} />
+        <Timeline items={shown.slice(0, TL_PREVIEW)} />
       )}
-      {events.length > TL_PREVIEW && (
-        <button
-          onClick={() => setShowAll(true)}
-          className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-        >
-          Показать все ({events.length})
-        </button>
-      )}
-      <TimelineModal events={events} isOpen={showAll} onOpenChange={setShowAll} />
+      <TimelineModal events={shown} isOpen={showAll} onOpenChange={setShowAll} />
     </Card>
   );
 }
 
-function Timeline({ items }: { items: RequestEvent[] }) {
-  return (
-    <ol className="relative">
-      {items.map((e, i) => (
-        <TimelineRow key={e.id} e={e} last={i === items.length - 1} />
-      ))}
-    </ol>
-  );
-}
-
-function TimelineRow({ e, last }: { e: RequestEvent; last: boolean }) {
-  const isStatus = e.event_type === "status_changed";
-  const sMeta = e.to_status ? statusMeta(e.to_status) : null;
-  const meta = EVENT_META[e.event_type];
-  const circle = isStatus && sMeta ? sMeta.badge : tints[meta?.tint ?? "slate"];
-  const Icon = (isStatus && sMeta ? sMeta.staticIcon ?? sMeta.Icon : meta?.Icon) ?? IconHistory;
-  return (
-    <li className="relative flex gap-3 pb-5 last:pb-1">
-      {!last && <span className="absolute bottom-0 left-[15px] top-8 w-px bg-slate-200" aria-hidden />}
-      <span className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-surface ${circle}`}>
-        <Icon size={16} stroke={1.8} />
-      </span>
-      <div className="min-w-0 flex-1 pt-1">
-        {isStatus ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {e.from_status && <StatusBadge status={e.from_status} muted noSpin />}
-            {e.from_status && <IconArrowRight size={14} className="text-slate-300" />}
-            {e.to_status && <StatusBadge status={e.to_status} noSpin />}
-          </div>
-        ) : (
-          <span className="text-sm font-medium text-slate-800">{meta?.label ?? e.event_type}</span>
-        )}
-        <div className="mt-1 text-xs text-slate-400" title={fmtDateTime(e.created_at)}>
-          {e.actor} · {fmtRelative(e.created_at)}
-        </div>
-      </div>
-    </li>
-  );
-}
-
+// The full history lives in a modal, paged. Two things the plain version got
+// wrong: the body shrank on a short last page, so the dialog resized under the
+// pointer just as it was being clicked, and pages swapped instantly, which
+// reads as a redraw rather than as movement. The body is now a fixed height
+// with its own scroll, and a page slides in from the side it came from.
 function TimelineModal({
   events,
   isOpen,
@@ -516,23 +642,50 @@ function TimelineModal({
   onOpenChange: (v: boolean) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [back, setBack] = useState(false);
+  const now = useNow();
+  // The page size follows the dialog, not a constant: a fixed count either
+  // leaves the bottom of the body empty while a "next page" button waits below
+  // it, or overflows into a scrollbar. Measure the body, fill it.
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
+  const { height, rowH, dayH } = useBodyMetrics(body, isOpen);
+
+  const pageList = paginate(events, height, now, rowH, dayH);
+  const pages = pageList.length;
+  // The body takes the height of the tallest page, so no page leaves a gap the
+  // reader can see is free, and paging does not resize the dialog under them.
+  // Only a short last page falls short of it.
+  const bodyHeight = height > 0 ? Math.max(...pageList.map((p) => pageCost(p, now, rowH, dayH))) : 0;
   useEffect(() => {
     if (isOpen) setPage(1);
   }, [isOpen]);
-  const pages = Math.max(1, Math.ceil(events.length / MODAL_PAGE));
-  const slice = events.slice((page - 1) * MODAL_PAGE, page * MODAL_PAGE);
+  // A resize can shrink the page count under a reader who is on the last page.
+  const current = Math.min(page, pages);
+  const slice = pageList[current - 1] ?? [];
+  const goto = (next: number) => {
+    setBack(next < current);
+    setPage(next);
+  };
   return (
     <ModalOverlay
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in"
     >
-      <Modal className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
-        <Dialog className="flex max-h-[85vh] flex-col outline-none">
+      {/* Two passes: while the body is unmeasured the dialog is given a fixed
+          height so the body can report how much room there is; once measured,
+          the dialog follows its content and the body carries the height of the
+          tallest page. The cap keeps a long history from filling the screen. */}
+      <Modal
+        className={`flex w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95 ${
+          bodyHeight > 0 ? "max-h-[min(85vh,34rem)]" : "h-[min(85vh,34rem)]"
+        }`}
+      >
+        <Dialog className="flex min-h-0 flex-1 flex-col outline-none">
           {({ close }) => (
             <>
               <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <SectionHeaderInline Icon={IconHistory} title="Хронология" count={events.length} />
+                <SectionHeaderInline Icon={IconHistory} title="Хронология" />
                 <button
                   onClick={close}
                   aria-label="Закрыть"
@@ -541,12 +694,26 @@ function TimelineModal({
                   <IconX size={18} stroke={2} />
                 </button>
               </header>
-              <div className="flex-1 overflow-y-auto px-5 py-4">
-                <Timeline items={slice} />
+              <div
+                ref={setBody}
+                style={bodyHeight > 0 ? { height: bodyHeight } : undefined}
+                className={`scroll-slim overflow-y-auto px-5 py-4 ${bodyHeight > 0 ? "" : "min-h-0 flex-1"}`}
+              >
+                {/* key restarts the animation on every page change; the
+                    direction follows the button that was pressed, so the list
+                    moves the way the pagination does. */}
+                <div
+                  key={page}
+                  className={`animate-in fade-in duration-200 motion-reduce:animate-none ${
+                    back ? "slide-in-from-left-3" : "slide-in-from-right-3"
+                  }`}
+                >
+                  <Timeline items={slice} />
+                </div>
               </div>
               {pages > 1 && (
                 <footer className="border-t border-slate-200 px-5 py-3">
-                  <Pagination page={page} pages={pages} onChange={setPage} />
+                  <Pagination page={current} pages={pages} onChange={goto} />
                 </footer>
               )}
             </>
@@ -557,14 +724,196 @@ function TimelineModal({
   );
 }
 
-function SectionHeaderInline({ Icon, title, count }: { Icon: TablerIcon; title: string; count: number }) {
+// useBodyMetrics reports how much room a scrollable modal body has and how tall
+// its rows actually render. Content-box height (clientHeight minus padding, as
+// the browser computed it) rather than a hardcoded padding, and row heights
+// read off the DOM rather than assumed - together that is the difference
+// between a page that fills the dialog and one that stops two rows short.
+function useBodyMetrics(body: HTMLDivElement | null, isOpen: boolean) {
+  const [m, setM] = useState({ height: 0, rowH: ROW_H, dayH: DAY_H });
+  // Measuring happens once per opening, in the pass where the body is still
+  // free to fill the dialog. After that the body is given the height of its
+  // tallest page, so measuring it again would only report back what was just
+  // written to it. A window resize throws the measurement away and the cycle
+  // starts over.
+  useEffect(() => {
+    if (!isOpen) {
+      setM((prev) => (prev.height === 0 ? prev : { ...prev, height: 0 }));
+      return;
+    }
+    const reset = () => setM((prev) => ({ ...prev, height: 0 }));
+    window.addEventListener("resize", reset);
+    return () => window.removeEventListener("resize", reset);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!body || m.height > 0) return;
+    const measure = () => {
+      const cs = getComputedStyle(body);
+      const height =
+        body.clientHeight - Number.parseFloat(cs.paddingTop) - Number.parseFloat(cs.paddingBottom);
+      if (height <= 0) return;
+      // offsetHeight, not getBoundingClientRect: the dialog animates in with a
+      // scale transform, and a rect measured mid-animation is 5% short. Mixing
+      // that with clientHeight, which ignores transforms, produces a page size
+      // that fits nothing.
+      const row = body.querySelector<HTMLElement>("[data-timeline-row]");
+      // A heading's cost includes the margins that separate one day from the
+      // next, and the first heading has its top margin removed - so measure the
+      // last one, and never take less than the fallback: underestimating here
+      // means a page that overflows into a scrollbar.
+      const days = body.querySelectorAll<HTMLElement>("[data-timeline-day]");
+      const day = days[days.length - 1];
+      const dayCs = day && getComputedStyle(day);
+      setM({
+        height,
+        rowH: row?.offsetHeight || ROW_H,
+        dayH: dayCs
+          ? Math.max(
+              day.offsetHeight +
+                Number.parseFloat(dayCs.marginTop) +
+                Number.parseFloat(dayCs.marginBottom),
+              DAY_H,
+            )
+          : DAY_H,
+      });
+    };
+    measure();
+    // And once more after the entrance animation has settled, in case the
+    // first pass caught the dialog mid-flight.
+    const settled = setTimeout(measure, 250);
+    return () => clearTimeout(settled);
+  }, [body, m.height]);
+  return m;
+}
+
+// pageCost is what one page of rows plus its day headings occupies.
+function pageCost(page: RequestEvent[], now: number, rowH: number, dayH: number): number {
+  let day = "";
+  let total = 0;
+  for (const e of page) {
+    const d = dayLabel(e.created_at, now);
+    total += rowH + (d === day ? 0 : dayH);
+    day = d;
+  }
+  return total;
+}
+
+// paginate fills each page to the height it actually has. A day heading costs
+// extra, and it repeats when a day is split across two pages, so the split has
+// to account for it as it goes rather than divide by a constant.
+function paginate(
+  events: RequestEvent[],
+  height: number,
+  now: number,
+  rowH: number,
+  dayH: number,
+): RequestEvent[][] {
+  if (events.length === 0) return [[]];
+  if (height <= 0) return chunk(events, MODAL_PAGE);
+  const pages: RequestEvent[][] = [];
+  let page: RequestEvent[] = [];
+  let used = 0;
+  let day = "";
+  for (const e of events) {
+    const d = dayLabel(e.created_at, now);
+    const cost = rowH + (d === day ? 0 : dayH);
+    if (page.length > 0 && used + cost > height) {
+      pages.push(page);
+      page = [];
+      used = rowH + dayH; // the new page reopens with its own heading
+    } else {
+      used += cost;
+    }
+    day = d;
+    page.push(e);
+  }
+  if (page.length > 0) pages.push(page);
+  return pages;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+// The history is grouped by day. Which day something happened is the one
+// ordering fact that is always true, unlike "this change led to that one",
+// which the portal cannot know: an order carries no link between an edit and
+// the deployment that followed it, so any such grouping would be a guess
+// dressed up as a fact.
+function Timeline({ items }: { items: RequestEvent[] }) {
+  const now = useNow();
+  let lastDay = "";
+  return (
+    <ol className="flex flex-col">
+      {items.map((e) => {
+        const day = dayLabel(e.created_at, now);
+        const openDay = day !== lastDay;
+        lastDay = day;
+        return (
+          <li key={e.id}>
+            {openDay && (
+              <div data-timeline-day className="mb-1.5 mt-3 flex items-center gap-3 first:mt-0">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {day}
+                </span>
+                <span className="h-px flex-1 bg-slate-100" aria-hidden />
+              </div>
+            )}
+            <TimelineRow e={e} now={now} />
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// One event, one line: what happened, who did it, when. The status pair
+// (from -> to) is gone - a person reading their order's history wants the
+// event, not the state machine's edge, and the badges answered a question
+// nobody was asking here.
+function TimelineRow({ e, now }: { e: RequestEvent; now: number }) {
+  const isStatus = e.event_type === "status_changed";
+  const sMeta = e.to_status ? statusMeta(e.to_status) : null;
+  const meta = EVENT_META[e.event_type];
+  const circle = isStatus && sMeta ? sMeta.badge : tints[meta?.tint ?? "slate"];
+  const Icon = (isStatus && sMeta ? (sMeta.staticIcon ?? sMeta.Icon) : meta?.Icon) ?? IconHistory;
+  return (
+    <div data-timeline-row className="flex items-center gap-2.5 py-1.5">
+      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${circle}`}>
+        <Icon size={14} stroke={1.8} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{eventLabel(e)}</span>
+      {/* A person is named, the platform is not: an automatic event with
+          "system" beside it reads as if someone by that name did it. The icon
+          replaces a separator - it says "person" without a character that
+          means nothing on its own. */}
+      {e.actor_name && (
+        <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
+          <IconUser size={13} stroke={1.8} />
+          {e.actor_name}
+        </span>
+      )}
+      <time
+        dateTime={e.created_at}
+        title={fmtDateTime(e.created_at)}
+        className="w-24 shrink-0 text-right text-xs text-slate-400"
+      >
+        {fmtEventTime(e.created_at, now)}
+      </time>
+    </div>
+  );
+}
+
+function SectionHeaderInline({ Icon, title }: { Icon: TablerIcon; title: string }) {
   return (
     <div className="flex items-center gap-2">
       <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-50 text-brand-600">
         <Icon size={16} stroke={1.8} />
       </span>
       <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">{count}</span>
     </div>
   );
 }
@@ -631,8 +980,8 @@ const MR_STATUS: Record<string, { label: string; className: string; Icon: Tabler
 function MergeRequestsCard({ mrs }: { mrs: RequestMR[] }) {
   const [showAll, setShowAll] = useState(false);
   return (
-    <Card>
-      <SectionHeader Icon={IconGitMerge} title="Запросы на слияние" count={mrs.length} />
+    <Card className="h-full">
+      <SectionHeader Icon={IconGitMerge} title="Запросы на слияние" />
       {mrs.length === 0 ? (
         <EmptyHint>Запросов на слияние пока нет.</EmptyHint>
       ) : (
@@ -647,7 +996,7 @@ function MergeRequestsCard({ mrs }: { mrs: RequestMR[] }) {
           onClick={() => setShowAll(true)}
           className="mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-brand-600 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
         >
-          Показать все ({mrs.length})
+          Показать все
         </button>
       )}
       <MergeRequestsModal mrs={mrs} isOpen={showAll} onOpenChange={setShowAll} />
@@ -665,23 +1014,34 @@ function MergeRequestsModal({
   onOpenChange: (v: boolean) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
+  const { height, rowH } = useBodyMetrics(body, isOpen);
   useEffect(() => {
     if (isOpen) setPage(1);
   }, [isOpen]);
-  const pages = Math.max(1, Math.ceil(mrs.length / MODAL_PAGE));
-  const slice = mrs.slice((page - 1) * MODAL_PAGE, page * MODAL_PAGE);
+  const step = (rowH || MR_ROW_H) + MR_GAP;
+  const perPage = height > 0 ? Math.max(1, Math.floor((height + MR_GAP) / step)) : MR_MODAL_PAGE;
+  const pages = Math.max(1, Math.ceil(mrs.length / perPage));
+  const current = Math.min(page, pages);
+  const slice = mrs.slice((current - 1) * perPage, current * perPage);
+  const fullPage = Math.min(perPage, mrs.length);
+  const bodyHeight = height > 0 ? fullPage * step - MR_GAP : 0;
   return (
     <ModalOverlay
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 entering:animate-in entering:fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in"
     >
-      <Modal className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
-        <Dialog className="flex max-h-[85vh] flex-col outline-none">
+      <Modal
+        className={`flex w-full max-w-lg flex-col rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95 ${
+          bodyHeight > 0 ? "max-h-[min(85vh,34rem)]" : "h-[min(85vh,34rem)]"
+        }`}
+      >
+        <Dialog className="flex min-h-0 flex-1 flex-col outline-none">
           {({ close }) => (
             <>
               <header className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <SectionHeaderInline Icon={IconGitMerge} title="Запросы на слияние" count={mrs.length} />
+                <SectionHeaderInline Icon={IconGitMerge} title="Запросы на слияние" />
                 <button
                   onClick={close}
                   aria-label="Закрыть"
@@ -690,8 +1050,12 @@ function MergeRequestsModal({
                   <IconX size={18} stroke={2} />
                 </button>
               </header>
-              <div className="flex-1 overflow-y-auto px-5 py-4">
-                <ul className="flex flex-col gap-2">
+              <div
+                ref={setBody}
+                style={bodyHeight > 0 ? { height: bodyHeight } : undefined}
+                className={`scroll-slim overflow-y-auto px-5 py-4 ${bodyHeight > 0 ? "" : "min-h-0 flex-1"}`}
+              >
+                <ul key={current} className="flex animate-in flex-col gap-2 fade-in duration-200 motion-reduce:animate-none">
                   {slice.map((m) => (
                     <MrRow key={m.id} m={m} />
                   ))}
@@ -699,7 +1063,7 @@ function MergeRequestsModal({
               </div>
               {pages > 1 && (
                 <footer className="border-t border-slate-200 px-5 py-3">
-                  <Pagination page={page} pages={pages} onChange={setPage} />
+                  <Pagination page={current} pages={pages} onChange={setPage} />
                 </footer>
               )}
             </>
@@ -711,12 +1075,14 @@ function MergeRequestsModal({
 }
 
 function MrRow({ m }: { m: RequestMR }) {
+  const now = useNow();
   const a = MR_ACTION[m.action] ?? { label: m.action, Icon: IconGitCommit, tint: "slate" };
   const s =
     MR_STATUS[m.mr_status] ?? { label: m.mr_status, className: "bg-slate-100 text-slate-600", Icon: IconGitPullRequest };
   return (
     <li>
       <a
+        data-timeline-row
         href={safeHref(m.mr_url)}
         target="_blank"
         rel="noopener noreferrer"
@@ -731,7 +1097,7 @@ function MrRow({ m }: { m: RequestMR }) {
             <span className="shrink-0 text-xs text-slate-400">!{m.mr_iid}</span>
           </div>
           <div className="text-xs text-slate-400" title={fmtDateTime(m.created_at)}>
-            {fmtRelative(m.created_at)}
+            {fmtRelative(m.created_at, now)}
           </div>
         </div>
         <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${s.className}`}>
