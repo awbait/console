@@ -1,3 +1,4 @@
+import { apiErrorText } from "./errorText";
 import type {
   AboutInfo,
   ApiError,
@@ -49,7 +50,9 @@ export class HttpError extends Error {
   mrUrl?: string;
   mrIid?: number;
   constructor(status: number, body: ApiError | null) {
-    super(body?.message || body?.error || `HTTP ${status}`);
+    // The message is what the user reads, so it is written for them (see
+    // errorText). The raw code and status stay on the instance for debug lines.
+    super(apiErrorText(body?.error ?? "", status, body?.message));
     this.status = status;
     this.code = body?.error ?? "error";
     this.details = body?.details ?? [];

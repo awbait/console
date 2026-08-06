@@ -17,6 +17,7 @@ import {
   SearchField,
 } from "react-aria-components";
 import { Link, useSearchParams } from "react-router-dom";
+import { CATALOG_DOWN_HINT } from "../api/errorText";
 import type { CatalogChart, Category } from "../api/types";
 import { publisherLabel } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
@@ -45,7 +46,7 @@ function matchesQuery(c: CatalogChart, q: string): boolean {
 }
 
 export function CatalogPage() {
-  const { categories, charts, error, loading } = useCatalog();
+  const { categories, charts, error, loading, reload } = useCatalog();
   const { team } = useTeam();
   const { user } = useUser();
   // Search/filter state lives in the URL (?q=&cat=), so a filtered view can be
@@ -55,7 +56,7 @@ export function CatalogPage() {
   const activeCat = params.get("cat") ?? "";
 
   if (loading) return <Spinner />;
-  if (error) return <ErrorBox error={error} />;
+  if (error) return <ErrorBox error={error} hint={CATALOG_DOWN_HINT} onRetry={reload} />;
 
   function setParam(key: "q" | "cat", value: string) {
     const next = new URLSearchParams(params);

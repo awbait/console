@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { CATALOG_DOWN_HINT } from "../api/errorText";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication } from "../api/types";
 import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
@@ -22,6 +23,7 @@ export function ChartDetailPage() {
     data: chart,
     error,
     loading,
+    reload,
   } = useAsync(() => api.getChart(project, name), [project, name], qk.chart(project, name));
   const { categories, charts: catalogCharts } = useCatalog();
   const { user } = useUser();
@@ -59,7 +61,7 @@ export function ChartDetailPage() {
   }, [queryClient, manageable, project, name]);
 
   if (loading) return <Spinner />;
-  if (error) return <ErrorBox error={error} />;
+  if (error) return <ErrorBox error={error} hint={CATALOG_DOWN_HINT} onRetry={reload} />;
   if (!chart) return null;
 
   // The profile shows the APPROVED version (like the catalog), not the live one

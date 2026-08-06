@@ -296,10 +296,33 @@ export function Spinner({ label = "Loading…", delayMs = 300 }: { label?: strin
   return <div className="p-6 text-sm text-gray-500">{label}</div>;
 }
 
-export function ErrorBox({ error }: { error: Error }) {
+// ErrorBox states a failure in one sentence (HttpError already carries product
+// text, see api/errorText). `hint` says what the failure costs the user here -
+// a dead catalog is not a dead portal, and only the caller knows the
+// difference. `onRetry` is worth passing wherever the page has a reload: most
+// of these failures are momentary, and a button beats explaining F5.
+export function ErrorBox({
+  error,
+  hint,
+  onRetry,
+}: {
+  error: Error;
+  hint?: string;
+  onRetry?: () => void;
+}) {
   return (
-    <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-      {error.message}
+    <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <p className="font-medium">{error.message}</p>
+      {hint && <p className="mt-1.5 text-red-600">{hint}</p>}
+      {onRetry && (
+        <Button
+          variant="secondary"
+          onPress={onRetry}
+          className="mt-3 border-red-200 bg-surface hover:bg-red-50"
+        >
+          Повторить
+        </Button>
+      )}
     </div>
   );
 }
