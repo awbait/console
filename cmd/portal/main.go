@@ -244,6 +244,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc, Status: statusSvc,
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
+		// The loaded config backs the admin configuration page (read-only).
+		Config: cfg,
 		System: api.SystemInfo{
 			HarborMode:   string(cfg.HarborMode),
 			GitLabMode:   string(cfg.GitLabMode),

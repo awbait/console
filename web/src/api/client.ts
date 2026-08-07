@@ -9,6 +9,7 @@ import type {
   ChartCheckResult,
   ChartPublication,
   ChartVersion,
+  ConfigResponse,
   CreateOrderBody,
   FieldError,
   JSONSchema,
@@ -267,6 +268,8 @@ export const api = {
 
   // system status (integrations + storage health)
   getSystemStatus: () => req<SystemStatus>("GET", "/status"),
+  // runtime configuration, read-only (admin)
+  getConfig: () => req<ConfigResponse>("GET", "/config"),
   // What the portal can do right now. Answers without a session, so the sign-in
   // screen can ask it too.
   getPlatformHealth: (signal?: AbortSignal) =>

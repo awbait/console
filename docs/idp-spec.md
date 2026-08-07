@@ -371,6 +371,7 @@ CREATE UNIQUE INDEX uniq_active_service
 - `GET /metrics` - Prometheus
 - `GET /platform/health` - без авторизации: какие возможности портала работают сейчас (`sign_in`, `catalog`, `ordering`, `orders`, `deploy_status`, `publishing`). Имён интеграций и текстов ошибок не отдаёт: их видит только админ на `GET /status`. Карта зависимостей - `internal/status/capabilities.go`, тексты для пользователя - `web/src/app/capabilities.ts`
 - `GET /status` - только для админа: состояние интеграций и хранилищ, фоновых циклов и тех же возможностей. Пробы выполняет фоновый монитор (`internal/status/monitor.go`) на интервале `STATUS_POLL_INTERVAL`, эндпоинт отдаёт снимок из памяти
+- `GET /config` - только для админа: все переменные конфигурации со значениями, допустимыми вариантами и дефолтами (`internal/config/describe.go`, страница «Конфигурация»). Только чтение. Секреты не отдаются вовсе (видно лишь, заданы ли они), в строках подключения вырезан пароль
 
 ### Webhooks (внешние)
 

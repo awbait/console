@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"console/internal/api"
+	"console/internal/config"
 	"console/internal/status"
 	"console/pkg/models"
 )
@@ -112,6 +113,50 @@ func TestPlatformHealthDegradedByHarbor(t *testing.T) {
 		if !caps[id] {
 			t.Fatalf("%s should be unaffected by harbor: %s", id, rec.Body.String())
 		}
+	}
+}
+
+// TestConfigRestrictedAndRedacted covers the page that shows the deployment's
+// own settings: admins only, and no credential in the payload.
+func TestConfigRestrictedAndRedacted(t *testing.T) {
+	srv, _, _ := newServer(t)
+	srv.Config = &config.Config{
+		HarborURL:     "https://harbor.internal",
+		SessionSecret: "s3cret-session",
+		GitLabToken:   "s3cret-gitlab",
+		DatabaseURL:   "postgres://portal:s3cret-db@db.internal:5432/portal",
+	}
+	h := srv.Router()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("GET", "/api/v1/config", "core", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("member config: %d, want 403", rec.Code)
+	}
+
+	r := devReq("GET", "/api/v1/config", "core", nil)
+	r.Header.Set("X-Dev-Role", string(models.RoleAdmin))
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin config: %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "s3cret") {
+		t.Fatalf("config leaked a credential: %s", body)
+	}
+	if !strings.Contains(body, "HARBOR_URL") || !strings.Contains(body, "harbor.internal") {
+		t.Fatalf("config is missing the plain settings it exists for: %s", body)
+	}
+
+	var got struct {
+		Fields []config.Field `json:"fields"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if len(got.Fields) == 0 {
+		t.Fatal("config returned no fields")
 	}
 }
 

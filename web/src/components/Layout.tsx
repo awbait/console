@@ -1,5 +1,6 @@
 import {
   IconActivity,
+  IconAdjustments,
   IconBell,
   IconBook,
   IconBox,
@@ -89,6 +90,7 @@ const adminSectionNav: SectionNavItem[] = [
   { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
   { to: "/admin/approvals", label: "Согласование публикаций", Icon: IconChecklist },
   { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
+  { to: "/admin/config", label: "Конфигурация", Icon: IconAdjustments },
   { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
 ];
 

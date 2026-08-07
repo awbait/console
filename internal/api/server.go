@@ -10,6 +10,7 @@ import (
 	"console/internal/auth"
 	"console/internal/cache"
 	"console/internal/catalog"
+	"console/internal/config"
 	"console/internal/events"
 	"console/internal/gitlab"
 	"console/internal/harbor"
@@ -59,6 +60,11 @@ type Server struct {
 	// Reconcilers exposes the background poller's per-loop health to the status
 	// page (GET /api/v1/status). Optional: nil omits the reconcilers section.
 	Reconcilers reconcilerSnapshotter
+
+	// Config is the loaded runtime configuration, served read-only on the admin
+	// configuration page (GET /api/v1/config). Optional: nil answers 503 there
+	// and changes nothing else.
+	Config *config.Config
 
 	// Health is the background component monitor behind both status endpoints
 	// (GET /api/v1/platform/health and GET /api/v1/status). Build it with
@@ -134,6 +140,8 @@ func (s *Server) Router() http.Handler {
 
 			// system status (integrations + storage health)
 			r.Get("/status", s.handleSystemStatus)
+			// runtime configuration, read-only (admin)
+			r.Get("/config", s.handleConfig)
 
 			// catalog
 			r.Get("/charts", s.handleListCharts)

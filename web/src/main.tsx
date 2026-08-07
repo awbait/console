@@ -24,6 +24,7 @@ import { CatalogPage } from "./pages/CatalogPage";
 import { ChartDetailPage } from "./pages/ChartDetailPage";
 import { ChartManagePage } from "./pages/ChartManagePage";
 import { ChartVersionEditPage } from "./pages/ChartVersionEditPage";
+import { ConfigPage } from "./pages/ConfigPage";
 import { DocsPage } from "./pages/DocsPage";
 import { OrderPage } from "./features/orders/OrderPage";
 import { ProductPage } from "./pages/ProductPage";
@@ -99,6 +100,7 @@ const router = createBrowserRouter([
           { path: "approvals/:project/:name", element: <AdminApprovalDetailPage /> },
           { path: "categories", element: <AdminCategoriesPage /> },
           { path: "status", element: <StatusPage /> },
+          { path: "config", element: <ConfigPage /> },
           { path: "publications", element: <Navigate to="/admin/approvals" replace /> },
         ],
       },

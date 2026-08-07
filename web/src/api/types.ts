@@ -152,6 +152,25 @@ export interface CapabilityStatus {
   ok: boolean;
 }
 
+// One configuration variable of the running portal (GET /api/v1/config, admin).
+// Read-only: the portal is configured by its deployment.
+export interface ConfigField {
+  name: string; // env var name, e.g. HARBOR_URL
+  group: string; // portal|auth|rbac|harbor|gitlab|argocd|storage|sync|observability
+  value: string; // empty for a secret, or when nothing is configured
+  default?: string; // what it falls back to when unset
+  options?: string[]; // the values it accepts, when it takes a fixed set
+  secret: boolean; // value is never sent to the browser
+  is_set: boolean; // this deployment chose the value
+  is_default: boolean; // the value is the one the portal ships with
+  is_empty: boolean; // no value at all
+  sensitive?: string; // part of the value is masked ("password")
+}
+
+export interface ConfigResponse {
+  fields: ConfigField[];
+}
+
 // Platform health (GET /api/v1/platform/health), the one endpoint that answers
 // without a session. It speaks only in capabilities: no component names, no
 // upstream errors.

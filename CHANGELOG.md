@@ -45,6 +45,9 @@ All notable changes to this project are documented in this file.
 - Actions that cannot go through are switched off with an explanation instead of
   failing halfway: signing in while the sign-in service is down, ordering or
   changing a service while the platform cannot accept it. Drafts are still saved.
+- A Configuration page in the Admin section: every setting the portal runs with,
+  what it accepts and what it falls back to. Read-only, and passwords and tokens
+  are never shown - only whether they are set.
 
 ### Changed
 - The sign-in screen shows what the portal does instead of setting services up
@@ -84,6 +87,9 @@ All notable changes to this project are documented in this file.
 - The changelog on the About page reads the way a service's changes do -
   categories as coloured marks, versions set apart - and it is the project's
   real changelog rather than a forgotten copy that stopped being updated.
+- Platform state fills the page and explains itself: what users can do right
+  now, what each external system is responsible for, and what the background
+  tasks actually keep up to date.
 
 ### Removed
 - The Applications page, which had no entry in the menu and duplicated the order

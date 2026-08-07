@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"console/internal/auth"
+	"console/internal/config"
 	"console/internal/status"
 )
 
@@ -122,6 +123,22 @@ func (s *Server) probes() []status.Probe {
 // back into Server.Health and runs it.
 func (s *Server) NewHealthMonitor(interval time.Duration, log *slog.Logger) *status.Monitor {
 	return status.NewMonitor(interval, log, s.probes()...)
+}
+
+// handleConfig lists every configuration variable the portal reads and what it
+// is set to. Platform admins only, read-only, and never a credential: secrets
+// come back as set/unset, connection strings without their password (see
+// config.Describe).
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if u := auth.UserFrom(r.Context()); u == nil || !u.IsAdmin() {
+		writeErr(w, http.StatusForbidden, "forbidden", "configuration is restricted to platform admins")
+		return
+	}
+	if s.Config == nil {
+		writeErr(w, http.StatusServiceUnavailable, "internal", "configuration is not available")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fields": config.Describe(s.Config)})
 }
 
 // handlePlatformHealth reports which portal capabilities work right now. Public
