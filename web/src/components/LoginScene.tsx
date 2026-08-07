@@ -225,10 +225,15 @@ const typing = (text: string, delay: number, ms: number): CSSProperties =>
     animationTimingFunction: `steps(${Math.max(text.length, 1)})`,
   }) as CSSProperties;
 
+// The whole job as it stands without the portal, in the order it is actually
+// done: every line is work for the person, and the service only starts at the
+// end of it.
 const MANUAL_STEPS = [
-  "Найти нужный репозиторий и путь",
-  "Открыть merge request руками",
-  "Искать, кто это согласует",
+  "Найти актуальную версию чарта",
+  "Написать конфигурацию без ошибок",
+  "Собрать структуру папок в репозитории",
+  "Залить конфигурацию в нужное место",
+  "Ждать, пока сервис развернётся",
 ];
 
 const FORM_FIELDS = [

@@ -212,7 +212,7 @@
 .login-col {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
   width: 380px;
 }
 
@@ -466,7 +466,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
+  height: 26px;
   font-size: 11px;
   color: rgb(var(--c-neutral-700));
   opacity: 0.45;
@@ -530,7 +530,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 30px;
+  height: 26px;
   font-size: 11px;
   color: rgb(var(--c-neutral-500));
 }
@@ -539,8 +539,8 @@
   content: "";
   position: absolute;
   left: 7px;
-  top: 22px;
-  height: 16px;
+  top: 20px;
+  height: 13px;
   width: 1px;
   background: rgb(var(--c-neutral-200));
 }
