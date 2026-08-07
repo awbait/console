@@ -1,4 +1,12 @@
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { IconChevronsRight } from "@tabler/icons-react";
+import {
+  type CSSProperties,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import "../features/graph/core/graph.css";
 import { statusMeta } from "./StatusBadge";
 import "./loginScene.css";
@@ -27,6 +35,20 @@ interface Wire {
   from: [number, number];
   to: [number, number];
   delay: string;
+  // Drawn later, once the picture is already standing: it fades in instead of
+  // being there from the first frame.
+  enter?: boolean;
+}
+
+interface MapCard {
+  name: string;
+  kind: string;
+  badge?: string;
+  sa?: string;
+  port: string;
+  proto: string;
+  x: number;
+  y: number;
 }
 
 // --- Installation 1: the network map ---------------------------------------
@@ -37,7 +59,7 @@ const NAMESPACES = [
   { name: "data-prod", x: 650, y: 290, w: 258, h: 130 },
 ];
 
-const WORKLOADS = [
+const WORKLOADS: MapCard[] = [
   {
     name: "api-gateway",
     kind: "Ingress GW",
@@ -77,13 +99,83 @@ const MAP_WIRES: Wire[] = [
   { d: "M584 65 C636 65 612 393 664 393", from: [584, 65], to: [664, 393], delay: "2.2s" },
 ];
 
+// The map is not a photograph: a while after it settles, an egress gateway is
+// added and wired up, the way it happens while someone works on the real
+// canvas. An egress gateway works without a service account, so its card has
+// no sa row - same rule as the live map.
+const EGRESS_AT = 2600;
+
+const EGRESS_NS = { name: "egress", x: 650, y: 20, w: 258, h: 118 };
+
+const EGRESS_CARD: MapCard = {
+  name: "egress-gateway",
+  kind: "Egress GW",
+  badge: " rf-wl__badge--egw",
+  port: "443",
+  proto: "TCP",
+  x: 664,
+  y: 60,
+};
+
+const EGRESS_WIRE: Wire = {
+  d: "M584 65 C624 65 624 107 664 107",
+  from: [584, 65],
+  to: [664, 107],
+  delay: "0.2s",
+  enter: true,
+};
+
+function MapCardBox({ card, delay, enter }: { card: MapCard; delay: number; enter?: boolean }) {
+  return (
+    <div
+      className={`rf-wl login-scene__item${enter ? " login-scene__item--enter" : ""}`}
+      style={{ left: card.x, top: card.y, animationDelay: `${delay}ms` }}
+    >
+      <div className="rf-wl__head">
+        <div className="rf-wl__title">
+          <span className="rf-wl__name">{card.name}</span>
+          <span className={`rf-wl__badge${card.badge ?? ""}`}>{card.kind}</span>
+        </div>
+        {card.sa && (
+          <div className="rf-wl__sa">
+            <span className="rf-wl__sa-label">sa</span>
+            <span className="rf-wl__sa-value">{card.sa}</span>
+          </div>
+        )}
+      </div>
+      <div className="rf-wl__ports">
+        <div className="rf-wl__port-row">
+          <span className="rf-wl__port-label">
+            <span className="rf-wl__port-num">{card.port}</span>
+            <span className="rf-wl__port-proto">{card.proto}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MapInstallation() {
+  const [egress, setEgress] = useState(false);
+
+  useEffect(() => {
+    if (reducedMotion()) {
+      setEgress(true);
+      return;
+    }
+    const t = window.setTimeout(() => setEgress(true), EGRESS_AT);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const boxes = egress ? [...NAMESPACES, EGRESS_NS] : NAMESPACES;
+  const wires = egress ? [...MAP_WIRES, EGRESS_WIRE] : MAP_WIRES;
+
   return (
     <>
-      {NAMESPACES.map((ns, i) => (
+      {boxes.map((ns, i) => (
         <div
           key={ns.name}
-          className="rf-ns login-scene__item"
+          className={`rf-ns login-scene__item${ns === EGRESS_NS ? " login-scene__item--enter" : ""}`}
           style={{ left: ns.x, top: ns.y, width: ns.w, height: ns.h, animationDelay: `${i * 90}ms` }}
         >
           <div className="rf-ns__title">
@@ -93,33 +185,11 @@ function MapInstallation() {
       ))}
 
       {WORKLOADS.map((c, i) => (
-        <div
-          key={c.name}
-          className="rf-wl login-scene__item"
-          style={{ left: c.x, top: c.y, animationDelay: `${180 + i * 90}ms` }}
-        >
-          <div className="rf-wl__head">
-            <div className="rf-wl__title">
-              <span className="rf-wl__name">{c.name}</span>
-              <span className={`rf-wl__badge${c.badge ?? ""}`}>{c.kind}</span>
-            </div>
-            <div className="rf-wl__sa">
-              <span className="rf-wl__sa-label">sa</span>
-              <span className="rf-wl__sa-value">{c.sa}</span>
-            </div>
-          </div>
-          <div className="rf-wl__ports">
-            <div className="rf-wl__port-row">
-              <span className="rf-wl__port-label">
-                <span className="rf-wl__port-num">{c.port}</span>
-                <span className="rf-wl__port-proto">{c.proto}</span>
-              </span>
-            </div>
-          </div>
-        </div>
+        <MapCardBox key={c.name} card={c} delay={180 + i * 90} />
       ))}
+      {egress && <MapCardBox card={EGRESS_CARD} delay={120} enter />}
 
-      <Wires wires={MAP_WIRES} markerId="login-arrow-map" title="Карта сетевого взаимодействия" />
+      <Wires wires={wires} markerId="login-arrow-map" title="Карта сетевого взаимодействия" />
     </>
   );
 }
@@ -283,6 +353,15 @@ function OrderEvent({
 function CompareInstallation() {
   return (
     <>
+      {/* Two lanes rather than two loose stacks: the manual one is a plain
+          recess in the plane, the portal's is lifted and tinted, so which side
+          the picture argues for is legible before a word is read. */}
+      <div className="login-lane login-scene__item" style={{ left: -24, top: 16, width: 428 }} />
+      <div
+        className="login-lane login-lane--on login-scene__item"
+        style={{ left: 496, top: 16, width: 428, animationDelay: "160ms" }}
+      />
+
       <div className="login-col login-col--manual login-scene__item" style={{ left: 0, top: 46 }}>
         <div className="login-col__title">Без консоли</div>
 
@@ -318,8 +397,13 @@ function CompareInstallation() {
         </div>
       </div>
 
-      {/* The divide: the two columns are the same order, not two stories. */}
-      <div className="login-divide login-scene__item" style={{ left: 462, top: 30 }} />
+      {/* The seam: one order, seen twice. The arrow on it reads left to right,
+          so the picture says "this becomes that" rather than "pick one". */}
+      <div className="login-divide login-scene__item" style={{ left: 450, top: 26 }}>
+        <span className="login-divide__mark">
+          <IconChevronsRight size={24} stroke={1.9} />
+        </span>
+      </div>
 
       <ConsoleColumn />
     </>
@@ -347,11 +431,13 @@ function Wires({ wires, markerId, title }: { wires: Wire[]; markerId: string; ti
           <path d="M0 0 L10 5 L0 10 z" className="login-scene__arrow" />
         </marker>
       </defs>
+      {/* Anchors first, then the wire: the arrowhead has to land on top of the
+          port ring it points at, not disappear behind it. */}
       {wires.map((w) => (
-        <g key={w.d}>
-          <path d={w.d} className="login-scene__wire" markerEnd={`url(#${markerId})`} />
+        <g key={w.d} className={w.enter ? "login-scene__wire-group--enter" : undefined}>
           <circle cx={w.from[0]} cy={w.from[1]} r="3.5" className="login-scene__source" />
           <circle cx={w.to[0]} cy={w.to[1]} r="4.5" className="login-scene__target" />
+          <path d={w.d} className="login-scene__wire" markerEnd={`url(#${markerId})`} />
           <circle
             r="3.5"
             className="login-scene__dot"
@@ -368,15 +454,45 @@ function Wires({ wires, markerId, title }: { wires: Wire[]; markerId: string; ti
 const SLIDES = [
   {
     id: "compare",
-    caption: "Заполняете форму - остальное портал делает сам.",
+    caption: "Заполняете форму - остальное портал делает сам",
     Installation: CompareInstallation,
   },
   {
     id: "map",
-    caption: "Рисуете связи - сетевые политики портал настроит сам.",
+    caption: "Рисуете связи - сетевые политики портал настроит сам",
     Installation: MapInstallation,
   },
 ];
+
+// The board is drawn at a fixed 940x460 and then scaled to the panel it is
+// shown in, so a wide monitor gets a bigger picture instead of the same small
+// one adrift in empty space. It is deliberately scaled past the panel's width -
+// the plane is a fragment of something larger, and its edges are meant to run
+// off under the mask rather than sit inside a frame.
+// The reference frame is deliberately larger than the board itself: the camera
+// sits back far enough for the whole installation to read, and only creeps
+// closer on a genuinely large panel.
+const SCALE_MIN = 0.78;
+const SCALE_MAX = 1.35;
+
+function usePlateScale(ref: RefObject<HTMLDivElement | null>) {
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const fit = Math.min(el.clientWidth / 1320, el.clientHeight / 720);
+      setScale(Math.min(SCALE_MAX, Math.max(SCALE_MIN, Number(fit.toFixed(3)))));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return scale;
+}
 
 export function LoginScene() {
   // Each slide carries how many times it has been shown, and only the slide
@@ -401,25 +517,31 @@ export function LoginScene() {
   }, [current, show]);
 
   const slide = SLIDES[current];
+  const plate = useRef<HTMLDivElement>(null);
+  const scale = usePlateScale(plate);
 
   return (
     <div className="login-scene">
-      <div className="login-scene__plate">
+      <div className="login-scene__plate" ref={plate} style={{ "--login-scale": scale } as CSSProperties}>
         <div className="login-scene__grid" />
         <div className="login-scene__glow" />
-        {/* Both boards stay mounted and cross-fade: a picture that blinks out
-            and another that appears is a jump. The boards are out of the
-            reading order - the caption below carries the same meaning in
-            words. */}
-        {SLIDES.map((s, i) => (
-          <div
-            key={s.id}
-            className={`login-scene__board${i === current ? " login-scene__board--on" : ""}`}
-            aria-hidden="true"
-          >
-            <s.Installation key={runs[i]} />
-          </div>
-        ))}
+        {/* The camera: one slow pass over the plane, so the picture is alive
+            without anything in it actually moving. */}
+        <div className="login-scene__camera">
+          {/* Both boards stay mounted and cross-fade: a picture that blinks out
+              and another that appears is a jump. The boards are out of the
+              reading order - the caption below carries the same meaning in
+              words. */}
+          {SLIDES.map((s, i) => (
+            <div
+              key={s.id}
+              className={`login-scene__board${i === current ? " login-scene__board--on" : ""}`}
+              aria-hidden="true"
+            >
+              <s.Installation key={runs[i]} />
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="login-scene__legend">

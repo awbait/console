@@ -21,8 +21,8 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  -webkit-mask-image: radial-gradient(ellipse 78% 78% at 46% 44%, #000 32%, transparent 100%);
-  mask-image: radial-gradient(ellipse 78% 78% at 46% 44%, #000 32%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 78% 78% at 46% 38%, #000 32%, transparent 100%);
+  mask-image: radial-gradient(ellipse 78% 78% at 46% 38%, #000 32%, transparent 100%);
 }
 
 /* Blueprint grid: the surface the board lies on. Faint on purpose - it gives
@@ -41,7 +41,7 @@
 .login-scene__glow {
   position: absolute;
   left: 46%;
-  top: 50%;
+  top: 43%;
   width: 1100px;
   height: 1100px;
   transform: translate(-50%, -50%);
@@ -51,14 +51,48 @@
 /* The board: a fixed-size plane holding the cards and the wire layer in flat
    coordinates. It is tilted once, as a whole, so the arrows keep meeting the
    cards exactly where they were drawn. */
+/* The camera: a slow pass across the plane and back. Nothing in the picture
+   moves - the view does, which is what makes a still installation feel alive.
+   Long and shallow on purpose: a drift you can catch yourself watching is a
+   distraction on a sign-in page. */
+.login-scene__camera {
+  position: absolute;
+  inset: 0;
+  animation: login-camera 44s ease-in-out infinite;
+}
+
+/* A closed loop with four stops rather than a two-point sweep: the view never
+   retraces the path it just took, so the movement reads as a camera being
+   carried around the plane instead of a slider going back and forth. */
+@keyframes login-camera {
+  0% {
+    transform: translate3d(-2.4%, 1.5%, 0) scale(0.975) rotate(-0.65deg);
+  }
+  30% {
+    transform: translate3d(1.4%, -0.5%, 0) scale(1.02) rotate(0.3deg);
+  }
+  55% {
+    transform: translate3d(2.6%, -1.7%, 0) scale(1.05) rotate(0.75deg);
+  }
+  80% {
+    transform: translate3d(-0.7%, -0.3%, 0) scale(1.01) rotate(0.1deg);
+  }
+  100% {
+    transform: translate3d(-2.4%, 1.5%, 0) scale(0.975) rotate(-0.65deg);
+  }
+}
+
+/* Sits above the panel's centre: the caption and the pips take the bottom, so
+   the optical middle of the free space is higher than the geometric one. */
 .login-scene__board {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 43%;
   width: 940px;
   height: 460px;
+  /* --login-scale is measured from the panel (see usePlateScale). */
   transform: translate(-50%, -50%) perspective(1600px) rotateX(38deg) rotateZ(-22deg)
-    scale(1.05);
+    scale(var(--login-scale, 1.05));
   /* Boards are stacked and cross-fade between installations. The one leaving
      goes first and the one arriving waits for it, so the two pictures never
      sit half-drawn on top of each other. */
@@ -150,6 +184,24 @@
   }
 }
 
+/* Added while the picture is already standing (the egress gateway and its
+   wire): it arrives on its own, a little more noticeably than the parts that
+   were there from the start. */
+.login-scene__item--enter {
+  animation: login-enter 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes login-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94);
+  }
+}
+
+.login-scene__wire-group--enter {
+  animation: login-fade 620ms ease 180ms backwards;
+}
+
 /* --- The same order, done both ways --------------------------------------- */
 /* Two columns of equal width: the same job by hand and through the portal.
    Boxes keep the shape and type scale of the map cards, so both installations
@@ -180,11 +232,57 @@
   opacity: 0.75;
 }
 
-/* Divider between the two columns: they are one order seen twice. */
+/* The lanes the two columns sit in. The manual one is a recess in the plane -
+   flat, colourless, unlit. The portal's is a raised, tinted shelf with a brand
+   edge and its own glow, so the side the picture argues for is obvious at a
+   glance and before any text is read. */
+.login-lane {
+  height: 396px;
+  border-radius: 18px;
+  border: 1px solid rgb(var(--c-neutral-200) / 0.8);
+  background: rgb(var(--c-neutral-50) / 0.5);
+}
+
+.login-lane--on {
+  border-color: rgb(var(--c-brand-200));
+  background: linear-gradient(
+    160deg,
+    rgb(var(--c-brand-50) / 0.95),
+    rgb(var(--c-brand-50) / 0.35) 65%,
+    rgb(var(--c-surface) / 0)
+  );
+  box-shadow: 0 34px 46px -30px rgb(var(--c-brand-600) / 0.45),
+    0 0 0 1px rgb(var(--c-brand-500) / 0.08);
+}
+
+/* The seam between the lanes: a hairline that fades out at both ends, with the
+   direction of the story marked on it. */
+/* The line opens up in the middle to let the chevrons sit on it without a
+   plate behind them: no badge, no shadow, just the direction of the story. */
 .login-divide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 1px;
-  height: 400px;
-  border-left: 1px dashed rgb(var(--c-neutral-300));
+  height: 376px;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--c-neutral-300) / 0),
+    rgb(var(--c-neutral-300)) 22%,
+    rgb(var(--c-neutral-300)) 43%,
+    rgb(var(--c-neutral-300) / 0) 45%,
+    rgb(var(--c-neutral-300) / 0) 55%,
+    rgb(var(--c-neutral-300)) 57%,
+    rgb(var(--c-neutral-300)) 78%,
+    rgb(var(--c-neutral-300) / 0)
+  );
+}
+
+.login-divide__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--c-brand-600));
 }
 
 .login-list {
@@ -535,6 +633,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .login-scene__camera,
+  .login-scene__item--enter,
+  .login-scene__wire-group--enter,
   .login-scene__item,
   .login-scene__wires,
   .login-scene__caption,
