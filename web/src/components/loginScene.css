@@ -29,7 +29,10 @@
    the plane a direction without competing with the cards. */
 .login-scene__grid {
   position: absolute;
-  inset: -20%;
+  /* Oversized far beyond the panel: the layer is tilted and turned, so its own
+     corners swing inside the visible area and its edge shows up as a line
+     across the backdrop. At this size the edge is always off screen. */
+  inset: -80%;
   background-image:
     linear-gradient(rgb(var(--c-neutral-300) / 0.5) 1px, transparent 1px),
     linear-gradient(90deg, rgb(var(--c-neutral-300) / 0.5) 1px, transparent 1px);
