@@ -7,7 +7,6 @@ import {
   IconChecklist,
   IconChevronDown,
   IconChevronRight,
-  IconCloud,
   IconHash,
   IconInfoCircle,
   IconLayoutDashboard,
@@ -47,6 +46,7 @@ import { useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
+import { LoginScreen } from "./LoginScreen";
 import { Skeleton, SkeletonText } from "./ui";
 
 const navItems = [
@@ -909,23 +909,3 @@ function UserMenu() {
   );
 }
 
-function LoginScreen() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="rounded-lg border border-slate-200 bg-surface p-8 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-brand-600 text-on-accent">
-          <IconCloud size={24} stroke={1.8} />
-        </div>
-        <h1 className="text-lg font-semibold text-slate-800">Console</h1>
-        <p className="text-xs text-slate-400">Managed Services</p>
-        <p className="mt-2 text-sm text-slate-500">Вы не аутентифицированы.</p>
-        <a
-          href={api.loginUrl(window.location.pathname + window.location.search)}
-          className="mt-4 inline-block rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-on-accent hover:bg-brand-700"
-        >
-          Войти через Keycloak
-        </a>
-      </div>
-    </div>
-  );
-}

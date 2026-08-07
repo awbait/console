@@ -41,6 +41,8 @@ All notable changes to this project are documented in this file.
   further changes until it is closed.
 
 ### Changed
+- The sign-in screen shows what the portal does instead of setting services up
+  by hand, and asks for one click to sign in.
 - Refusing an empty change: saving an order without editing anything no longer
   opens a merge request with nothing in it, and the save button stays off until
   something really changes.
