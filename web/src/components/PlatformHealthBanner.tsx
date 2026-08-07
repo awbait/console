@@ -55,8 +55,8 @@ export function PlatformHealthBanner() {
               and an assertive live region would interrupt them mid-field.
               "status" is announced politely, at the next pause. */}
           <p role="status" className="min-w-0 flex-1">
-            <span className="font-medium">В работе платформы есть проблемы.</span> Мы уже занимаемся
-            их устранением. Что именно недоступно, видно по значку состояния в верхней панели.
+            <span className="font-medium">В работе платформы есть проблемы,</span> мы уже их
+            устраняем. Подробности - по значку в верхней панели.
           </p>
           <Button
             onPress={() => setDismissedKey(key)}
