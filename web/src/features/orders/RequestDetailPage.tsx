@@ -352,7 +352,7 @@ export function RequestDetailPage() {
                 }}
                 placeholder={r.service_name}
                 disabled={savingName}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xl font-semibold outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
+                className="rounded-md border border-gray-300 bg-surface px-2 py-1 text-xl font-semibold outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
               />
               <button
                 onClick={saveName}

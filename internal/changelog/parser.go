@@ -29,10 +29,13 @@ func Parse(content []byte) []models.ChangelogEntry {
 			if cur != nil {
 				entries = append(entries, *cur)
 			}
+			// Sections starts empty rather than nil: a version heading with
+			// nothing under it yet (the [Unreleased] left after a release) must
+			// still serialise as a list, not as null.
 			cur = &models.ChangelogEntry{
 				Version:  strings.TrimSpace(m[1]),
 				Date:     strings.TrimSpace(m[2]),
-				Sections: map[string][]string{},
+				Sections: []models.ChangelogSection{},
 			}
 			section = ""
 			continue
@@ -40,20 +43,57 @@ func Parse(content []byte) []models.ChangelogEntry {
 		if cur == nil {
 			continue
 		}
-		if strings.HasPrefix(line, "### ") {
-			section = strings.TrimSpace(strings.TrimPrefix(line, "### "))
+		if s, ok := strings.CutPrefix(line, "### "); ok {
+			section = strings.TrimSpace(s)
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
 		if (strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ")) && section != "" {
-			item := strings.TrimSpace(trimmed[2:])
-			cur.Sections[section] = append(cur.Sections[section], item)
+			addItem(cur, section, strings.TrimSpace(trimmed[2:]))
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		// Prose before the first category introduces the release.
+		if section == "" {
+			cur.Intro = strings.TrimSpace(cur.Intro + " " + trimmed)
+			continue
+		}
+		// A wrapped bullet continues the previous item: the file wraps at 80
+		// columns, the reader does not.
+		if strings.HasPrefix(line, "  ") {
+			appendToLast(cur, trimmed)
 		}
 	}
 	if cur != nil {
 		entries = append(entries, *cur)
 	}
 	return entries
+}
+
+// addItem files an item under its section, creating the section on first use so
+// the sections keep the order the file lists them in.
+func addItem(e *models.ChangelogEntry, section, item string) {
+	for i := range e.Sections {
+		if e.Sections[i].Title == section {
+			e.Sections[i].Items = append(e.Sections[i].Items, item)
+			return
+		}
+	}
+	e.Sections = append(e.Sections, models.ChangelogSection{Title: section, Items: []string{item}})
+}
+
+// appendToLast glues a wrapped line onto the item it continues.
+func appendToLast(e *models.ChangelogEntry, text string) {
+	if len(e.Sections) == 0 {
+		return
+	}
+	s := &e.Sections[len(e.Sections)-1]
+	if len(s.Items) == 0 {
+		return
+	}
+	s.Items[len(s.Items)-1] += " " + text
 }
 
 // ParseVersion returns the single entry matching version, or nil.

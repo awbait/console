@@ -157,7 +157,7 @@ export function CatalogPage() {
             />
             <Input
               placeholder="Название или описание..."
-              className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-8 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 [&::-webkit-search-cancel-button]:hidden"
+              className="w-full rounded-md border border-gray-300 bg-surface py-1.5 pl-8 pr-8 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 [&::-webkit-search-cancel-button]:hidden"
             />
             {query && (
               <AriaButton

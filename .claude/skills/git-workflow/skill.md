@@ -68,6 +68,9 @@ If the push fails due to lefthook - read the error output, fix the issue, commit
 
 After finishing work on a branch:
 
+0. If the change is visible to the user, add its entry to `CHANGELOG.md` and
+   `CHANGELOG.ru.md` under `## [Unreleased]` and commit it with the change - see
+   the `changelog` skill for what deserves an entry and how it is worded.
 1. Push the branch:
    ```bash
    git push -u origin feat/my-feature
@@ -83,10 +86,11 @@ Releases happen **only when the user explicitly asks** ("сделай релиз
 
 ### Release process
 
-1. Determine the new version based on commits since the last tag:
-   - `feat:` → minor bump (v0.3.0 → v0.4.0)
-   - `fix:` → patch bump (v0.3.0 → v0.3.1)
-   - `BREAKING CHANGE` in commit body → major bump
+1. Determine the new version from the `## [Unreleased]` section of the CHANGELOG
+   (the `changelog` skill has the rules):
+   - new capabilities (Added) → minor bump (v0.3.0 → v0.4.0)
+   - only fixes (Fixed, Security) → patch bump (v0.3.0 → v0.3.1)
+   - something removed or changed in a way that requires action → major bump
    - If no tags exist yet, start with v0.1.0
 
 2. Create a release branch:
@@ -96,7 +100,10 @@ Releases happen **only when the user explicitly asks** ("сделай релиз
    git checkout -b release/vX.Y.Z
    ```
 
-3. Update CHANGELOG.md and CHANGELOG.ru.md using the `changelog-maintenance` skill
+3. Turn `## [Unreleased]` into the `## [X.Y.Z] - YYYY-MM-DD` section in
+   CHANGELOG.md and CHANGELOG.ru.md using the `changelog` skill. The entries are
+   already there from the merged PRs: reread them as one release, do not
+   reconstruct them from the git log
 
 4. Commit and create a PR:
    ```bash
@@ -123,6 +130,6 @@ Never delete branches, tags, or releases - only the user can do that. Specifical
 |-----------|--------|
 | Start new feature | `git checkout main && git pull && git checkout -b feat/...` |
 | Switch to another task | WIP commit → checkout main → new branch |
-| Work is done | Push (lefthook проверит) → create PR → checkout main |
+| Work is done | CHANGELOG под `[Unreleased]` → push (lefthook проверит) → create PR → checkout main |
 | User says "release" | Determine version → release branch → CHANGELOG → PR |
 | Merge conflict | Resolve, `git add`, continue rebase/merge |

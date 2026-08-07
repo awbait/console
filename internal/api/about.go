@@ -28,8 +28,8 @@ func (s *Server) handleAbout(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// handleChangelog returns the portal's release notes, newest first, parsed from
-// the embedded CHANGELOG.md.
+// handleChangelog returns the portal's release notes, newest first, in the same
+// shape as a chart's changelog.
 func (s *Server) handleChangelog(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, changelog.Releases())
+	writeJSON(w, http.StatusOK, changelog.Portal())
 }

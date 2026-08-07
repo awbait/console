@@ -571,10 +571,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
                       {e.version}
                       {e.date && <span className="ml-1.5 font-normal text-slate-400">{e.date}</span>}
                     </p>
-                    {Object.entries(e.sections).map(([sec, items]) => (
-                      <div key={sec} className="ml-1 mt-0.5">
-                        <span className="uppercase text-slate-400">{sec}:</span>{" "}
-                        <span className="text-slate-600">{items.join("; ")}</span>
+                    {(e.sections ?? []).map((s) => (
+                      <div key={s.title} className="ml-1 mt-0.5">
+                        <span className="uppercase text-slate-400">{s.title}:</span>{" "}
+                        <span className="text-slate-600">{s.items.join("; ")}</span>
                       </div>
                     ))}
                   </div>

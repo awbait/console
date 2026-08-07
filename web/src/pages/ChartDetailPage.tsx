@@ -11,6 +11,7 @@ import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Changelog } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
 import { Button, Card, Chip, ErrorBox, LinkButton, Skeleton, SkeletonText } from "../components/ui";
@@ -167,7 +168,7 @@ export function ChartDetailPage() {
           <Readme project={project} name={name} version={version} />
         </TabPanel>
         <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
-          <Changelog project={project} name={name} />
+          <ChartChangelog project={project} name={name} />
         </TabPanel>
       </Tabs>
     </div>
@@ -231,23 +232,7 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   );
 }
 
-// Keep-a-Changelog section -> a chip style. Each category gets its own soft
-// (muted) tint so they're scannable, but the palette stays low-saturation rather
-// than loud semantic green/red.
-const CHANGELOG_SECTION_CLASS: Record<string, string> = {
-  added: "bg-emerald-50 text-emerald-700",
-  changed: "bg-blue-50 text-blue-700",
-  fixed: "bg-violet-50 text-violet-700",
-  removed: "bg-rose-50 text-rose-700",
-  deprecated: "bg-amber-50 text-amber-700",
-  security: "bg-orange-50 text-orange-700",
-};
-
-function changelogSectionClass(section: string): string {
-  return CHANGELOG_SECTION_CLASS[section.toLowerCase()] ?? "bg-gray-100 text-gray-600";
-}
-
-function Changelog({ project, name }: { project: string; name: string }) {
+function ChartChangelog({ project, name }: { project: string; name: string }) {
   const { data, error, loading } = useAsync(
     () => api.getAggregatedChangelog(project, name),
     [project, name],
@@ -258,31 +243,8 @@ function Changelog({ project, name }: { project: string; name: string }) {
     return <p className="text-sm text-gray-500">История изменений недоступна.</p>;
   return (
     <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="scroll-slim flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {data.map((e) => (
-          <div key={e.version}>
-            <div className="flex items-baseline gap-2">
-              <span className="font-medium">{e.version}</span>
-              {e.date && <span className="text-xs text-gray-400">{e.date}</span>}
-            </div>
-            {Object.entries(e.sections).map(([sec, items]) => (
-              <div key={sec} className="mt-1">
-                <span
-                  className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${changelogSectionClass(sec)}`}
-                >
-                  {sec}
-                </span>
-                <ul className="ml-4 list-disc text-sm text-gray-700">
-                  {items.map((it, i) => (
-                    <li key={i}>
-                      <Markdown inline>{it}</Markdown>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        ))}
+      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
+        <Changelog entries={data} />
       </div>
     </Card>
   );
