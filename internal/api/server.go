@@ -10,6 +10,7 @@ import (
 	"console/internal/auth"
 	"console/internal/cache"
 	"console/internal/catalog"
+	"console/internal/config"
 	"console/internal/events"
 	"console/internal/gitlab"
 	"console/internal/harbor"
@@ -60,6 +61,17 @@ type Server struct {
 	// page (GET /api/v1/status). Optional: nil omits the reconcilers section.
 	Reconcilers reconcilerSnapshotter
 
+	// Config is the loaded runtime configuration, served read-only on the admin
+	// configuration page (GET /api/v1/config). Optional: nil answers 503 there
+	// and changes nothing else.
+	Config *config.Config
+
+	// Health is the background component monitor behind both status endpoints
+	// (GET /api/v1/platform/health and GET /api/v1/status). Build it with
+	// NewHealthMonitor once the ports above are set. Optional: nil reports
+	// everything as working, which is what tests want.
+	Health healthMonitor
+
 	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push). Routes
 	// register per-source only when that source's secret is set; nil omits them
 	// entirely (e.g. tests).
@@ -94,6 +106,11 @@ func (s *Server) Router() http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBytes(maxRequestBodyBytes)) // bound request-body memory (GET/SSE carry none)
 
+		// Platform health (unauthenticated): which portal capabilities work right
+		// now. The sign-in screen needs it before there is a session, and it only
+		// ever answers in capabilities - never component names or probe errors.
+		r.Get("/platform/health", s.handlePlatformHealth)
+
 		// auth endpoints (unauthenticated)
 		r.Get("/auth/login", s.Auth.Login)
 		r.Get("/auth/callback", s.Auth.Callback)
@@ -123,6 +140,8 @@ func (s *Server) Router() http.Handler {
 
 			// system status (integrations + storage health)
 			r.Get("/status", s.handleSystemStatus)
+			// runtime configuration, read-only (admin)
+			r.Get("/config", s.handleConfig)
 
 			// catalog
 			r.Get("/charts", s.handleListCharts)
@@ -229,6 +248,15 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		start := time.Now()
 		next.ServeHTTP(ww, r)
+
+		// A request that just failed against an upstream is better evidence than
+		// any schedule: ask the monitor to probe now, so the portal admits the
+		// outage while the user is still looking at it instead of on the next
+		// poll. The monitor coalesces and throttles these, so a burst of failures
+		// costs one probe round.
+		if ww.Status() == http.StatusBadGateway && s.Health != nil {
+			s.Health.Trigger("upstream request failed")
+		}
 
 		level := slog.LevelInfo
 		switch r.URL.Path {

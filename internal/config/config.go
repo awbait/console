@@ -8,14 +8,6 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-// Mode selects between a real upstream client and an in-memory fake.
-type Mode string
-
-const (
-	ModeReal Mode = "real"
-	ModeFake Mode = "fake"
-)
-
 // Status update modes (STATUS_UPDATE_MODE) select how order and catalog state is
 // kept fresh:
 //   - hybrid (default): periodic reconcile PLUS inbound GitLab/Harbor webhooks
@@ -57,12 +49,11 @@ type Config struct {
 	// http). Set to false only for a non-localhost plain-HTTP setup.
 	CookieSecure bool `env:"COOKIE_SECURE" envDefault:"true"`
 
-	// Upstream modes. Default to "real" so a misconfigured deployment fails loudly
-	// (missing URL/token) instead of silently serving fakes. "fake" is opt-in -
-	// used by tests and explicit local dev (make run / run-oidc without -RealGitlab).
-	HarborMode Mode `env:"HARBOR_MODE" envDefault:"real"`
-	GitLabMode Mode `env:"GITLAB_MODE" envDefault:"real"`
-	ArgoCDMode Mode `env:"ARGOCD_MODE" envDefault:"real"`
+	// There is no upstream "mode": the portal always talks to the real Harbor,
+	// GitLab and Argo CD, and refuses to start without their URLs and tokens. The
+	// in-memory fakes next to each client exist for tests only - a deployment
+	// that could switch to them by one environment variable is a deployment that
+	// can silently serve made-up charts.
 
 	// Storage backends: "postgres"|"memory", "redis"|"memory".
 	Store string `env:"STORE" envDefault:"memory"`

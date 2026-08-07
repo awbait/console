@@ -1,6 +1,6 @@
-# Local stack: Postgres + Valkey + portal (fakes-only upstreams).
-# The fakes simulate Harbor/GitLab/ArgoCD so the full order happy-path runs
-# without any of those systems present.
+# Local stack: Postgres + Valkey + Keycloak. The upstreams (Harbor, GitLab,
+# Argo CD) are real and live outside this file - see the KinD stand and
+# docker-compose.upstreams.yml.
 services:
   postgres:
     image: postgres:16-alpine

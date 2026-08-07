@@ -116,7 +116,7 @@ Grafana с автоподключённым datasource и дашбордом - �
 |---|---|---|---|
 | `console_component_up` | gauge | `component`, `kind`, `mode` | доступность компонента платформы (1/0), как на `/api/v1/status` |
 | `console_component_probe_duration_seconds` | histogram | `component` | латентность health-пробы |
-| `console_component_last_probe_timestamp_seconds` | gauge | `component` | время последней пробы (детект зависшего рефрешера) |
+| `console_component_last_probe_timestamp_seconds` | gauge | `component` | время последней пробы (детект зависшего монитора) |
 | `console_orders` | gauge | `status` | число заказов в каждом статусе lifecycle |
 | `console_reconcile_runs_total` | counter | `reconciler`, `result` | тики фонового reconcile (ok/error) |
 | `console_reconcile_duration_seconds` | histogram | `reconciler` | длительность тика reconcile |
@@ -167,9 +167,9 @@ KinD-стендом. Он тяжёлый (GitLab ~4 ГБ ОЗУ) и **тольк
 
 | Переменная | Значения | Назначение |
 |---|---|---|
-| `HARBOR_MODE` / `GITLAB_MODE` / `ARGOCD_MODE` | `real` (деф.) \| `fake` | upstream'ы; `real` требует URL/токен (иначе старт падает) |
+| `HARBOR_URL` / `GITLAB_URL` / `ARGOCD_URL` + токены | строка | upstream'ы; без них портал не стартует (fake-режима нет) |
 | `STORE` / `CACHE` | `memory` (деф.) \| `postgres` / `redis` | состояние / кэш + сессии |
-| `AUTH_MODE` | `oidc` \| `dev` | аутентификация |
+| `AUTH_MODE` | `oidc` | аутентификация |
 | `RBAC_TEAM_GROUP_PREFIX` / `RBAC_TEAM_GROUP_REGEX` | строка | маппинг групп IdP -> команды |
 | `CHART_REGISTRY` | строка | OCI-база chart-source в `application.yaml` (Harbor) |
 | `GITLAB_AUTO_MERGE` | `false` \| `true` | поллер сам мёржит MR (локалка / демо) |

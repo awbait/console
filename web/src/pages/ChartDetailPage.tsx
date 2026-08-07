@@ -4,17 +4,18 @@ import { useEffect } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
-import { CATALOG_DOWN_HINT } from "../api/errorText";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication } from "../api/types";
 import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
+import { CAPABILITIES } from "../app/capabilities";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Changelog } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
-import { Button, Card, Chip, ErrorBox, LinkButton, Skeleton, SkeletonText } from "../components/ui";
+import { Button, Card, Chip, LinkButton, OutageState, Skeleton, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
 
@@ -27,6 +28,7 @@ export function ChartDetailPage() {
     reload,
   } = useAsync(() => api.getChart(project, name), [project, name], qk.chart(project, name));
   const { categories, charts: catalogCharts } = useCatalog();
+  const { blockedReason } = usePlatformHealth();
   const { user } = useUser();
   const pub = findCatalogChart(catalogCharts, project, name)?.publication;
   // "Manage" for owners/admins; "Publish" (no publication yet) for any team
@@ -62,7 +64,14 @@ export function ChartDetailPage() {
   }, [queryClient, manageable, project, name]);
 
   if (loading) return <ChartSkeleton />;
-  if (error) return <ErrorBox error={error} hint={CATALOG_DOWN_HINT} onRetry={reload} />;
+  if (error)
+    return (
+      <OutageState
+        title="Сервис сейчас не открывается"
+        message={CAPABILITIES.catalog.impact}
+        onRetry={reload}
+      />
+    );
   if (!chart) return null;
 
   // The profile shows the APPROVED version (like the catalog), not the live one
@@ -74,7 +83,10 @@ export function ChartDetailPage() {
   const description = (published && pub?.approved_description) || chart.description;
   // Ordering is open only for publications with an approved order-view; it leads
   // to the product page (its order list).
-  const orderable = !!pub?.published && !!pub?.has_order_view;
+  // Ordering also needs the platform behind it: an approved form is useless
+  // while the order cannot be filed at all.
+  const orderOutage = blockedReason("ordering");
+  const orderable = !!pub?.published && !!pub?.has_order_view && !orderOutage;
   const categoryLabel = categories.find((c) => c.id === pub?.category_id)?.label;
   // A version newer than the approved one is in Harbor: time for the owner to
   // refresh the data (mark the "Manage" button with a dot).
@@ -146,7 +158,7 @@ export function ChartDetailPage() {
               Заказать
             </LinkButton>
           ) : (
-            <span title="Форма заказа не согласована для этого чарта">
+            <span title={orderOutage ?? "Форма заказа не согласована для этого чарта"}>
               <Button variant="primary" isDisabled>
                 Заказать
               </Button>

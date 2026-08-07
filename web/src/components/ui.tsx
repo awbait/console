@@ -1,4 +1,4 @@
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconChevronDown, IconPlugConnectedX, IconRefresh } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
   Button as AriaButton,
@@ -26,8 +26,13 @@ const btnVariants = {
   danger: "bg-red-600 text-white hover:bg-red-700 pressed:bg-red-800 border border-transparent",
 };
 
+// The colour transition is part of the base: a button can be disabled by
+// something the user did not do - the platform health poll switching ordering
+// off mid-page - and a control that greys out instantly reads as a glitch.
+// Opacity rides the same transition as the colours (one transition-property
+// wins, so `transition-colors` plus `transition-opacity` would drop the first).
 const BTN_BASE =
-  "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500";
+  "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none transition-[color,background-color,border-color,opacity] duration-200 focus-visible:ring-2 focus-visible:ring-brand-500 motion-reduce:transition-none";
 
 // buttonClass builds the shared look for both <Button> and <LinkButton>, so a
 // button and a button-shaped link can never drift apart.
@@ -420,6 +425,47 @@ export function Loading({ label = "Загружаем данные" }: { label?:
       />
       {label}
     </output>
+  );
+}
+
+// OutageState is the whole page when the thing it was going to show cannot be
+// loaded at all - an empty catalog page with a red box pinned to its top corner
+// reads as a broken layout, not as an explanation. It says what is unavailable
+// in the portal's own words and offers the one useful action: try again.
+//
+// The raw failure is deliberately absent: the message here already covers it,
+// and "upstream unavailable: harbor: dial tcp" helps nobody standing in front
+// of an empty catalog. It is still in the console and in the portal's logs.
+export function OutageState({
+  title,
+  message,
+  onRetry,
+  icon,
+}: {
+  title: string;
+  message: string;
+  onRetry?: () => void;
+  icon?: ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center animate-in fade-in duration-300 motion-reduce:animate-none"
+    >
+      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+        {icon ?? <IconPlugConnectedX size={34} stroke={1.5} />}
+      </span>
+      <div>
+        <h1 className="text-lg font-semibold text-slate-800">{title}</h1>
+        <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-slate-500">{message}</p>
+      </div>
+      {onRetry && (
+        <Button variant="secondary" onPress={onRetry} className="gap-1.5">
+          <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+          Повторить
+        </Button>
+      )}
+    </div>
   );
 }
 

@@ -1,7 +1,18 @@
-import { IconExternalLink } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconCircleCheck,
+  IconDatabase,
+  IconExternalLink,
+  IconPlugConnected,
+  IconRefresh,
+  IconRepeat,
+  IconUsers,
+} from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { api } from "../api/client";
-import type { ComponentStatus, ReconcilerStatus } from "../api/types";
+import type { CapabilityStatus, ComponentStatus, ReconcilerStatus } from "../api/types";
+import { capabilityText } from "../app/capabilities";
 import { useUser } from "../auth/UserContext";
 import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
@@ -10,29 +21,60 @@ import { safeHref } from "../lib/href";
 // Status auto-refresh interval, seconds.
 const REFRESH_SECONDS = 30;
 
-// Friendly labels for each component the backend reports.
-const LABELS: Record<string, string> = {
+// Integration names as their vendors write them.
+const COMPONENT_LABELS: Record<string, string> = {
   keycloak: "Keycloak",
   harbor: "Harbor",
   gitlab: "GitLab",
   argocd: "Argo CD",
 };
 
-// Storage rows are titled by their backend name directly.
-const BACKEND_LABELS: Record<string, string> = { postgres: "PostgreSQL", redis: "Redis" };
+// What each component does for the portal. An admin opening this page during an
+// incident should not have to remember which system holds what.
+const COMPONENT_ROLE: Record<string, string> = {
+  keycloak: "Вход в портал и группы пользователей",
+  harbor: "Реестр чартов: каталог, версии и формы заказа",
+  gitlab: "Репозитории и merge request заказов",
+  argocd: "Выкатка заказов в кластер и их состояние",
+  store: "База портала: заказы, публикации, категории",
+  cache: "Кеш: ускоряет выдачу файлов чартов",
+};
 
-// Friendly labels for background reconcilers (the poller's loops).
-const RECONCILER_LABELS: Record<string, string> = {
-  provisioning: "Провижининг заказов",
-  drift: "Детект дрейфа (Git)",
-  import: "Импорт из Git",
-  "catalog-discovery": "Автоскан каталога",
-  "argocd-fake": "ArgoCD (fake)",
+// Storage rows are titled by their backend.
+const BACKEND_LABELS: Record<string, string> = {
+  postgres: "PostgreSQL",
+  redis: "Redis",
+  memory: "В памяти процесса",
+};
+
+// The background loops, in terms of what they do. "Reconciler" is an
+// implementation word; the page says what stops happening if one of them fails.
+const RECONCILERS: Record<string, { label: string; what: string }> = {
+  provisioning: {
+    label: "Проведение заказов",
+    what: "Продвигает заказы по этапам: merge request, слияние, выкатка, готовность.",
+  },
+  drift: {
+    label: "Контроль изменений в Git",
+    what: "Замечает правки, внесённые в Git мимо портала, и отмечает такие заказы.",
+  },
+  import: {
+    label: "Импорт из Git",
+    what: "Находит сервисы, заведённые в Git напрямую, и добавляет их в список заказов.",
+  },
+  "catalog-discovery": {
+    label: "Поиск сервисов в реестре",
+    what: "Ищет в реестре новые чарты и заводит для них черновики публикаций.",
+  },
+  "argocd-fake": {
+    label: "Argo CD (заглушка)",
+    what: "Имитирует выкатку, чтобы портал работал без настоящего Argo CD.",
+  },
 };
 
 // ago renders a coarse "N units назад" from an RFC3339 timestamp.
 function ago(iso?: string): string {
-  if (!iso) return "ещё не выполнялся";
+  if (!iso) return "ещё не выполнялась";
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return "";
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
@@ -42,6 +84,12 @@ function ago(iso?: string): string {
   const h = Math.round(m / 60);
   if (h < 24) return `${h} ч назад`;
   return `${Math.round(h / 24)} дн назад`;
+}
+
+// count returns how many of a list are not ok, and how many there are.
+function tally<T>(items: T[], ok: (x: T) => boolean): { ok: number; total: number; broken: number } {
+  const good = items.filter(ok).length;
+  return { ok: good, total: items.length, broken: items.length - good };
 }
 
 export function StatusPage() {
@@ -55,8 +103,8 @@ export function StatusPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // System status is a platform-admin tool (the topbar link is hidden for others;
-  // this guards a direct URL visit too).
+  // System status is a platform-admin tool (the sidebar entry is hidden for
+  // others; this guards a direct URL visit too).
   if (user?.role !== "admin") {
     return (
       <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -65,27 +113,40 @@ export function StatusPage() {
     );
   }
 
-  const integrations = (data?.components ?? []).filter((c) => c.kind === "integration");
-  const storage = (data?.components ?? []).filter((c) => c.kind === "storage");
+  const components = data?.components ?? [];
+  const integrations = components.filter((c) => c.kind === "integration");
+  const storage = components.filter((c) => c.kind === "storage");
+  const capabilities = data?.capabilities ?? [];
+  const reconcilers = data?.reconcilers ?? [];
+
+  const capCount = tally(capabilities, (c) => c.ok);
+  const intCount = tally(integrations, (c) => c.status === "ok");
+  const stoCount = tally(storage, (c) => c.status === "ok");
+  const loopCount = tally(reconcilers, (r) => r.status === "ok");
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <div className="flex items-center justify-between">
+    // The page stays within the viewport: the header keeps its place and only
+    // the sections below it scroll, so the verdict and the refresh button are
+    // still there after scrolling down to a failing component.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Статус системы</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Состояние платформы</h1>
           {data &&
             (data.healthy ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                <Dot ok /> Всё работает
+                <IconCircleCheck size={14} stroke={2} /> Всё работает
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
-                <Dot /> Есть проблемы
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                <IconAlertTriangle size={14} stroke={2} /> Есть проблемы
               </span>
             ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">автообновление каждые {REFRESH_SECONDS} сек</span>
+          <span className="hidden text-xs text-slate-400 sm:inline">
+            обновляется каждые {REFRESH_SECONDS} сек
+          </span>
           {safeHref(data?.grafana_url) && (
             <a
               href={safeHref(data?.grafana_url)}
@@ -93,116 +154,244 @@ export function StatusPage() {
               rel="noopener noreferrer"
               className={buttonClass("secondary", "gap-1.5")}
             >
-              Grafana
+              Графики в Grafana
               <IconExternalLink size={14} stroke={1.8} />
             </a>
           )}
-          <Button variant="secondary" onPress={reload} isDisabled={loading}>
-            {loading ? "Обновление…" : "Обновить"}
+          <Button variant="secondary" onPress={reload} isDisabled={loading} className="gap-1.5">
+            <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+            {loading ? "Обновляем…" : "Обновить"}
           </Button>
         </div>
       </div>
 
-      {loading && !data ? (
-        <SkeletonRows rows={4} />
-      ) : error ? (
-        <ErrorBox error={error} />
-      ) : (
-        <>
-          <Section title="Интеграции" items={integrations} />
-          <Section title="Хранилища" items={storage} />
-          <ReconcilerSection items={data?.reconcilers ?? []} />
-        </>
-      )}
-    </div>
-  );
-}
-
-function ReconcilerSection({ items }: { items: ReconcilerStatus[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Фоновые циклы</h2>
-        <span className="text-xs text-slate-400">подробности и графики - в Grafana</span>
-      </div>
-      <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-        {items.map((r) => {
-          const ok = r.status === "ok";
-          return (
-            <div key={r.name} className="flex items-start justify-between gap-4 px-4 py-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Dot ok={ok} />
-                  <span className="font-medium text-slate-800">{RECONCILER_LABELS[r.name] ?? r.name}</span>
-                </div>
-                <p className="mt-0.5 pl-5 text-xs text-slate-500">последний успех: {ago(r.last_success)}</p>
-                {!ok && r.last_error && (
-                  <p className="mt-1 break-words pl-5 text-xs text-red-600">{r.last_error}</p>
-                )}
-              </div>
-              <span className={`shrink-0 text-sm font-medium ${ok ? "text-emerald-600" : "text-red-600"}`}>
-                {ok ? "OK" : "Сбой"}
-              </span>
+      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
+          room the clipping edge would otherwise cut off. */}
+      <div className="scroll-slim -mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 pb-1">
+        {loading && !data ? (
+          <SkeletonRows rows={6} />
+        ) : error ? (
+          <ErrorBox error={error} onRetry={reload} />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Tile
+                label="Возможности портала"
+                count={capCount}
+                caption={
+                  capCount.broken === 0 ? "доступны пользователям" : "недоступны пользователям"
+                }
+                Icon={IconUsers}
+              />
+              <Tile
+                label="Интеграции"
+                count={intCount}
+                caption="внешних систем отвечают"
+                Icon={IconPlugConnected}
+              />
+              <Tile
+                label="Хранилища"
+                count={stoCount}
+                caption="база и кеш отвечают"
+                Icon={IconDatabase}
+              />
+              <Tile
+                label="Фоновые задачи"
+                count={loopCount}
+                caption={loopCount.broken === 0 ? "выполняются штатно" : "со сбоями"}
+                Icon={IconRepeat}
+              />
             </div>
-          );
-        })}
+
+            <Section
+              title="Что доступно пользователям"
+              hint="Итог для тех, кто работает с порталом: что можно делать прямо сейчас. То же самое видит пользователь по значку состояния в верхней панели."
+            >
+              <Grid cols={3}>
+                {capabilities.map((c) => (
+                  <CapabilityCard key={c.id} cap={c} />
+                ))}
+              </Grid>
+            </Section>
+
+            <Section
+              title="Интеграции"
+              hint="Внешние системы, на которых работает портал. Портал опрашивает их сам, в фоне."
+            >
+              <Grid cols={2}>
+                {integrations.map((c) => (
+                  <ComponentCard key={c.name} c={c} />
+                ))}
+              </Grid>
+            </Section>
+
+            <Section title="Хранилища" hint="База данных портала и кеш.">
+              <Grid cols={2}>
+                {storage.map((c) => (
+                  <ComponentCard key={c.name} c={c} />
+                ))}
+              </Grid>
+            </Section>
+
+            <Section
+              title="Фоновые задачи"
+              hint="Портал работает не только на запросы пользователей: эти задачи повторяются сами и держат данные в актуальном виде. История запусков и графики - в Grafana."
+            >
+              <Grid cols={2}>
+                {reconcilers.map((r) => (
+                  <ReconcilerCard key={r.name} r={r} />
+                ))}
+              </Grid>
+            </Section>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function Section({ title, items }: { title: string; items: ComponentStatus[] }) {
-  if (items.length === 0) return null;
+// Grid keeps the page filling its column without stretching a card to the width
+// of a wide screen: two or three per row, one on a narrow one.
+function Grid({ cols, children }: { cols: 2 | 3; children: ReactNode }) {
   return (
-    <div>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
-      <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-        {items.map((c) => (
-          <Row key={c.name} c={c} />
-        ))}
+    <div
+      className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${cols === 3 ? "xl:grid-cols-3" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Section({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
+      <p className="mb-3 mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">{hint}</p>
+      {children}
+    </section>
+  );
+}
+
+function Tile({
+  label,
+  count,
+  caption,
+  Icon,
+}: {
+  label: string;
+  count: { ok: number; total: number; broken: number };
+  caption: string;
+  Icon: typeof IconUsers;
+}) {
+  const ok = count.broken === 0;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+          ok ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+        }`}
+      >
+        <Icon size={20} stroke={1.8} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-lg font-semibold leading-tight text-slate-900">
+          {ok ? count.total : `${count.broken} из ${count.total}`}
+        </div>
+        <div className="truncate text-xs font-medium text-slate-700">{label}</div>
+        <div className="truncate text-xs text-slate-400">{caption}</div>
       </div>
     </div>
   );
 }
 
-function Row({ c }: { c: ComponentStatus }) {
-  const ok = c.status === "ok";
+// Card is the frame every row on this page shares: a status dot, a title, a
+// verdict on the right, and room for the detail below.
+function Card({
+  ok,
+  title,
+  verdict,
+  children,
+}: {
+  ok: boolean;
+  title: ReactNode;
+  verdict: string;
+  children?: ReactNode;
+}) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3">
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <Dot ok={ok} />
-          <span className="font-medium text-slate-800">
-            {c.kind === "storage" ? (BACKEND_LABELS[c.mode] ?? c.mode) : (LABELS[c.name] ?? c.name)}
-          </span>
+          <span
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`}
+          />
+          <span className="truncate font-medium text-slate-800">{title}</span>
         </div>
-        {safeHref(c.url) && (
-          <a
-            href={safeHref(c.url)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-0.5 inline-flex items-center gap-1 pl-5 text-xs text-brand-600 hover:text-brand-700 hover:underline"
-          >
-            {c.url}
-            <IconExternalLink size={12} stroke={1.8} />
-          </a>
-        )}
-        {!ok && c.detail && (
-          <p className="mt-1 break-words pl-5 text-xs text-red-600">{c.detail}</p>
-        )}
+        <div className="pl-4">{children}</div>
       </div>
-      <span className={`shrink-0 text-sm font-medium ${ok ? "text-emerald-600" : "text-red-600"}`}>
-        {ok ? "OK" : "Ошибка"}
+      <span className={`shrink-0 text-sm font-medium ${ok ? "text-emerald-600" : "text-amber-600"}`}>
+        {verdict}
       </span>
     </div>
   );
 }
 
-function Dot({ ok = false }: { ok?: boolean }) {
+function CapabilityCard({ cap }: { cap: CapabilityStatus }) {
+  const text = capabilityText(cap.id);
   return (
-    <span
-      className={`inline-block h-2 w-2 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-red-500"}`}
-    />
+    <Card ok={cap.ok} title={text.label} verdict={cap.ok ? "Доступно" : "Недоступно"}>
+      <p className="mt-1 text-xs leading-relaxed text-slate-500">
+        {cap.ok ? "Работает как обычно." : text.impact}
+      </p>
+    </Card>
+  );
+}
+
+function ComponentCard({ c }: { c: ComponentStatus }) {
+  const ok = c.status === "ok";
+  const title =
+    c.kind === "storage" ? (BACKEND_LABELS[c.mode] ?? c.mode) : (COMPONENT_LABELS[c.name] ?? c.name);
+  return (
+    <Card ok={ok} title={title} verdict={ok ? "Отвечает" : "Не отвечает"}>
+      {COMPONENT_ROLE[c.name] && (
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">{COMPONENT_ROLE[c.name]}</p>
+      )}
+      {safeHref(c.url) && (
+        <a
+          href={safeHref(c.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1 truncate text-xs text-brand-600 hover:text-brand-700 hover:underline"
+        >
+          {c.url}
+          <IconExternalLink size={12} stroke={1.8} className="shrink-0" />
+        </a>
+      )}
+      {!ok && c.detail && <Detail text={c.detail} />}
+    </Card>
+  );
+}
+
+function ReconcilerCard({ r }: { r: ReconcilerStatus }) {
+  const ok = r.status === "ok";
+  const meta = RECONCILERS[r.name];
+  return (
+    <Card ok={ok} title={meta?.label ?? r.name} verdict={ok ? "В норме" : "Сбой"}>
+      {meta && <p className="mt-1 text-xs leading-relaxed text-slate-500">{meta.what}</p>}
+      <p className="mt-1.5 text-xs text-slate-400">
+        последний успешный запуск: {ago(r.last_success)}
+        {r.last_run_ms ? ` · ${r.last_run_ms} мс` : ""}
+      </p>
+      {!ok && r.last_error && <Detail text={r.last_error} />}
+    </Card>
+  );
+}
+
+// Detail is the raw failure, kept apart from the product wording: monospaced,
+// wrapped, and clearly a machine's words rather than the page's.
+function Detail({ text }: { text: string }) {
+  return (
+    <p className="mt-2 break-words rounded bg-red-50 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-red-700">
+      {text}
+    </p>
   );
 }

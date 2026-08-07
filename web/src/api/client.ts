@@ -9,11 +9,13 @@ import type {
   ChartCheckResult,
   ChartPublication,
   ChartVersion,
+  ConfigResponse,
   CreateOrderBody,
   FieldError,
   JSONSchema,
   OrderRequest,
   PendingVersion,
+  PlatformHealth,
   PublicationDetail,
   PublicationVersion,
   RequestDetail,
@@ -76,6 +78,15 @@ export function setUnauthorizedHandler(h: (() => void) | null) {
   unauthorizedHandler = h;
 }
 
+// Central "an upstream just failed" handler, registered by the platform-health
+// layer. A request that came back 502 is the earliest evidence the portal has
+// that something outside it broke - earlier than any poll - so it is worth
+// re-asking what still works right away instead of waiting for the next tick.
+let upstreamFailureHandler: (() => void) | null = null;
+export function setUpstreamFailureHandler(h: (() => void) | null) {
+  upstreamFailureHandler = h;
+}
+
 async function req<T>(
   method: string,
   path: string,
@@ -115,6 +126,7 @@ async function req<T>(
       /* non-JSON error */
     }
     if (res.status === 401) unauthorizedHandler?.();
+    if (parsed?.error === "upstream_unavailable") upstreamFailureHandler?.();
     throw new HttpError(res.status, parsed);
   }
   if (res.status === 204) return undefined as T;
@@ -256,6 +268,12 @@ export const api = {
 
   // system status (integrations + storage health)
   getSystemStatus: () => req<SystemStatus>("GET", "/status"),
+  // runtime configuration, read-only (admin)
+  getConfig: () => req<ConfigResponse>("GET", "/config"),
+  // What the portal can do right now. Answers without a session, so the sign-in
+  // screen can ask it too.
+  getPlatformHealth: (signal?: AbortSignal) =>
+    req<PlatformHealth>("GET", "/platform/health", undefined, signal),
 
   // about: portal version + changelog
   getAbout: () => req<AboutInfo>("GET", "/info"),

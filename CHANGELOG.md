@@ -39,6 +39,15 @@ All notable changes to this project are documented in this file.
   Namespace field and shows the namespace the chart will use.
 - An order with an open merge request shows a banner linking to it and refuses
   further changes until it is closed.
+- The portal says when part of the platform is not responding: a message above
+  the page names what is unavailable right now, and a state icon in the top bar
+  lists what works and what does not.
+- Actions that cannot go through are switched off with an explanation instead of
+  failing halfway: signing in while the sign-in service is down, ordering or
+  changing a service while the platform cannot accept it. Drafts are still saved.
+- A Configuration page in the Admin section: every setting the portal runs with,
+  what it accepts and what it falls back to. Read-only, and passwords and tokens
+  are never shown - only whether they are set.
 
 ### Changed
 - The sign-in screen shows what the portal does instead of setting services up
@@ -78,8 +87,14 @@ All notable changes to this project are documented in this file.
 - The changelog on the About page reads the way a service's changes do -
   categories as coloured marks, versions set apart - and it is the project's
   real changelog rather than a forgotten copy that stopped being updated.
+- Platform state fills the page and explains itself: what users can do right
+  now, what each external system is responsible for, and what the background
+  tasks actually keep up to date.
 
 ### Removed
+- The fake registry, git server and delivery system are gone from the running
+  portal: it always talks to the real ones and refuses to start without their
+  addresses and tokens. Before starting a new installation, set them up.
 - The Applications page, which had no entry in the menu and duplicated the order
   list.
 - The demonstration services and categories a fresh installation used to be

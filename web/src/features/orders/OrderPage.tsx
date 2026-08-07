@@ -5,6 +5,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-
 import { api, HttpError } from "../../api/client";
 import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "../../api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "../../app/CatalogContext";
+import { usePlatformHealth } from "../../app/PlatformHealthContext";
 import { useTeam } from "../../app/TeamContext";
 import { useUser } from "../../auth/UserContext";
 import { Breadcrumbs } from "../../components/Breadcrumbs";
@@ -85,6 +86,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Team is chosen globally (topbar); the order form doesn't ask for it.
   const { team: activeTeam } = useTeam();
   const { charts, loading: catalogLoading } = useCatalog();
+  // Filing an order opens a merge request, so it needs the platform behind it.
+  // Saving a draft does not - it only writes to the portal's own storage - so
+  // the work already typed into the form is never lost to an outage.
+  const orderOutage = usePlatformHealth().blockedReason("ordering");
 
   // In edit mode, load the draft we're continuing. Its chart coordinates and
   // pinned version drive the rest of the page.
@@ -651,24 +656,51 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         />
       )}
 
+      {/* The banner at the top of the page says the platform is degraded, but
+          this form is long and the banner can be scrolled away or dismissed - a
+          greyed-out button with no explanation next to it reads as a bug. Opens
+          and closes as a grid row so a poll landing mid-form does not shift the
+          buttons under the cursor. */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${
+          orderOutage ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <p
+            role="status"
+            aria-hidden={!orderOutage}
+            className={`rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 transition-opacity motion-reduce:transition-none ${
+              orderOutage ? "opacity-100 delay-150 duration-200" : "opacity-0 duration-100"
+            }`}
+          >
+            {orderOutage}
+          </p>
+        </div>
+      </div>
+
       <div className="flex gap-2">
         {upgrade ? (
-          <Button
-            variant="primary"
-            isDisabled={submitting || !targetVersion}
-            onPress={doUpgrade}
-          >
-            {busy === "submit" ? "Обновляем…" : `Обновить до ${targetVersion}`}
-          </Button>
-        ) : (
-          <>
+          <span title={orderOutage}>
             <Button
               variant="primary"
-              isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam)}
-              onPress={submit}
+              isDisabled={submitting || !targetVersion || !!orderOutage}
+              onPress={doUpgrade}
             >
-              {busy === "submit" ? "Заказываем…" : "Заказать"}
+              {busy === "submit" ? "Обновляем…" : `Обновить до ${targetVersion}`}
             </Button>
+          </span>
+        ) : (
+          <>
+            <span title={orderOutage}>
+              <Button
+                variant="primary"
+                isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam) || !!orderOutage}
+                onPress={submit}
+              >
+                {busy === "submit" ? "Заказываем…" : "Заказать"}
+              </Button>
+            </span>
             <Button variant="secondary" isDisabled={submitting || !effectiveVersion} onPress={saveDraft}>
               {busy === "draft" ? "Сохраняем…" : "Сохранить черновик"}
             </Button>
