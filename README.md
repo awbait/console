@@ -1,216 +1,164 @@
-# Internal Developer Portal
+<h1 align="center">Console</h1>
 
-Go backend + React SPA: каталог Helm-чартов из **Harbor**, self-service заказ
-managed-services через **GitOps-MR** в GitLab, наблюдение за деплоем через
-**Argo CD**.
+<p align="center">
+  <strong>Внутренний портал разработчика над GitOps.</strong><br>
+  Команды сами заказывают managed-сервисы через каталог, а платформа остаётся в Git.
+</p>
 
-Полная спецификация - [`docs/idp-spec.md`](./docs/idp-spec.md), конвенция чартов -
-[`docs/chart-convention.md`](./docs/chart-convention.md).
+<p align="center">
+  <a href="https://github.com/awbait/console/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/awbait/console/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/awbait/console/releases"><img alt="Release" src="https://img.shields.io/github/v/release/awbait/console?sort=semver"></a>
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white">
+</p>
+
+<p align="center">
+  <img alt="Каталог сервисов" src="web/public/docs-content/images/catalog.png" width="900">
+</p>
+
+## Зачем
+
+Заказ managed-сервиса обычно выглядит как заявка в поддержку: команда описывает,
+что ей нужно, инженер платформы руками готовит манифесты, кто-то это ревьюит,
+кто-то выкатывает. Дни ожидания, разные результаты у разных инженеров и никакого
+следа, кроме переписки.
+
+Console превращает это в самообслуживание, ничего не ломая в GitOps: заказ из
+формы становится merge request в Git, Argo CD приводит кластер к описанному
+состоянию, а портал ведёт сервис до готовности и дальше - через обновления,
+изменения и вывод из эксплуатации. Git остаётся источником истины, портал -
+витриной и регламентом.
+
+Кому это нужно:
+
+- **Командам разработки** - заказать сервис за минуты и видеть его состояние, не
+  разбираясь в Helm, Argo CD и структуре GitOps-репозитория.
+- **Платформенной команде** - один стандартный путь вместо десятка ручных, с
+  согласованием того, что попадает в каталог.
+- **Поддержке и ИБ** - общая картина по всем командам: проблемные сервисы,
+  расхождения с Git, согласование политик.
 
 ## Возможности
 
-- Каталог чартов из Harbor (живой листинг, новые версии видны сразу),
-  README / CHANGELOG / values / schema из артефакта.
-- Заказ сервиса -> коммит `application.yaml` + `values.yaml` в GitLab -> MR ->
-  Argo CD деплоит чарт из Harbor. Статус заказа (`DRAFT -> ... -> HEALTHY`) через
-  поллер + live-обновления по SSE.
-- Обратная синхронизация с Git: drift-детект (правки мимо портала), pull
-  («Подтянуть из Git»), import осиротевших манифестов.
-- Страница «Статус»: здоровье интеграций (Keycloak / Harbor / GitLab / Argo CD) и
-  хранилищ.
+### Каталог и заказ
 
-## Архитектура запуска
+Каталог собирается из чартов в Harbor: описание, версии, README, CHANGELOG,
+values и схема - всё из самого артефакта. Форма заказа строится по
+`values.schema.json`, поэтому новый сервис не требует правок в портале; рядом -
+сырой YAML в Monaco для тех, кому так быстрее. Сервис публикуется версия за
+версией: у каждой своя форма и своё согласование.
 
-В разработке **инфраструктура крутится в Docker**, а **portal и web запускаются из
-исходников** (live-reload) - так правится и бэкенд, и фронт без пересборки
-контейнеров.
+### Жизненный цикл сервиса
 
-| Слой | Где | Команда |
-|---|---|---|
-| Postgres + Valkey + Keycloak | Docker (compose) | `make infra` |
-| Backend (portal) | хост, `go run` | `make run-oidc` |
-| Frontend (SPA) | хост, Vite | `make web` |
+Заказ проходит путь `DRAFT -> MR_CREATED -> MR_MERGED -> DEPLOYING -> HEALTHY`;
+состояние обновляется поллером и приезжает в интерфейс по SSE, без перезагрузки
+страницы. История заказа читается как список событий с именами тех, кто
+действовал.
 
-Upstream'ы (Harbor / GitLab / Argo CD) по умолчанию **fake** (in-memory) - happy-path
-заказа гоняется без какой-либо инфраструктуры. Реальный стек - опциональный e2e-стенд
-(см. ниже).
+### Обратная синхронизация с Git
 
-## Требования
+Git правят и мимо портала - это нормально, и портал это учитывает: детект дрейфа
+отмечает разошедшиеся заказы, «Подтянуть из Git» переносит состояние Git в
+портал, импорт подбирает манифесты, созданные напрямую.
 
-- Docker + docker compose (Docker Desktop или engine + plugin)
-- Go 1.26+
-- [bun](https://bun.sh) 1.x (фронтенд; npm не используется)
-- `make`, `git`
+### Поддержка и информационная безопасность
 
-## Быстрый старт (dev-loop)
+Поддержка видит заказы всех команд и помогает с ними, не будучи владельцем. Для
+ИБ - согласование сетевых политик и карта взаимодействия сервисов, из которой
+заказ политик собирается прямо на месте.
 
-Полный локальный запуск - три команды по порядку, каждая в своём терминале:
+<p align="center">
+  <img alt="Панель поддержки" src="web/public/docs-content/images/support-overview.png" width="900">
+</p>
 
-1. Инфраструктура в Docker (Postgres + Valkey + Keycloak), detached:
-   ```sh
-   make infra
-   ```
-2. Бэкенд на :8080 - OIDC против Keycloak + Postgres/Valkey (сессии и заказы
-   переживают рестарт):
-   ```sh
-   make run-oidc
-   ```
-3. Фронтенд (Vite) на :5173 (live-reload, проксирует `/api` -> :8080):
-   ```sh
-   make web
-   ```
+### Видимое состояние платформы
 
-Открыть **http://localhost:5173** -> «Войти через Keycloak». Браузер и портал делят
-один issuer `http://localhost:8081/realms/internal`, поэтому портал запускается на
-хосте. Метрики/дашборды: добавь `make obs`. Полный e2e с настоящими GitLab /
-Harbor / Argo CD - отдельный KinD-стенд, см. `deployments/kind/README.md`.
+Портал стоит перед четырьмя внешними системами и не молчит, когда одна из них
+падает: значок в верхней панели говорит, что работает, а что нет, действия,
+которые сейчас не пройдут, выключены с пояснением, а администратору доступны
+состояние каждого компонента и вся конфигурация запуска.
 
-Остановить инфраструктуру: `make down` (сносит контейнеры и volume'ы).
+## Архитектура
 
-> Аутентификация - только OIDC. Режим без Keycloak (`AUTH_MODE=dev`) остался лишь
-> как тестовая заглушка (`internal/auth/dev.go`) и при запуске бинаря отклоняется.
+![Архитектура](web/public/docs-content/images/architecture.png)
 
-## Вход через Keycloak
+Портал - один Go-бинарь с тремя доменами (каталог, провижининг, статус) и вшитым
+SPA. Своего состояния кластера он не держит:
 
-Тестовые пользователи (realm `internal`, импортируется в Keycloak автоматически):
-
-| Пользователь | Пароль | Группы | Роль |
-|---|---|---|---|
-| `alice` | `alice` | `team-core`, `team-dbaas` | member (команды `core`, `dbaas`) |
-| `padmin` | `padmin` | `platform-admins`, `team-core`, `team-dbaas` | admin |
-| `support` | `support` | `support` | support (просмотр/правка заказов всех команд) |
-| `security` | `security` | `security` | security (раздел ИБ) |
-
-Keycloak admin-консоль: http://localhost:8081 (`admin` / `admin`).
-
-> Доступ с другой машины (LAN): добавь `http://<твой-host>:5173/` и
-> `http://<твой-host>:5173/api/v1/auth/callback` в клиент `portal`
-> (Valid redirect URIs / Web origins / Valid post logout redirect URIs) и запусти
-> бэкенд с соответствующими `OIDC_*` (на Windows удобно
-> `deployments/scripts/run-oidc.ps1 -BindHost <ip>`).
-
-## Эндпоинты
-
-| URL | Что |
+| Система | Роль |
 |---|---|
-| http://localhost:5173 | Фронтенд (Vite, dev) - открывать здесь |
-| http://localhost:8080 | Портал: API + встроенный SPA (`/health`, `/ready`, `/metrics`) |
-| http://localhost:8081 | Keycloak (`admin` / `admin`) |
+| **Harbor** | реестр чартов: каталог, версии, values, схемы |
+| **GitLab** | GitOps-репозитории команд, merge request на каждое изменение |
+| **Argo CD** | выкатка чартов в кластер и фактическое состояние сервисов |
+| **Keycloak** | вход и группы, из которых выводятся роли и команды |
+| **PostgreSQL** | заказы, публикации, категории |
+| **Valkey / Redis** | сессии и кеш файлов чартов |
 
-## Наблюдаемость (Prometheus + Grafana)
+Как проходит заказ:
 
-Portal отдаёт метрики в формате Prometheus на `/metrics`. Поднять стек мониторинга
-(работает вместе с `make run-oidc`):
+```mermaid
+sequenceDiagram
+    actor U as Команда
+    participant C as Console
+    participant G as GitLab
+    participant A as Argo CD
+    participant K as Кластер
+
+    U->>C: заполняет форму заказа
+    C->>G: коммит application.yaml + values.yaml, merge request
+    G-->>C: MR слит
+    A->>G: читает состояние из Git
+    A->>K: выкатывает чарт из Harbor
+    C->>A: следит за состоянием приложения
+    C-->>U: заказ HEALTHY
+```
+
+Подробнее - [спецификация](docs/idp-spec.md) и
+[конвенция чартов](docs/chart-convention.md).
+
+## Быстрый старт
+
+Портал работает только с настоящими Harbor, GitLab и Argo CD, поэтому локальный
+запуск начинается со стенда:
 
 ```sh
-make obs        # Prometheus на :9090, Grafana на :3000 (anonymous, дашборд "IDP Platform")
+make stand-up             # KinD: Argo CD + Harbor (Windows/PowerShell)
+make up-upstreams-infra   # Postgres + Valkey + Keycloak + GitLab CE
+make gitlab-seed          # GitOps-группы и токен портала
 ```
 
-Grafana с автоподключённым datasource и дашбордом - открыть **http://localhost:3000**
-(раздел Dashboards -> IDP -> IDP Platform). Prometheus скрейпит host-run portal
-(`make run-oidc`).
+Дальше портал и фронтенд запускаются из исходников, с live-reload:
 
-Прикладные метрики (префикс `console_`):
-
-| Метрика | Тип | Лейблы | Смысл |
-|---|---|---|---|
-| `console_component_up` | gauge | `component`, `kind`, `mode` | доступность компонента платформы (1/0), как на `/api/v1/status` |
-| `console_component_probe_duration_seconds` | histogram | `component` | латентность health-пробы |
-| `console_component_last_probe_timestamp_seconds` | gauge | `component` | время последней пробы (детект зависшего монитора) |
-| `console_orders` | gauge | `status` | число заказов в каждом статусе lifecycle |
-| `console_reconcile_runs_total` | counter | `reconciler`, `result` | тики фонового reconcile (ok/error) |
-| `console_reconcile_duration_seconds` | histogram | `reconciler` | длительность тика reconcile |
-| `console_reconcile_last_success_timestamp_seconds` | gauge | `reconciler` | время последнего успешного тика |
-
-Gauge'и обновляются в фоне с интервалом `STATUS_POLL_INTERVAL`. Помимо них `/metrics`
-отдаёт стандартные Go/process-метрики.
-
-### Логи
-
-Структурный лог (`log/slog`) в stdout. Формат - `LOG_FORMAT` (`json` по умолчанию, `text`
-для dev), уровень - `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, по умолчанию `info`).
-`LOG_LEVEL=debug` включает детальный трейс: HTTP-запросы, тики reconcile, переходы FSM
-заказов и согласований публикаций.
-
-Каждая строка несёт `component=` (api, provisioning, publications, poller, ...), так что
-видно, откуда лог. Сообщения стабильные и событийного стиля, переменные - в атрибутах
-(`order_id`, `request_id`, `from`/`to`, `duration_ms`, ...). Конвенция целиком - в
-doc-комментарии `internal/observability/logger.go`. Пример (`LOG_FORMAT=text`):
-
-```
-level=INFO  msg="http request" component=api method=GET path=/api/v1/status status=200 duration_ms=0 request_id=...
-level=DEBUG msg="order transition" component=provisioning order_id=... from=MR_MERGED to=DEPLOYING actor=system
+```sh
+powershell -File deployments/scripts/run-oidc.ps1   # портал на :8080
+make web                                            # SPA на :5173
 ```
 
-## Опционально: реальный e2e-стенд (KinD)
+Открыть **http://localhost:5173** и войти через Keycloak (`alice` / `alice` -
+обычная команда, `padmin` / `padmin` - администратор платформы).
 
-Полный стек с реальными GitLab CE + Harbor + Argo CD поднимается отдельным
-KinD-стендом. Он тяжёлый (GitLab ~4 ГБ ОЗУ) и **только под Windows/PowerShell**.
-Порядок: `make stand-up` (KinD + Argo CD + Harbor), затем:
+Полный порядок, требования и разбор стенда - в
+[docs/development.md](docs/development.md) и
+[deployments/kind/README.md](deployments/kind/README.md).
 
-- `make up-upstreams-infra` - в Docker бэкенд-сервисы (GitLab + Postgres + Valkey
-  + Keycloak);
-- `run-oidc.ps1 -RealGitlab` + `make web` - portal и фронт на хосте (OIDC,
-  хотрелоад), SPA на :5173.
+## Технологии
 
-Затем `make gitlab-seed` (после healthy). Полная инструкция -
-в [`deployments/kind/README.md`](./deployments/kind/README.md).
+**Backend:** Go, chi, pgx, OIDC (Keycloak), Prometheus, SSE.
+**Frontend:** React 19, React Aria Components, Tailwind, Monaco, React Flow,
+TanStack Query, Vite, bun.
+**Инфраструктура:** PostgreSQL, Valkey, Docker, Helm, Argo CD, Harbor, GitLab.
 
-Чарты в репозитории не вендорятся - их источник Harbor. Засеять Harbor стенда из
-внешнего каталога чартов: `make stand-charts` со `STAND_CHARTS_DIR=<path>`.
+## Документация
 
-## Конфигурация
+| Документ | О чём |
+|---|---|
+| [Спецификация](docs/idp-spec.md) | домены, API, модель данных, RBAC |
+| [Разработка](docs/development.md) | локальный запуск, стенд, структура репозитория |
+| [Наблюдаемость](docs/observability.md) | метрики, логи, дашборд Grafana |
+| [Конвенция чартов](docs/chart-convention.md) | что портал ждёт от чарта в Harbor |
+| [Несколько версий сервиса](docs/multi-version-publications.md) | публикация версия за версией |
+| [Польза и экономия](docs/value-and-savings.md) | аргументация и методика расчёта эффекта |
+| [Журнал изменений](CHANGELOG.ru.md) | что появилось в каждой версии |
 
-Все переменные с описанием - в [`.env.example`](./.env.example) (он же источник
-правды наравне с `internal/config/config.go`; синхронность проверяет тест
-`TestEnvExampleInSync`). Ключевое:
-
-| Переменная | Значения | Назначение |
-|---|---|---|
-| `HARBOR_URL` / `GITLAB_URL` / `ARGOCD_URL` + токены | строка | upstream'ы; без них портал не стартует (fake-режима нет) |
-| `STORE` / `CACHE` | `memory` (деф.) \| `postgres` / `redis` | состояние / кэш + сессии |
-| `AUTH_MODE` | `oidc` | аутентификация |
-| `RBAC_TEAM_GROUP_PREFIX` / `RBAC_TEAM_GROUP_REGEX` | строка | маппинг групп IdP -> команды |
-| `CHART_REGISTRY` | строка | OCI-база chart-source в `application.yaml` (Harbor) |
-| `GITLAB_AUTO_MERGE` | `false` \| `true` | поллер сам мёржит MR (локалка / демо) |
-| `DRIFT_DETECTION_ENABLED` / `IMPORT_DISCOVERY_ENABLED` | bool | обратная синхронизация с Git |
-
-## Фронтенд
-
-SPA на **React + React Aria + Tailwind + Monaco** (Vite, TS) в [`web/`](./web):
-каталог, динамическая форма по `values.schema.json` (+ raw-YAML в Monaco), заказы
-с live-статусом по SSE, страница статуса. Dev-сервер: `make web` (или
-`cd web && bun install && bun run dev`). Пакетный менеджер - **bun** (не npm).
-
-## Структура
-
-```
-cmd/portal/          - entrypoint
-internal/
-  config/            - env-конфиг (источник правды для .env.example)
-  auth/              - OIDC + сессии (Valkey) + RBAC + dev-режим
-  harbor/ gitlab/ argocd/ - порты + fake (тесты) + real HTTP/OCI-клиенты
-  store/ cache/      - Postgres/Valkey (+ миграции) и memory
-  catalog/ changelog/- каталог чартов + парсер CHANGELOG
-  provisioning/      - заказы: FSM, gitops, реконсиляция, drift/import/pull
-  status/ events/    - read-only Argo + поллер; in-process pub/sub для SSE
-  api/               - chi-роутер, хендлеры, SSE, /status
-pkg/models/          - доменные типы
-web/                 - фронтенд
-deployments/
-  docker-compose.yml            - инфра (infra) + полный контейнерный стек (up)
-  docker-compose.upstreams.yml  - оверлей с реальным GitLab CE (для KinD-стенда)
-  keycloak/ gitlab/             - realm-импорт и сид GitLab
-  kind/                         - реальный e2e-стенд (KinD + Argo CD + Harbor), Windows
-  scripts/                      - хост-хелперы (run-oidc, reset-state, seed-import)
-internal/harbor/charts/ - минимальная тест-фикстура чарта (НЕ деплоится)
-```
-
-## Заметки по архитектуре
-
-- **Источник чартов - Harbor**; репозиторий chart-agnostic (реальные чарты живут
-  отдельно и публикуются в Harbor своим пайплайном).
-- **Git - источник истины** для values; `values_yaml` в БД - снимок для UI
-  (drift/pull синхронизируют его с Git).
-- **Одна реплика**: поллер/SSE in-process (техдолг до масштабирования - `TODO.md`).
-- **Один открытый MR на заказ** + оптимистичная блокировка (`version`).
+Пользовательская документация встроена в сам портал - раздел «Документация» в
+меню.
