@@ -46,8 +46,10 @@ export function ConfigPage() {
   const shown = groups.reduce((n, g) => n + g.fields.length, 0);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    // Header and search stay put; only the list of settings scrolls. Fifty rows
+    // are a long way to scroll back up to the search box.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Конфигурация портала</h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
@@ -61,60 +63,62 @@ export function ConfigPage() {
         </Button>
       </div>
 
-      {loading && !data ? (
-        <SkeletonRows rows={8} />
-      ) : error ? (
-        <ErrorBox error={error} onRetry={reload} />
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center gap-3">
-            <SearchField
-              aria-label="Поиск по настройкам"
-              value={query}
-              onChange={setQuery}
-              className="group relative w-full sm:w-80"
-            >
-              <IconSearch
-                size={16}
-                stroke={1.8}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <Input
-                placeholder="Найти настройку"
-                className="h-9 w-full rounded-md border border-slate-300 bg-surface pl-9 pr-9 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500"
-              />
-              <AriaButton className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 outline-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500 group-empty:hidden">
-                <IconX size={14} stroke={2} />
-              </AriaButton>
-            </SearchField>
-            <span className="text-xs text-slate-400">
-              {query ? `${shown} из ${total} настроек` : `${total} настроек`}
-            </span>
-          </div>
-
-          {groups.length === 0 ? (
-            <p className="py-10 text-center text-sm text-slate-500">
-              Ничего не нашлось. Попробуйте другое слово.
-            </p>
-          ) : (
-            groups.map((g) => (
-              <section key={g.id}>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                  {g.label}
-                </h2>
-                {g.hint && (
-                  <p className="mb-3 mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">{g.hint}</p>
-                )}
-                <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-                  {g.fields.map((f, i) => (
-                    <Row key={f.name} f={f} first={i === 0} />
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-        </>
+      {!loading && !error && (
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <SearchField
+            aria-label="Поиск по настройкам"
+            value={query}
+            onChange={setQuery}
+            className="group relative w-full sm:w-80"
+          >
+            <IconSearch
+              size={16}
+              stroke={1.8}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <Input
+              placeholder="Найти настройку"
+              className="h-9 w-full rounded-md border border-slate-300 bg-surface pl-9 pr-9 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500"
+            />
+            <AriaButton className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 outline-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500 group-empty:hidden">
+              <IconX size={14} stroke={2} />
+            </AriaButton>
+          </SearchField>
+          <span className="text-xs text-slate-400">
+            {query ? `${shown} из ${total} настроек` : `${total} настроек`}
+          </span>
+        </div>
       )}
+
+      {/* -mx-1/px-1 keeps the cards' shadows and focus rings off the clipping
+          edge of the scroll box. */}
+      <div className="scroll-slim -mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 pb-1">
+        {loading && !data ? (
+          <SkeletonRows rows={8} />
+        ) : error ? (
+          <ErrorBox error={error} onRetry={reload} />
+        ) : groups.length === 0 ? (
+          <p className="py-10 text-center text-sm text-slate-500">
+            Ничего не нашлось. Попробуйте другое слово.
+          </p>
+        ) : (
+          groups.map((g) => (
+            <section key={g.id}>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                {g.label}
+              </h2>
+              {g.hint && (
+                <p className="mb-3 mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">{g.hint}</p>
+              )}
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+                {g.fields.map((f, i) => (
+                  <Row key={f.name} f={f} first={i === 0} />
+                ))}
+              </div>
+            </section>
+          ))
+        )}
+      </div>
     </div>
   );
 }

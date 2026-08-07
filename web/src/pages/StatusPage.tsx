@@ -125,8 +125,11 @@ export function StatusPage() {
   const loopCount = tally(reconcilers, (r) => r.status === "ok");
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    // The page stays within the viewport: the header keeps its place and only
+    // the sections below it scroll, so the verdict and the refresh button are
+    // still there after scrolling down to a failing component.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-slate-900">Состояние платформы</h1>
           {data &&
@@ -162,76 +165,87 @@ export function StatusPage() {
         </div>
       </div>
 
-      {loading && !data ? (
-        <SkeletonRows rows={6} />
-      ) : error ? (
-        <ErrorBox error={error} onRetry={reload} />
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Tile
-              label="Возможности портала"
-              count={capCount}
-              caption={capCount.broken === 0 ? "доступны пользователям" : "недоступны пользователям"}
-              Icon={IconUsers}
-            />
-            <Tile
-              label="Интеграции"
-              count={intCount}
-              caption="внешних систем отвечают"
-              Icon={IconPlugConnected}
-            />
-            <Tile label="Хранилища" count={stoCount} caption="база и кеш отвечают" Icon={IconDatabase} />
-            <Tile
-              label="Фоновые задачи"
-              count={loopCount}
-              caption={loopCount.broken === 0 ? "выполняются штатно" : "со сбоями"}
-              Icon={IconRepeat}
-            />
-          </div>
+      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
+          room the clipping edge would otherwise cut off. */}
+      <div className="scroll-slim -mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 pb-1">
+        {loading && !data ? (
+          <SkeletonRows rows={6} />
+        ) : error ? (
+          <ErrorBox error={error} onRetry={reload} />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Tile
+                label="Возможности портала"
+                count={capCount}
+                caption={
+                  capCount.broken === 0 ? "доступны пользователям" : "недоступны пользователям"
+                }
+                Icon={IconUsers}
+              />
+              <Tile
+                label="Интеграции"
+                count={intCount}
+                caption="внешних систем отвечают"
+                Icon={IconPlugConnected}
+              />
+              <Tile
+                label="Хранилища"
+                count={stoCount}
+                caption="база и кеш отвечают"
+                Icon={IconDatabase}
+              />
+              <Tile
+                label="Фоновые задачи"
+                count={loopCount}
+                caption={loopCount.broken === 0 ? "выполняются штатно" : "со сбоями"}
+                Icon={IconRepeat}
+              />
+            </div>
 
-          <Section
-            title="Что доступно пользователям"
-            hint="Итог для тех, кто работает с порталом: что можно делать прямо сейчас. То же самое видит пользователь по значку состояния в верхней панели."
-          >
-            <Grid cols={3}>
-              {capabilities.map((c) => (
-                <CapabilityCard key={c.id} cap={c} />
-              ))}
-            </Grid>
-          </Section>
+            <Section
+              title="Что доступно пользователям"
+              hint="Итог для тех, кто работает с порталом: что можно делать прямо сейчас. То же самое видит пользователь по значку состояния в верхней панели."
+            >
+              <Grid cols={3}>
+                {capabilities.map((c) => (
+                  <CapabilityCard key={c.id} cap={c} />
+                ))}
+              </Grid>
+            </Section>
 
-          <Section
-            title="Интеграции"
-            hint="Внешние системы, на которых работает портал. Портал опрашивает их сам, в фоне."
-          >
-            <Grid cols={2}>
-              {integrations.map((c) => (
-                <ComponentCard key={c.name} c={c} />
-              ))}
-            </Grid>
-          </Section>
+            <Section
+              title="Интеграции"
+              hint="Внешние системы, на которых работает портал. Портал опрашивает их сам, в фоне."
+            >
+              <Grid cols={2}>
+                {integrations.map((c) => (
+                  <ComponentCard key={c.name} c={c} />
+                ))}
+              </Grid>
+            </Section>
 
-          <Section title="Хранилища" hint="База данных портала и кеш.">
-            <Grid cols={2}>
-              {storage.map((c) => (
-                <ComponentCard key={c.name} c={c} />
-              ))}
-            </Grid>
-          </Section>
+            <Section title="Хранилища" hint="База данных портала и кеш.">
+              <Grid cols={2}>
+                {storage.map((c) => (
+                  <ComponentCard key={c.name} c={c} />
+                ))}
+              </Grid>
+            </Section>
 
-          <Section
-            title="Фоновые задачи"
-            hint="Портал работает не только на запросы пользователей: эти задачи повторяются сами и держат данные в актуальном виде. История запусков и графики - в Grafana."
-          >
-            <Grid cols={2}>
-              {reconcilers.map((r) => (
-                <ReconcilerCard key={r.name} r={r} />
-              ))}
-            </Grid>
-          </Section>
-        </>
-      )}
+            <Section
+              title="Фоновые задачи"
+              hint="Портал работает не только на запросы пользователей: эти задачи повторяются сами и держат данные в актуальном виде. История запусков и графики - в Grafana."
+            >
+              <Grid cols={2}>
+                {reconcilers.map((r) => (
+                  <ReconcilerCard key={r.name} r={r} />
+                ))}
+              </Grid>
+            </Section>
+          </>
+        )}
+      </div>
     </div>
   );
 }
