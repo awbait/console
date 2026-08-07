@@ -31,10 +31,6 @@ import (
 	"console/pkg/models"
 )
 
-// demoSubgroups are the team subgroups the fake GitLab pre-seeds (in production
-// these are created manually). Mirrors RBAC teams core/dbaas/payments.
-var demoSubgroups = []string{"team-core", "team-dbaas", "team-payments"}
-
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -87,62 +83,32 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return fmt.Errorf("seed categories: %w", err)
 	}
 
-	// --- upstreams (Harbor, GitLab and ArgoCD each have a real client + a fake) ---
-	var hb harbor.Port
-	switch cfg.HarborMode {
-	case config.ModeFake:
-		hb = harbor.NewFake()
-	case config.ModeReal:
-		if cfg.HarborURL == "" {
-			return errors.New("HARBOR_MODE=real requires HARBOR_URL")
-		}
-		if cfg.HarborInsecureTLS {
-			// Legitimate for the local self-signed stand, dangerous in production
-			// (disables cert verification, incl. the robot-cred Basic exchange).
-			// Log loudly so it cannot leak into a real deployment unnoticed.
-			log.Warn("HARBOR_INSECURE_TLS enabled: Harbor TLS verification is OFF (local stand only, never in production)")
-		}
-		hb = harbor.NewClient(cfg.HarborURL, cfg.HarborRobotUser, cfg.HarborRobotToken,
-			cfg.HarborProjects, cfg.HarborInsecureTLS, cfg.HarborTimeout)
-	default:
-		return fmt.Errorf("unknown HARBOR_MODE %q", cfg.HarborMode)
+	// --- upstreams ---
+	// Always the real clients. The in-memory fakes live next to each client and
+	// are used by tests only: a portal that can be pointed at a fake registry by
+	// one environment variable is a portal that can silently serve made-up
+	// charts in production.
+	if cfg.HarborURL == "" {
+		return errors.New("HARBOR_URL is required")
 	}
+	if cfg.HarborInsecureTLS {
+		// Legitimate for the local self-signed stand, dangerous in production
+		// (disables cert verification, incl. the robot-cred Basic exchange).
+		// Log loudly so it cannot leak into a real deployment unnoticed.
+		log.Warn("HARBOR_INSECURE_TLS enabled: Harbor TLS verification is OFF (local stand only, never in production)")
+	}
+	hb := harbor.NewClient(cfg.HarborURL, cfg.HarborRobotUser, cfg.HarborRobotToken,
+		cfg.HarborProjects, cfg.HarborInsecureTLS, cfg.HarborTimeout)
 
-	var gl gitlab.Port
-	var glFake *gitlab.Fake
-	switch cfg.GitLabMode {
-	case config.ModeFake:
-		glFake = gitlab.NewFake(cfg.GitLabGitopsGroup, demoSubgroups, true /* auto-merge */)
-		gl = glFake
-	case config.ModeReal:
-		if cfg.GitLabURL == "" || cfg.GitLabToken == "" {
-			return errors.New("GITLAB_MODE=real requires GITLAB_URL and GITLAB_TOKEN")
-		}
-		gl = gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken, cfg.GitLabGitopsGroup, cfg.GitLabTimeout)
-	default:
-		return fmt.Errorf("unknown GITLAB_MODE %q", cfg.GitLabMode)
+	if cfg.GitLabURL == "" || cfg.GitLabToken == "" {
+		return errors.New("GITLAB_URL and GITLAB_TOKEN are required")
 	}
+	gl := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken, cfg.GitLabGitopsGroup, cfg.GitLabTimeout)
 
-	var argo argocd.Port
-	var argoFake *argocd.Fake
-	switch cfg.ArgoCDMode {
-	case config.ModeFake:
-		// The fake ArgoCD reconciles from "git": both the fake and the real
-		// GitLab client implement ManifestSource, so either can drive it.
-		var src argocd.ManifestSource
-		if ms, ok := gl.(argocd.ManifestSource); ok {
-			src = ms
-		}
-		argoFake = argocd.NewFake(src)
-		argo = argoFake
-	case config.ModeReal:
-		if cfg.ArgoCDURL == "" || cfg.ArgoCDToken == "" {
-			return errors.New("ARGOCD_MODE=real requires ARGOCD_URL and ARGOCD_TOKEN")
-		}
-		argo = argocd.NewClient(cfg.ArgoCDURL, cfg.ArgoCDToken, cfg.GitLabTimeout)
-	default:
-		return fmt.Errorf("unknown ARGOCD_MODE %q", cfg.ArgoCDMode)
+	if cfg.ArgoCDURL == "" || cfg.ArgoCDToken == "" {
+		return errors.New("ARGOCD_URL and ARGOCD_TOKEN are required")
 	}
+	argo := argocd.NewClient(cfg.ArgoCDURL, cfg.ArgoCDToken, cfg.GitLabTimeout)
 
 	// --- domains ---
 	gitops, err := provisioning.NewGitOps(cfg.GitLabGitopsGroup, cfg.GitLabSubgroupTmpl,
@@ -157,8 +123,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		// The poller merges the portal's own MRs with no human review. Fine for
 		// demos; dangerous against a real GitLab. Log loudly so it cannot enable
 		// itself in production unnoticed.
-		log.Warn("GITLAB_AUTO_MERGE enabled: portal MRs are merged without review",
-			"gitlab_mode", string(cfg.GitLabMode))
+		log.Warn("GITLAB_AUTO_MERGE enabled: portal MRs are merged without review")
 	}
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
 	provSvc.Log = observability.Component(log, "provisioning")
@@ -180,11 +145,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}
 
 	// --- poller (single replica, in-process) ---
-	var reconcilers []status.Reconciler
-	if argoFake != nil {
-		reconcilers = append(reconcilers, status.Named("argocd-fake", argoFake)) // materialise apps from "git"
-	}
-	reconcilers = append(reconcilers, status.Named("provisioning", provSvc)) // advance order states
+	reconcilers := []status.Reconciler{status.Named("provisioning", provSvc)} // advance order states
 	if cfg.DriftDetection {
 		reconcilers = append(reconcilers, status.Named("drift", driftReconciler{provSvc})) // flag Git-side drift
 	}
@@ -247,9 +208,6 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		// The loaded config backs the admin configuration page (read-only).
 		Config: cfg,
 		System: api.SystemInfo{
-			HarborMode:   string(cfg.HarborMode),
-			GitLabMode:   string(cfg.GitLabMode),
-			ArgoCDMode:   string(cfg.ArgoCDMode),
 			StoreBackend: backendName(cfg.Store, "postgres", "memory"),
 			CacheBackend: backendName(cfg.Cache, "redis", "memory"),
 			HarborURL:    cfg.HarborURL,
@@ -309,7 +267,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	log.Info("portal starting",
 		"port", cfg.HTTPPort, "metrics_port", cfg.MetricsPort, "auth", cfg.AuthMode,
 		"store", cfg.Store, "cache", cfg.Cache,
-		"harbor", cfg.HarborMode, "gitlab", cfg.GitLabMode, "argocd", cfg.ArgoCDMode)
+		"harbor", cfg.HarborURL, "gitlab", cfg.GitLabURL, "argocd", cfg.ArgoCDURL)
 
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err

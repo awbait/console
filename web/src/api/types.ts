@@ -124,7 +124,7 @@ export interface RequestDetail {
 export interface ComponentStatus {
   name: string; // harbor|gitlab|argocd|store|cache
   kind: "integration" | "storage";
-  mode: string; // integration: fake|real; storage: backend (postgres/memory/redis)
+  mode: string; // storage backend (postgres/memory/redis); empty for integrations
   status: "ok" | "error";
   detail?: string;
   url?: string; // external UI link (integrations only)

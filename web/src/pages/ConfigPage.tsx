@@ -1,4 +1,4 @@
-import { IconAlertTriangle, IconEyeOff, IconRefresh, IconSearch, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconInfoCircle, IconRefresh, IconSearch, IconX } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Button as AriaButton, Input, SearchField } from "react-aria-components";
 import { api } from "../api/client";
@@ -132,6 +132,7 @@ function Row({ f, first }: { f: ConfigField; first: boolean }) {
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="truncate font-mono text-[13px] font-medium text-slate-800">{f.name}</span>
+          <FieldHint f={f} />
           <StateBadge f={f} />
         </div>
         {description && (
@@ -139,71 +140,77 @@ function Row({ f, first }: { f: ConfigField; first: boolean }) {
         )}
       </div>
 
-      <div className="min-w-0">
-        <Value f={f} />
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-          {f.options && f.options.length > 0 && (
-            <span>
-              возможные значения:{" "}
-              {f.options.map((o, i) => (
-                <span key={o}>
-                  {i > 0 && ", "}
-                  <span
-                    className={`font-mono ${o === f.value ? "font-medium text-slate-600" : ""}`}
-                  >
-                    {o}
-                  </span>
-                </span>
-              ))}
-            </span>
-          )}
-          {f.default && (
-            <span>
-              по умолчанию: <span className="font-mono">{f.default}</span>
-            </span>
-          )}
-          {f.sensitive === "password" && (
-            <Hint text="Пароль в строке подключения скрыт. Он есть в конфигурации развёртывания.">
-              <AriaButton className="inline-flex items-center gap-1 rounded text-slate-400 outline-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500">
-                <IconEyeOff size={13} stroke={1.8} />
-                пароль скрыт
-              </AriaButton>
-            </Hint>
-          )}
-        </div>
-      </div>
+      <Value f={f} />
     </div>
   );
 }
 
-// Value renders what the setting is set to: the literal, or an honest stand-in
-// when there is nothing to show.
-function Value({ f }: { f: ConfigField }) {
-  if (f.secret) {
-    if (f.is_empty) return <span className="text-sm text-slate-400">не задано</span>;
-    // A secret still equal to the value the portal ships with is the one case
-    // where "configured" would be a comforting lie.
-    if (f.is_default) {
-      return (
-        <span className="inline-flex items-center gap-1.5 text-sm text-amber-700">
-          <IconAlertTriangle size={14} stroke={1.8} className="text-amber-600" />
-          стандартное значение, его нужно заменить
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-slate-500">
-        <IconEyeOff size={14} stroke={1.8} className="text-slate-400" />
-        задано, значение скрыто
-      </span>
-    );
-  }
-  if (f.is_empty) return <span className="text-sm text-slate-400">не задано</span>;
+// FieldHint carries what a setting accepts and what it falls back to. Those two
+// belong together and neither is worth a line of its own next to fifty other
+// settings, so they live behind the info icon next to the name.
+function FieldHint({ f }: { f: ConfigField }) {
+  const parts: string[] = [];
+  if (f.options && f.options.length > 0) parts.push(`Возможные значения: ${f.options.join(", ")}.`);
+  if (f.default) parts.push(`По умолчанию: ${f.default}.`);
+  if (f.sensitive === "password") parts.push("Пароль в строке подключения скрыт.");
+  if (f.secret) parts.push("Значение не покидает портал: видно только, задано оно или нет.");
+  if (parts.length === 0) return null;
   return (
-    <span className="block break-all font-mono text-[13px] leading-relaxed text-slate-800">
-      {f.value}
-    </span>
+    <Hint text={parts.join(" ")}>
+      <AriaButton
+        aria-label={`Подробнее о ${f.name}`}
+        className="shrink-0 rounded text-slate-300 outline-none transition-colors hover:text-slate-500 focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <IconInfoCircle size={15} stroke={1.8} />
+      </AriaButton>
+    </Hint>
   );
+}
+
+// Value renders what the setting is set to, in a disabled field. A field rather
+// than plain text because the value is a literal someone copies out and, on this
+// page, one they cannot change here: the greyed-out input says both at once.
+function Value({ f }: { f: ConfigField }) {
+  const shown = valueText(f);
+  // A secret still equal to the value the portal ships with is the one case
+  // where "configured" would be a comforting lie.
+  const warn = f.secret && f.is_default;
+  return (
+    <div className="min-w-0">
+      <input
+        readOnly
+        disabled
+        value={shown.text}
+        aria-label={f.name}
+        title={f.is_empty || f.secret ? undefined : f.value}
+        className={`h-9 w-full cursor-default rounded-md border bg-slate-50 px-2.5 text-[13px] outline-none ${
+          warn
+            ? "border-amber-200 text-amber-700"
+            : shown.literal
+              ? "border-slate-200 font-mono text-slate-700"
+              : "border-slate-200 text-slate-400"
+        }`}
+      />
+      {warn && (
+        <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
+          <IconAlertTriangle size={13} stroke={1.8} className="shrink-0 text-amber-600" />
+          Стандартный секрет: его нужно заменить.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// valueText picks what goes into the field, and whether it is a literal (shown
+// monospaced) or a stand-in sentence.
+function valueText(f: ConfigField): { text: string; literal: boolean } {
+  if (f.secret) {
+    if (f.is_empty) return { text: "не задано", literal: false };
+    if (f.is_default) return { text: "стандартное значение", literal: false };
+    return { text: "задано, значение скрыто", literal: false };
+  }
+  if (f.is_empty) return { text: "не задано", literal: false };
+  return { text: f.value, literal: true };
 }
 
 // StateBadge answers the question an admin actually has when scanning the page:

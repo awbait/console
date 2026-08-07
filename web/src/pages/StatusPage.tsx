@@ -341,24 +341,17 @@ function ComponentCard({ c }: { c: ComponentStatus }) {
       {COMPONENT_ROLE[c.name] && (
         <p className="mt-1 text-xs leading-relaxed text-slate-500">{COMPONENT_ROLE[c.name]}</p>
       )}
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        {c.kind === "integration" && (
-          <span className="text-slate-400">
-            режим: <span className="font-medium text-slate-500">{c.mode}</span>
-          </span>
-        )}
-        {safeHref(c.url) && (
-          <a
-            href={safeHref(c.url)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-w-0 items-center gap-1 truncate text-brand-600 hover:text-brand-700 hover:underline"
-          >
-            {c.url}
-            <IconExternalLink size={12} stroke={1.8} className="shrink-0" />
-          </a>
-        )}
-      </div>
+      {safeHref(c.url) && (
+        <a
+          href={safeHref(c.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1 truncate text-xs text-brand-600 hover:text-brand-700 hover:underline"
+        >
+          {c.url}
+          <IconExternalLink size={12} stroke={1.8} className="shrink-0" />
+        </a>
+      )}
       {!ok && c.detail && <Detail text={c.detail} />}
     </Card>
   );

@@ -19,7 +19,7 @@ all agree on.
 - The portal surfaces only the projects listed in `HARBOR_PROJECTS`
   (default `platform,managed-services`).
 
-## How the portal reads it (`HARBOR_MODE=real`)
+## How the portal reads it
 
 - **Metadata** (catalog list, versions, latest, digest) - Harbor API v2.0:
   `GET /api/v2.0/projects/{project}/repositories` and `.../repositories/{chart}/artifacts`.
@@ -58,13 +58,12 @@ This repo is **chart-agnostic** - it does not vendor deployable charts. Charts
 (`ingress-gateway`, `egress`, …) live in their own location/repo and are published
 to **Harbor** by their own pipeline. The portal only knows that some chart exists
 in Harbor and pulls/serves it from there; ArgoCD likewise deploys straight from
-Harbor. At runtime the catalog source is always Harbor (`HARBOR_MODE=real` is the
-default).
+Harbor. At runtime the catalog source is always Harbor - there is no other mode.
 
 The only chart-shaped thing in this repo is a **minimal test fixture** under
 `internal/harbor/charts/<project>/<chart>/`, embedded for the `harbor` unit tests
-and served by `HARBOR_MODE=fake` (tests + zero-infra dev only). It is never used
-in `real` mode and is not a deployable chart.
+and served by the in-memory Harbor fake, which only tests use. It never reaches a
+running portal and is not a deployable chart.
 
 For a local stand, seed Harbor once from an external chart directory:
 `deployments/kind/50-charts.ps1 -ChartsDir <path>` (or `$env:STAND_CHARTS_DIR`) - it

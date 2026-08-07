@@ -92,6 +92,9 @@ All notable changes to this project are documented in this file.
   tasks actually keep up to date.
 
 ### Removed
+- The fake registry, git server and delivery system are gone from the running
+  portal: it always talks to the real ones and refuses to start without their
+  addresses and tokens. Before starting a new installation, set them up.
 - The Applications page, which had no entry in the menu and duplicated the order
   list.
 - The demonstration services and categories a fresh installation used to be

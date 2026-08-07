@@ -167,9 +167,9 @@ KinD-стендом. Он тяжёлый (GitLab ~4 ГБ ОЗУ) и **тольк
 
 | Переменная | Значения | Назначение |
 |---|---|---|
-| `HARBOR_MODE` / `GITLAB_MODE` / `ARGOCD_MODE` | `real` (деф.) \| `fake` | upstream'ы; `real` требует URL/токен (иначе старт падает) |
+| `HARBOR_URL` / `GITLAB_URL` / `ARGOCD_URL` + токены | строка | upstream'ы; без них портал не стартует (fake-режима нет) |
 | `STORE` / `CACHE` | `memory` (деф.) \| `postgres` / `redis` | состояние / кэш + сессии |
-| `AUTH_MODE` | `oidc` \| `dev` | аутентификация |
+| `AUTH_MODE` | `oidc` | аутентификация |
 | `RBAC_TEAM_GROUP_PREFIX` / `RBAC_TEAM_GROUP_REGEX` | строка | маппинг групп IdP -> команды |
 | `CHART_REGISTRY` | строка | OCI-база chart-source в `application.yaml` (Harbor) |
 | `GITLAB_AUTO_MERGE` | `false` \| `true` | поллер сам мёржит MR (локалка / демо) |

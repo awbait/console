@@ -52,9 +52,6 @@ var groups = []struct {
 // them. Booleans and durations are not listed here - their shape is obvious from
 // the value and the default.
 var options = map[string][]string{
-	"HARBOR_MODE":        {"real", "fake"},
-	"GITLAB_MODE":        {"real", "fake"},
-	"ARGOCD_MODE":        {"real", "fake"},
 	"STORE":              {"postgres", "memory"},
 	"CACHE":              {"redis", "memory"},
 	"AUTH_MODE":          {"oidc"},

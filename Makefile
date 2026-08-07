@@ -33,8 +33,21 @@ obs:
 # first). Postgres + Valkey so orders/sessions persist across restarts. Browser
 # and portal share issuer http://localhost:8081/realms/internal.
 # Log in as alice/alice (team-core) or padmin/padmin (platform-admins).
+#
+# The upstreams are always real - there is no fake mode - so Harbor, GitLab and
+# Argo CD have to be reachable and their URLs/tokens set. Those come from the
+# root .env (cp .env.example .env); the local contour below - Postgres, Valkey,
+# Keycloak - is fixed by this target and overrides whatever .env says about it.
+# On the Windows KinD stand there is a runner that already knows every stand
+# address: powershell -File deployments/scripts/run-oidc.ps1
 run-oidc:
-	HARBOR_MODE=fake GITLAB_MODE=fake ARGOCD_MODE=fake \
+	@test -f .env || { \
+		echo ".env is missing: cp .env.example .env, then fill in HARBOR_URL,"; \
+		echo "GITLAB_URL, GITLAB_TOKEN, ARGOCD_URL and ARGOCD_TOKEN."; \
+		echo "The KinD stand provides them: make stand-up (prints the Argo CD token),"; \
+		echo "then make up-upstreams-infra + make gitlab-seed for GitLab."; \
+		exit 1; }
+	set -a; . ./.env; set +a; \
 	STORE=postgres CACHE=redis \
 	DATABASE_URL=postgres://portal:portal@localhost:5432/portal?sslmode=disable \
 	REDIS_URL=redis://localhost:6379/0 \

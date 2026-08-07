@@ -16,9 +16,6 @@ import (
 // SystemInfo carries the configured backend modes + external UI URLs for the
 // status page. It is set once at wiring time (main.go) and is purely descriptive.
 type SystemInfo struct {
-	HarborMode   string // fake|real
-	GitLabMode   string // fake|real
-	ArgoCDMode   string // fake|real
 	StoreBackend string // memory|postgres
 	CacheBackend string // memory|redis
 	HarborURL    string // external UI link (empty in fake mode)
@@ -111,9 +108,9 @@ func (s *Server) probes() []status.Probe {
 	}
 	return []status.Probe{
 		{Name: "keycloak", Kind: "integration", Mode: s.System.AuthMode, URL: issuerBase(s.System.OIDCIssuer), Check: authProbe},
-		{Name: "harbor", Kind: "integration", Mode: s.System.HarborMode, URL: s.System.HarborURL, Check: s.Harbor.Healthz},
-		{Name: "gitlab", Kind: "integration", Mode: s.System.GitLabMode, URL: s.System.GitLabURL, Check: s.GitLab.Healthz},
-		{Name: "argocd", Kind: "integration", Mode: s.System.ArgoCDMode, URL: s.System.ArgoCDURL, Check: s.ArgoCD.Healthz},
+		{Name: "harbor", Kind: "integration", URL: s.System.HarborURL, Check: s.Harbor.Healthz},
+		{Name: "gitlab", Kind: "integration", URL: s.System.GitLabURL, Check: s.GitLab.Healthz},
+		{Name: "argocd", Kind: "integration", URL: s.System.ArgoCDURL, Check: s.ArgoCD.Healthz},
 		{Name: "store", Kind: "storage", Mode: s.System.StoreBackend, Check: s.Store.Ping},
 		{Name: "cache", Kind: "storage", Mode: s.System.CacheBackend, Check: s.Cache.Ping},
 	}
