@@ -1,0 +1,663 @@
+/* Sign-in scene: still installations tilted like a drawing board behind the
+   sign-in panel. The network map cards are the map's own styles
+   (features/graph/core/graph.css), so the picture is the product's visual
+   language rather than a stock illustration; this file builds the plane, the
+   backdrop, the order-story boxes and the motion. */
+
+.login-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* A picture, not a document: nothing here is text to copy, and a stray
+     selection across a tilted plane looks like a rendering fault. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The picture layer. The scene has no frame of its own: it fades out towards
+   the edges of the panel, so nothing is cut off by a hard line. The caption
+   below stays outside this layer - the fade must not eat it. */
+.login-scene__plate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  -webkit-mask-image: radial-gradient(ellipse 78% 78% at 46% 38%, #000 32%, transparent 100%);
+  mask-image: radial-gradient(ellipse 78% 78% at 46% 38%, #000 32%, transparent 100%);
+}
+
+/* Blueprint grid: the surface the board lies on. Faint on purpose - it gives
+   the plane a direction without competing with the cards. */
+.login-scene__grid {
+  position: absolute;
+  /* Oversized far beyond the panel: the layer is tilted and turned, so its own
+     corners swing inside the visible area and its edge shows up as a line
+     across the backdrop. At this size the edge is always off screen. */
+  inset: -80%;
+  background-image:
+    linear-gradient(rgb(var(--c-neutral-300) / 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--c-neutral-300) / 0.5) 1px, transparent 1px);
+  background-size: 52px 52px;
+  transform: perspective(1600px) rotateX(38deg) rotateZ(-22deg);
+}
+
+/* Brand glow under the cards, so the board reads as lit from within. */
+.login-scene__glow {
+  position: absolute;
+  left: 46%;
+  top: 43%;
+  width: 1100px;
+  height: 1100px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgb(var(--c-brand-500) / 0.14), transparent 62%);
+}
+
+/* The board: a fixed-size plane holding the cards and the wire layer in flat
+   coordinates. It is tilted once, as a whole, so the arrows keep meeting the
+   cards exactly where they were drawn. */
+/* The camera: a slow pass across the plane and back. Nothing in the picture
+   moves - the view does, which is what makes a still installation feel alive.
+   Long and shallow on purpose: a drift you can catch yourself watching is a
+   distraction on a sign-in page. */
+.login-scene__camera {
+  position: absolute;
+  inset: 0;
+  animation: login-camera 44s ease-in-out infinite;
+}
+
+/* A closed loop with four stops rather than a two-point sweep: the view never
+   retraces the path it just took, so the movement reads as a camera being
+   carried around the plane instead of a slider going back and forth. */
+@keyframes login-camera {
+  0% {
+    transform: translate3d(-2.4%, 1.5%, 0) scale(0.975) rotate(-0.65deg);
+  }
+  30% {
+    transform: translate3d(1.4%, -0.5%, 0) scale(1.02) rotate(0.3deg);
+  }
+  55% {
+    transform: translate3d(2.6%, -1.7%, 0) scale(1.05) rotate(0.75deg);
+  }
+  80% {
+    transform: translate3d(-0.7%, -0.3%, 0) scale(1.01) rotate(0.1deg);
+  }
+  100% {
+    transform: translate3d(-2.4%, 1.5%, 0) scale(0.975) rotate(-0.65deg);
+  }
+}
+
+/* Sits above the panel's centre: the caption and the pips take the bottom, so
+   the optical middle of the free space is higher than the geometric one. */
+.login-scene__board {
+  position: absolute;
+  left: 50%;
+  top: 43%;
+  width: 940px;
+  height: 460px;
+  /* --login-scale is measured from the panel (see usePlateScale). */
+  transform: translate(-50%, -50%) perspective(1600px) rotateX(38deg) rotateZ(-22deg)
+    scale(var(--login-scale, 1.05));
+  /* Boards are stacked and cross-fade between installations. The one leaving
+     goes first and the one arriving waits for it, so the two pictures never
+     sit half-drawn on top of each other. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 320ms ease;
+}
+
+.login-scene__board--on {
+  opacity: 1;
+  transition: opacity 520ms ease 220ms;
+}
+
+/* Tilted cards need a deeper shadow than the flat canvas: it is what separates
+   them from the plane they float above. */
+.login-scene .rf-wl {
+  box-shadow: 0 24px 32px -22px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+/* The real map boxes are draggable; here they are a picture. */
+.login-scene .rf-ns {
+  cursor: default;
+}
+
+/* Wires run in the board's flat coordinates, on top of the cards they anchor
+   to, and arrive after them. */
+.login-scene__wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  animation: login-fade 900ms ease 420ms backwards;
+}
+
+@keyframes login-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.login-scene__wire {
+  fill: none;
+  stroke: rgb(var(--c-info-500) / 0.55);
+  stroke-width: 1.5;
+}
+
+.login-scene__arrow {
+  fill: rgb(var(--c-info-500) / 0.55);
+}
+
+/* Anchors: a filled dot where traffic starts, an outlined ring where it lands -
+   the same shape language the map uses for sources and ports. */
+.login-scene__source {
+  fill: rgb(var(--c-info-500));
+}
+
+.login-scene__target {
+  fill: rgb(var(--c-surface));
+  stroke: rgb(var(--c-info-500));
+  stroke-width: 2;
+}
+
+/* Traffic dot travelling source -> target, as on the live map. */
+.login-scene__dot {
+  fill: rgb(var(--c-info-500));
+  animation: login-travel 3.4s linear infinite;
+}
+
+@keyframes login-travel {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+
+/* Cards and boxes settle onto the board once, on arrival. */
+.login-scene__item {
+  position: absolute;
+  animation: login-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+}
+
+/* Added while the picture is already standing (the egress gateway and its
+   wire): it arrives on its own, a little more noticeably than the parts that
+   were there from the start. */
+.login-scene__item--enter {
+  animation: login-enter 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@keyframes login-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94);
+  }
+}
+
+.login-scene__wire-group--enter {
+  animation: login-fade 620ms ease 180ms backwards;
+}
+
+/* --- The same order, done both ways --------------------------------------- */
+/* Two columns of equal width: the same job by hand and through the portal.
+   Boxes keep the shape and type scale of the map cards, so both installations
+   read as one product. */
+.login-col {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  width: 380px;
+}
+
+/* Column caption: the side it labels. Quiet on the manual side, accented on
+   the portal side - the difference is the whole point of the picture. */
+.login-col__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(var(--c-neutral-400));
+}
+
+.login-col__title--on {
+  color: rgb(var(--c-brand-600));
+}
+
+/* The manual side is present, but not where the eye is meant to land. */
+.login-col--manual {
+  opacity: 0.75;
+}
+
+/* The lanes the two columns sit in. The manual one is a recess in the plane -
+   flat, colourless, unlit. The portal's is a raised, tinted shelf with a brand
+   edge and its own glow, so the side the picture argues for is obvious at a
+   glance and before any text is read. */
+.login-lane {
+  height: 396px;
+  border-radius: 18px;
+  border: 1px solid rgb(var(--c-neutral-200) / 0.8);
+  background: rgb(var(--c-neutral-50) / 0.5);
+}
+
+.login-lane--on {
+  border-color: rgb(var(--c-brand-200));
+  background: linear-gradient(
+    160deg,
+    rgb(var(--c-brand-50) / 0.95),
+    rgb(var(--c-brand-50) / 0.35) 65%,
+    rgb(var(--c-surface) / 0)
+  );
+  box-shadow: 0 34px 46px -30px rgb(var(--c-brand-600) / 0.45),
+    0 0 0 1px rgb(var(--c-brand-500) / 0.08);
+}
+
+/* The seam between the lanes: a hairline that fades out at both ends, with the
+   direction of the story marked on it. */
+/* The line opens up in the middle to let the chevrons sit on it without a
+   plate behind them: no badge, no shadow, just the direction of the story. */
+.login-divide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1px;
+  height: 376px;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--c-neutral-300) / 0),
+    rgb(var(--c-neutral-300)) 22%,
+    rgb(var(--c-neutral-300)) 43%,
+    rgb(var(--c-neutral-300) / 0) 45%,
+    rgb(var(--c-neutral-300) / 0) 55%,
+    rgb(var(--c-neutral-300)) 57%,
+    rgb(var(--c-neutral-300)) 78%,
+    rgb(var(--c-neutral-300) / 0)
+  );
+}
+
+.login-divide__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--c-brand-600));
+}
+
+.login-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.login-list__note {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(var(--c-brand-600));
+}
+.login-doc {
+  overflow: hidden;
+  border: 1px solid rgb(var(--c-neutral-200));
+  border-radius: 10px;
+  background: rgb(var(--c-surface));
+  box-shadow: 0 24px 32px -22px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+/* The work the portal takes over is drawn a step back: present, but no longer
+   where the eye is meant to land. */
+.login-doc--manual {
+  opacity: 0.72;
+}
+
+.login-doc__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px 6px;
+  border-bottom: 1px solid rgb(var(--c-neutral-100));
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(var(--c-neutral-900));
+}
+
+.login-doc__tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(var(--c-neutral-100));
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgb(var(--c-neutral-500));
+}
+
+.login-doc__body {
+  padding: 8px 10px;
+}
+
+/* Hand-written values: the line that is wrong is coloured, not annotated - at
+   this size a note would be unreadable anyway. */
+.login-code {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* Each line is typed out: the box grows character by character (steps() and
+   the character count come from the markup), so the text appears as it would
+   under someone's hands. */
+.login-code__line {
+  display: block;
+  overflow: hidden;
+  white-space: pre;
+  width: var(--type-w);
+  color: rgb(var(--c-neutral-600));
+  animation-name: login-type;
+  animation-fill-mode: backwards;
+}
+
+@keyframes login-type {
+  from {
+    width: 0;
+  }
+}
+
+.login-code__line--value {
+  color: rgb(var(--c-info-600));
+}
+
+.login-code__line--bad {
+  color: rgb(var(--c-danger-500));
+}
+
+/* Form row: a label and the value the form already holds. */
+.login-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 26px;
+}
+
+.login-field__label {
+  font-size: 11px;
+  color: rgb(var(--c-neutral-500));
+}
+
+/* The field lights up while it is being filled and settles once it holds a
+   value, so the eye follows the form down row by row. */
+.login-field__value {
+  min-width: 108px;
+  padding: 2px 8px;
+  border: 1px solid rgb(var(--c-neutral-200));
+  border-radius: 6px;
+  background: rgb(var(--c-neutral-50));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: rgb(var(--c-neutral-800));
+  animation: login-fill 1000ms ease backwards;
+}
+
+@keyframes login-fill {
+  0%,
+  95% {
+    border-color: rgb(var(--c-brand-500));
+    box-shadow: 0 0 0 2px rgb(var(--c-brand-500) / 0.18);
+  }
+}
+
+.login-field__text {
+  display: inline-block;
+  overflow: hidden;
+  white-space: pre;
+  vertical-align: bottom;
+  width: var(--type-w);
+  animation-name: login-type;
+  animation-fill-mode: backwards;
+}
+
+/* The button waits for the form to be complete, then arrives with one pulse. */
+.login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  margin-top: 8px;
+  border-radius: 6px;
+  background: rgb(var(--c-brand-600));
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(var(--c-on-accent));
+  animation: login-ready 900ms ease backwards;
+}
+
+/* The press: the button dips and lets go a ring, and the order starts moving. */
+.login-btn--press {
+  animation: login-press 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes login-press {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(0.955);
+    box-shadow: 0 0 0 0 rgb(var(--c-brand-500) / 0.5);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgb(var(--c-brand-500) / 0);
+  }
+}
+
+/* An order event, in the shape the order history uses: the status icon in its
+   own tint, then what happened in words. The whole path is on screen from the
+   start; a step is dimmed until the order actually reaches it. */
+.login-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  font-size: 11px;
+  color: rgb(var(--c-neutral-700));
+  opacity: 0.45;
+  transition: opacity 400ms ease;
+}
+
+.login-status--live,
+.login-status--done {
+  opacity: 1;
+}
+
+.login-status--live {
+  font-weight: 600;
+  color: rgb(var(--c-neutral-900));
+}
+
+/* The tint arrives with the step, so the row lights up rather than swapping. */
+.login-status__mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  transition: background-color 400ms ease, color 400ms ease;
+}
+
+/* One ring when a step is reached: the order just moved here. */
+.login-status--live .login-status__mark {
+  animation: login-status-pop 700ms ease;
+}
+
+@keyframes login-status-pop {
+  from {
+    box-shadow: 0 0 0 0 rgb(var(--c-brand-500) / 0.45);
+  }
+  to {
+    box-shadow: 0 0 0 9px rgb(var(--c-brand-500) / 0);
+  }
+}
+
+@keyframes login-ready {
+  0% {
+    opacity: 0.35;
+    box-shadow: none;
+  }
+  60% {
+    opacity: 1;
+    box-shadow: 0 0 0 5px rgb(var(--c-brand-500) / 0.22);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--c-brand-500) / 0);
+  }
+}
+
+/* A step of the job: ticked when the portal does it, an empty circle when it
+   is left to the person. */
+.login-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  font-size: 11px;
+  color: rgb(var(--c-neutral-500));
+}
+
+.login-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 20px;
+  height: 13px;
+  width: 1px;
+  background: rgb(var(--c-neutral-200));
+}
+
+.login-step__mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgb(var(--c-success-100));
+  color: rgb(var(--c-success-700));
+}
+
+/* Left to the person: an empty circle, nothing ticked. */
+.login-step__mark--todo {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgb(var(--c-neutral-300));
+}
+
+/* --- Legend: what the current installation is saying ---------------------- */
+.login-scene__legend {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 48px 40px;
+}
+
+/* On a short window the tilted board reaches down this far; the page colour
+   fades in behind the caption so it never reads over the picture. */
+.login-scene__legend::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -56px;
+  bottom: 0;
+  background: linear-gradient(to top, rgb(var(--c-app)) 60%, rgb(var(--c-app) / 0));
+  pointer-events: none;
+}
+
+.login-scene__caption,
+.login-scene__dots {
+  position: relative;
+}
+
+/* The caption explains the picture; it does not compete with it or with the
+   wordmark on the panel. One quiet line, a notch above body size, held to a
+   measure that keeps it a single thought. */
+.login-scene__caption {
+  /* Grows with the panel and stops before the line could run out of it: at the
+     narrowest width the scene is shown at, the longer phrase still fits on one
+     line - and a claim that wraps stops reading as one thought. */
+  font-size: clamp(17px, 1.45vw, 21px);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: rgb(var(--c-neutral-600));
+  animation: login-fade 600ms ease;
+}
+
+.login-scene__dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+/* Slide pips: wide enough to hit, quiet enough to stay out of the way. */
+.login-scene__pip {
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(var(--c-neutral-300));
+  outline: none;
+  cursor: pointer;
+  transition: background 200ms ease;
+}
+
+.login-scene__pip:hover {
+  background: rgb(var(--c-neutral-400));
+}
+
+.login-scene__pip--on {
+  background: rgb(var(--c-brand-600));
+}
+
+.login-scene__pip:focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--c-brand-500));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-scene__camera,
+  .login-scene__item--enter,
+  .login-scene__wire-group--enter,
+  .login-scene__item,
+  .login-scene__wires,
+  .login-scene__caption,
+  .login-scene__dot,
+  .login-code__line,
+  .login-field__value,
+  .login-field__text,
+  .login-btn,
+  .login-btn--press,
+  .login-status--live .login-status__mark {
+    animation: none;
+  }
+
+  .login-status,
+  .login-status__mark {
+    transition: none;
+  }
+
+  .login-scene__board {
+    transition: none;
+  }
+}
