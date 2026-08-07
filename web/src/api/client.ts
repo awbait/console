@@ -14,6 +14,7 @@ import type {
   JSONSchema,
   OrderRequest,
   PendingVersion,
+  PlatformHealth,
   PublicationDetail,
   PublicationVersion,
   RequestDetail,
@@ -256,6 +257,10 @@ export const api = {
 
   // system status (integrations + storage health)
   getSystemStatus: () => req<SystemStatus>("GET", "/status"),
+  // What the portal can do right now. Answers without a session, so the sign-in
+  // screen can ask it too.
+  getPlatformHealth: (signal?: AbortSignal) =>
+    req<PlatformHealth>("GET", "/platform/health", undefined, signal),
 
   // about: portal version + changelog
   getAbout: () => req<AboutInfo>("GET", "/info"),

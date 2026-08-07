@@ -47,6 +47,8 @@ import { useAsync } from "../hooks/useAsync";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
 import { LoginScreen } from "./LoginScreen";
+import { PlatformHealthBanner } from "./PlatformHealthBanner";
+import { PlatformHealthIndicator } from "./PlatformHealthIndicator";
 import { Skeleton, SkeletonText } from "./ui";
 
 const navItems = [
@@ -363,6 +365,7 @@ export function Layout() {
             console
           </Link>
           <div className="flex items-center gap-1">
+            <PlatformHealthIndicator />
             <ThemeMenu />
             {/* Docs live at the bottom of the sidebar; no duplicate here. */}
             <Link
@@ -684,6 +687,9 @@ export function Layout() {
             key={isWide ? "wide" : "standard"}
             className="flex min-h-0 w-full flex-1 flex-col animate-in fade-in duration-300 motion-reduce:animate-none"
           >
+            {/* Outside the page, above every route: an outage belongs to the
+                portal, not to whichever screen happens to be open. */}
+            <PlatformHealthBanner />
             <Outlet />
           </div>
         </main>

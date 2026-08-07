@@ -304,7 +304,7 @@ CREATE UNIQUE INDEX uniq_active_service
 
 ## REST API
 
-База: `/api/v1`. Все эндпоинты требуют OIDC JWT, кроме `/health`, `/ready`, `/metrics`, `/auth/*`.
+База: `/api/v1`. Все эндпоинты требуют OIDC JWT, кроме `/health`, `/ready`, `/metrics`, `/auth/*` и `/platform/health`.
 
 ### Auth
 
@@ -369,6 +369,8 @@ CREATE UNIQUE INDEX uniq_active_service
 - `GET /health` - liveness
 - `GET /ready` - readiness (Postgres, Redis)
 - `GET /metrics` - Prometheus
+- `GET /platform/health` - без авторизации: какие возможности портала работают сейчас (`sign_in`, `catalog`, `ordering`, `orders`, `deploy_status`, `publishing`). Имён интеграций и текстов ошибок не отдаёт: их видит только админ на `GET /status`. Карта зависимостей - `internal/status/capabilities.go`, тексты для пользователя - `web/src/app/capabilities.ts`
+- `GET /status` - только для админа: состояние интеграций и хранилищ, фоновых циклов и тех же возможностей. Пробы выполняет фоновый монитор (`internal/status/monitor.go`) на интервале `STATUS_POLL_INTERVAL`, эндпоинт отдаёт снимок из памяти
 
 ### Webhooks (внешние)
 

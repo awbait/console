@@ -41,6 +41,7 @@ import type {
   ViewIssue,
 } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
+import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
@@ -114,6 +115,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   const { user } = useUser();
   const { reload: reloadCatalog } = useCatalog();
   const { theme } = useTheme();
+  const publishOutage = usePlatformHealth().blockedReason("publishing");
   const navigate = useNavigate();
   // Monaco lives outside Tailwind tokens: match its theme to the portal theme.
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
@@ -338,13 +340,18 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
             <Button isDisabled={busy !== null} onPress={() => onSave(true)}>
               Сохранить черновик
             </Button>
-            <Button
-              variant="primary"
-              isDisabled={busy !== null || !!syntaxErr || issues.length > 0}
-              onPress={onSubmit}
-            >
-              Отправить на согласование
-            </Button>
+            {/* Sending a version for approval reads the chart back from the
+                registry, so an outage there blocks it; the draft above only
+                touches the portal's own storage and stays available. */}
+            <span title={publishOutage}>
+              <Button
+                variant="primary"
+                isDisabled={busy !== null || !!syntaxErr || issues.length > 0 || !!publishOutage}
+                onPress={onSubmit}
+              >
+                Отправить на согласование
+              </Button>
+            </span>
           </div>
         )}
       </div>

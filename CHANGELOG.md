@@ -39,6 +39,12 @@ All notable changes to this project are documented in this file.
   Namespace field and shows the namespace the chart will use.
 - An order with an open merge request shows a banner linking to it and refuses
   further changes until it is closed.
+- The portal says when part of the platform is not responding: a message above
+  the page names what is unavailable right now, and a state icon in the top bar
+  lists what works and what does not.
+- Actions that cannot go through are switched off with an explanation instead of
+  failing halfway: signing in while the sign-in service is down, ordering or
+  changing a service while the platform cannot accept it. Drafts are still saved.
 
 ### Changed
 - The sign-in screen shows what the portal does instead of setting services up

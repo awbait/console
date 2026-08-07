@@ -30,6 +30,8 @@ import (
 //	from, to       // FSM states on a transition
 //	actor          // who triggered it: a user subject, or "system"
 //	reconciler     // reconciler name (poller)
+//	probe          // probed platform component: harbor, gitlab, keycloak, store …
+//	                  (the health monitor; "component" already names the subsystem)
 //	duration_ms    // elapsed milliseconds
 //	err            // error value
 //

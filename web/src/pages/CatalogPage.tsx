@@ -17,9 +17,9 @@ import {
   SearchField,
 } from "react-aria-components";
 import { Link, useSearchParams } from "react-router-dom";
-import { CATALOG_DOWN_HINT } from "../api/errorText";
 import type { CatalogChart, Category } from "../api/types";
 import { publisherLabel } from "../api/types";
+import { CAPABILITIES } from "../app/capabilities";
 import { useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
 import { canModify, useUser } from "../auth/UserContext";
@@ -56,7 +56,7 @@ export function CatalogPage() {
   const activeCat = params.get("cat") ?? "";
 
   if (loading) return <SkeletonCards count={6} className="mt-2" />;
-  if (error) return <ErrorBox error={error} hint={CATALOG_DOWN_HINT} onRetry={reload} />;
+  if (error) return <ErrorBox error={error} hint={CAPABILITIES.catalog.impact} onRetry={reload} />;
 
   function setParam(key: "q" | "cat", value: string) {
     const next = new URLSearchParams(params);

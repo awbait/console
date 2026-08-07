@@ -139,8 +139,25 @@ export interface ReconcilerStatus {
 export interface SystemStatus {
   healthy: boolean;
   components: ComponentStatus[];
+  capabilities: CapabilityStatus[];
   reconcilers?: ReconcilerStatus[];
   grafana_url?: string;
+}
+
+// One thing the portal offers and whether it works right now. Ids are fixed by
+// the backend (internal/status/capabilities.go); their wording lives in
+// app/capabilities.ts.
+export interface CapabilityStatus {
+  id: string; // sign_in|catalog|ordering|orders|deploy_status|publishing
+  ok: boolean;
+}
+
+// Platform health (GET /api/v1/platform/health), the one endpoint that answers
+// without a session. It speaks only in capabilities: no component names, no
+// upstream errors.
+export interface PlatformHealth {
+  healthy: boolean;
+  capabilities: CapabilityStatus[];
 }
 
 // About page (GET /api/v1/info): portal build metadata.

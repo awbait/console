@@ -23,4 +23,5 @@ export const qk = {
   ],
   changelog: (project: string, name: string): QueryKey => ["changelog", project, name],
   requests: (): QueryKey => ["requests"],
+  platformHealth: (): QueryKey => ["platform-health"],
 };

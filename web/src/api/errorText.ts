@@ -19,7 +19,9 @@ const KEEP_SERVER_MESSAGE = new Set(["validation_failed", "conflict", "open_mr"]
 const BY_CODE: Record<string, string> = {
   // Any upstream: the registry, the git server, the delivery system. Which one
   // it was does not change what the user can do, so the text does not name it.
-  upstream_unavailable: "Часть платформы сейчас не отвечает. Попробуйте повторить через минуту.",
+  // What that outage costs is told by the platform banner and the topbar
+  // indicator (see app/capabilities.ts); this line only says the request failed.
+  upstream_unavailable: "Не удалось выполнить запрос: часть платформы сейчас не отвечает.",
   internal: "Что-то пошло не так на нашей стороне. Попробуйте обновить страницу.",
   not_found: "Мы не нашли то, что вы открыли. Возможно, это уже удалили.",
   forbidden: "У вас нет доступа к этому разделу.",
@@ -37,8 +39,7 @@ export function apiErrorText(code: string, status: number, serverMessage?: strin
   return "Не удалось выполнить запрос. Попробуйте ещё раз.";
 }
 
-// Hint explaining what a failure means for the user right here. The message
-// above says what happened, the hint says what it costs - together they stop a
-// broken catalog from reading as a broken portal.
-export const CATALOG_DOWN_HINT =
-  "Пока каталог не отвечает, заказать сервис не получится. Уже созданные заказы открываются как обычно.";
+// A failure's cost to the user is no longer written here: it belongs to the
+// capability that broke, so every screen tells the same story as the platform
+// banner. Pass CAPABILITIES.<id>.impact (app/capabilities.ts) as the ErrorBox
+// hint - e.g. CAPABILITIES.catalog.impact on the catalog pages.

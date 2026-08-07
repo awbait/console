@@ -60,6 +60,12 @@ type Server struct {
 	// page (GET /api/v1/status). Optional: nil omits the reconcilers section.
 	Reconcilers reconcilerSnapshotter
 
+	// Health is the background component monitor behind both status endpoints
+	// (GET /api/v1/platform/health and GET /api/v1/status). Build it with
+	// NewHealthMonitor once the ports above are set. Optional: nil reports
+	// everything as working, which is what tests want.
+	Health healthSnapshotter
+
 	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push). Routes
 	// register per-source only when that source's secret is set; nil omits them
 	// entirely (e.g. tests).
@@ -93,6 +99,11 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(maxBytes(maxRequestBodyBytes)) // bound request-body memory (GET/SSE carry none)
+
+		// Platform health (unauthenticated): which portal capabilities work right
+		// now. The sign-in screen needs it before there is a session, and it only
+		// ever answers in capabilities - never component names or probe errors.
+		r.Get("/platform/health", s.handlePlatformHealth)
 
 		// auth endpoints (unauthenticated)
 		r.Get("/auth/login", s.Auth.Login)

@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { IconPlus, IconShoppingCart } from "@tabler/icons-react";
 import { OrdersTable } from "../features/orders/OrdersTable";
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { LinkButton } from "../components/ui";
 
 // Product page (= a published chart): its orders list + "Order".
@@ -10,8 +11,12 @@ import { LinkButton } from "../components/ui";
 export function ProductPage() {
   const { project = "", name = "" } = useParams();
   const { charts, loading } = useCatalog();
+  const { blockedReason } = usePlatformHealth();
   const chart = findCatalogChart(charts, project, name);
   const label = chartLabel(name);
+  // An outage outranks the per-chart rules below: the form may be approved and
+  // still lead nowhere while the platform cannot open a merge request.
+  const outage = blockedReason("ordering");
 
   if (!loading && !chart) {
     return (
@@ -29,9 +34,9 @@ export function ProductPage() {
   // loads, show no button and no false "unavailable".
   const orderableKnown = !!chart;
   const orderable = !!chart?.publication?.published && !!chart?.publication?.has_order_view;
-  const orderTo = orderable ? `/catalog/${project}/${name}/order` : undefined;
+  const orderTo = orderable && !outage ? `/catalog/${project}/${name}/order` : undefined;
   const orderDisabledReason =
-    orderableKnown && !orderable ? "Форма заказа не согласована для этого чарта" : undefined;
+    outage ?? (orderableKnown && !orderable ? "Форма заказа не согласована для этого чарта" : undefined);
 
   return (
     <OrdersTable
@@ -51,6 +56,8 @@ export function ProductPage() {
               Заказать
             </LinkButton>
           </div>
+        ) : outage ? (
+          outage
         ) : orderDisabledReason ? (
           <>{orderDisabledReason}. Заказ недоступен, пока view не согласована.</>
         ) : undefined

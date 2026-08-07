@@ -258,8 +258,16 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			GrafanaURL:   cfg.GrafanaURL,
 		},
 	}
-	// Refresh platform-status and order gauges in-process (single replica),
-	// reusing the poller interval. The metrics server below exposes the result.
+	// Component health: one background monitor probes every upstream and storage
+	// backend on the poll interval and keeps the result in memory. Both status
+	// endpoints and the component gauges read that snapshot, so the number of
+	// people looking at the portal never changes the load on the upstreams.
+	health := srv.NewHealthMonitor(cfg.StatusPollInterval, observability.Component(log, "health"))
+	srv.Health = health
+	go health.Run(ctx)
+
+	// Refresh order gauges in-process (single replica), reusing the poller
+	// interval. The metrics server below exposes the result.
 	go srv.RunMetricsRefresher(ctx, cfg.StatusPollInterval)
 
 	httpServer := &http.Server{

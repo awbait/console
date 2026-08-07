@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"console/internal/auth"
@@ -54,30 +54,38 @@ type reconcilerSnapshotter interface {
 	Snapshot() []status.ReconcilerState
 }
 
+// healthSnapshotter is the slice of the health monitor both status endpoints
+// need: the last probe result for every component.
+type healthSnapshotter interface {
+	Snapshot() []status.ComponentState
+}
+
 // SystemStatus is the aggregate health payload returned by GET /api/v1/status.
 type SystemStatus struct {
-	Healthy     bool               `json:"healthy"`
-	Components   []ComponentStatus  `json:"components"`
-	Reconcilers []ReconcilerStatus `json:"reconcilers,omitempty"`
-	GrafanaURL  string             `json:"grafana_url,omitempty"`
+	Healthy      bool                     `json:"healthy"`
+	Components   []ComponentStatus        `json:"components"`
+	Capabilities []status.CapabilityState `json:"capabilities"`
+	Reconcilers  []ReconcilerStatus       `json:"reconcilers,omitempty"`
+	GrafanaURL   string                   `json:"grafana_url,omitempty"`
 }
 
-// checkTimeout bounds each individual probe so one stuck upstream can't hang the
-// whole status response.
-const checkTimeout = 5 * time.Second
-
-// componentCheck describes one probe on the status page: its identity plus the
-// function that reports whether the component is reachable.
-type componentCheck struct {
-	name, kind, mode, url string
-	probe                 func(context.Context) error
+// PlatformHealth is the payload of GET /api/v1/platform/health: what the portal
+// can and cannot do right now, in the portal's own terms.
+//
+// It is unauthenticated on purpose - the sign-in screen has to know whether
+// signing in works at all - so it carries no component names, no modes, no URLs
+// and no probe errors. Anyone who may see those already has the admin status
+// page.
+type PlatformHealth struct {
+	Healthy      bool                     `json:"healthy"`
+	Capabilities []status.CapabilityState `json:"capabilities"`
 }
 
-// statusChecks builds the probe set for every integration (Harbor/GitLab/ArgoCD
-// via Healthz, Keycloak via its discovery doc) and storage backend (store/cache
-// via Ping). Shared by the status endpoint and the metrics refresher so both
-// report on exactly the same components.
-func (s *Server) statusChecks() []componentCheck {
+// probes builds the check set for every integration (Harbor/GitLab/ArgoCD via
+// Healthz, Keycloak via its discovery doc) and storage backend (store/cache via
+// Ping). The health monitor runs them on an interval; nothing probes an upstream
+// per request.
+func (s *Server) probes() []status.Probe {
 	// Keycloak: in oidc mode hit the issuer's discovery doc (validates reachability);
 	// in dev mode there is no external IdP, so report ok with mode "dev".
 	authProbe := func(ctx context.Context) error {
@@ -99,59 +107,70 @@ func (s *Server) statusChecks() []componentCheck {
 		}
 		return nil
 	}
-	return []componentCheck{
-		{"keycloak", "integration", s.System.AuthMode, issuerBase(s.System.OIDCIssuer), authProbe},
-		{"harbor", "integration", s.System.HarborMode, s.System.HarborURL, s.Harbor.Healthz},
-		{"gitlab", "integration", s.System.GitLabMode, s.System.GitLabURL, s.GitLab.Healthz},
-		{"argocd", "integration", s.System.ArgoCDMode, s.System.ArgoCDURL, s.ArgoCD.Healthz},
-		{"store", "storage", s.System.StoreBackend, "", s.Store.Ping},
-		{"cache", "storage", s.System.CacheBackend, "", s.Cache.Ping},
+	return []status.Probe{
+		{Name: "keycloak", Kind: "integration", Mode: s.System.AuthMode, URL: issuerBase(s.System.OIDCIssuer), Check: authProbe},
+		{Name: "harbor", Kind: "integration", Mode: s.System.HarborMode, URL: s.System.HarborURL, Check: s.Harbor.Healthz},
+		{Name: "gitlab", Kind: "integration", Mode: s.System.GitLabMode, URL: s.System.GitLabURL, Check: s.GitLab.Healthz},
+		{Name: "argocd", Kind: "integration", Mode: s.System.ArgoCDMode, URL: s.System.ArgoCDURL, Check: s.ArgoCD.Healthz},
+		{Name: "store", Kind: "storage", Mode: s.System.StoreBackend, Check: s.Store.Ping},
+		{Name: "cache", Kind: "storage", Mode: s.System.CacheBackend, Check: s.Cache.Ping},
 	}
 }
 
-// handleSystemStatus probes every integration (Harbor/GitLab/ArgoCD via Healthz)
-// and storage backend (store/cache via Ping) in parallel and reports their
-// health. Always returns 200 - the body's `healthy` flag carries the verdict so
-// the page can render partial failures rather than erroring out.
+// NewHealthMonitor builds the monitor over this server's probes. main wires it
+// back into Server.Health and runs it.
+func (s *Server) NewHealthMonitor(interval time.Duration, log *slog.Logger) *status.Monitor {
+	return status.NewMonitor(interval, log, s.probes()...)
+}
+
+// handlePlatformHealth reports which portal capabilities work right now. Public
+// and cheap: it reads the monitor's in-memory snapshot, so hammering it costs
+// the upstreams nothing. Always 200 - "the platform is degraded" is an answer,
+// not a failure.
+func (s *Server) handlePlatformHealth(w http.ResponseWriter, _ *http.Request) {
+	caps := status.Evaluate(s.componentStates())
+	writeJSON(w, http.StatusOK, PlatformHealth{Healthy: status.AllOK(caps), Capabilities: caps})
+}
+
+// handleSystemStatus reports the health of every integration and storage backend
+// plus the background loops. Always returns 200 - the body's `healthy` flag
+// carries the verdict so the page can render partial failures rather than
+// erroring out.
 func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	// System status is a platform-admin tool (integration health, storage backends).
 	if u := auth.UserFrom(r.Context()); u == nil || !u.IsAdmin() {
 		writeErr(w, http.StatusForbidden, "forbidden", "system status is restricted to platform admins")
 		return
 	}
-	checks := s.statusChecks()
-
-	comps := make([]ComponentStatus, len(checks))
-	var wg sync.WaitGroup
-	for i, c := range checks {
-		wg.Add(1)
-		go func(i int, c componentCheck) {
-			defer wg.Done()
-			ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
-			defer cancel()
-			comp := ComponentStatus{Name: c.name, Kind: c.kind, Mode: c.mode, URL: c.url, Status: "ok"}
-			if err := c.probe(ctx); err != nil {
-				comp.Status = "error"
-				comp.Detail = err.Error()
-			}
-			comps[i] = comp
-		}(i, c)
-	}
-	wg.Wait()
-
+	states := s.componentStates()
+	comps := make([]ComponentStatus, 0, len(states))
 	healthy := true
-	for _, c := range comps {
-		if c.Status != "ok" {
+	for _, st := range states {
+		c := ComponentStatus{Name: st.Name, Kind: st.Kind, Mode: st.Mode, URL: st.URL, Status: "ok"}
+		if !st.OK {
+			c.Status = "error"
+			c.Detail = st.Err
 			healthy = false
-			break
 		}
+		comps = append(comps, c)
 	}
 	writeJSON(w, http.StatusOK, SystemStatus{
-		Healthy:     healthy,
+		Healthy:      healthy,
 		Components:   comps,
-		Reconcilers: s.reconcilerStatuses(),
-		GrafanaURL:  s.System.GrafanaURL,
+		Capabilities: status.Evaluate(states),
+		Reconcilers:  s.reconcilerStatuses(),
+		GrafanaURL:   s.System.GrafanaURL,
 	})
+}
+
+// componentStates returns the monitor's snapshot, or nil when no monitor is
+// wired (tests): with no probe results everything reads as working, which is the
+// right default for a page that must never invent an outage.
+func (s *Server) componentStates() []status.ComponentState {
+	if s.Health == nil {
+		return nil
+	}
+	return s.Health.Snapshot()
 }
 
 // reconcilerStatuses maps the poller snapshot into the status-page shape. Returns

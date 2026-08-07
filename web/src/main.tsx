@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-rou
 import "./index.css";
 import "./lib/monaco";
 import { CatalogProvider } from "./app/CatalogContext";
+import { PlatformHealthProvider } from "./app/PlatformHealthContext";
 import { TeamProvider } from "./app/TeamContext";
 import { ThemeProvider } from "./app/ThemeContext";
 import { ToastProvider } from "./app/ToastContext";
@@ -186,13 +187,18 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <ToastProvider>
-          <UserProvider>
-            <TeamProvider>
-              <CatalogProvider>
-                <RouterProvider router={router} />
-              </CatalogProvider>
-            </TeamProvider>
-          </UserProvider>
+          {/* Platform health sits above the session: the sign-in screen has to
+              know whether signing in works, and that is exactly when there is
+              no session to read it from. */}
+          <PlatformHealthProvider>
+            <UserProvider>
+              <TeamProvider>
+                <CatalogProvider>
+                  <RouterProvider router={router} />
+                </CatalogProvider>
+              </TeamProvider>
+            </UserProvider>
+          </PlatformHealthProvider>
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>

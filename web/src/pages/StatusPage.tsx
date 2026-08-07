@@ -1,7 +1,8 @@
 import { IconExternalLink } from "@tabler/icons-react";
 import { useEffect } from "react";
 import { api } from "../api/client";
-import type { ComponentStatus, ReconcilerStatus } from "../api/types";
+import type { CapabilityStatus, ComponentStatus, ReconcilerStatus } from "../api/types";
+import { capabilityText } from "../app/capabilities";
 import { useUser } from "../auth/UserContext";
 import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
@@ -109,11 +110,47 @@ export function StatusPage() {
         <ErrorBox error={error} />
       ) : (
         <>
+          <CapabilitySection items={data?.capabilities ?? []} />
           <Section title="Интеграции" items={integrations} />
           <Section title="Хранилища" items={storage} />
           <ReconcilerSection items={data?.reconcilers ?? []} />
         </>
       )}
+    </div>
+  );
+}
+
+// What the components above add up to for the people using the portal. It comes
+// first on the page: an admin opening it during an incident wants to know what
+// users cannot do before which host stopped answering.
+function CapabilitySection({ items }: { items: CapabilityStatus[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+        Что доступно пользователям
+      </h2>
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+        {items.map((c) => {
+          const text = capabilityText(c.id);
+          return (
+            <div key={c.id} className="flex items-start justify-between gap-4 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Dot ok={c.ok} />
+                  <span className="font-medium text-slate-800">{text.label}</span>
+                </div>
+                {!c.ok && <p className="mt-1 pl-5 text-xs text-slate-500">{text.impact}</p>}
+              </div>
+              <span
+                className={`shrink-0 text-sm font-medium ${c.ok ? "text-emerald-600" : "text-amber-600"}`}
+              >
+                {c.ok ? "Доступно" : "Недоступно"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
