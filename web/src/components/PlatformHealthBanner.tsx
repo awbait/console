@@ -1,7 +1,7 @@
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 import { Button } from "react-aria-components";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
-import { useStored } from "../hooks/useStored";
 
 // The banner is the loud half of the outage story, and it says one thing: the
 // platform is not whole right now and someone is on it. What exactly stopped
@@ -11,16 +11,28 @@ import { useStored } from "../hooks/useStored";
 //
 // Dismissal is keyed by *what* is broken, not by "the user closed a banner": if
 // the registry recovers and the git server goes down instead, that is news
-// again and the banner comes back on its own.
+// again and the banner comes back on its own. It is also forgotten when the
+// platform recovers and when the page is reloaded - see below.
 export function PlatformHealthBanner() {
   const { degraded } = usePlatformHealth();
-  const [dismissed, setDismissed] = useStored("platform-health.dismissed", "");
+  // Dismissal lives in the page, not in storage: "I have seen this" is true for
+  // as long as the user keeps working, not forever. Stored, it silenced every
+  // later outage with the same set of broken capabilities - the second time the
+  // registry went down the banner never came back, even though it was news
+  // again.
+  const [dismissedKey, setDismissedKey] = useState("");
 
   const key = degraded
     .map((c) => c.id)
     .sort()
     .join(",");
-  const shown = degraded.length > 0 && dismissed !== key;
+  const shown = degraded.length > 0 && dismissedKey !== key;
+
+  // A recovery clears the dismissal, so the next outage speaks up even if it
+  // breaks exactly the same things.
+  useEffect(() => {
+    if (degraded.length === 0) setDismissedKey("");
+  }, [degraded.length]);
 
   // The banner stays mounted and opens/closes as a grid row (0fr -> 1fr): a
   // conditional render would make the page jump the moment a poll lands under
@@ -47,7 +59,7 @@ export function PlatformHealthBanner() {
             их устранением. Что именно недоступно, видно по значку состояния в верхней панели.
           </p>
           <Button
-            onPress={() => setDismissed(key)}
+            onPress={() => setDismissedKey(key)}
             excludeFromTabOrder={!shown}
             aria-label="Скрыть предупреждение"
             className="-mr-1 -mt-1 shrink-0 rounded-md p-1.5 text-amber-600 outline-none transition-colors hover:bg-amber-100 hover:text-amber-800 focus-visible:ring-2 focus-visible:ring-amber-600 motion-reduce:transition-none"
