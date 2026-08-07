@@ -25,7 +25,7 @@ import { useTeam } from "../app/TeamContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { AddChartDialog } from "../components/AddChartDialog";
 import { categoryIcon, ProductIcon } from "../components/icons";
-import { Button, Card, ErrorBox, SkeletonCards } from "../components/ui";
+import { Button, Card, OutageState, SkeletonCards } from "../components/ui";
 import { isNewer } from "../lib/semver";
 
 type CategoryOf = (id?: string) => Category | undefined;
@@ -56,7 +56,17 @@ export function CatalogPage() {
   const activeCat = params.get("cat") ?? "";
 
   if (loading) return <SkeletonCards count={6} className="mt-2" />;
-  if (error) return <ErrorBox error={error} hint={CAPABILITIES.catalog.impact} onRetry={reload} />;
+  // A catalog that cannot be loaded is the whole page, so it takes the whole
+  // page: the wording is the same one the platform indicator uses, so a user
+  // who saw the banner meets the same sentence here.
+  if (error)
+    return (
+      <OutageState
+        title="Каталог сейчас недоступен"
+        message={CAPABILITIES.catalog.impact}
+        onRetry={reload}
+      />
+    );
 
   function setParam(key: "q" | "cat", value: string) {
     const next = new URLSearchParams(params);

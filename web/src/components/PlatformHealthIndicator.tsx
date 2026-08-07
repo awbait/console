@@ -56,15 +56,29 @@ export function PlatformHealthIndicator() {
         onHoverEnd={scheduleClose}
         onFocus={() => setOpen(true)}
         onBlur={scheduleClose}
-        className={`rounded-md p-2 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 motion-reduce:transition-none ${
+        className={`rounded-md p-2 outline-none transition-colors duration-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 motion-reduce:transition-none ${
           broken ? "text-amber-600" : "text-emerald-600"
         }`}
       >
-        {broken ? (
-          <IconAlertTriangle size={20} stroke={1.8} />
-        ) : (
-          <IconCircleCheck size={20} stroke={1.7} />
-        )}
+        {/* The two icons cross-fade in place instead of being swapped: a poll
+            can land at any moment, and a glyph that pops is read as a glitch,
+            not as news. */}
+        <span aria-hidden className="relative block h-5 w-5">
+          <IconCircleCheck
+            size={20}
+            stroke={1.7}
+            className={`absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none ${
+              broken ? "opacity-0" : "opacity-100"
+            }`}
+          />
+          <IconAlertTriangle
+            size={20}
+            stroke={1.8}
+            className={`absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none ${
+              broken ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        </span>
       </Button>
       <Popover
         triggerRef={triggerRef}

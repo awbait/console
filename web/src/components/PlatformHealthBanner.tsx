@@ -3,10 +3,11 @@ import { Button } from "react-aria-components";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { useStored } from "../hooks/useStored";
 
-// The banner is the loud half of the outage story: it sits above the page the
-// user is working on and says, in the portal's own terms, what stopped working
-// and what still does. The quiet half is the topbar indicator, which stays lit
-// after the banner is dismissed (see PlatformHealthIndicator).
+// The banner is the loud half of the outage story, and it says one thing: the
+// platform is not whole right now and someone is on it. What exactly stopped
+// working belongs to the topbar indicator, which lists it capability by
+// capability - a banner that recites the whole list is a wall of text above
+// every page, and the user still has to guess what to do with it.
 //
 // Dismissal is keyed by *what* is broken, not by "the user closed a banner": if
 // the registry recovers and the git server goes down instead, that is news
@@ -19,34 +20,42 @@ export function PlatformHealthBanner() {
     .map((c) => c.id)
     .sort()
     .join(",");
-  if (degraded.length === 0 || dismissed === key) return null;
+  const shown = degraded.length > 0 && dismissed !== key;
 
+  // The banner stays mounted and opens/closes as a grid row (0fr -> 1fr): a
+  // conditional render would make the page jump the moment a poll lands under
+  // the user's hands. Same trick the sidebar uses for its collapsing card.
   return (
     <div
-      // Not role="alert": the poll can raise this while the user is typing, and
-      // an assertive live region would interrupt them mid-field. "status" is
-      // announced politely, at the next pause.
-      role="status"
-      className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 animate-in fade-in slide-in-from-top-1 duration-300 motion-reduce:animate-none"
+      className={`grid shrink-0 transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${
+        shown ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+      }`}
     >
-      <IconAlertTriangle size={20} stroke={1.8} className="mt-0.5 shrink-0 text-amber-600" />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium">В работе платформы есть проблемы</p>
-        <ul className="mt-1.5 flex flex-col gap-1">
-          {degraded.map((c) => (
-            <li key={c.id}>
-              <span className="font-medium">{c.label}.</span> {c.impact}
-            </li>
-          ))}
-        </ul>
+      <div className="overflow-hidden">
+        <div
+          aria-hidden={!shown}
+          className={`mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 transition-opacity motion-reduce:transition-none ${
+            shown ? "opacity-100 duration-200 delay-150" : "opacity-0 duration-100"
+          }`}
+        >
+          <IconAlertTriangle size={20} stroke={1.8} className="mt-0.5 shrink-0 text-amber-600" />
+          {/* Not role="alert": the poll can raise this while the user is typing,
+              and an assertive live region would interrupt them mid-field.
+              "status" is announced politely, at the next pause. */}
+          <p role="status" className="min-w-0 flex-1">
+            <span className="font-medium">В работе платформы есть проблемы.</span> Мы уже занимаемся
+            их устранением. Что именно недоступно, видно по значку состояния в верхней панели.
+          </p>
+          <Button
+            onPress={() => setDismissed(key)}
+            excludeFromTabOrder={!shown}
+            aria-label="Скрыть предупреждение"
+            className="-mr-1 -mt-1 shrink-0 rounded-md p-1.5 text-amber-600 outline-none transition-colors hover:bg-amber-100 hover:text-amber-800 focus-visible:ring-2 focus-visible:ring-amber-600 motion-reduce:transition-none"
+          >
+            <IconX size={16} stroke={2} />
+          </Button>
+        </div>
       </div>
-      <Button
-        onPress={() => setDismissed(key)}
-        aria-label="Скрыть предупреждение"
-        className="-mr-1 -mt-1 shrink-0 rounded-md p-1.5 text-amber-600 outline-none transition-colors hover:bg-amber-100 hover:text-amber-800 focus-visible:ring-2 focus-visible:ring-amber-600 motion-reduce:transition-none"
-      >
-        <IconX size={16} stroke={2} />
-      </Button>
     </div>
   );
 }

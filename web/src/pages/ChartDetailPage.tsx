@@ -15,7 +15,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Changelog } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
-import { Button, Card, Chip, ErrorBox, LinkButton, Skeleton, SkeletonText } from "../components/ui";
+import { Button, Card, Chip, LinkButton, OutageState, Skeleton, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
 
@@ -64,7 +64,14 @@ export function ChartDetailPage() {
   }, [queryClient, manageable, project, name]);
 
   if (loading) return <ChartSkeleton />;
-  if (error) return <ErrorBox error={error} hint={CAPABILITIES.catalog.impact} onRetry={reload} />;
+  if (error)
+    return (
+      <OutageState
+        title="Сервис сейчас не открывается"
+        message={CAPABILITIES.catalog.impact}
+        onRetry={reload}
+      />
+    );
   if (!chart) return null;
 
   // The profile shows the APPROVED version (like the catalog), not the live one

@@ -26,7 +26,7 @@ export interface CapabilityText {
 export const CAPABILITIES: Record<CapabilityId, CapabilityText> = {
   sign_in: {
     label: "Вход в портал",
-    impact: "Войти сейчас не получится. Попробуйте через несколько минут.",
+    impact: "Войти сейчас не получится.",
   },
   catalog: {
     label: "Каталог сервисов",
@@ -41,8 +41,8 @@ export const CAPABILITIES: Record<CapabilityId, CapabilityText> = {
     impact: "Список заказов сейчас не открывается.",
   },
   deploy_status: {
-    label: "Состояние сервисов",
-    impact: "Состояние сервисов может отставать от реального.",
+    label: "Статусы заказов",
+    impact: "Статус заказанных сервисов сейчас не обновляется и может быть неактуальным.",
   },
   publishing: {
     label: "Публикация сервисов",

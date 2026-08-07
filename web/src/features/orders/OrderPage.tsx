@@ -656,17 +656,28 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         />
       )}
 
-      {/* The banner at the top of the page says the same thing, but this form is
-          long and the banner can be scrolled away or dismissed - a greyed-out
-          button with no explanation next to it reads as a bug. */}
-      {orderOutage && (
-        <p
-          role="status"
-          className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
-        >
-          {orderOutage}
-        </p>
-      )}
+      {/* The banner at the top of the page says the platform is degraded, but
+          this form is long and the banner can be scrolled away or dismissed - a
+          greyed-out button with no explanation next to it reads as a bug. Opens
+          and closes as a grid row so a poll landing mid-form does not shift the
+          buttons under the cursor. */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${
+          orderOutage ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <p
+            role="status"
+            aria-hidden={!orderOutage}
+            className={`rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 transition-opacity motion-reduce:transition-none ${
+              orderOutage ? "opacity-100 delay-150 duration-200" : "opacity-0 duration-100"
+            }`}
+          >
+            {orderOutage}
+          </p>
+        </div>
+      </div>
 
       <div className="flex gap-2">
         {upgrade ? (
