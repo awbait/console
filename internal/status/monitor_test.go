@@ -149,6 +149,76 @@ func TestMonitorSnapshotDuringTick(t *testing.T) {
 	<-done
 }
 
+// TestMonitorConfirmsFailureQuickly pins the reason recheckDelay exists: a first
+// failure must schedule its second opinion within seconds, not a whole interval,
+// or the banner arrives a poll cycle after the user already saw the error.
+func TestMonitorConfirmsFailureQuickly(t *testing.T) {
+	boom := errors.New("harbor: HTTP 502")
+	var buf bytes.Buffer
+	m, clock := newTestMonitor(&buf, nil, boom)
+
+	m.tick(context.Background()) // ok: nothing to recheck
+	if _, ok := m.earlyProbeIn(); ok {
+		t.Fatal("a healthy monitor scheduled an early probe")
+	}
+
+	*clock = clock.Add(time.Minute)
+	m.tick(context.Background()) // first failure, not yet down
+	d, ok := m.earlyProbeIn()
+	if !ok || d > recheckDelay {
+		t.Fatalf("early probe in %v (scheduled=%v), want at most %v", d, ok, recheckDelay)
+	}
+	if st := one(t, m); !st.OK {
+		t.Fatalf("after one failure: %+v, want still OK", st)
+	}
+
+	*clock = clock.Add(recheckDelay)
+	m.tick(context.Background()) // the second opinion confirms it
+	if st := one(t, m); st.OK {
+		t.Fatalf("after the recheck: %+v, want down", st)
+	}
+	if _, ok := m.earlyProbeIn(); ok {
+		t.Fatal("a confirmed outage still schedules early probes")
+	}
+}
+
+// TestMonitorTriggerSchedulesProbe covers the signal from a failed user request:
+// it asks for a round now, and the ask is cleared once that round runs.
+func TestMonitorTriggerSchedulesProbe(t *testing.T) {
+	var buf bytes.Buffer
+	m, clock := newTestMonitor(&buf, nil)
+	m.tick(context.Background())
+	if _, ok := m.earlyProbeIn(); ok {
+		t.Fatal("no trigger yet, but an early probe is scheduled")
+	}
+
+	m.Trigger("upstream request failed")
+	d, ok := m.earlyProbeIn()
+	if !ok {
+		t.Fatal("Trigger did not schedule a probe")
+	}
+	if d > recheckDelay {
+		t.Fatalf("triggered probe in %v, want at most %v", d, recheckDelay)
+	}
+
+	// Throttling: right after a round the wait is the full delay, not zero.
+	if d == 0 {
+		t.Fatalf("triggered probe runs immediately after a round, want it throttled by %v", recheckDelay)
+	}
+
+	*clock = clock.Add(recheckDelay)
+	m.tick(context.Background())
+	if _, ok := m.earlyProbeIn(); ok {
+		t.Fatal("the trigger survived the probe round it asked for")
+	}
+}
+
+// TestMonitorTriggerNil guards the wiring where no monitor exists (tests).
+func TestMonitorTriggerNil(t *testing.T) {
+	var m *Monitor
+	m.Trigger("upstream request failed") // must not panic
+}
+
 // TestMonitorProbesRunConcurrently asserts one wedged probe does not serialise
 // the tick behind it: both probes must be in flight at the same time.
 func TestMonitorProbesRunConcurrently(t *testing.T) {

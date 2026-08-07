@@ -64,7 +64,7 @@ type Server struct {
 	// (GET /api/v1/platform/health and GET /api/v1/status). Build it with
 	// NewHealthMonitor once the ports above are set. Optional: nil reports
 	// everything as working, which is what tests want.
-	Health healthSnapshotter
+	Health healthMonitor
 
 	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push). Routes
 	// register per-source only when that source's secret is set; nil omits them
@@ -240,6 +240,15 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		start := time.Now()
 		next.ServeHTTP(ww, r)
+
+		// A request that just failed against an upstream is better evidence than
+		// any schedule: ask the monitor to probe now, so the portal admits the
+		// outage while the user is still looking at it instead of on the next
+		// poll. The monitor coalesces and throttles these, so a burst of failures
+		// costs one probe round.
+		if ww.Status() == http.StatusBadGateway && s.Health != nil {
+			s.Health.Trigger("upstream request failed")
+		}
 
 		level := slog.LevelInfo
 		switch r.URL.Path {

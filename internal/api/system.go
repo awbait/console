@@ -54,10 +54,11 @@ type reconcilerSnapshotter interface {
 	Snapshot() []status.ReconcilerState
 }
 
-// healthSnapshotter is the slice of the health monitor both status endpoints
-// need: the last probe result for every component.
-type healthSnapshotter interface {
+// healthMonitor is the slice of the background monitor the API needs: the last
+// probe result for every component, and a way to ask for a probe round now.
+type healthMonitor interface {
 	Snapshot() []status.ComponentState
+	Trigger(reason string)
 }
 
 // SystemStatus is the aggregate health payload returned by GET /api/v1/status.

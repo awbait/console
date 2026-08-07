@@ -17,6 +17,7 @@ import (
 type fixedHealth []status.ComponentState
 
 func (f fixedHealth) Snapshot() []status.ComponentState { return f }
+func (f fixedHealth) Trigger(string)                    {}
 
 // capMap indexes a health payload by capability id.
 func capMap(t *testing.T, body []byte) map[string]bool {

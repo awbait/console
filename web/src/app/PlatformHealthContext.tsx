@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
-import { api } from "../api/client";
+import { api, setUpstreamFailureHandler } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { CapabilityStatus } from "../api/types";
 import { useAsync } from "../hooks/useAsync";
@@ -9,7 +9,12 @@ import { type CapabilityText, capabilityText } from "./capabilities";
 // upstreams on its own schedule and answers from memory, so this poll costs a
 // cached read - it is set by how fast a person should learn that ordering came
 // back, not by what the upstreams can take.
-const REFRESH_SECONDS = 30;
+const REFRESH_MS = 15_000;
+
+// After a request fails against an upstream the answer is re-asked at once, and
+// again shortly after: the first ask usually beats the backend's own confirming
+// probe, which needs a second failed check before it calls a component down.
+const RECHECK_AFTER_FAILURE_MS = 4_000;
 
 export interface CapabilityView extends CapabilityText {
   id: string;
@@ -49,13 +54,30 @@ const Ctx = createContext<PlatformHealthState>(HEALTHY);
 // has to know whether signing in works, and that is exactly when there is no
 // session yet.
 export function PlatformHealthProvider({ children }: { children: ReactNode }) {
-  const { data, reload } = useAsync((signal) => api.getPlatformHealth(signal), [], qk.platformHealth());
+  const { data, reload } = useAsync(
+    (signal) => api.getPlatformHealth(signal),
+    [],
+    qk.platformHealth(),
+    { refetchInterval: REFRESH_MS },
+  );
 
+  // A failed request is news: the user is already looking at an error, so the
+  // portal asks what still works right now rather than on the next tick. The
+  // backend gets the same nudge (it re-probes on a 502), and the delayed second
+  // ask is there to catch the verdict once its confirming probe has run.
   useEffect(() => {
-    const t = setInterval(reload, REFRESH_SECONDS * 1000);
-    return () => clearInterval(t);
-    // reload is stable per query key; re-subscribing on every render would reset
-    // the interval and effectively stop the poll.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setUpstreamFailureHandler(() => {
+      reload();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(reload, RECHECK_AFTER_FAILURE_MS);
+    });
+    return () => {
+      setUpstreamFailureHandler(null);
+      if (timer) clearTimeout(timer);
+    };
+    // reload is stable for this query key; re-registering on every render would
+    // only churn the handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

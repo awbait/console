@@ -18,15 +18,22 @@ interface AsyncState<T> {
 // and revalidates in the background instead of blanking out to a spinner.
 // Without a key the call gets a private entry per hook instance - same behaviour
 // as before, no sharing.
+// `refetchInterval` (ms) keeps a value fresh on its own, for the few things that
+// change without the user doing anything (platform health). Prefer it to a
+// setInterval around `reload`: the query layer pauses it while the tab is in the
+// background and resumes on return, and it cannot be left running by a stale
+// closure.
 export function useAsync<T>(
   fn: (signal: AbortSignal) => Promise<T>,
   deps: unknown[],
   key?: QueryKey,
+  opts?: { refetchInterval?: number },
 ): AsyncState<T> {
   const instanceId = useId();
   const query = useQuery({
     queryKey: key ?? ["useAsync", instanceId, ...deps],
     queryFn: ({ signal }) => fn(signal),
+    refetchInterval: opts?.refetchInterval,
   });
 
   return {
