@@ -268,55 +268,70 @@ function CategoryFilter({
       aria-label="Категория"
       className="inline-flex"
     >
-      <AriaButton
-        className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
-          value
-            ? "border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100"
-            : "border-gray-300 bg-surface text-slate-600 hover:bg-slate-50"
-        }`}
-      >
-        <IconCategory
-          size={15}
-          stroke={1.8}
-          className={value ? "text-brand-500" : "text-slate-400"}
-          aria-hidden
-        />
-        {current?.label ?? "Все категории"}
-        <IconChevronDown
-          size={14}
-          stroke={2}
-          className={value ? "text-brand-400" : "text-slate-400"}
-          aria-hidden
-        />
-      </AriaButton>
-      <Popover className="min-w-[var(--trigger-width)] rounded-md border border-slate-200 bg-surface shadow-lg entering:animate-in entering:fade-in">
-        <ListBox className="max-h-80 overflow-auto p-1 outline-none">
-          <ListBoxItem
-            id="all"
-            textValue="Все категории"
-            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none focus:bg-brand-50 selected:bg-brand-100"
+      {({ isOpen }) => (
+        <>
+          <AriaButton
+            className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
+              value
+                ? "border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100"
+                : "border-gray-300 bg-surface text-slate-600 hover:bg-slate-50"
+            }`}
           >
-            <IconCategory size={15} stroke={1.8} className="text-slate-400" aria-hidden />
-            Все категории
-            <span className="ml-auto pl-3 text-xs text-slate-400">{total}</span>
-          </ListBoxItem>
-          {categories.map((cat) => {
-            const Icon = categoryIcon(cat.icon ?? "");
-            return (
+            <IconCategory
+              size={15}
+              stroke={1.8}
+              className={value ? "text-brand-500" : "text-slate-400"}
+              aria-hidden
+            />
+            {current?.label ?? "Все категории"}
+            {/* The chevron turns over while the list is open: the same 200ms as
+                the list itself, so one movement reads as the cause of the
+                other. */}
+            <IconChevronDown
+              size={14}
+              stroke={2}
+              className={`transition-transform duration-200 motion-reduce:transition-none ${
+                isOpen ? "rotate-180" : ""
+              } ${value ? "text-brand-400" : "text-slate-400"}`}
+              aria-hidden
+            />
+          </AriaButton>
+          {/* The list grows out of the button rather than appearing on top of
+              it: it scales from the edge it is anchored to and slides the last
+              4px into place, and it leaves faster than it arrives, the way a
+              thing dismissed should. */}
+          <Popover className="min-w-[var(--trigger-width)] origin-top rounded-md border border-slate-200 bg-surface shadow-lg placement-top:origin-bottom entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-200 entering:ease-out placement-bottom:entering:slide-in-from-top-1 placement-top:entering:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 exiting:ease-in exiting:fill-mode-forwards motion-reduce:animate-none">
+            <ListBox className="max-h-80 overflow-auto p-1 outline-none">
               <ListBoxItem
-                key={cat.id}
-                id={cat.id}
-                textValue={cat.label}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none focus:bg-brand-50 selected:bg-brand-100"
+                id="all"
+                textValue="Все категории"
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none transition-colors focus:bg-brand-50 selected:bg-brand-100"
               >
-                <Icon size={15} stroke={1.8} className="text-slate-400" aria-hidden />
-                {cat.label}
-                <span className="ml-auto pl-3 text-xs text-slate-400">{counts.get(cat.id) ?? 0}</span>
+                <IconCategory size={15} stroke={1.8} className="text-slate-400" aria-hidden />
+                Все категории
+                <span className="ml-auto pl-3 text-xs text-slate-400">{total}</span>
               </ListBoxItem>
-            );
-          })}
-        </ListBox>
-      </Popover>
+              {categories.map((cat) => {
+                const Icon = categoryIcon(cat.icon ?? "");
+                return (
+                  <ListBoxItem
+                    key={cat.id}
+                    id={cat.id}
+                    textValue={cat.label}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none transition-colors focus:bg-brand-50 selected:bg-brand-100"
+                  >
+                    <Icon size={15} stroke={1.8} className="text-slate-400" aria-hidden />
+                    {cat.label}
+                    <span className="ml-auto pl-3 text-xs text-slate-400">
+                      {counts.get(cat.id) ?? 0}
+                    </span>
+                  </ListBoxItem>
+                );
+              })}
+            </ListBox>
+          </Popover>
+        </>
+      )}
     </AriaSelect>
   );
 }
