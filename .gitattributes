@@ -6,3 +6,8 @@
 # "validate migrations: checksum mismatch". Pin them to LF on every platform.
 internal/store/migrations/*.sql text eol=lf
 internal/store/migrations/atlas.sum text eol=lf
+
+# .env.example is generated (`make env-example`) and compared with the generator
+# byte for byte by TestEnvExampleGenerated. Pin it to LF so a checkout with
+# core.autocrlf does not turn every line into a difference.
+.env.example text eol=lf

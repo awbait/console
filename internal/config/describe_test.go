@@ -23,7 +23,7 @@ func TestDescribeCoversEveryVariable(t *testing.T) {
 	got := byName(Describe(&Config{}))
 	rt := reflect.TypeFor[Config]()
 	for i := range rt.NumField() {
-		name := rt.Field(i).Tag.Get("env")
+		name, _ := envKey(rt.Field(i).Tag.Get("env"))
 		if name == "" {
 			continue
 		}

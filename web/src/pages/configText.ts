@@ -93,7 +93,6 @@ export const CONFIG_TEXT: Record<string, string> = {
     "Выражение для нестандартной структуры групп. Если задано, используется вместо префикса.",
 
   // Реестр чартов
-  HARBOR_MODE: "Работать с настоящим Harbor или с его заглушкой в памяти.",
   HARBOR_URL: "Адрес Harbor.",
   HARBOR_ROBOT_USER: "Учётная запись робота, от имени которой портал читает чарты.",
   HARBOR_ROBOT_TOKEN: "Пароль робота Harbor.",
@@ -105,7 +104,6 @@ export const CONFIG_TEXT: Record<string, string> = {
   CHART_REGISTRY: "Адрес реестра, который портал записывает в манифест заказа как источник чарта.",
 
   // Git
-  GITLAB_MODE: "Работать с настоящим GitLab или с его заглушкой в памяти.",
   GITLAB_URL: "Адрес GitLab.",
   GITLAB_TOKEN: "Токен, от имени которого портал создаёт репозитории и merge request.",
   GITLAB_TIMEOUT: "Сколько ждать ответа от GitLab.",
@@ -117,7 +115,6 @@ export const CONFIG_TEXT: Record<string, string> = {
     "Токен входящих уведомлений GitLab. Пусто - портал узнаёт о слиянии только опросом.",
 
   // Выкатка
-  ARGOCD_MODE: "Работать с настоящим Argo CD или с его заглушкой в памяти.",
   ARGOCD_URL: "Адрес Argo CD.",
   ARGOCD_TOKEN: "Токен, от имени которого портал читает состояние приложений.",
   ARGOCD_PROJECT: "Проект Argo CD, в который попадают заказы портала.",
