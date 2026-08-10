@@ -6,10 +6,11 @@ import (
 )
 
 // The .env.example in the repository root is generated from this package: the
-// names and defaults of the Config struct, and the `doc` sentence each field
-// carries. That sentence is written once, here, and nowhere else - which is the
-// point. Run `make env-example` after touching a field; TestEnvExampleGenerated
-// fails when the file in the repository and the tags have drifted apart.
+// names, defaults and required-ness of the Config struct, and the `desc`
+// sentence each field carries. That sentence is written once, here, and nowhere
+// else - which is the point. Run `make env-example` after touching a field;
+// TestEnvExampleGenerated fails when the file in the repository and the tags
+// have drifted apart.
 //
 // What a variable is for, in Russian and for the person reading the admin
 // configuration page, is product copy and lives with the rest of it in
@@ -79,17 +80,19 @@ func envFields() map[string][]envField {
 	rt := reflect.TypeFor[Config]()
 	for i := range rt.NumField() {
 		ft := rt.Field(i)
-		name := ft.Tag.Get("env")
+		name, required := envKey(ft.Tag.Get("env"))
 		if name == "" {
 			continue
 		}
 		def, example := ft.Tag.Get("envDefault"), ft.Tag.Get("example")
-		f := envField{name: name, doc: ft.Tag.Get("doc")}
+		f := envField{name: name, doc: ft.Tag.Get("desc")}
 		switch {
 		case def != "":
 			f.value = def
-		case ft.Tag.Get("required") == "true":
-			f.value = example
+		case required:
+			// Written out as a setting rather than a suggestion, and said out
+			// loud: this is the line the reader has to fill in.
+			f.value, f.doc = example, strings.TrimSpace(f.doc)+" Required."
 		default:
 			f.value, f.commented = example, true
 		}

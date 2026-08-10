@@ -127,7 +127,10 @@ func Describe(cfg *Config) []Field {
 	out := make([]Field, 0, rt.NumField())
 	for i := range rt.NumField() {
 		ft := rt.Field(i)
-		name := ft.Tag.Get("env")
+		// Required-ness is not shown: the portal refuses to start without those
+		// variables, so on a page served by a running portal they are set by
+		// definition.
+		name, _ := envKey(ft.Tag.Get("env"))
 		if name == "" {
 			continue
 		}
@@ -176,6 +179,21 @@ func equalsDefault(v reflect.Value, value, def string) bool {
 	a, errA := time.ParseDuration(value)
 	b, errB := time.ParseDuration(def)
 	return errA == nil && errB == nil && a == b
+}
+
+// envKey splits an env tag into the variable name and whether the portal
+// refuses to start without it. The loader takes both in one tag
+// ("HARBOR_URL,required,notEmpty"), so everything that reads the name has to
+// split it the same way - and reading required-ness from here is what keeps it
+// from being restated anywhere else.
+func envKey(tag string) (name string, required bool) {
+	name, opts, _ := strings.Cut(tag, ",")
+	for opt := range strings.SplitSeq(opts, ",") {
+		if opt == "required" {
+			required = true
+		}
+	}
+	return name, required
 }
 
 // groupOf sorts a variable into its section by name prefix.

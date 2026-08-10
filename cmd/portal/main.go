@@ -34,7 +34,12 @@ import (
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		panic(err)
+		// A misconfigured deployment is not a bug in the portal: it gets the
+		// sentence naming what is missing, not a stack trace. The logger is not
+		// up yet - its own settings come from the configuration that just
+		// failed - so this goes straight to stderr.
+		fmt.Fprintln(os.Stderr, "configuration:", err)
+		os.Exit(1)
 	}
 	log := observability.NewLogger(cfg.LogLevel, cfg.LogFormat)
 
@@ -88,9 +93,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// are used by tests only: a portal that can be pointed at a fake registry by
 	// one environment variable is a portal that can silently serve made-up
 	// charts in production.
-	if cfg.HarborURL == "" {
-		return errors.New("HARBOR_URL is required")
-	}
+	//
+	// Their addresses and tokens are marked required in the config struct, so a
+	// deployment missing one is refused by config.Load before this point - with
+	// every missing variable named at once, and before the database has been
+	// touched.
 	if cfg.HarborInsecureTLS {
 		// Legitimate for the local self-signed stand, dangerous in production
 		// (disables cert verification, incl. the robot-cred Basic exchange).
@@ -100,14 +107,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	hb := harbor.NewClient(cfg.HarborURL, cfg.HarborRobotUser, cfg.HarborRobotToken,
 		cfg.HarborProjects, cfg.HarborInsecureTLS, cfg.HarborTimeout)
 
-	if cfg.GitLabURL == "" || cfg.GitLabToken == "" {
-		return errors.New("GITLAB_URL and GITLAB_TOKEN are required")
-	}
 	gl := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken, cfg.GitLabGitopsGroup, cfg.GitLabTimeout)
 
-	if cfg.ArgoCDURL == "" || cfg.ArgoCDToken == "" {
-		return errors.New("ARGOCD_URL and ARGOCD_TOKEN are required")
-	}
 	argo := argocd.NewClient(cfg.ArgoCDURL, cfg.ArgoCDToken, cfg.GitLabTimeout)
 
 	// --- domains ---

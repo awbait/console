@@ -10,7 +10,7 @@ import (
 )
 
 // The description of a configuration variable is written in exactly two places,
-// one per audience: the `doc` tag in config.go, which the root .env.example is
+// one per audience: the `desc` tag in config.go, which the root .env.example is
 // generated from, and the Russian sentence in the admin page's copy. The tests
 // here hold both ends, so a new variable cannot reach the repository documented
 // nowhere, and a deleted one cannot leave its text behind.
@@ -44,13 +44,13 @@ func TestEveryVariableDocumented(t *testing.T) {
 	rt := reflect.TypeFor[Config]()
 	for i := range rt.NumField() {
 		ft := rt.Field(i)
-		name := ft.Tag.Get("env")
+		name, _ := envKey(ft.Tag.Get("env"))
 		if name == "" {
 			continue
 		}
 		inCode[name] = true
-		if strings.TrimSpace(ft.Tag.Get("doc")) == "" {
-			t.Errorf("%s has no doc tag in config.go (the .env.example entry is generated from it)", name)
+		if strings.TrimSpace(ft.Tag.Get("desc")) == "" {
+			t.Errorf("%s has no desc tag in config.go (the .env.example entry is generated from it)", name)
 		}
 		if !inPage[name] {
 			t.Errorf("%s has no line in configText.ts (the configuration page would show it unexplained)", name)
