@@ -167,7 +167,7 @@ export function CatalogPage() {
             />
             <Input
               placeholder="Название или описание..."
-              className="w-full rounded-md border border-gray-300 bg-surface py-1.5 pl-8 pr-8 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 [&::-webkit-search-cancel-button]:hidden"
+              className="w-full rounded-lg border border-gray-300 bg-surface py-1.5 pl-8 pr-8 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 [&::-webkit-search-cancel-button]:hidden"
             />
             {query && (
               <AriaButton
@@ -271,7 +271,7 @@ function CategoryFilter({
       {({ isOpen }) => (
         <>
           <AriaButton
-            className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
+            className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
               value
                 ? "border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100"
                 : "border-gray-300 bg-surface text-slate-600 hover:bg-slate-50"
@@ -300,7 +300,7 @@ function CategoryFilter({
               it: it scales from the edge it is anchored to and slides the last
               4px into place, and it leaves faster than it arrives, the way a
               thing dismissed should. */}
-          <Popover className="min-w-[var(--trigger-width)] origin-top rounded-md border border-slate-200 bg-surface shadow-lg placement-top:origin-bottom entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-200 entering:ease-out placement-bottom:entering:slide-in-from-top-1 placement-top:entering:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 exiting:ease-in exiting:fill-mode-forwards motion-reduce:animate-none">
+          <Popover className="min-w-[var(--trigger-width)] origin-top rounded-lg border border-slate-200 bg-surface shadow-lg placement-top:origin-bottom entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-200 entering:ease-out placement-bottom:entering:slide-in-from-top-1 placement-top:entering:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 exiting:ease-in exiting:fill-mode-forwards motion-reduce:animate-none">
             <ListBox className="max-h-80 overflow-auto p-1 outline-none">
               <ListBoxItem
                 id="all"
