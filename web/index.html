@@ -4,12 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Console - Managed Services</title>
-    <!-- Тема до отрисовки, чтобы не моргало светлым на тёмной/РН. -->
+    <!-- The theme is set before the first paint, so a dark portal never flashes
+         white on the way in. Anything other than a stored theme - no choice yet,
+         or the choice to follow the system - asks the system. Mirrors
+         ThemeContext; the two have to agree or the page repaints on load. -->
     <script>
       try {
         var t = localStorage.getItem("idp-theme");
-        document.documentElement.dataset.theme =
-          t === "dark" || t === "rn" ? t : "light";
+        if (t !== "light" && t !== "dark" && t !== "rn") {
+          t = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+        document.documentElement.dataset.theme = t;
       } catch (e) {
         document.documentElement.dataset.theme = "light";
       }

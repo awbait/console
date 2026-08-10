@@ -4,7 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- The portal can follow the appearance of the operating system: the theme menu
+  has an option for it, it is what a first visit starts with, and the portal
+  turns dark or light along with the desktop.
+
 ### Changed
+- The theme is picked in a single switcher: every option is in view at once, the
+  chosen one is lit, and the icon in the top bar shows which one it is.
 - The order history takes only the room its events need, and splits into pages
   only once they would not fit down to the bottom of the screen.
 
