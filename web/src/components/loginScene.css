@@ -12,6 +12,97 @@
      selection across a tilted plane looks like a rendering fault. */
   user-select: none;
   -webkit-user-select: none;
+
+  /* Scene tones. The app tokens flip with the theme on their own, but the
+     recipes built on them do not: a fill one step off the page reads as depth
+     on black and vanishes on near-white, a shadow that lifts a card off white
+     is invisible on black, and a glow can only add light to a dark page. So
+     the mixes that carry the picture are named here once. These are the light
+     values; the dark themes override them below. */
+  /* Lines on this plane lose most of their contrast twice over: the plate is
+     masked to a soft ellipse, so a line only reaches full strength near the
+     middle, and the tilt drops every 1px line into a sub-pixel row that the
+     browser averages with the page behind it. On black that still leaves a
+     visible line; on near-white it does not, so the light values start with a
+     lot more in hand than the dark ones. */
+  --scene-grid: rgb(var(--c-neutral-400) / 0.5);
+  --scene-glow: rgb(var(--c-brand-500) / 0.06);
+  /* Cards on the tilted plane: a hairline, a contact shadow and a long cast. */
+  --scene-lift: 0 1px 2px rgb(var(--c-neutral-900) / 0.06),
+    0 12px 20px -12px rgb(var(--c-neutral-900) / 0.28),
+    0 28px 44px -28px rgb(var(--c-neutral-900) / 0.22);
+  /* Lying on the plane rather than floating above it. */
+  --scene-flat: 0 1px 2px rgb(var(--c-neutral-900) / 0.05);
+  --scene-line: rgb(var(--c-neutral-400) / 0.5);
+  --scene-line-inner: rgb(var(--c-neutral-300));
+  --scene-chip: rgb(var(--c-neutral-200) / 0.8);
+  --scene-field: rgb(var(--c-neutral-100));
+  --scene-label: rgb(var(--c-neutral-500));
+  --scene-lane: rgb(var(--c-neutral-200) / 0.5);
+  --scene-lane-edge: rgb(var(--c-neutral-400) / 0.55);
+  --scene-lane-inset: inset 0 1px 2px rgb(var(--c-neutral-900) / 0.05);
+  --scene-lane-on: linear-gradient(
+    160deg,
+    rgb(var(--c-brand-100) / 0.9),
+    rgb(var(--c-brand-50) / 0.6) 60%,
+    rgb(var(--c-surface) / 0)
+  );
+  --scene-lane-on-edge: rgb(var(--c-brand-300));
+  --scene-lane-on-lift: 0 26px 40px -26px rgb(var(--c-brand-700) / 0.38),
+    0 0 0 1px rgb(var(--c-brand-500) / 0.1);
+  --scene-ns: rgb(var(--c-neutral-200) / 0.32);
+  --scene-ns-edge: rgb(var(--c-neutral-400) / 0.55);
+  --scene-hair: rgb(var(--c-neutral-400) / 0.75);
+  --scene-wire: rgb(var(--c-info-600) / 0.75);
+  --scene-anchor: rgb(var(--c-info-600));
+  --scene-recede: 0.95;
+  --scene-recede-doc: 0.92;
+  --scene-wait: 0.6;
+  --scene-wait-mark: rgb(var(--c-neutral-500));
+  --scene-mark-neutral: rgb(var(--c-neutral-200));
+  --scene-mark-info: rgb(var(--c-info-200));
+  --scene-mark-success: rgb(var(--c-success-200));
+}
+
+/* Dark and RN: the page is black, so depth comes from fills a step above it
+   instead of from shadows, the brand glow actually lights the plane, and the
+   quiet side of the picture recedes by fading towards the page rather than by
+   losing its colour. */
+[data-theme="dark"] .login-scene,
+[data-theme="rn"] .login-scene {
+  --scene-grid: rgb(var(--c-neutral-300) / 0.5);
+  --scene-glow: rgb(var(--c-brand-500) / 0.14);
+  --scene-lift: 0 24px 32px -22px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.06);
+  --scene-flat: 0 24px 32px -22px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.06);
+  --scene-line: rgb(var(--c-neutral-200));
+  --scene-line-inner: rgb(var(--c-neutral-100));
+  --scene-chip: rgb(var(--c-neutral-100));
+  --scene-field: rgb(var(--c-neutral-50));
+  --scene-label: rgb(var(--c-neutral-400));
+  --scene-lane: rgb(var(--c-neutral-50) / 0.5);
+  --scene-lane-edge: rgb(var(--c-neutral-200) / 0.8);
+  --scene-lane-inset: none;
+  --scene-lane-on: linear-gradient(
+    160deg,
+    rgb(var(--c-brand-50) / 0.95),
+    rgb(var(--c-brand-50) / 0.35) 65%,
+    rgb(var(--c-surface) / 0)
+  );
+  --scene-lane-on-edge: rgb(var(--c-brand-200));
+  --scene-lane-on-lift: 0 34px 46px -30px rgb(var(--c-brand-600) / 0.45),
+    0 0 0 1px rgb(var(--c-brand-500) / 0.08);
+  --scene-ns: rgb(var(--c-neutral-50) / 0.5);
+  --scene-ns-edge: rgb(var(--c-neutral-300));
+  --scene-hair: rgb(var(--c-neutral-300));
+  --scene-wire: rgb(var(--c-info-500) / 0.55);
+  --scene-anchor: rgb(var(--c-info-500));
+  --scene-recede: 0.75;
+  --scene-recede-doc: 0.72;
+  --scene-wait: 0.45;
+  --scene-wait-mark: rgb(var(--c-neutral-400));
+  --scene-mark-neutral: rgb(var(--c-neutral-100));
+  --scene-mark-info: rgb(var(--c-info-100));
+  --scene-mark-success: rgb(var(--c-success-100));
 }
 
 /* The picture layer. The scene has no frame of its own: it fades out towards
@@ -34,8 +125,8 @@
      across the backdrop. At this size the edge is always off screen. */
   inset: -80%;
   background-image:
-    linear-gradient(rgb(var(--c-neutral-300) / 0.5) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--c-neutral-300) / 0.5) 1px, transparent 1px);
+    linear-gradient(var(--scene-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--scene-grid) 1px, transparent 1px);
   background-size: 52px 52px;
   transform: perspective(1600px) rotateX(38deg) rotateZ(-22deg);
 }
@@ -48,7 +139,7 @@
   width: 1100px;
   height: 1100px;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgb(var(--c-brand-500) / 0.14), transparent 62%);
+  background: radial-gradient(circle, var(--scene-glow), transparent 62%);
 }
 
 /* The board: a fixed-size plane holding the cards and the wire layer in flat
@@ -109,10 +200,21 @@
   transition: opacity 520ms ease 220ms;
 }
 
-/* Tilted cards need a deeper shadow than the flat canvas: it is what separates
-   them from the plane they float above. */
+/* Tilted cards need a deeper shadow and a firmer edge than the flat canvas:
+   together they are what separates a card from the plane it floats above. */
 .login-scene .rf-wl {
-  box-shadow: 0 24px 32px -22px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.06);
+  border-color: var(--scene-line);
+  box-shadow: var(--scene-lift);
+}
+
+/* The namespace boxes the cards sit in, and the name each one carries. */
+.login-scene .rf-ns {
+  border-color: var(--scene-ns-edge);
+  background: var(--scene-ns);
+}
+
+.login-scene .rf-ns__title {
+  color: var(--scene-label);
 }
 
 /* The real map boxes are draggable; here they are a picture. */
@@ -139,29 +241,29 @@
 
 .login-scene__wire {
   fill: none;
-  stroke: rgb(var(--c-info-500) / 0.55);
+  stroke: var(--scene-wire);
   stroke-width: 1.5;
 }
 
 .login-scene__arrow {
-  fill: rgb(var(--c-info-500) / 0.55);
+  fill: var(--scene-wire);
 }
 
 /* Anchors: a filled dot where traffic starts, an outlined ring where it lands -
    the same shape language the map uses for sources and ports. */
 .login-scene__source {
-  fill: rgb(var(--c-info-500));
+  fill: var(--scene-anchor);
 }
 
 .login-scene__target {
   fill: rgb(var(--c-surface));
-  stroke: rgb(var(--c-info-500));
+  stroke: var(--scene-anchor);
   stroke-width: 2;
 }
 
 /* Traffic dot travelling source -> target, as on the live map. */
 .login-scene__dot {
-  fill: rgb(var(--c-info-500));
+  fill: var(--scene-anchor);
   animation: login-travel 3.4s linear infinite;
 }
 
@@ -223,7 +325,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgb(var(--c-neutral-400));
+  color: var(--scene-label);
 }
 
 .login-col__title--on {
@@ -232,7 +334,7 @@
 
 /* The manual side is present, but not where the eye is meant to land. */
 .login-col--manual {
-  opacity: 0.75;
+  opacity: var(--scene-recede);
 }
 
 /* The lanes the two columns sit in. The manual one is a recess in the plane -
@@ -242,20 +344,15 @@
 .login-lane {
   height: 396px;
   border-radius: 18px;
-  border: 1px solid rgb(var(--c-neutral-200) / 0.8);
-  background: rgb(var(--c-neutral-50) / 0.5);
+  border: 1px solid var(--scene-lane-edge);
+  background: var(--scene-lane);
+  box-shadow: var(--scene-lane-inset);
 }
 
 .login-lane--on {
-  border-color: rgb(var(--c-brand-200));
-  background: linear-gradient(
-    160deg,
-    rgb(var(--c-brand-50) / 0.95),
-    rgb(var(--c-brand-50) / 0.35) 65%,
-    rgb(var(--c-surface) / 0)
-  );
-  box-shadow: 0 34px 46px -30px rgb(var(--c-brand-600) / 0.45),
-    0 0 0 1px rgb(var(--c-brand-500) / 0.08);
+  border-color: var(--scene-lane-on-edge);
+  background: var(--scene-lane-on);
+  box-shadow: var(--scene-lane-on-lift);
 }
 
 /* The seam between the lanes: a hairline that fades out at both ends, with the
@@ -270,14 +367,14 @@
   height: 376px;
   background: linear-gradient(
     to bottom,
-    rgb(var(--c-neutral-300) / 0),
-    rgb(var(--c-neutral-300)) 22%,
-    rgb(var(--c-neutral-300)) 43%,
-    rgb(var(--c-neutral-300) / 0) 45%,
-    rgb(var(--c-neutral-300) / 0) 55%,
-    rgb(var(--c-neutral-300)) 57%,
-    rgb(var(--c-neutral-300)) 78%,
-    rgb(var(--c-neutral-300) / 0)
+    transparent,
+    var(--scene-hair) 22%,
+    var(--scene-hair) 43%,
+    transparent 45%,
+    transparent 55%,
+    var(--scene-hair) 57%,
+    var(--scene-hair) 78%,
+    transparent
   );
 }
 
@@ -303,16 +400,18 @@
 }
 .login-doc {
   overflow: hidden;
-  border: 1px solid rgb(var(--c-neutral-200));
+  border: 1px solid var(--scene-line);
   border-radius: 10px;
   background: rgb(var(--c-surface));
-  box-shadow: 0 24px 32px -22px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.06);
+  box-shadow: var(--scene-lift);
 }
 
 /* The work the portal takes over is drawn a step back: present, but no longer
-   where the eye is meant to land. */
+   where the eye is meant to land. It also stops floating - lying flat on the
+   plane is what keeps it behind the portal's card once shadows do the lifting. */
 .login-doc--manual {
-  opacity: 0.72;
+  opacity: var(--scene-recede-doc);
+  box-shadow: var(--scene-flat);
 }
 
 .login-doc__head {
@@ -321,7 +420,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 7px 10px 6px;
-  border-bottom: 1px solid rgb(var(--c-neutral-100));
+  border-bottom: 1px solid var(--scene-line-inner);
   font-size: 11px;
   font-weight: 600;
   color: rgb(var(--c-neutral-900));
@@ -331,7 +430,7 @@
   flex: none;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgb(var(--c-neutral-100));
+  background: var(--scene-chip);
   font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
@@ -398,9 +497,9 @@
 .login-field__value {
   min-width: 108px;
   padding: 2px 8px;
-  border: 1px solid rgb(var(--c-neutral-200));
+  border: 1px solid var(--scene-line);
   border-radius: 6px;
-  background: rgb(var(--c-neutral-50));
+  background: var(--scene-field);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   color: rgb(var(--c-neutral-800));
@@ -469,7 +568,7 @@
   height: 26px;
   font-size: 11px;
   color: rgb(var(--c-neutral-700));
-  opacity: 0.45;
+  opacity: var(--scene-wait);
   transition: opacity 400ms ease;
 }
 
@@ -495,9 +594,34 @@
   transition: background-color 400ms ease, color 400ms ease;
 }
 
+/* A step the order has not reached yet waits in the neutral tint. */
+.login-status--waiting .login-status__mark {
+  color: var(--scene-wait-mark);
+}
+
 /* One ring when a step is reached: the order just moved here. */
 .login-status--live .login-status__mark {
   animation: login-status-pop 700ms ease;
+}
+
+/* The chip under each status icon. Elsewhere in the product these badges sit on
+   a card at reading size, where one step of tint is enough; here they are drawn
+   small and laid on a tilted plane, which eats most of it - and on near-white a
+   fill one step off the card was never much to begin with. Each status is moved
+   one step deeper along its own scale, so the picture gains contrast without any
+   status changing colour. Keyed on the classes StatusBadge hands out, so the
+   tints themselves still come from there. */
+.login-scene .login-status__mark.bg-slate-100,
+.login-scene .login-status__mark.bg-gray-100 {
+  background-color: var(--scene-mark-neutral);
+}
+
+.login-scene .login-status__mark.bg-blue-100 {
+  background-color: var(--scene-mark-info);
+}
+
+.login-scene .login-status__mark.bg-green-100 {
+  background-color: var(--scene-mark-success);
 }
 
 @keyframes login-status-pop {
@@ -542,7 +666,7 @@
   top: 20px;
   height: 13px;
   width: 1px;
-  background: rgb(var(--c-neutral-200));
+  background: var(--scene-line);
 }
 
 .login-step__mark {

@@ -122,6 +122,9 @@ All notable changes to this project are documented in this file.
   they take the colour of the card, and the border is what makes them a field.
 - The editing panel on the right dims the page instead of covering it with a
   light veil in the dark themes.
+- The picture on the sign-in screen no longer washes out in the light theme: the
+  backdrop, the cards and both sides of the comparison read as clearly as they
+  do in the dark one.
 
 ### Security
 - Sessions are stored encrypted, so a dump of the cache no longer exposes the
