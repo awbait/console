@@ -1,4 +1,4 @@
-.PHONY: build run-oidc web infra obs test vet lint tidy cover hooks down docker \
+.PHONY: build run-oidc web infra obs test vet lint tidy cover hooks down docker env-example \
 	up-upstreams-infra down-upstreams gitlab-seed \
 	stand-up stand-down stand-charts stand-appset stand-token stand-reset \
 	stand-gitlab-webhooks seed-import
@@ -89,6 +89,12 @@ hooks:
 
 tidy:
 	go mod tidy
+
+# Rewrite the root .env.example from internal/config (names, defaults and the
+# `doc` tag of every field). Run after touching a variable; TestEnvExampleGenerated
+# fails while the file and the tags disagree.
+env-example:
+	go run ./cmd/envexample
 
 cover:
 	go test -cover ./internal/...

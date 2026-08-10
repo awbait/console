@@ -32,20 +32,42 @@ type Field struct {
 	Sensitive string   `json:"sensitive,omitempty"` // why the value is partly hidden, if it is
 }
 
-// Groups, in the order the page lists them. A variable lands in the first group
-// whose prefix it matches; anything else falls back to "portal" (server basics).
+// Groups, in the order both the admin page and the generated .env.example list
+// them. A variable lands in the first group whose prefix it matches; anything
+// else falls back to the first group, the portal itself, which is why that one
+// carries no prefixes of its own.
+//
+// title and intro are the English heading of the section in .env.example. The
+// Russian labels of the same sections are product copy and live with the rest
+// of it, in web/src/pages/configText.ts.
 var groups = []struct {
 	prefixes []string
 	name     string
+	title    string
+	intro    string
 }{
-	{[]string{"OIDC_", "AUTH_", "SESSION_"}, "auth"},
-	{[]string{"RBAC_"}, "rbac"},
-	{[]string{"HARBOR_", "CHART_REGISTRY"}, "harbor"},
-	{[]string{"GITLAB_"}, "gitlab"},
-	{[]string{"ARGOCD_"}, "argocd"},
-	{[]string{"DATABASE_", "REDIS_", "STORE", "CACHE"}, "storage"},
-	{[]string{"STATUS_", "DRIFT_", "IMPORT_", "CATALOG_"}, "sync"},
-	{[]string{"LOG_", "GRAFANA_", "METRICS_"}, "observability"},
+	{nil, "portal", "The portal itself",
+		"Where the portal listens and how it is reached from outside."},
+	{[]string{"OIDC_", "AUTH_", "SESSION_"}, "auth", "Signing in",
+		"Users sign in through an OIDC identity provider (Keycloak). AUTH_MODE has one runtime value: the no-Keycloak mode is a test stub and is rejected at startup."},
+	{[]string{"RBAC_"}, "rbac", "Roles and teams",
+		"Roles and teams are derived from the group claims of the identity provider.\n" +
+			"\n" +
+			"The team prefix is matched against every segment of a group path, so a prefixed segment anywhere resolves: /group/group/team-core/group gives the team core. The admin, support and security groups are matched by the full path with the leading slash stripped, so platform-admins matches /platform-admins but not a nested /x/platform-admins/y. A subgroup cannot escalate into a privileged role."},
+	{[]string{"HARBOR_", "CHART_REGISTRY"}, "harbor", "Harbor, the chart registry",
+		"Where the portal takes charts, their versions and their order forms from. Required: the portal does not start without it."},
+	{[]string{"GITLAB_"}, "gitlab", "GitLab",
+		"Holds the GitOps repositories of the teams and the merge requests orders travel through. Required."},
+	{[]string{"ARGOCD_"}, "argocd", "Argo CD",
+		"Deploys what the portal commits and reports the state of it back. Required."},
+	{[]string{"DATABASE_", "REDIS_", "STORE", "CACHE"}, "storage", "Storage",
+		"Memory needs no infrastructure and is lost on restart; postgres and redis need the connections below."},
+	{[]string{"STATUS_", "DRIFT_", "IMPORT_", "CATALOG_"}, "sync", "Keeping state fresh",
+		"hybrid: a periodic reconcile plus notifications from GitLab and Harbor that trigger an immediate sweep, with the poll left on as a safety net. Without the webhook secrets set this is polling alone, which is the right local behaviour.\n" +
+			"\n" +
+			"webhook: notifications only, no periodic poll. A startup sweep still runs, but a notification that never arrives is not retried until the next restart, so use this only where delivery is reliable. Needs GITLAB_WEBHOOK_TOKEN."},
+	{[]string{"LOG_", "GRAFANA_", "METRICS_"}, "observability", "Logs and metrics",
+		"What the portal writes about itself."},
 }
 
 // options lists the accepted values of the variables that take a fixed set of
@@ -165,7 +187,7 @@ func groupOf(name string) string {
 			}
 		}
 	}
-	return "portal"
+	return groups[0].name
 }
 
 // renderValue prints a config value the way its env var would have been written:
