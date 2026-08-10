@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-10
+
+This release takes the portal out of demonstration mode. The stand-in registry,
+git server and delivery system are gone, so an installation talks to the real
+ones from the first start and will not run without their addresses and tokens.
+Alongside that: services published version by version, network policies drawn as
+a map instead of written by hand, sections for administrators and for support,
+and a portal that says out loud when part of the platform is not answering.
+
 ### Added
 - Several versions of one service. A service is published version by version:
   each version has its own order form and is approved on its own, the catalog
@@ -177,5 +186,6 @@ chart publications, OIDC auth, and observability.
   merging a `release/*` PR, and multi-arch image publish to GHCR for portal and
   collector on `v*` tags.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/awbait/console/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/awbait/console/releases/tag/v0.1.0
