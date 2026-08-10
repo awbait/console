@@ -13,6 +13,11 @@
   --c-surface: 255 255 255;
   --c-app: 248 250 252;
   --c-on-accent: 255 255 255;
+  /* Fill of a loading placeholder. A step deeper than the card divider it would
+     otherwise borrow: the same distance from white reads as far less than it
+     does from black, and a placeholder also spends half of its pulse at half
+     opacity, which halves what little was there. */
+  --c-skeleton: 226 232 240; /* #e2e8f0 */
 
   --c-brand-50: 239 246 255;
   --c-brand-100: 219 234 254;
@@ -89,6 +94,7 @@
      a shadow - doing the separating (a shadow is invisible on black). */
   --c-surface: 10 10 10; /* #0a0a0a - cards/nav, one step above the page */
   --c-app: 0 0 0; /* #000 - page background */
+  --c-skeleton: 25 25 25; /* #191919 - loading placeholder, a card divider's worth above the card */
 
   --c-neutral-50: 20 20 20; /* #141414 - hover/fill, lighter than the card it sits on */
   --c-neutral-100: 25 25 25; /* #191919 - dividers inside a card */

@@ -16,6 +16,8 @@ All notable changes to this project are documented in this file.
   only once they would not fit down to the bottom of the screen.
 
 ### Fixed
+- The placeholders that stand in for data while it loads are visible in the
+  light theme instead of melting into the card they sit on.
 - A sign-in that does not go through comes back to the sign-in screen and says
   what happened and what to do, instead of leaving the person on a page with an
   error message meant for nobody.
