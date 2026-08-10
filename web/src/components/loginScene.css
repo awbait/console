@@ -58,8 +58,10 @@
   --scene-recede: 0.95;
   --scene-recede-doc: 0.92;
   --scene-wait: 0.6;
-  --scene-wait-chip: rgb(var(--c-neutral-200));
   --scene-wait-mark: rgb(var(--c-neutral-500));
+  --scene-mark-neutral: rgb(var(--c-neutral-200));
+  --scene-mark-info: rgb(var(--c-info-200));
+  --scene-mark-success: rgb(var(--c-success-200));
 }
 
 /* Dark and RN: the page is black, so depth comes from fills a step above it
@@ -97,8 +99,10 @@
   --scene-recede: 0.75;
   --scene-recede-doc: 0.72;
   --scene-wait: 0.45;
-  --scene-wait-chip: rgb(var(--c-neutral-100));
   --scene-wait-mark: rgb(var(--c-neutral-400));
+  --scene-mark-neutral: rgb(var(--c-neutral-100));
+  --scene-mark-info: rgb(var(--c-info-100));
+  --scene-mark-success: rgb(var(--c-success-100));
 }
 
 /* The picture layer. The scene has no frame of its own: it fades out towards
@@ -590,18 +594,34 @@
   transition: background-color 400ms ease, color 400ms ease;
 }
 
-/* A step the order has not reached yet keeps a plain neutral chip until its own
-   tint arrives. A chip one step off the card is invisible on white, so it is
-   named with the scene tones rather than left to the utility class in the
-   markup. */
+/* A step the order has not reached yet waits in the neutral tint. */
 .login-status--waiting .login-status__mark {
-  background-color: var(--scene-wait-chip);
   color: var(--scene-wait-mark);
 }
 
 /* One ring when a step is reached: the order just moved here. */
 .login-status--live .login-status__mark {
   animation: login-status-pop 700ms ease;
+}
+
+/* The chip under each status icon. Elsewhere in the product these badges sit on
+   a card at reading size, where one step of tint is enough; here they are drawn
+   small and laid on a tilted plane, which eats most of it - and on near-white a
+   fill one step off the card was never much to begin with. Each status is moved
+   one step deeper along its own scale, so the picture gains contrast without any
+   status changing colour. Keyed on the classes StatusBadge hands out, so the
+   tints themselves still come from there. */
+.login-scene .login-status__mark.bg-slate-100,
+.login-scene .login-status__mark.bg-gray-100 {
+  background-color: var(--scene-mark-neutral);
+}
+
+.login-scene .login-status__mark.bg-blue-100 {
+  background-color: var(--scene-mark-info);
+}
+
+.login-scene .login-status__mark.bg-green-100 {
+  background-color: var(--scene-mark-success);
 }
 
 @keyframes login-status-pop {
