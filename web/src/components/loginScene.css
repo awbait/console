@@ -25,7 +25,7 @@
      browser averages with the page behind it. On black that still leaves a
      visible line; on near-white it does not, so the light values start with a
      lot more in hand than the dark ones. */
-  --scene-grid: rgb(var(--c-neutral-400) / 0.65);
+  --scene-grid: rgb(var(--c-neutral-400) / 0.5);
   --scene-glow: rgb(var(--c-brand-500) / 0.06);
   /* Cards on the tilted plane: a hairline, a contact shadow and a long cast. */
   --scene-lift: 0 1px 2px rgb(var(--c-neutral-900) / 0.06),
@@ -33,13 +33,13 @@
     0 28px 44px -28px rgb(var(--c-neutral-900) / 0.22);
   /* Lying on the plane rather than floating above it. */
   --scene-flat: 0 1px 2px rgb(var(--c-neutral-900) / 0.05);
-  --scene-line: rgb(var(--c-neutral-400) / 0.55);
+  --scene-line: rgb(var(--c-neutral-400) / 0.5);
   --scene-line-inner: rgb(var(--c-neutral-300));
   --scene-chip: rgb(var(--c-neutral-200) / 0.8);
   --scene-field: rgb(var(--c-neutral-100));
   --scene-label: rgb(var(--c-neutral-500));
   --scene-lane: rgb(var(--c-neutral-200) / 0.5);
-  --scene-lane-edge: rgb(var(--c-neutral-400) / 0.7);
+  --scene-lane-edge: rgb(var(--c-neutral-400) / 0.55);
   --scene-lane-inset: inset 0 1px 2px rgb(var(--c-neutral-900) / 0.05);
   --scene-lane-on: linear-gradient(
     160deg,
@@ -51,7 +51,7 @@
   --scene-lane-on-lift: 0 26px 40px -26px rgb(var(--c-brand-700) / 0.38),
     0 0 0 1px rgb(var(--c-brand-500) / 0.1);
   --scene-ns: rgb(var(--c-neutral-200) / 0.32);
-  --scene-ns-edge: rgb(var(--c-neutral-400) / 0.7);
+  --scene-ns-edge: rgb(var(--c-neutral-400) / 0.55);
   --scene-hair: rgb(var(--c-neutral-400) / 0.75);
   --scene-wire: rgb(var(--c-info-600) / 0.75);
   --scene-anchor: rgb(var(--c-info-600));
