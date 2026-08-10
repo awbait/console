@@ -312,11 +312,15 @@ function useDelayed(ms = LOADING_DELAY_MS): boolean {
 // it the size of what it replaces: the point is that nothing moves when the
 // real thing arrives. Silent to screen readers - the wrapper announces the wait
 // once, and a dozen announced boxes would be noise.
+//
+// The fill is a theme token of its own rather than a step of the neutral scale:
+// the same step reads differently at the two ends of it, and the light theme
+// needs a deeper one to say the same thing (see --c-skeleton in index.css).
 export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={`animate-pulse rounded bg-slate-100 motion-reduce:animate-none ${className}`}
+      className={`animate-pulse rounded bg-skeleton motion-reduce:animate-none ${className}`}
     />
   );
 }
