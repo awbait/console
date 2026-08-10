@@ -1,7 +1,66 @@
 import { IconAlertTriangle, IconLogin } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { LoginScene } from "./LoginScene";
+
+// A login that did not go through sends the browser back here with a reason.
+// The portal knows the technical detail and writes it to its own log; what
+// belongs on screen is what happened and what to do about it, which for all of
+// these is the same button, right below.
+const LOGIN_ERRORS: Record<string, { title: string; text: string }> = {
+  start: {
+    title: "Не удалось начать вход",
+    text: "Попробуйте ещё раз.",
+  },
+  state: {
+    title: "Вход не завершён",
+    text: "Страница входа была открыта слишком долго или вы вернулись по старой ссылке. Начните вход заново.",
+  },
+  provider: {
+    title: "Keycloak не пропустил вход",
+    text: "Вход отменён или у вашей учётной записи нет доступа к порталу. Если доступ нужен, обратитесь к администратору платформы.",
+  },
+  exchange: {
+    title: "Вход не завершён",
+    text: "Keycloak не ответил порталу. Попробуйте ещё раз, а если повторится, сообщите администратору платформы.",
+  },
+  identity: {
+    title: "Вход не подтверждён",
+    text: "Ответ Keycloak не прошёл проверку. Начните вход заново.",
+  },
+  session: {
+    title: "Портал не смог сохранить вход",
+    text: "Попробуйте ещё раз, а если повторится, сообщите администратору платформы.",
+  },
+};
+
+const FALLBACK_ERROR = { title: "Вход не завершён", text: "Попробуйте ещё раз." };
+
+const ERROR_PARAM = "auth_error";
+
+// useLoginFailure reads the reason off the address and then takes it off the
+// address: it belongs to the attempt that just failed, not to the page. Left
+// there, it would come back on a reload, and it would ride along in the
+// return-to of the next attempt - the person would land on a fresh session
+// still being told the last one failed.
+function useLoginFailure() {
+  const [reason] = useState(() => new URLSearchParams(window.location.search).get(ERROR_PARAM));
+  useEffect(() => {
+    if (reason) window.history.replaceState(null, "", returnTo());
+  }, [reason]);
+  if (!reason) return null;
+  return LOGIN_ERRORS[reason] ?? FALLBACK_ERROR;
+}
+
+// returnTo is where signing in should land: this page, minus the failure of the
+// previous attempt.
+function returnTo(): string {
+  const params = new URLSearchParams(window.location.search);
+  params.delete(ERROR_PARAM);
+  const query = params.toString();
+  return window.location.pathname + (query ? `?${query}` : "");
+}
 
 // The sign-in screen is the only page drawn outside the shell. It splits in
 // two: what the portal does (see LoginScene) and the one way in.
@@ -11,6 +70,7 @@ export function LoginScreen() {
   // here than to hand the user off to a blank screen.
   const { ok } = usePlatformHealth();
   const canSignIn = ok("sign_in");
+  const failure = useLoginFailure();
 
   return (
     <div className="flex min-h-screen bg-app">
@@ -29,16 +89,32 @@ export function LoginScreen() {
           </h1>
           <p className="mt-3 text-sm text-slate-500">Заказ и управление сервисами платформы</p>
 
+          {/* A failed attempt is stated above the button, in the order it is
+              lived: this is what happened, and here is the way out of it. The
+              outage warning stays below the button, because it is about whether
+              the button works at all. role=alert, not status: this appeared
+              because of something the person just did. */}
+          {failure && (
+            <div
+              role="alert"
+              className="mt-8 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+            >
+              <IconAlertTriangle size={18} stroke={1.8} className="mt-0.5 shrink-0 text-red-500" />
+              <span>
+                <span className="block font-medium">{failure.title}</span>
+                <span className="mt-0.5 block">{failure.text}</span>
+              </span>
+            </div>
+          )}
+
           {/* One element in both states rather than two: dropping the href is
               what makes it unclickable and untabbable, and keeping the same
               node lets the colours cross-fade when a poll changes the verdict,
               instead of the button blinking in place. */}
           <a
-            href={
-              canSignIn ? api.loginUrl(window.location.pathname + window.location.search) : undefined
-            }
+            href={canSignIn ? api.loginUrl(returnTo()) : undefined}
             aria-disabled={!canSignIn}
-            className={`mt-8 flex h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-brand-500 motion-reduce:transition-none ${
+            className={`${failure ? "mt-4" : "mt-8"} flex h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-brand-500 motion-reduce:transition-none ${
               canSignIn
                 ? "bg-brand-600 text-on-accent hover:bg-brand-700"
                 : "cursor-not-allowed bg-slate-100 text-slate-400"

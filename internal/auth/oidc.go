@@ -5,6 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -28,6 +31,7 @@ type OIDC struct {
 	postLogin  string
 	postLogout string
 	endSession string // Keycloak end_session_endpoint (RP-initiated logout)
+	log        *slog.Logger
 }
 
 var _ Authenticator = (*OIDC)(nil)
@@ -50,6 +54,11 @@ type OIDCConfig struct {
 	// Where to send the browser after logout. Must be registered as a valid
 	// post-logout redirect URI on the Keycloak client. Defaults to PostLogin.
 	PostLogout string
+	// Log receives the reason a login did not go through. The person gets a
+	// category on screen; this is where the detail behind it goes, and without
+	// it a deployment where every login fails looks exactly like one where
+	// nobody has tried.
+	Log *slog.Logger
 }
 
 // NewOIDC discovers the issuer and builds the authenticator.
@@ -82,6 +91,7 @@ func NewOIDC(ctx context.Context, c OIDCConfig, sessions *SessionStore, rbac RBA
 		postLogin:  cmp.Or(c.PostLogin, "/"),
 		postLogout: cmp.Or(c.PostLogout, c.PostLogin, "/"),
 		endSession: disc.EndSession,
+		log:        c.Log,
 	}, nil
 }
 
@@ -133,26 +143,78 @@ func resolveReturn(postLogin, rt string) string {
 	return base.ResolveReference(ref).String()
 }
 
+// Why a login did not go through. The browser is sent back to the sign-in
+// screen with one of these on the query string, and the screen turns it into a
+// sentence a person can act on. A code is a category and never a detail: what
+// exactly happened goes to the log, where it is useful and where it cannot be
+// read by whoever arranged the failure.
+const (
+	failStart    = "start"    // the login could not even be begun
+	failState    = "state"    // the login this callback belongs to cannot be recognised
+	failProvider = "provider" // Keycloak itself refused (declined, cancelled, no access)
+	failExchange = "exchange" // Keycloak did not hand over the tokens
+	failIdentity = "identity" // the tokens did not check out (signature, nonce, claims)
+	failSession  = "session"  // the portal could not remember the login
+)
+
+// loginWindow is how long the cookies that carry a login in progress live: the
+// state, the nonce, the PKCE verifier and where to return to. It has to cover
+// the whole time the person spends at Keycloak, and that is not a moment - a
+// password typed slowly, a second factor, a password reset in the middle of it.
+// Five minutes turned out to be short enough that ordinary logins fell out of
+// the window and came back as "invalid state", which is a failure the person
+// could do nothing about and could not understand.
+const loginWindow = int(15 * time.Minute / time.Second)
+
+// failLogin sends the browser back to the sign-in screen with the reason
+// attached, instead of leaving it on a bare error page. Every one of these ends
+// the same way for the person: start the login again - and the button that does
+// that is on the screen they are now looking at.
+func (o *OIDC) failLogin(w http.ResponseWriter, r *http.Request, reason string, err error) {
+	o.logger().Warn("login failed", "reason", reason, "err", err)
+	http.Redirect(w, r, withParam(o.postLogin, "auth_error", reason), http.StatusFound)
+}
+
+func (o *OIDC) logger() *slog.Logger {
+	if o.log != nil {
+		return o.log
+	}
+	return slog.Default()
+}
+
+// withParam adds a query parameter to a destination that may be a bare path or
+// an absolute URL (split-origin dev), keeping whatever it already carries.
+func withParam(dest, key, value string) string {
+	u, err := url.Parse(dest)
+	if err != nil {
+		return "/?" + url.Values{key: {value}}.Encode()
+	}
+	q := u.Query()
+	q.Set(key, value)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
 	state, err := randState()
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		o.failLogin(w, r, failStart, err)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: "oauth_state", Value: state, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
 	})
 	// nonce binds the id_token to this login (replay/injection defence). Stored in
 	// a short-lived HttpOnly cookie and verified against idToken.Nonce on callback.
 	nonce, err := randState()
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		o.failLogin(w, r, failStart, err)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: "oauth_nonce", Value: nonce, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
 	})
 	// PKCE: bind the auth code to this client via a one-time verifier (defence in
 	// depth even for a confidential client). The verifier is kept in a short-lived
@@ -160,14 +222,14 @@ func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
 	verifier := oauth2.GenerateVerifier()
 	http.SetCookie(w, &http.Cookie{
 		Name: "oauth_verifier", Value: verifier, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
 	})
 	// Remember where to return after callback. Base64-encoded so arbitrary path
 	// characters survive cookie sanitization; validated again on the way back.
 	if rt := safeReturnTo(r.URL.Query().Get("return_to")); rt != "" {
 		http.SetCookie(w, &http.Cookie{
 			Name: "oauth_return", Value: base64.RawURLEncoding.EncodeToString([]byte(rt)),
-			Path: "/", HttpOnly: true, Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: 300,
+			Path: "/", HttpOnly: true, Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
 		})
 	}
 	http.Redirect(w, r,
@@ -177,9 +239,22 @@ func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
 
 func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// Keycloak can answer the login with a refusal instead of a code (the person
+	// cancelled, the account is not allowed in, consent was denied). Its own
+	// wording is not repeated on our page - it is text from elsewhere, and the
+	// person is told what to do about it instead.
+	if e := r.URL.Query().Get("error"); e != "" {
+		o.failLogin(w, r, failProvider, fmt.Errorf("%s: %s", e, r.URL.Query().Get("error_description")))
+		return
+	}
+	// The state cookie is what ties this callback to a login this browser
+	// started. Missing means the login is not this browser's, or is old enough
+	// that the cookie is gone; different means the callback belongs to another
+	// one. Both are the same story for the person: this login cannot be
+	// finished, start it again.
 	stateCookie, err := r.Cookie("oauth_state")
 	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
-		http.Error(w, "invalid state", http.StatusBadRequest)
+		o.failLogin(w, r, failState, err)
 		return
 	}
 	// Complete PKCE: send the verifier from the cookie set in Login. Cleared after.
@@ -193,24 +268,24 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	oauth2Token, err := o.oauth.Exchange(ctx, r.URL.Query().Get("code"), exchangeOpts...)
 	if err != nil {
-		http.Error(w, "token exchange failed", http.StatusBadGateway)
+		o.failLogin(w, r, failExchange, err)
 		return
 	}
 	rawID, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
-		http.Error(w, "no id_token", http.StatusBadGateway)
+		o.failLogin(w, r, failIdentity, errors.New("no id_token in the token response"))
 		return
 	}
 	idToken, err := o.verifier.Verify(ctx, rawID)
 	if err != nil {
-		http.Error(w, "invalid id_token", http.StatusUnauthorized)
+		o.failLogin(w, r, failIdentity, err)
 		return
 	}
 	// Bind the id_token to this browser's login: its nonce must match the cookie
 	// set in Login. Defeats id_token replay/injection.
 	nonceCookie, nerr := r.Cookie("oauth_nonce")
 	if nerr != nil || nonceCookie.Value == "" || idToken.Nonce != nonceCookie.Value {
-		http.Error(w, "invalid nonce", http.StatusBadRequest)
+		o.failLogin(w, r, failIdentity, errors.New("id_token nonce does not match the login"))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -219,7 +294,7 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 	})
 	var cl claims
 	if err := idToken.Claims(&cl); err != nil {
-		http.Error(w, "bad claims", http.StatusBadGateway)
+		o.failLogin(w, r, failIdentity, err)
 		return
 	}
 	// Re-login from a browser that still holds a session cookie: drop the old
@@ -237,7 +312,7 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := o.sessions.Create(ctx, sess)
 	if err != nil {
-		http.Error(w, "session error", http.StatusInternalServerError)
+		o.failLogin(w, r, failSession, err)
 		return
 	}
 	// SameSite=Strict on the session cookie: it is never needed on a cross-site

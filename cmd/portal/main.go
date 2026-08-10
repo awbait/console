@@ -140,7 +140,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	statusSvc := status.New(argo)
 
 	// --- auth ---
-	authn, err := buildAuth(ctx, cfg, c)
+	authn, err := buildAuth(ctx, cfg, c, observability.Component(log, "auth"))
 	if err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func backendName(configured, match, fallback string) string {
 	return fallback
 }
 
-func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache) (auth.Authenticator, error) {
+func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache, log *slog.Logger) (auth.Authenticator, error) {
 	// OIDC is the only runtime authenticator. The no-Keycloak Dev authenticator
 	// (internal/auth/dev.go) is a test stub and is never wired into the binary.
 	if cfg.AuthMode != "oidc" {
@@ -363,5 +363,6 @@ func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache) (auth.Aut
 		SessionTTL:   cfg.SessionTTL,
 		PostLogin:    cfg.OIDCPostLogin,
 		PostLogout:   cfg.OIDCPostLogout,
+		Log:          log,
 	}, sessions, rbac)
 }
