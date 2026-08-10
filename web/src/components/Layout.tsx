@@ -17,7 +17,6 @@ import {
   IconLifebuoy,
   IconLogout,
   IconPackages,
-  IconPalette,
   IconScan,
   IconSettings,
   IconShieldCheck,
@@ -42,7 +41,7 @@ import { api } from "../api/client";
 import type { CatalogChart } from "../api/types";
 import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
-import { THEME_CHOICES, THEME_LABELS, type ThemeChoice, useTheme } from "../app/ThemeContext";
+import { ThemeMenu } from "./ThemeMenu";
 import { useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
 import { useStored } from "../hooks/useStored";
@@ -847,49 +846,6 @@ function IconButton({ label, children }: { label: string; children: React.ReactN
     >
       {children}
     </button>
-  );
-}
-
-// Theme switcher: system / light / dark / RN. The choice is saved in
-// localStorage and applied on <html data-theme> (see ThemeContext).
-//
-// The tick follows what was picked, not what is on screen: with the system
-// followed, a tick on "Тёмная" would read as a theme that was chosen and leave
-// no way to see that the portal is simply going along with the desktop. What
-// the system says right now is written next to that line instead, so the row
-// explains the choice without a second control.
-function ThemeMenu() {
-  const { choice, system, setTheme } = useTheme();
-  return (
-    <MenuTrigger>
-      <Button
-        aria-label="Тема оформления"
-        className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-      >
-        <IconPalette size={20} stroke={1.7} />
-      </Button>
-      <Popover className="min-w-40 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
-        <Menu className="outline-none" onAction={(key) => setTheme(key as ThemeChoice)}>
-          {THEME_CHOICES.map((t) => (
-            <MenuItem
-              key={t}
-              id={t}
-              className="flex cursor-pointer items-center justify-between gap-6 px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
-            >
-              <span className="flex items-baseline gap-2">
-                {THEME_LABELS[t]}
-                {t === "system" && (
-                  <span className="text-xs text-slate-400">
-                    сейчас {THEME_LABELS[system].toLowerCase()}
-                  </span>
-                )}
-              </span>
-              {choice === t && <IconCheck size={16} className="shrink-0 text-brand-600" />}
-            </MenuItem>
-          ))}
-        </Menu>
-      </Popover>
-    </MenuTrigger>
   );
 }
 

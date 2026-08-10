@@ -42,16 +42,13 @@ function systemTheme(): Theme {
 const ThemeContext = createContext<{
   // The theme in force - what everything paints against.
   theme: Theme;
-  // What the user picked, which may be "system".
+  // What the user picked, which may be "system". The switcher shows this one,
+  // so following the system keeps reading as following the system.
   choice: ThemeChoice;
-  // What the system says right now, whether or not it is being followed. The
-  // switcher shows it so "как в системе" is not a blind choice.
-  system: Theme;
   setTheme: (c: ThemeChoice) => void;
 }>({
   theme: "light",
   choice: "system",
-  system: "light",
   setTheme: () => {},
 });
 
@@ -62,8 +59,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // The system is followed live: someone whose desktop turns dark in the
   // evening expects the portal to turn with it, without a reload. The listener
   // runs whatever the choice is - it costs nothing, and its value is only read
-  // when the choice is to follow it, which also keeps the switcher able to say
-  // what the system is right now.
+  // when the choice is to follow it.
   useEffect(() => {
     const mq = window.matchMedia?.(DARK_QUERY);
     if (!mq) return;
@@ -89,7 +85,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, choice, system, setTheme }}>
+    <ThemeContext.Provider value={{ theme, choice, setTheme }}>
       {children}
     </ThemeContext.Provider>
   );
