@@ -15,6 +15,14 @@ All notable changes to this project are documented in this file.
 - The order history takes only the room its events need, and splits into pages
   only once they would not fit down to the bottom of the screen.
 
+### Fixed
+- A sign-in that does not go through comes back to the sign-in screen and says
+  what happened and what to do, instead of leaving the person on a page with an
+  error message meant for nobody.
+- Signing in no longer fails just because the sign-in page stood open for a few
+  minutes: there is now time for a password, a second factor and a reset along
+  the way.
+
 ## [0.2.0] - 2026-08-10
 
 This release takes the portal out of demonstration mode. The stand-in registry,

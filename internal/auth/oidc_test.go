@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -135,6 +136,81 @@ func TestResolveReturn(t *testing.T) {
 	for _, c := range cases {
 		if got := resolveReturn(c.postLogin, c.rt); got != c.want {
 			t.Errorf("resolveReturn(%q, %q) = %q, want %q", c.postLogin, c.rt, got, c.want)
+		}
+	}
+}
+
+// A login that cannot be completed used to end on a bare "invalid state" page:
+// a dead end, with nothing on it to press and nothing to understand. It now
+// ends where the login started, with the reason attached, so the sign-in screen
+// can say what happened next to the button that tries again.
+func TestCallbackFailuresSendTheUserBack(t *testing.T) {
+	cases := []struct {
+		name   string
+		query  string
+		cookie string // the oauth_state this browser carries, if any
+		want   string
+	}{
+		{"the cookie is gone, or was never this browser's", "?state=abc&code=xyz", "", "state"},
+		{"the callback belongs to another login", "?state=abc&code=xyz", "another", "state"},
+		{"Keycloak refused", "?error=access_denied&error_description=user+cancelled", "abc", "provider"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o := &OIDC{postLogin: "http://portal.local/", log: slog.New(slog.DiscardHandler)}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback"+c.query, nil)
+			if c.cookie != "" {
+				req.AddCookie(&http.Cookie{Name: "oauth_state", Value: c.cookie})
+			}
+			o.Callback(rec, req)
+
+			if rec.Code != http.StatusFound {
+				t.Fatalf("status = %d, want a redirect back to the portal", rec.Code)
+			}
+			loc, err := url.Parse(rec.Header().Get("Location"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := loc.Query().Get("auth_error"); got != c.want {
+				t.Errorf("auth_error = %q, want %q", got, c.want)
+			}
+			if loc.Host != "portal.local" {
+				t.Errorf("sent to %q, want the portal itself", loc)
+			}
+		})
+	}
+}
+
+// The cookies that carry a login in progress have to outlive the time a person
+// spends at the Keycloak form: typing a password, a second factor, a reset in
+// the middle of it. Five minutes did not, and the login came back as a failure
+// nobody could act on.
+func TestLoginWindowOutlastsTheKeycloakForm(t *testing.T) {
+	o := &OIDC{oauth: oauth2.Config{Endpoint: oauth2.Endpoint{AuthURL: "http://kc:8081/auth"}}}
+	rec := httptest.NewRecorder()
+	o.Login(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/login?return_to=/catalog", nil))
+
+	const atLeast = 10 * 60
+	for _, ck := range rec.Result().Cookies() {
+		if !strings.HasPrefix(ck.Name, "oauth_") {
+			continue
+		}
+		if ck.MaxAge < atLeast {
+			t.Errorf("%s lives %ds, too short for a person at the login form", ck.Name, ck.MaxAge)
+		}
+	}
+}
+
+func TestWithParam(t *testing.T) {
+	cases := []struct{ dest, want string }{
+		{"/", "/?auth_error=state"},
+		{"http://portal.local/", "http://portal.local/?auth_error=state"},
+		{"http://portal.local/?tab=values", "http://portal.local/?auth_error=state&tab=values"},
+	}
+	for _, c := range cases {
+		if got := withParam(c.dest, "auth_error", "state"); got != c.want {
+			t.Errorf("withParam(%q) = %q, want %q", c.dest, got, c.want)
 		}
 	}
 }

@@ -33,6 +33,8 @@ import (
 //	probe          // probed platform component: harbor, gitlab, keycloak, store …
 //	                  (the health monitor; "component" already names the subsystem)
 //	duration_ms    // elapsed milliseconds
+//	reason         // why something did not go through, as a short stable code
+//	                  (the sign-in failures the user is told about)
 //	err            // error value
 //
 // Component returns a child logger tagged with the given component name, so
