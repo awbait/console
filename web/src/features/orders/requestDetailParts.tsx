@@ -1,7 +1,7 @@
 // Shared presentational pieces of the request (product) detail page (RequestDetailPage):
 // detail actions, tabs, fields, history, the raw-values modal and date formatting.
 // Kept as a separate module so the page component stays focused on data flow.
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Button as AriaButton,
   Dialog,
@@ -520,13 +520,13 @@ export function ProductView({
           </Card>
         </TabPanel>
       ))}
-      {/* The history does not scroll: from lg up it fills the column to the
-          bottom of the window and pages through itself. Narrower than that the
-          card keeps its own minimum height and the panel scrolls like any other
-          tab, because a page of two rows is not a page. */}
+      {/* The history does not scroll from lg up: the card takes the height its
+          events ask for, and once they would run past the bottom of the window
+          it pages through itself instead. Narrower than that the panel scrolls
+          like any other tab. */}
       <TabPanel
         id="history"
-        className="scroll-slim min-h-0 flex-1 overflow-y-auto pb-1 pt-5 outline-none lg:overflow-hidden"
+        className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none lg:overflow-hidden"
       >
         <HistoryTab events={events} mrs={mrs} request={r} />
       </TabPanel>
@@ -652,15 +652,16 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
 }
 
 // The whole history is here, paged rather than scrolled or hidden behind a
-// dialog. The card fills the column to the bottom of the window, the list takes
-// what is left of the card, and a page is cut to fit that list exactly - as
-// many events as it holds, the rest carried to the next page.
+// dialog. The card is as tall as its events; when they would run past the bottom
+// of the window it stops there, and what did not fit moves to the next page.
 //
 // The one rule that keeps this honest: the arithmetic reads the layout and
-// never writes it. The card's height comes from the page, not from the events,
-// so a page can be sized against it without the two chasing each other. That is
-// also why the pagination bar keeps its place with a single page - taking it
-// away would hand the next measurement room that is about to disappear.
+// never writes it. A page is measured against the slot around the card, which
+// holds the column height whatever the card does - so the card is free to
+// shrink to its content without the measurement following it down and cutting
+// the page a second time. Once the events do not fit, the card takes the whole
+// column again: a page that shrank to its last two rows would move the ground
+// under the reader on the way there.
 function TimelineCard({ events }: { events: TimelineEvent[] }) {
   const [page, setPage] = useState(1);
   const [back, setBack] = useState(false);
@@ -673,8 +674,11 @@ function TimelineCard({ events }: { events: TimelineEvent[] }) {
   const canSeeAll = user?.role === "admin" || user?.role === "support";
   const [detailed, setDetailed] = useDetailedHistory(canSeeAll);
   const shown = detailed ? events : events.filter(isNotable);
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const [body, setBody] = useState<HTMLDivElement | null>(null);
-  const { height, ...metrics } = useBodyMetrics(body);
+  const [bar, setBar] = useState<HTMLDivElement | null>(null);
+  const paged = useMatchMedia(PAGED_FROM);
+  const { height, ...metrics } = useBodyMetrics({ slot, body, bar, paged });
   const pageList = paginate(shown, height, (e) => dayLabel(e.created_at, now), metrics);
   const pages = pageList.length;
   // A viewport change can shrink the page count under a reader who is on the
@@ -686,50 +690,52 @@ function TimelineCard({ events }: { events: TimelineEvent[] }) {
     setPage(next);
   };
   return (
-    <Card className="flex min-h-0 flex-col lg:h-full">
-      <SectionHeader
-        Icon={IconHistory}
-        title="Хронология заказа"
-        action={
-          canSeeAll && (
-            <Checkbox
-              label="Подробно"
-              isSelected={detailed}
-              onChange={(v) => {
-                setDetailed(v);
-                setPage(1); // the rows change under the reader, the page number should not survive it
-              }}
-              aria-label="Показывать все события заказа"
-            />
-          )
-        }
-      />
-      {shown.length === 0 ? (
-        <EmptyHint>Событий пока нет.</EmptyHint>
-      ) : (
-        <>
-          {/* overflow-hidden, not auto: the page was cut to this height, so a
-              scrollbar here would only mean the arithmetic was wrong, and a
-              scrollbar next to pagination is two ways through one list.
-              min-h keeps the stacked layout readable, where the card has no
-              column height to take. */}
-          <div ref={setBody} className="min-h-72 flex-1 overflow-hidden lg:min-h-0">
-            {/* key restarts the animation on every page change; the direction
-                follows the button that was pressed, so the list moves the way
-                the pagination does. */}
-            <div
-              key={current}
-              className={`animate-in fade-in duration-200 motion-reduce:animate-none ${
-                back ? "slide-in-from-left-3" : "slide-in-from-right-3"
-              }`}
-            >
-              <Timeline items={slice} detailed={detailed} />
+    <div ref={setSlot} className="flex min-h-0 flex-col lg:h-full">
+      <Card className={`flex min-h-0 flex-col lg:max-h-full ${pages > 1 ? "lg:h-full" : ""}`}>
+        <SectionHeader
+          Icon={IconHistory}
+          title="Хронология заказа"
+          action={
+            canSeeAll && (
+              <Checkbox
+                label="Подробно"
+                isSelected={detailed}
+                onChange={(v) => {
+                  setDetailed(v);
+                  setPage(1); // the rows change under the reader, the page number should not survive it
+                }}
+                aria-label="Показывать все события заказа"
+              />
+            )
+          }
+        />
+        {shown.length === 0 ? (
+          <EmptyHint>Событий пока нет.</EmptyHint>
+        ) : (
+          <>
+            {/* overflow-hidden, not auto: the page was cut to this height, so a
+                scrollbar here would only mean the arithmetic was wrong, and a
+                scrollbar next to pagination is two ways through one list. */}
+            <div ref={setBody} className="min-h-0 flex-1 overflow-hidden">
+              {/* key restarts the animation on every page change; the direction
+                  follows the button that was pressed, so the list moves the way
+                  the pagination does. */}
+              <div
+                key={current}
+                className={`animate-in fade-in duration-200 motion-reduce:animate-none ${
+                  back ? "slide-in-from-left-3" : "slide-in-from-right-3"
+                }`}
+              >
+                <Timeline items={slice} detailed={detailed} />
+              </div>
             </div>
-          </div>
-          <CardPagination page={current} pages={pages} onChange={goto} />
-        </>
-      )}
-    </Card>
+            {pages > 1 && (
+              <CardPagination page={current} pages={pages} onChange={goto} barRef={setBar} />
+            )}
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -758,58 +764,88 @@ function useDetailedHistory(enabled: boolean): [boolean, (v: boolean) => void] {
 }
 
 // The pagination bar of a card: a rule across the card's width, the controls
-// under it. It stays in the layout with a single page so the list above it is
-// measured against the room it will actually keep.
+// under it. It appears only once there is a second page - with one page there is
+// nothing to switch between, and the room it would take belongs to the events.
+// Its height is counted in the arithmetic either way (see BAR_H), so the same
+// events split the same way whether or not the bar is on screen.
 function CardPagination({
   page,
   pages,
   onChange,
+  barRef,
 }: {
   page: number;
   pages: number;
   onChange: (p: number) => void;
+  barRef: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div
-      aria-hidden={pages < 2}
-      className={`-mx-4 mt-3 shrink-0 border-t border-slate-200 px-4 pt-3 ${
-        pages < 2 ? "invisible" : ""
-      }`}
-    >
+    <div ref={barRef} className="-mx-4 mt-3 shrink-0 border-t border-slate-200 px-4 pt-3">
       <Pagination page={page} pages={pages} onChange={onChange} />
     </div>
   );
 }
 
-// useBodyMetrics reports how much room a card body has and how tall its rows
-// actually render. Content-box height (clientHeight minus the padding the
-// browser computed) rather than a hardcoded inset, and row heights read off the
-// DOM rather than assumed - together that is the difference between a page that
-// fills the dialog and one that stops two rows short.
+// From this width up the column has a bottom for the card to fit into, so the
+// history pages. Below it the panel scrolls and the history is one page however
+// long it is - a page of two rows is not a page. Tailwind's lg, kept here as
+// well because the split is decided by arithmetic and not by CSS.
+const PAGED_FROM = "(min-width: 1024px)";
+
+// The height the pagination bar takes: a first guess, replaced by the measured
+// one as soon as there is a bar to measure. It is subtracted whether or not the
+// bar is on screen, which is what keeps the split from depending on itself - a
+// page sized against a card without the bar would grow just far enough to
+// summon the bar, and the bar would then push its last rows out of the card.
+const BAR_H = 53; // mt-3 + the rule + pt-3 + a row of controls
+
+// useBodyMetrics reports how much room a page of history has and how tall its
+// rows actually render. Row heights are read off the DOM rather than assumed,
+// and the room is what is left of the slot once the card's own furniture is
+// taken out - the difference between a page that reaches the bottom of the
+// column and one that stops two rows short.
 //
-// The measurement is only trustworthy because the dialog it measures cannot be
-// moved by what the measurement produces: the dialog is always the same height
-// and the footer is always standing, so the body has the same room whether the
-// history is two events or two hundred. Anything else feeds back - size a page
-// to a body measured without the footer, and the footer then appears and pushes
-// those rows out of the dialog. That is why this only reads the layout and
-// never writes it, and why a ResizeObserver can be left running: it fires when
-// the window changes and stays quiet otherwise.
-function useBodyMetrics(body: HTMLDivElement | null) {
+// The measurement is trustworthy because nothing it produces can move what it
+// measures: the slot keeps the column height whether the history is two events
+// or two hundred, and the chrome it subtracts (header, padding, bar) is the same
+// either way. That is why this only reads the layout and never writes it, and
+// why a ResizeObserver can be left running: it fires when the window changes and
+// stays quiet otherwise.
+function useBodyMetrics({
+  slot,
+  body,
+  bar,
+  paged,
+}: {
+  slot: HTMLDivElement | null;
+  body: HTMLDivElement | null;
+  bar: HTMLDivElement | null;
+  paged: boolean;
+}) {
   const [m, setM] = useState({ height: 0, rowH: ROW_H, dayH: DAY_H, daySep: DAY_SEP });
+  const barH = useRef(BAR_H);
   // Layout effect, not effect: the first pass renders a fallback page that is
   // the wrong size by definition, and it must never reach the screen.
   useLayoutEffect(() => {
     if (!body) return;
     const measure = () => {
-      const cs = getComputedStyle(body);
+      // With its margin: the gap above the bar disappears with it, so it is part
+      // of what a page gets back when there is only one.
+      if (bar) {
+        barH.current = bar.offsetHeight + Number.parseFloat(getComputedStyle(bar).marginTop);
+      }
+      // The card is the element the body sits in, so what the two differ by is
+      // everything the events do not get: the header, the card's padding and the
+      // bar when it is there.
+      const card = body.parentElement;
       const height =
-        body.clientHeight - Number.parseFloat(cs.paddingTop) - Number.parseFloat(cs.paddingBottom);
+        paged && slot && card
+          ? slot.clientHeight - (card.offsetHeight - body.offsetHeight) - (bar ? 0 : barH.current)
+          : Number.POSITIVE_INFINITY; // nothing to fit into: one page, the panel scrolls
       if (height <= 0) return;
-      // offsetHeight, not getBoundingClientRect: the dialog animates in with a
-      // scale transform, and a rect measured mid-animation is 5% short. Mixing
-      // that with clientHeight, which ignores transforms, produces a page size
-      // that fits nothing.
+      // offsetHeight, not getBoundingClientRect: a rect measured while the page
+      // slides in is read through the transform, and mixing that with the
+      // untransformed heights above produces a page size that fits nothing.
       const row = body.querySelector<HTMLElement>("[data-timeline-row]");
       const day = body.querySelector<HTMLElement>("[data-timeline-day]");
       const dayCs = day && getComputedStyle(day);
@@ -833,11 +869,31 @@ function useBodyMetrics(body: HTMLDivElement | null) {
       });
     };
     measure();
+    // The slot is watched as well as the body: with everything on one page the
+    // body is only as tall as the events, so a window that shrinks under them
+    // shows up on the slot alone.
     const ro = new ResizeObserver(measure);
     ro.observe(body);
+    if (slot) ro.observe(slot);
     return () => ro.disconnect();
-  }, [body]);
+  }, [slot, body, bar, paged]);
   return m;
+}
+
+// useMatchMedia follows a media query the way CSS does, so a layout rule can be
+// stated once in the classes and once in the arithmetic without the two drifting
+// apart as the window changes.
+function useMatchMedia(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia?.(query).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const sync = () => setMatches(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [query]);
+  return matches;
 }
 
 // The history is grouped by day. Which day something happened is the one
