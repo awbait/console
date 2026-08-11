@@ -772,7 +772,7 @@ function TimelineCard({ events }: { events: TimelineEvent[] }) {
       <Card className={`flex min-h-0 flex-col lg:max-h-full ${pages > 1 ? "lg:h-full" : ""}`}>
         <SectionHeader
           Icon={IconHistory}
-          title="Хронология заказа"
+          title="История действий"
           action={
             canSeeAll && (
               <Checkbox
