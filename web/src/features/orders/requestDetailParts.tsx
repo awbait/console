@@ -1,6 +1,28 @@
 // Shared presentational pieces of the request (product) detail page (RequestDetailPage):
 // detail actions, tabs, fields, history, the raw-values modal and date formatting.
 // Kept as a separate module so the page component stays focused on data flow.
+
+import Editor from "@monaco-editor/react";
+import {
+  IconAlertTriangle,
+  IconArrowRight,
+  IconChevronLeft,
+  IconChevronRight,
+  IconCircleX,
+  IconDotsVertical,
+  IconExternalLink,
+  IconFileCode,
+  IconForms,
+  IconGitFork,
+  IconGitMerge,
+  IconHistory,
+  IconPencil,
+  IconRefresh,
+  IconSparkles,
+  IconTrash,
+  IconUser,
+  IconX,
+} from "@tabler/icons-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Button as AriaButton,
@@ -17,39 +39,6 @@ import {
   TabPanel,
   Tabs,
 } from "react-aria-components";
-import Editor from "@monaco-editor/react";
-import {
-  IconArrowRight,
-  IconChevronLeft,
-  IconChevronRight,
-  IconCircleX,
-  IconDotsVertical,
-  IconExternalLink,
-  IconFileCode,
-  IconForms,
-  IconAlertTriangle,
-  IconGitFork,
-  IconGitMerge,
-  IconHistory,
-  IconPencil,
-  IconRefresh,
-  IconSparkles,
-  IconTrash,
-  IconUser,
-  IconX,
-} from "@tabler/icons-react";
-import { Card, Checkbox } from "../../components/ui";
-import { useUser } from "../../auth/UserContext";
-import { safeHref } from "../../lib/href";
-import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
-import { statusMeta } from "../../components/StatusBadge";
-import { useTheme } from "../../app/ThemeContext";
-import { productTabs } from "../../components/products/genericView";
-import {
-  GenericInfoActions,
-  GenericListTab,
-  type PersistValues,
-} from "../../components/products/GenericProductTabs";
 import type {
   OrderRequest,
   RequestDetail,
@@ -58,6 +47,19 @@ import type {
   RequestStatus,
   ViewDocument,
 } from "../../api/types";
+import { chartLabel } from "../../app/CatalogContext";
+import { useTheme } from "../../app/ThemeContext";
+import { useUser } from "../../auth/UserContext";
+import {
+  GenericInfoActions,
+  GenericListTab,
+  type PersistValues,
+} from "../../components/products/GenericProductTabs";
+import { productTabs } from "../../components/products/genericView";
+import { statusMeta } from "../../components/StatusBadge";
+import { buttonClass, Card, Checkbox } from "../../components/ui";
+import { safeHref } from "../../lib/href";
+import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
 
 export function Meta({
   label,
@@ -88,24 +90,79 @@ export function DetailTab({ id, children }: { id: string; children: React.ReactN
   );
 }
 
-export function Field({ label, value, href }: { label: string; value: string; href?: string }) {
+// One fact about the order, a term and its description. The label is set in caps
+// with the tracking that caps needs to stay readable, and a step darker than the
+// grey it used to be - small grey text on white did not carry enough contrast to
+// be read, only enough to be seen.
+function Field({ label, value, href }: { label: string; value: string; href?: string }) {
   const safe = safeHref(href);
   return (
-    <div>
-      <div className="text-xs uppercase text-gray-400">{label}</div>
-      {safe && value ? (
-        <a
-          href={safe}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group inline-flex items-center gap-1 text-brand-600 hover:text-brand-700 hover:underline"
-        >
-          {value}
-          <IconExternalLink size={14} stroke={1.8} className="text-brand-400 group-hover:text-brand-600" />
-        </a>
-      ) : (
-        <div className="text-gray-800">{value || "-"}</div>
-      )}
+    <div className="min-w-0">
+      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm text-slate-800" title={value || undefined}>
+        {safe && value ? (
+          <a
+            href={safe}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex max-w-full items-center gap-1 text-brand-600 hover:text-brand-700 hover:underline"
+          >
+            <span className="truncate">{value}</span>
+            <IconExternalLink
+              size={14}
+              stroke={1.8}
+              className="shrink-0 text-brand-400 group-hover:text-brand-600"
+            />
+          </a>
+        ) : (
+          value || "-"
+        )}
+      </dd>
+    </div>
+  );
+}
+
+// The facts, three to a row. No icons beside them: an icon earns its place where
+// it replaces a label (a status circle in the timeline) or tells apart rows that
+// look alike - here every field is already named in words next to it, so an icon
+// would repeat the label six times over.
+function Fields({ children }: { children: React.ReactNode }) {
+  return <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">{children}</dl>;
+}
+
+// The platform's own bookkeeping, folded away: which chart the service came from,
+// which application deploys it, the values behind it. It opens in place, the same
+// grid 0fr -> 1fr as the sidebar sections (see NavSection in Layout) - built by
+// hand rather than on react-aria's Disclosure because that one hides the panel
+// with the `hidden` attribute, and no transition can touch display: none.
+function MoreDetails({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-slate-100 pt-2">
+      <AriaButton
+        onPress={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="-mx-1 flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-1 text-sm font-medium text-slate-500 outline-none transition-colors hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        <IconChevronRight
+          size={16}
+          stroke={1.8}
+          className={`shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none ${
+            open ? "rotate-90" : ""
+          }`}
+        />
+        Подробнее
+      </AriaButton>
+      {/* visibility rides the same transition: it flips to visible as the panel
+          starts opening and back to hidden only once it has closed, so folded
+          fields stay out of the tab order without cutting the animation short. */}
+      <div
+        className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none ${
+          open ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">{children}</div>
+      </div>
     </div>
   );
 }
@@ -186,14 +243,19 @@ export function DetailActions({
   );
 }
 
-// ValuesModalButton opens the read-only values.yaml in a centered modal.
-export function ValuesModalButton({ request: r }: { request: RequestDetail["request"] }) {
+// ValuesModalButton opens the order's configuration, read-only, in a centered
+// modal. One word on the trigger: a file name on a product page reads as a
+// debugging tool, and a verb ("Показать конфигурацию") made the button the widest
+// thing in the card. The word names what the button leads to, which is all a
+// button in a group of quiet fields has to do; the file name waits in the
+// dialog's own header, for the reader who is looking for exactly that.
+function ValuesModalButton({ request: r }: { request: RequestDetail["request"] }) {
   const { theme } = useTheme();
   return (
     <DialogTrigger>
-      <AriaButton className="mb-2 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-surface px-3 py-1.5 text-sm font-medium text-gray-700 outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-500">
-        <IconFileCode size={16} stroke={1.8} className="text-gray-400" />
-        values.yaml
+      <AriaButton className={buttonClass("secondary", "shrink-0 cursor-pointer")}>
+        <IconFileCode size={16} stroke={1.8} className="text-slate-400" />
+        Конфигурация
       </AriaButton>
       <ModalOverlay className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in">
         <Modal className="w-full max-w-3xl rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
@@ -201,7 +263,10 @@ export function ValuesModalButton({ request: r }: { request: RequestDetail["requ
             {({ close }) => (
               <div className="flex flex-col">
                 <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                  <h2 className="text-sm font-semibold text-gray-700">values.yaml</h2>
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <h2 className="text-sm font-semibold text-gray-700">Конфигурация сервиса</h2>
+                    <span className="truncate text-xs text-slate-400">values.yaml</span>
+                  </div>
                   <button
                     onClick={close}
                     aria-label="Закрыть"
@@ -427,10 +492,10 @@ function eventLabel(e: TimelineEvent): string {
 }
 
 // ProductView is the view-driven body of the product (order) page: the tab strip
-// (Info + one tab per product view + Activity history) and the
-// values.yaml button. It is shared by RequestDetailPage (live order, writes via
-// the API) and the chart-manage preview (synthetic order, writes to local state
-// via `persist` and uses the in-editor `schema`), so both render identically.
+// (Info + one tab per product view + Activity history) and the panels under it.
+// It is shared by RequestDetailPage (live order, writes via the API) and the
+// chart-manage preview (synthetic order, writes to local state via `persist` and
+// uses the in-editor `schema`), so both render identically.
 export function ProductView({
   request: r,
   doc,
@@ -477,18 +542,18 @@ export function ProductView({
       onSelectionChange={(key) => setActive(String(key))}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200">
-        <TabList aria-label="Разделы заказа" className="flex gap-1">
-          <DetailTab id="info">Общая информация</DetailTab>
-          {tabs.map((t) => (
-            <DetailTab key={t.id} id={t.id}>
-              {t.title ?? t.id}
-            </DetailTab>
-          ))}
-          <DetailTab id="history">История действий</DetailTab>
-        </TabList>
-        <ValuesModalButton request={r} />
-      </div>
+      <TabList
+        aria-label="Разделы заказа"
+        className="flex flex-wrap gap-1 border-b border-gray-200"
+      >
+        <DetailTab id="info">Общая информация</DetailTab>
+        {tabs.map((t) => (
+          <DetailTab key={t.id} id={t.id}>
+            {t.title ?? t.id}
+          </DetailTab>
+        ))}
+        <DetailTab id="history">История действий</DetailTab>
+      </TabList>
 
       <TabPanel id="info" className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none">
         <InfoTab
@@ -565,15 +630,28 @@ function InfoTab({
           />
         )}
       </div>
-      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-        <Field label="Service name" value={r.service_name} />
-        <Field label="Chart" value={`${r.chart_project}/${r.chart_name}`} />
-        <Field label="Version" value={r.chart_version} />
-        <Field label="Team" value={r.team} />
-        <Field label="Cluster" value={r.cluster} />
+      {/* Six facts about the service itself, in the order they are asked for:
+          what it is, then where it runs. What is left over is the platform's own
+          bookkeeping - the chart it came from, the application that deploys it,
+          the values behind it - and it waits under "Подробнее" instead of sitting
+          between the service name and its namespace as an equal. */}
+      <Fields>
+        <Field label="Имя сервиса" value={r.service_name} />
+        <Field label="Продукт" value={chartLabel(r.chart_name)} />
+        <Field label="Версия" value={r.chart_version} />
+        <Field label="Команда" value={r.team} />
+        <Field label="Кластер" value={r.cluster} />
         <Field label="Namespace" value={r.namespace} />
-        <Field label="ArgoCD App" value={r.argocd_app_name} href={argocdUrl} />
-      </div>
+      </Fields>
+      <MoreDetails>
+        <div className="flex flex-col items-start gap-3 pt-2">
+          <Fields>
+            <Field label="Чарт" value={`${r.chart_project}/${r.chart_name}`} />
+            <Field label="Приложение в ArgoCD" value={r.argocd_app_name} href={argocdUrl} />
+          </Fields>
+          <ValuesModalButton request={r} />
+        </div>
+      </MoreDetails>
     </Card>
   );
 }
