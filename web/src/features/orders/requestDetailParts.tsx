@@ -59,6 +59,8 @@ import { productTabs } from "../../components/products/genericView";
 import { statusMeta } from "../../components/StatusBadge";
 import { buttonClass, Card, Checkbox } from "../../components/ui";
 import { safeHref } from "../../lib/href";
+import { OrderGraphDialog } from "./OrderGraphDialog";
+import { graphFor } from "./orderGraph";
 import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
 
 export function Meta({
@@ -503,6 +505,7 @@ export function ProductView({
   mrs = [],
   argocdUrl,
   modifiable,
+  openMR,
   reload,
   schema,
   persist,
@@ -515,6 +518,9 @@ export function ProductView({
   mrs?: NonNullable<RequestDetail["merge_requests"]>;
   argocdUrl?: string;
   modifiable: boolean;
+  // The change currently in flight, if any: the graph reads it to say why it
+  // cannot be drawn on, instead of letting a save fail against it.
+  openMR?: RequestMR | null;
   reload: () => void;
   // Preview only: preloaded schema + local save adapter (no API).
   schema?: Record<string, any>;
@@ -560,6 +566,7 @@ export function ProductView({
           request={r}
           argocdUrl={argocdUrl}
           modifiable={modifiable}
+          openMR={openMR}
           doc={doc}
           onChanged={reload}
           schema={schema}
@@ -603,6 +610,7 @@ function InfoTab({
   request: r,
   argocdUrl,
   modifiable,
+  openMR,
   doc,
   onChanged,
   schema,
@@ -611,24 +619,43 @@ function InfoTab({
   request: OrderRequest;
   argocdUrl?: string;
   modifiable: boolean;
+  openMR?: RequestMR | null;
   doc: ViewDocument;
   onChanged: () => void;
   schema?: Record<string, any>;
   persist?: PersistValues;
 }) {
+  // The graph of this version, when it declares one. Its button sits beside the
+  // actions rather than inside them: the actions menu is for people who may
+  // change the service, and the graph is the fastest answer to "what talks to
+  // what" for everyone else - auditors and security included.
+  const graph = graphFor(doc);
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-700">Общая информация</h2>
-        {modifiable && (
-          <GenericInfoActions
-            request={r}
-            doc={doc}
-            onChanged={onChanged}
-            schema={schema}
-            persist={persist}
-          />
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {graph && (
+            <OrderGraphDialog
+              request={r}
+              doc={doc}
+              editor={graph}
+              modifiable={modifiable}
+              openMR={openMR}
+              reload={onChanged}
+              persist={persist}
+            />
+          )}
+          {modifiable && (
+            <GenericInfoActions
+              request={r}
+              doc={doc}
+              onChanged={onChanged}
+              schema={schema}
+              persist={persist}
+            />
+          )}
+        </div>
       </div>
       {/* Six facts about the service itself, in the order they are asked for:
           what it is, then where it runs. What is left over is the platform's own

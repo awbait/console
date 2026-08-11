@@ -28,6 +28,14 @@ const BY_CODE: Record<string, string> = {
   unauthorized: "Сессия закончилась. Войдите заново.",
 };
 
+// An order with an open merge request refuses every further change (the backend
+// answers 409 open_mr). Several screens have to say so - the banner on the order
+// page, the graph that cannot be drawn on, the delete that loses the race - and
+// they say it in one voice, from here.
+export function openMRBlockedText(iid?: number): string {
+  return `Уже открыт запрос на слияние${iid ? ` #${iid}` : ""} для этого сервиса. Дождитесь его обработки или закройте его, прежде чем вносить новые изменения.`;
+}
+
 // apiErrorText turns one API failure into a sentence for the user.
 export function apiErrorText(code: string, status: number, serverMessage?: string): string {
   if (serverMessage && KEEP_SERVER_MESSAGE.has(code)) return serverMessage;
