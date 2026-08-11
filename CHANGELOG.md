@@ -14,6 +14,11 @@ All notable changes to this project are documented in this file.
   chosen one is lit, and the icon in the top bar shows which one it is.
 - The order history takes only the room its events need, and splits into pages
   only once they would not fit down to the bottom of the screen.
+- The general information about an order is labelled in Russian and keeps to the
+  six facts about the service itself; the chart it came from, its application in
+  ArgoCD and its configuration wait under "Подробнее", which opens in place.
+- The order's configuration opens from a button named after what it shows, and
+  the name of the file it comes from stays in the window's own header.
 
 ### Fixed
 - The placeholders that stand in for data while it loads are visible in the
