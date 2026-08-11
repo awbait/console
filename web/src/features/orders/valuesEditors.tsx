@@ -25,6 +25,11 @@ export interface ValuesEditorProps {
   // Where this chart version keeps the fields the editor reads and writes.
   mapping: GraphMapping;
   readOnly?: boolean;
+  // Take the height of the container instead of the editor's own. The order form
+  // gives an editor a fixed slice of a scrolling page; a dialog opened for the
+  // canvas alone gives it the whole window, and a graph is only as useful as the
+  // room it has to be read in.
+  fill?: boolean;
   // Set when the raw YAML could not be parsed on switching into the editor:
   // it must show the error and leave the values untouched.
   inputError?: string | null;

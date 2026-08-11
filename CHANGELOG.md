@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- The graph opens straight from the page of an ordered service, in a window
+  nearly the size of the screen, for the services that support it: you can see
+  what talks to what, redraw the arrows and save them. How the boxes are arranged
+  is remembered on its own.
 - The portal can follow the appearance of the operating system: the theme menu
   has an option for it, it is what a first visit starts with, and the portal
   turns dark or light along with the desktop.

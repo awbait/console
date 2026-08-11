@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, errorMessage, HttpError } from "../../api/client";
+import { openMRBlockedText } from "../../api/errorText";
 import type { ViewDocument } from "../../api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "../../app/CatalogContext";
 import { useTeam } from "../../app/TeamContext";
@@ -34,12 +35,6 @@ import { safeHref } from "../../lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
 import { attachSseLogger } from "../../lib/sse";
 import { DetailActions, fmtDateTime, Meta, ProductView } from "./requestDetailParts";
-
-// Message for the "open MR blocks this change" conflict (proactive banner and
-// the delete race), kept consistent across both call sites.
-function openMRBlockedText(iid?: number): string {
-  return `Уже открыт запрос на слияние${iid ? ` #${iid}` : ""} для этого сервиса. Дождитесь его обработки или закройте его, прежде чем вносить новые изменения.`;
-}
 
 export function RequestDetailPage() {
   const { id = "" } = useParams();
@@ -441,6 +436,7 @@ export function RequestDetailPage() {
         mrs={mrs}
         argocdUrl={data.argocd_url}
         modifiable={editable}
+        openMR={openMR}
         reload={reload}
         activeTab={searchParams.get("tab") ?? ""}
         onTab={(key) =>

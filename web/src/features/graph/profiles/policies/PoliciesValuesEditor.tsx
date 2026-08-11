@@ -24,6 +24,7 @@ export function PoliciesValuesEditor({
   chartVersion,
   mapping,
   readOnly,
+  fill,
   inputError,
   editorState,
   onEditorState,
@@ -112,7 +113,9 @@ export function PoliciesValuesEditor({
   };
 
   return (
-    <div className="h-[480px] overflow-hidden rounded-md border border-gray-200">
+    <div
+      className={`overflow-hidden rounded-md border border-gray-200 ${fill ? "h-full min-h-0" : "h-[480px]"}`}
+    >
       <PoliciesGraph
         key={namespace}
         initial={
