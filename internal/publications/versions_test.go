@@ -308,3 +308,46 @@ func TestVersionRBAC(t *testing.T) {
 		t.Fatalf("owner approve: want forbidden, got %v", err)
 	}
 }
+
+// The admin list shows which version an order would actually be served. The
+// stored RecommendedVersion is only the owner's explicit pick and is usually
+// unset, so reading it raw would report a perfectly orderable service as having
+// nothing to order.
+func TestListReportsServedVersion(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	owner := member("core")
+	p := newPub(t, svc, owner, "ingress-gateway")
+
+	// Nothing published yet: there is genuinely nothing to order.
+	pubs, err := svc.List(ctx, store.PublicationFilter{Chart: "ingress-gateway"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if got := pubs[0].RecommendedVersion; got != "" {
+		t.Errorf("no orderable version: RecommendedVersion = %q, want empty", got)
+	}
+
+	// Two orderable versions and no explicit pick: the highest is served.
+	publishVersion(t, svc, owner, p.ID, "1.0.0", viewV1)
+	publishVersion(t, svc, owner, p.ID, "1.2.0", viewV1)
+	pubs, err = svc.List(ctx, store.PublicationFilter{Chart: "ingress-gateway"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if got := pubs[0].RecommendedVersion; got != "1.2.0" {
+		t.Errorf("RecommendedVersion = %q, want the highest orderable %q", got, "1.2.0")
+	}
+
+	// An explicit pick wins over the fallback.
+	if err := svc.SetRecommendedVersion(ctx, owner, p.ID, "1.0.0"); err != nil {
+		t.Fatalf("set recommended: %v", err)
+	}
+	pubs, err = svc.List(ctx, store.PublicationFilter{Chart: "ingress-gateway"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if got := pubs[0].RecommendedVersion; got != "1.0.0" {
+		t.Errorf("RecommendedVersion = %q, want the owner's pick %q", got, "1.0.0")
+	}
+}

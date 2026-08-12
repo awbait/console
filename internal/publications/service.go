@@ -504,6 +504,16 @@ func (s *Service) List(ctx context.Context, f store.PublicationFilter) ([]*model
 			return nil, err
 		}
 		p.EffectiveStatus = models.DeriveStatus(p, vs)
+		// RecommendedVersion as stored is only the owner's explicit pick, and it
+		// is usually unset - a caller reading it raw would see "nothing to order"
+		// for a service that orders fine. Report what an order would actually be
+		// served, the same answer the catalog gives, and leave it empty only when
+		// there is genuinely no orderable version.
+		if v := resolveOrderableVersion(p, vs, ""); v != nil {
+			p.RecommendedVersion = v.ChartVersion
+		} else {
+			p.RecommendedVersion = ""
+		}
 	}
 	return pubs, nil
 }

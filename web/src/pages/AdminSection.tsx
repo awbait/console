@@ -435,6 +435,7 @@ export function AdminApprovalsPage() {
                 Сервис
               </Column>
               <Column className="px-4 py-2.5 text-left">Владелец</Column>
+              <Column className="px-4 py-2.5 text-left">В каталоге</Column>
               <Column className="px-4 py-2.5 text-center">Статус</Column>
             </TableHeader>
             <TableBody
@@ -550,6 +551,16 @@ function PublicationRow({ pub }: { pub: ChartPublication }) {
         </span>
       </Cell>
       <Cell className="px-4 py-3 text-left text-slate-600">{pub.owner_team}</Cell>
+      {/* The version new orders are served by. Empty means nothing is orderable
+          yet, which "Согласовано" alone does not tell you: the metadata can be
+          approved while every version of the service is still a draft. */}
+      <Cell className="px-4 py-3 text-left">
+        {pub.recommended_version ? (
+          <Chip className="bg-slate-100 font-mono text-slate-600">v{pub.recommended_version}</Chip>
+        ) : (
+          <span className="text-slate-300">-</span>
+        )}
+      </Cell>
       <Cell className="px-4 py-3 text-center">
         <Badge tone={st.tone}>{st.label}</Badge>
       </Cell>
