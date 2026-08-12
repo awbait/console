@@ -1,6 +1,7 @@
 package views
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"sort"
@@ -42,6 +43,90 @@ var graphProfiles = map[string]graphProfile{
 		rule:    []string{"ports", "from", "to"},
 		peer:    []string{"namespace", "selector", "serviceAccount"},
 	},
+}
+
+// GraphMapping is where a chart version keeps the fields a graph profile reads,
+// resolved: the profile's defaults with the version's renames applied.
+type GraphMapping struct {
+	Profile string
+	Entries string            // JSON pointer to the list of entries in the values
+	Entry   map[string]string // profile field -> values key
+	Rule    map[string]string
+	Peer    map[string]string
+}
+
+// ReadGraphMapping returns the mapping a version's view document declares, or
+// nil when the version has no graph: no block, the block switched off, or a
+// profile this portal does not implement. Mirrors readGraphMapping in
+// web/src/features/graph/mapping.ts - both sides have to agree on whether a
+// version has a graph at all.
+func ReadGraphMapping(viewJSON []byte) *GraphMapping {
+	var doc struct {
+		Graph map[string]any `json:"graph"`
+	}
+	if err := json.Unmarshal(viewJSON, &doc); err != nil || doc.Graph == nil {
+		return nil
+	}
+	if enabled, ok := doc.Graph["enabled"].(bool); ok && !enabled {
+		return nil
+	}
+	profile, _ := doc.Graph["profile"].(string)
+	p, known := graphProfiles[profile]
+	if !known {
+		return nil
+	}
+	m := &GraphMapping{
+		Profile: profile,
+		Entries: p.entries,
+		Entry:   defaultNames(p.entry),
+		Rule:    defaultNames(p.rule),
+		Peer:    defaultNames(p.peer),
+	}
+	if s, ok := doc.Graph["entries"].(string); ok && strings.HasPrefix(s, "/") {
+		m.Entries = s
+	}
+	for key, names := range map[string]map[string]string{
+		"entry": m.Entry, "rule": m.Rule, "peer": m.Peer,
+	} {
+		group, _ := doc.Graph[key].(map[string]any)
+		for k, v := range group {
+			// Only fields the profile has, renamed to a plain key. Anything else is
+			// the author's typo, already reported as an issue on the version.
+			s, ok := v.(string)
+			if _, known := names[k]; known && ok && s != "" && !strings.Contains(s, "/") {
+				names[k] = s
+			}
+		}
+	}
+	return m
+}
+
+// CountGraphRules counts the rules the graph editor would show as arrows in
+// these values: every incoming and outgoing rule of every entry. Zero means the
+// order draws nothing, and a chart driven by this section renders nothing from
+// it - which is what makes it worth refusing before it reaches a cluster.
+func (m *GraphMapping) CountGraphRules(values map[string]any) int {
+	node, ok := resolveValuePointer(values, m.Entries)
+	if !ok {
+		return 0
+	}
+	list, ok := node.([]any)
+	if !ok {
+		return 0
+	}
+	n := 0
+	for _, e := range list {
+		entry, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, dir := range []string{"ingress", "egress"} {
+			if rules, ok := entry[m.Entry[dir]].([]any); ok {
+				n += len(rules)
+			}
+		}
+	}
+	return n
 }
 
 func graphProfileNames() string {

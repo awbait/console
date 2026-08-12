@@ -22,6 +22,7 @@ import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from ".
 import { collectErrors, pruneEmpty } from "../../form/SchemaForm";
 import { useAsync } from "../../hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
+import { countGraphRules } from "../graph/mapping";
 import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";
 import { valuesEditorFor } from "./valuesEditors";
@@ -33,6 +34,11 @@ type Values = Record<string, unknown>;
 // first policy to take the name from. Without this the empty name reaches the
 // backend and comes back as a bare "service_name must be a valid Kubernetes name".
 const IDENTITY_MISSING = "Не удалось определить имя сервиса. Заполните данные заказа, из которых оно берётся.";
+
+// Shown when a chart drawn as a graph is ordered with nothing drawn on it. Kept
+// in step with the backend's own refusal (internal/provisioning/service.go), so
+// the form and the server say the same thing.
+const EMPTY_GRAPH = "Добавьте хотя бы одну связь. Без связей сервис не получит ни одного правила.";
 
 // readPointer resolves a JSON Pointer (e.g. "/gateways/0/name") to a string.
 // Used to source the deploy identity (service_name) from a values field that a
@@ -462,6 +468,12 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (nsErr) {
       setShowErrors(true);
       setSubmitErr({ message: `Namespace указан неверно. ${nsErr}` });
+      return;
+    }
+    // Nothing drawn means a service with no rules in it. The backend refuses the
+    // same order; saying it here spares the person a round trip to find out.
+    if (editor && countGraphRules(c.values, editor.mapping) === 0) {
+      setSubmitErr({ message: EMPTY_GRAPH });
       return;
     }
     setBusy("submit");

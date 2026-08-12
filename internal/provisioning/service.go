@@ -837,11 +837,36 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	} else if err != nil && !errors.Is(err, models.ErrNotFound) {
 		return "", fmt.Errorf("%w: harbor schema: %v", ErrUpstream, err)
 	}
+	if verr := s.checkGraphNotEmpty(ctx, project, name, version, values); verr != nil {
+		return "", verr
+	}
 	out, merr := yaml.Marshal(values)
 	if merr != nil {
 		return "", &ValidationError{Message: "invalid values: " + merr.Error()}
 	}
 	return string(out), nil
+}
+
+// checkGraphNotEmpty refuses an order of a chart whose values are drawn as a
+// graph when nothing is drawn. The schema cannot catch this: an empty list is a
+// valid list, so the order goes through and deploys a service with no rules in
+// it at all, which is never what anyone meant to ask for.
+//
+// Chart-agnostic, like the rest of the order path: the version's own view
+// document says whether it has a graph and where its entries live.
+func (s *Service) checkGraphNotEmpty(ctx context.Context, project, name, version string,
+	values map[string]any) *ValidationError {
+
+	mapping := views.ReadGraphMapping(s.orderView(ctx, project, name, version))
+	if mapping == nil {
+		return nil
+	}
+	if mapping.CountGraphRules(values) > 0 {
+		return nil
+	}
+	return &ValidationError{
+		Message: "Добавьте хотя бы одну связь. Без связей сервис не получит ни одного правила.",
+	}
 }
 
 // schemaValidationError flattens a jsonschema failure into a ValidationError with
