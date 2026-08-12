@@ -365,7 +365,7 @@
     {
       "type": "timeseries",
       "title": "MR auto-merge rate (by result)",
-      "description": "Auto-merge attempts on the portal's own MRs. A climbing error rate with no successes means an order is wedged unable to merge (conflict, required pipeline/approvals).",
+      "description": "Auto-merge attempts on the portal's own MRs. Errors here are races the next tick clears (a sibling order merged first); an order that will never merge on its own is counted on the panel beside this one instead.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
       "id": 16,
@@ -408,6 +408,42 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum by (result) (rate(console_argocd_sync_total[5m]))",
           "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Orders wedged on merge (by reason)",
+      "description": "Orders whose change GitLab will not merge as it stands, counted once each with GitLab's reason (conflict, need_rebase, ci_must_pass, not_approved, ...). Every sample is an order stopped until a person resolves it - anything above zero deserves a look.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+      "id": 18,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (reason) (increase(console_mr_merge_blocked_total[$__range]))",
+          "legendFormat": "{{reason}}",
           "refId": "A"
         }
       ]

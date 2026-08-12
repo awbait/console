@@ -29,6 +29,41 @@ type MR struct {
 	WebURL         string          `json:"web_url"`
 	State          models.MRStatus `json:"state"`
 	MergeCommitSHA string          `json:"merge_commit_sha"` // set once merged; the target git revision
+	// DetailedMergeStatus is GitLab's machine-readable answer to "why can this
+	// not be merged" (see ClassifyMerge). It is the only thing that separates an
+	// MR that is not ready yet from one that never will be: the merge endpoint
+	// refuses both with the same 422 "Branch cannot be merged".
+	DetailedMergeStatus string `json:"detailed_merge_status"`
+}
+
+// MergeReadiness is what auto-merge should do about an open MR right now.
+type MergeReadiness int
+
+const (
+	// MergeReady - GitLab will accept a merge.
+	MergeReady MergeReadiness = iota
+	// MergePending - GitLab is still computing mergeability; it clears on its
+	// own, so the next poller tick retries.
+	MergePending
+	// MergeBlocked - something a machine cannot resolve (a conflict, a gate the
+	// project requires). Retrying never helps; a person has to act.
+	MergeBlocked
+)
+
+// ClassifyMerge maps GitLab's detailed_merge_status onto what auto-merge should
+// do. Unknown values count as blocked: a state we do not recognise is one we
+// cannot claim will clear, and reporting it is better than retrying forever.
+// An empty status means the instance does not report one (it was added in
+// GitLab 15.6) - fall back to attempting the merge, as the portal always did.
+func ClassifyMerge(detailed string) MergeReadiness {
+	switch detailed {
+	case "", "mergeable":
+		return MergeReady
+	case "checking", "unchecked", "preparing":
+		return MergePending
+	default:
+		return MergeBlocked
+	}
 }
 
 // FileAction is one change in a commit (mirrors GitLab commit actions API).

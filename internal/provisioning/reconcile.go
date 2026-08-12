@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"console/internal/argocd"
+	"console/internal/gitlab"
 	"console/internal/observability"
 	"console/pkg/models"
 )
@@ -29,27 +30,9 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 	// 1) advance MR state from the latest MR (works even if it merged instantly)
 	if mrs, err := s.store.ListMRs(ctx, r.ID); err == nil && len(mrs) > 0 {
 		latest := mrs[len(mrs)-1]
-		// Optional auto-merge: merge the open MR ourselves (no human gate). A
-		// just-created MR may not be mergeable yet; that errors and is retried
-		// next tick. The GetMR below then observes the merged state.
-		if s.autoMerge && latest.Status == models.MROpened &&
-			(r.Status == models.StatusMRCreated || r.Status == models.StatusDeleteRequested) {
-			merr := s.gl.MergeMR(ctx, latest.GitLabProjectID, latest.MRIID)
-			observability.ObserveMRMerge(merr)
-			if merr != nil {
-				// A freshly created MR is often not mergeable yet (merge_status
-				// still "checking" -> 405), which clears on a later tick. But a
-				// persistent failure (merge conflict, required pipeline/approvals,
-				// branch protection) wedges the order here forever. The metric (an
-				// error count that climbs with no successes) flags that, and this
-				// log carries GitLab's reason - previously the error was dropped,
-				// so a stuck MR was undiagnosable.
-				s.logger().Debug("mr auto-merge deferred",
-					"order_id", r.ID, "mr_iid", latest.MRIID, "err", merr)
-			} else {
-				s.logger().Info("mr auto-merged", "order_id", r.ID, "mr_iid", latest.MRIID)
-			}
-		}
+		// Read the live MR before touching it: its state drives the transition
+		// below, and the mergeability it reports is what tells auto-merge whether
+		// merging is worth attempting at all.
 		if live, gerr := s.gl.GetMR(ctx, latest.GitLabProjectID, latest.MRIID); gerr == nil {
 			if live.State != latest.Status {
 				latest.Status = live.State
@@ -57,6 +40,11 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 					s.logger().Warn("mr state persist failed",
 						"order_id", r.ID, "mr_iid", latest.MRIID, "err", uerr)
 				}
+			}
+			// Optional auto-merge: merge the open MR ourselves (no human gate).
+			if s.autoMerge && latest.Status == models.MROpened &&
+				(r.Status == models.StatusMRCreated || r.Status == models.StatusDeleteRequested) {
+				s.autoMergeMR(ctx, r, latest, live.DetailedMergeStatus)
 			}
 		} else {
 			// Without the live MR state the order cannot observe a merge/close and
@@ -116,6 +104,76 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 			s.markDeleted(ctx, r)
 		}
 	}
+}
+
+// autoMergeMR merges one open portal MR when GitLab says it will accept it.
+// The poller calls this for every open MR on every tick, so it has to stay
+// quiet while GitLab is still deciding and speak up exactly once when the MR
+// will never merge on its own. detailed is GitLab's detailed_merge_status.
+func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models.RequestMR, detailed string) {
+	switch gitlab.ClassifyMerge(detailed) {
+	case gitlab.MergePending:
+		// Mergeability is computed asynchronously. A just-opened MR, or one whose
+		// target branch a sibling order has just advanced, reads as pending for a
+		// tick or two and then merges by itself - nothing to report.
+		s.logger().Debug("mr merge pending",
+			"order_id", r.ID, "mr_iid", mr.MRIID, "reason", detailed)
+		return
+	case gitlab.MergeBlocked:
+		// A conflict, or a gate the project requires: no amount of retrying clears
+		// it. Report once and stop hammering the merge endpoint - the order sits
+		// here until a person resolves it.
+		s.reportMergeBlocked(ctx, r, mr, detailed)
+		return
+	}
+
+	merr := s.gl.MergeMR(ctx, mr.GitLabProjectID, mr.MRIID)
+	observability.ObserveMRMerge(merr)
+	if merr != nil {
+		// GitLab passed the MR as mergeable and then refused the merge itself,
+		// which is what a race with a sibling merging into the same branch looks
+		// like. Expected and self-correcting, so Debug, but carry GitLab's reason.
+		s.logger().Debug("mr auto-merge deferred",
+			"order_id", r.ID, "mr_iid", mr.MRIID, "err", merr)
+		return
+	}
+	s.logger().Info("mr auto-merged", "order_id", r.ID, "mr_iid", mr.MRIID)
+	s.forgetMergeBlocked(mr.ID)
+	// Record the merge now rather than waiting for the next tick to observe it,
+	// so the order reaches ArgoCD on this sweep.
+	mr.Status = models.MRMerged
+	if uerr := s.store.UpdateMR(ctx, mr); uerr != nil {
+		s.logger().Warn("mr state persist failed",
+			"order_id", r.ID, "mr_iid", mr.MRIID, "err", uerr)
+	}
+}
+
+// reportMergeBlocked announces, once per reason per MR, that auto-merge has
+// given up: a log line to read, a metric to alert on, and a timeline entry so
+// the person looking at the order sees why it stopped moving.
+func (s *Service) reportMergeBlocked(ctx context.Context, r *models.Request,
+	mr *models.RequestMR, reason string) {
+
+	s.mergeBlockedMu.Lock()
+	if seen, ok := s.mergeBlocked[mr.ID]; ok && seen == reason {
+		s.mergeBlockedMu.Unlock()
+		return
+	}
+	s.mergeBlocked[mr.ID] = reason
+	s.mergeBlockedMu.Unlock()
+
+	observability.ObserveMRMergeBlocked(reason)
+	s.logger().Warn("mr merge blocked",
+		"order_id", r.ID, "mr_iid", mr.MRIID, "reason", reason)
+	s.eventWith(ctx, r, bySystem(), "merge_blocked", "", "", map[string]any{"reason": reason})
+}
+
+// forgetMergeBlocked drops an MR from the reported set once it merges, so a
+// later block on the same order is reported again.
+func (s *Service) forgetMergeBlocked(mrID string) {
+	s.mergeBlockedMu.Lock()
+	delete(s.mergeBlocked, mrID)
+	s.mergeBlockedMu.Unlock()
 }
 
 // deploySettled reports whether ArgoCD has finished applying the desired state
