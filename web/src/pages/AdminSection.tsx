@@ -21,22 +21,33 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
+  Cell,
+  Column,
   Dialog,
   DialogTrigger,
   Heading,
   Modal,
   ModalOverlay,
   Popover,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
 } from "react-aria-components";
-import { Link, Outlet, useParams } from "react-router-dom";
+import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
-import type { Category, ChartPublication, PublicationStatus } from "../api/types";
+import type {
+  Category,
+  ChartPublication,
+  PendingVersion,
+  PublicationStatus,
+} from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
-import { CATEGORY_ICON_CHOICES, categoryIcon } from "../components/icons";
+import { CATEGORY_ICON_CHOICES, categoryIcon, ProductIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
-import { Button, ErrorBox, Loading, SkeletonRows } from "../components/ui";
-import { fieldMsg } from "../form/fieldErrors";
+import { Button, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
+import { fieldMsg, ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
 // ---------------------------------------------------------------------------
@@ -318,6 +329,53 @@ function QuickLink({
 
 type Filter = "ALL" | PublicationStatus;
 
+// QueueItem is one decision waiting for the admin. Metadata changes and version
+// submissions are different objects in the backend but the same job here - work
+// to look at and resolve - so the queue is one list, not two blocks side by side
+// that leave the reader adding up the total by hand.
+type QueueItem = {
+  key: string;
+  kind: "meta" | "version";
+  pub: ChartPublication;
+  version?: string;
+  to: string;
+  since: string;
+};
+
+function buildQueue(pubs: ChartPublication[], pending: PendingVersion[]): QueueItem[] {
+  const items: QueueItem[] = [
+    ...pubs.filter(metaPending).map<QueueItem>((p) => ({
+      key: `meta-${p.id}`,
+      kind: "meta",
+      pub: p,
+      to: reviewPath(p),
+      since: p.updated_at ?? "",
+    })),
+    ...pending.map<QueueItem>((pv) => ({
+      key: `ver-${pv.version.id}`,
+      kind: "version",
+      pub: pv.publication,
+      version: pv.version.chart_version,
+      to: versionReviewPath(pv.publication, pv.version.chart_version),
+      since: pv.version.updated_at,
+    })),
+  ];
+  // Oldest first: the queue is worked from the top, and what has waited longest
+  // is what someone is waiting on.
+  return items.sort((a, b) => a.since.localeCompare(b.since));
+}
+
+// waitedFor renders how long an item has been sitting in the queue. Days matter
+// here, minutes do not.
+function waitedFor(iso: string): string {
+  if (!iso) return "-";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (Number.isNaN(days)) return "-";
+  if (days <= 0) return "сегодня";
+  if (days === 1) return "вчера";
+  return `${days} ${ruPlural(days, "день", "дня", "дней")} назад`;
+}
+
 export function AdminApprovalsPage() {
   const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
@@ -327,8 +385,9 @@ export function AdminApprovalsPage() {
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
-  const pendingVersions = pendingVers ?? [];
-  const count = (s: Filter) => (s === "ALL" ? all.length : all.filter((p) => effStatus(p) === s).length);
+  const queue = buildQueue(all, pendingVers ?? []);
+  const count = (s: Filter) =>
+    s === "ALL" ? all.length : all.filter((p) => effStatus(p) === s).length;
   const rows = filter === "ALL" ? all : all.filter((p) => effStatus(p) === filter);
   const filters: { id: Filter; label: string }[] = [
     { id: "ALL", label: "Все" },
@@ -339,137 +398,162 @@ export function AdminApprovalsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageTitle
-        title="Согласование публикаций"
-        badge={
-          <Badge tone="amber">
-            {all.filter(metaPending).length + pendingVersions.length} в очереди
-          </Badge>
-        }
-      />
-
-      {/* Per-version view submissions awaiting review (separate from the
-          publication metadata FSM below). */}
-      {pendingVersions.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-amber-200 bg-surface shadow-sm">
-          <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
-            Версии на согласовании
-          </div>
-          <ul className="flex flex-col">
-            {pendingVersions.map((pv) => (
-              <li key={pv.version.id} className="border-b border-slate-100 last:border-0">
-                <Link
-                  to={versionReviewPath(pv.publication, pv.version.chart_version)}
-                  className="group flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
-                >
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                      <IconPackage size={16} stroke={1.8} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-medium text-slate-800">
-                        {chartLabel(pv.publication.chart_name)}{" "}
-                        <span className="text-slate-400">v{pv.version.chart_version}</span>
-                      </span>
-                      <span className="block truncate text-xs text-slate-400">
-                        {pv.publication.chart_project}/{pv.publication.chart_name}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <Badge tone="brand">{pv.publication.owner_team}</Badge>
-                    <IconArrowRight size={14} className="text-slate-300 group-hover:text-brand-500" />
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col">
+        <div className="mb-4 flex min-h-9 items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-slate-900">Согласование публикаций</h1>
+          {queue.length > 0 && (
+            <Chip className="bg-amber-50 text-amber-700">
+              <IconClock size={13} stroke={1.8} className="text-amber-500" />
+              {queue.length} {ruPlural(queue.length, "решение", "решения", "решений")} ждёт
+            </Chip>
+          )}
         </div>
-      )}
 
-      <div className="flex flex-wrap gap-2">
-        {filters.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-              filter === f.id
-                ? "border-brand-200 bg-brand-50 text-brand-700"
-                : "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            {f.label}
-            <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">{count(f.id)}</span>
-          </button>
-        ))}
-      </div>
-
-      {rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-surface py-12 text-center shadow-sm">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-            <IconChecklist size={22} stroke={1.8} />
-          </span>
-          <p className="text-sm text-slate-500">Публикаций в этой категории нет.</p>
-        </div>
-      ) : (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-4 py-2.5 font-medium">Чарт</th>
-                <th className="px-4 py-2.5 font-medium">Команда</th>
-                <th className="px-4 py-2.5 font-medium">Статус</th>
-                <th className="px-4 py-2.5 text-right font-medium">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => {
-                const st = STATUS_META[effStatus(p)];
-                const isPending = effStatus(p) === "PENDING";
-                return (
-                  <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                          <IconPackage size={16} stroke={1.8} />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block font-medium text-slate-800">{chartLabel(p.chart_name)}</span>
-                          <span className="block truncate text-xs text-slate-400">
-                            {p.chart_project}/{p.chart_name}
-                          </span>
-                        </span>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{p.owner_team}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={st.tone}>{st.label}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end">
-                        <Link
-                          to={isPending ? reviewPath(p) : managePath(p)}
-                          className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 ${
-                            isPending
-                              ? "border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 focus-visible:ring-brand-500"
-                              : "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50 focus-visible:ring-brand-500"
-                          }`}
-                        >
-                          {isPending ? "Рассмотреть" : "Открыть"}
-                          <IconArrowRight size={14} stroke={1.8} />
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <Table aria-label="Очередь на согласование" className="w-full text-sm">
+            <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <Column className="px-4 py-2.5 text-left">Что решаем</Column>
+              <Column isRowHeader className="px-4 py-2.5 text-left">
+                Сервис
+              </Column>
+              <Column className="px-4 py-2.5 text-left">Владелец</Column>
+              <Column className="px-4 py-2.5 text-right">В очереди</Column>
+            </TableHeader>
+            <TableBody
+              renderEmptyState={() => (
+                <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                    <IconCircleCheck size={24} stroke={1.6} />
+                  </span>
+                  <p className="text-sm text-slate-500">Всё решено, очередь пуста.</p>
+                </div>
+              )}
+            >
+              {queue.map((item) => (
+                <QueueRow key={item.key} item={item} />
+              ))}
+            </TableBody>
+          </Table>
         </div>
-      )}
+      </section>
+
+      <section className="flex flex-col">
+        <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-800">Все публикации</h2>
+        </div>
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {filters.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilter(f.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                filter === f.id
+                  ? "border-brand-200 bg-brand-50 text-brand-700"
+                  : "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {f.label}
+              <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">
+                {count(f.id)}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+          <Table aria-label="Публикации" className="w-full text-sm">
+            <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <Column isRowHeader className="px-4 py-2.5 text-left">
+                Сервис
+              </Column>
+              <Column className="px-4 py-2.5 text-left">Владелец</Column>
+              <Column className="px-4 py-2.5 text-center">Статус</Column>
+            </TableHeader>
+            <TableBody
+              renderEmptyState={() => (
+                <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <IconChecklist size={24} stroke={1.6} />
+                  </span>
+                  <p className="text-sm text-slate-500">Публикаций в этой категории нет.</p>
+                </div>
+              )}
+            >
+              {rows.map((p) => (
+                <PublicationRow key={p.id} pub={p} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
     </div>
+  );
+}
+
+// QueueRow: one decision. The whole row navigates, like the orders table.
+function QueueRow({ item }: { item: QueueItem }) {
+  const navigate = useNavigate();
+  const p = item.pub;
+  return (
+    <Row
+      onAction={() => navigate(item.to)}
+      className="cursor-pointer border-b border-slate-100 outline-none last:border-0 hover:bg-slate-50 focus-visible:bg-slate-50"
+    >
+      <Cell className="px-4 py-3 text-left">
+        {item.kind === "version" ? (
+          <Chip className="bg-amber-50 text-amber-700">
+            <IconPackage size={13} stroke={1.8} className="text-amber-500" />
+            Версия {item.version}
+          </Chip>
+        ) : (
+          <Chip className="bg-slate-100 text-slate-600">
+            <IconPencil size={13} stroke={1.8} className="text-slate-400" />
+            Категория и владелец
+          </Chip>
+        )}
+      </Cell>
+      <Cell className="px-4 py-3 text-left">
+        <span className="flex items-center gap-2 font-medium text-slate-800">
+          <ProductIcon project={p.chart_project} name={p.chart_name} />
+          {chartLabel(p.chart_name)}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-slate-400">
+          {p.chart_project}/{p.chart_name}
+        </span>
+      </Cell>
+      <Cell className="px-4 py-3 text-left text-slate-600">{p.owner_team}</Cell>
+      <Cell className="px-4 py-3 text-right text-slate-500">{waitedFor(item.since)}</Cell>
+    </Row>
+  );
+}
+
+// PublicationRow: the reference list below the queue - where a service stands,
+// with a way into it. Nothing here is waiting on the reader.
+function PublicationRow({ pub }: { pub: ChartPublication }) {
+  const navigate = useNavigate();
+  const st = STATUS_META[effStatus(pub)];
+  const to = effStatus(pub) === "PENDING" ? reviewPath(pub) : managePath(pub);
+  return (
+    <Row
+      onAction={() => navigate(to)}
+      className="cursor-pointer border-b border-slate-100 outline-none last:border-0 hover:bg-slate-50 focus-visible:bg-slate-50"
+    >
+      <Cell className="px-4 py-3 text-left">
+        <span className="flex items-center gap-2 font-medium text-slate-800">
+          <ProductIcon project={pub.chart_project} name={pub.chart_name} />
+          {chartLabel(pub.chart_name)}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-slate-400">
+          {pub.chart_project}/{pub.chart_name}
+        </span>
+      </Cell>
+      <Cell className="px-4 py-3 text-left text-slate-600">{pub.owner_team}</Cell>
+      <Cell className="px-4 py-3 text-center">
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </Cell>
+    </Row>
   );
 }
 
