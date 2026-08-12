@@ -29,8 +29,19 @@ func OrderIdentity(viewJSON []byte) string {
 // target is not a scalar. data is expected to be the result of JSON/YAML
 // decoding (map[string]any / []any / scalars).
 func ResolvePointer(data any, pointer string) (string, bool) {
-	if pointer == "" || !strings.HasPrefix(pointer, "/") {
+	node, ok := resolveValuePointer(data, pointer)
+	if !ok {
 		return "", false
+	}
+	return scalarString(node)
+}
+
+// resolveValuePointer is ResolvePointer without the scalar requirement: it
+// returns whatever the pointer lands on, so callers after a list or an object
+// (the graph's entries, say) can have it too.
+func resolveValuePointer(data any, pointer string) (any, bool) {
+	if pointer == "" || !strings.HasPrefix(pointer, "/") {
+		return nil, false
 	}
 	cur := data
 	for seg := range strings.SplitSeq(strings.TrimPrefix(pointer, "/"), "/") {
@@ -40,20 +51,20 @@ func ResolvePointer(data any, pointer string) (string, bool) {
 		case map[string]any:
 			v, ok := node[seg]
 			if !ok {
-				return "", false
+				return nil, false
 			}
 			cur = v
 		case []any:
 			i, err := strconv.Atoi(seg)
 			if err != nil || i < 0 || i >= len(node) {
-				return "", false
+				return nil, false
 			}
 			cur = node[i]
 		default:
-			return "", false
+			return nil, false
 		}
 	}
-	return scalarString(cur)
+	return cur, true
 }
 
 // scalarString renders a JSON/YAML scalar as a string; ok is false for

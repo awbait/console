@@ -100,6 +100,28 @@ export function readEntries(values: Record<string, unknown>, pointer: string): u
   return cur;
 }
 
+// countGraphRules counts the rules the graph draws as arrows in these values:
+// every incoming and outgoing rule of every entry. Zero means nothing is drawn,
+// and a chart driven by this section would render nothing at all. Mirrors
+// CountGraphRules in internal/views/graph.go, which is what actually refuses
+// such an order - this side exists so the form can say so before sending it.
+export function countGraphRules(
+  values: Record<string, unknown>,
+  mapping: GraphMapping,
+): number {
+  const list = readEntries(values, mapping.entries);
+  if (!Array.isArray(list)) return 0;
+  let n = 0;
+  for (const entry of list) {
+    if (!isObject(entry)) continue;
+    for (const dir of ["ingress", "egress"] as const) {
+      const rules = entry[mapping.entry[dir]];
+      if (Array.isArray(rules)) n += rules.length;
+    }
+  }
+  return n;
+}
+
 // writeEntries returns a copy of the values with the entry list replaced,
 // creating the objects on the way when the section is not there yet. Everything
 // it does not touch is carried over by reference: the graph owns its own section
