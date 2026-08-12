@@ -52,7 +52,7 @@ import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon, ProductIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
-import { Button, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
+import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
 import { fieldMsg, ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
@@ -101,7 +101,7 @@ function StatCard({
   Icon: typeof IconClock;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
+    <Card className="flex items-center gap-3">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${TONE[tone]}`}>
         <Icon size={20} stroke={1.8} />
       </span>
@@ -109,16 +109,7 @@ function StatCard({
         <div className="text-2xl font-semibold leading-tight text-slate-900">{value}</div>
         <div className="truncate text-xs text-slate-500">{label}</div>
       </div>
-    </div>
-  );
-}
-
-function PageTitle({ title, badge }: { title: string; badge?: ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-      {badge}
-    </div>
+    </Card>
   );
 }
 
@@ -160,6 +151,11 @@ export function AdminSection() {
 // Overview
 // ---------------------------------------------------------------------------
 
+// How many queue rows the overview shows before sending the reader to the full
+// queue. Enough to see what is waiting, short enough that the page stays a
+// summary.
+const OVERVIEW_QUEUE_ROWS = 5;
+
 export function AdminOverviewPage() {
   const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
@@ -167,115 +163,58 @@ export function AdminOverviewPage() {
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
-  const pendingMeta = all.filter(metaPending);
-  const pendingVersions = pendingVers ?? [];
-  const pendingCount = pendingMeta.length + pendingVersions.length;
+  const queue = buildQueue(all, pendingVers ?? []);
   const published = all.filter((p) => effStatus(p) === "APPROVED").length;
   const drafts = all.filter((p) => effStatus(p) === "DRAFT" || effStatus(p) === "REJECTED").length;
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageTitle
-        title="Администрирование платформы"
-        badge={
-          <Badge tone="brand">
-            <IconSettings size={13} stroke={1.8} /> Admin
-          </Badge>
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Ждут согласования" value={pendingCount} tone="amber" Icon={IconClock} />
-        <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
-        <StatCard label="Черновики" value={drafts} tone="slate" Icon={IconFileText} />
-        <StatCard label="Всего публикаций" value={all.length} tone="brand" Icon={IconStack} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* approval queue preview */}
-        <div className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-800">Очередь на согласование</h2>
-            {pendingCount > 0 && (
-              <Link to="/admin/approvals" className="text-xs font-medium text-brand-600 hover:text-brand-700">
-                Все
-              </Link>
-            )}
-          </div>
-          {pendingCount === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-8 text-center">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <IconCircleCheck size={22} stroke={1.8} />
-              </span>
-              <p className="text-sm text-slate-500">Нет публикаций, ожидающих решения.</p>
-            </div>
-          ) : (
-            <ul className="-mx-2 flex flex-col">
-              {pendingMeta.map((p) => (
-                <li key={`meta-${p.id}`}>
-                  <Link
-                    to={reviewPath(p)}
-                    className="group flex items-center justify-between gap-3 rounded-md px-2 py-2.5 hover:bg-slate-50"
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                        <IconPackage size={16} stroke={1.8} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-slate-800">
-                          {chartLabel(p.chart_name)} <span className="text-slate-400">метаданные</span>
-                        </span>
-                        <span className="block truncate text-xs text-slate-400">
-                          {p.chart_project}/{p.chart_name}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Badge tone="brand">{p.owner_team}</Badge>
-                      <IconArrowRight size={16} className="text-slate-300 group-hover:text-brand-500" />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-              {pendingVersions.map((pv) => (
-                <li key={`ver-${pv.version.id}`}>
-                  <Link
-                    to={versionReviewPath(pv.publication, pv.version.chart_version)}
-                    className="group flex items-center justify-between gap-3 rounded-md px-2 py-2.5 hover:bg-slate-50"
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                        <IconPackage size={16} stroke={1.8} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-slate-800">
-                          {chartLabel(pv.publication.chart_name)}{" "}
-                          <span className="text-slate-400">v{pv.version.chart_version}</span>
-                        </span>
-                        <span className="block truncate text-xs text-slate-400">
-                          {pv.publication.chart_project}/{pv.publication.chart_name}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Badge tone="brand">{pv.publication.owner_team}</Badge>
-                      <IconArrowRight size={16} className="text-slate-300 group-hover:text-brand-500" />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col">
+        <div className="mb-4 flex min-h-9 items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-slate-900">Администрирование платформы</h1>
+          <Chip className="bg-brand-50 text-brand-700">
+            <IconSettings size={13} stroke={1.8} className="text-brand-400" />
+            Admin
+          </Chip>
         </div>
 
-        {/* quick links */}
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Ждут решения" value={queue.length} tone="amber" Icon={IconClock} />
+          <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
+          <StatCard label="Черновики" value={drafts} tone="slate" Icon={IconFileText} />
+          <StatCard label="Всего публикаций" value={all.length} tone="brand" Icon={IconStack} />
+        </div>
+      </section>
+
+      <section className="flex flex-col">
+        <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-800">Очередь на согласование</h2>
+          {queue.length > OVERVIEW_QUEUE_ROWS && (
+            <Link
+              to="/admin/approvals"
+              className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:text-brand-700"
+            >
+              Все {queue.length}
+              <IconArrowRight size={14} stroke={1.8} />
+            </Link>
+          )}
+        </div>
+        <QueueTable items={queue.slice(0, OVERVIEW_QUEUE_ROWS)} />
+      </section>
+
+      <section className="flex flex-col">
+        <h2 className="mb-3 text-sm font-semibold text-slate-800">Разделы</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <QuickLink
             to="/admin/approvals"
             tone="amber"
             Icon={IconChecklist}
             title="Согласование публикаций"
-            desc={pendingCount > 0 ? `${pendingCount} в очереди` : "очередь пуста"}
+            desc={
+              queue.length > 0
+                ? `${queue.length} ${ruPlural(queue.length, "решение", "решения", "решений")} ждёт`
+                : "очередь пуста"
+            }
           />
           <QuickLink
             to="/admin/status"
@@ -292,7 +231,7 @@ export function AdminOverviewPage() {
             desc="структура разделов каталога"
           />
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -468,32 +407,7 @@ export function AdminApprovalsPage() {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-          <Table aria-label="Очередь на согласование" className="w-full text-sm">
-            <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
-              <Column className="px-4 py-2.5 text-left">Что решаем</Column>
-              <Column isRowHeader className="px-4 py-2.5 text-left">
-                Сервис
-              </Column>
-              <Column className="px-4 py-2.5 text-left">Владелец</Column>
-              <Column className="px-4 py-2.5 text-right">В очереди</Column>
-            </TableHeader>
-            <TableBody
-              renderEmptyState={() => (
-                <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                    <IconCircleCheck size={24} stroke={1.6} />
-                  </span>
-                  <p className="text-sm text-slate-500">Всё решено, очередь пуста.</p>
-                </div>
-              )}
-            >
-              {queue.map((item) => (
-                <QueueRow key={item.key} item={item} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <QueueTable items={queue} />
       </section>
 
       <section className="flex flex-col">
@@ -540,6 +454,40 @@ export function AdminApprovalsPage() {
           </Table>
         </div>
       </section>
+    </div>
+  );
+}
+
+// QueueTable renders the decision queue. Shared by the overview (top rows) and
+// the approvals page (all of them) so the two never drift into two designs for
+// the same list.
+function QueueTable({ items }: { items: QueueItem[] }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+      <Table aria-label="Очередь на согласование" className="w-full text-sm">
+        <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <Column className="px-4 py-2.5 text-left">Что решаем</Column>
+          <Column isRowHeader className="px-4 py-2.5 text-left">
+            Сервис
+          </Column>
+          <Column className="px-4 py-2.5 text-left">Владелец</Column>
+          <Column className="px-4 py-2.5 text-right">В очереди</Column>
+        </TableHeader>
+        <TableBody
+          renderEmptyState={() => (
+            <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <IconCircleCheck size={24} stroke={1.6} />
+              </span>
+              <p className="text-sm text-slate-500">Всё решено, очередь пуста.</p>
+            </div>
+          )}
+        >
+          {items.map((item) => (
+            <QueueRow key={item.key} item={item} />
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
