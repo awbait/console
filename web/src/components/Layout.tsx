@@ -301,12 +301,17 @@ export function Layout() {
   // sidebar + content), not to the content alone: leftover space becomes an
   // outer margin left of the sidebar and right of the content, and the content
   // itself always fills its column. Wide pages drop the limit and use the full
-  // window - only the version editor qualifies, its editor + preview panes need
-  // the room; the version list above it stays a standard page.
+  // window - what qualifies is a page that puts a document beside a live preview
+  // of it, which needs the room: the version editor its author works in and the
+  // approval screen the admin decides on. The lists above them stay standard.
   // max-w-full rather than no class at all: a length -> percentage pair still
   // interpolates, so switching between the two widths animates instead of
   // snapping.
-  const isWide = /^\/catalog\/[^/]+\/[^/]+\/manage\/[^/]+$/.test(pathname);
+  const WIDE_ROUTES = [
+    /^\/catalog\/[^/]+\/[^/]+\/manage\/[^/]+$/,
+    /^\/admin\/approvals\/[^/]+\/[^/]+\/[^/]+$/,
+  ];
+  const isWide = WIDE_ROUTES.some((re) => re.test(pathname));
   const shellWidth = `transition-[max-width] duration-300 ease-out motion-reduce:transition-none ${
     isWide ? "max-w-full" : "max-w-[1440px]"
   }`;

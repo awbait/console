@@ -3,7 +3,9 @@ import {
   IconAlertTriangle,
   IconArrowLeft,
   IconArrowRight,
+  IconCheck,
   IconChecklist,
+  IconChevronDown,
   IconCircleCheck,
   IconClock,
   IconFileText,
@@ -16,6 +18,7 @@ import {
   IconStack,
   IconTags,
   IconTrash,
+  IconX,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +29,9 @@ import {
   Dialog,
   DialogTrigger,
   Heading,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Modal,
   ModalOverlay,
   Popover,
@@ -327,7 +333,67 @@ function QuickLink({
 // Approvals queue
 // ---------------------------------------------------------------------------
 
-type Filter = "ALL" | PublicationStatus;
+const PUBLICATION_STATUSES: PublicationStatus[] = ["DRAFT", "PENDING", "APPROVED", "REJECTED"];
+
+// StatusFilter: the portal's list filter, the same control the orders lists use
+// - a pill that opens a checkbox menu, with the selected count on its face.
+// Everything shown is the default; an empty selection shows nothing, which is
+// what "I unticked them all" should mean.
+function StatusFilter({
+  shown,
+  onChange,
+}: {
+  shown: Set<PublicationStatus>;
+  onChange: (s: Set<PublicationStatus>) => void;
+}) {
+  return (
+    <MenuTrigger>
+      <AriaButton className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
+        Статусы
+        <span className="text-slate-400">
+          {shown.size}/{PUBLICATION_STATUSES.length}
+        </span>
+        <IconChevronDown size={13} stroke={1.8} className="text-slate-400" />
+      </AriaButton>
+      <Popover className="rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu
+          selectionMode="multiple"
+          selectedKeys={shown}
+          onSelectionChange={(keys) =>
+            onChange(
+              keys === "all"
+                ? new Set(PUBLICATION_STATUSES)
+                : new Set([...keys].map(String) as PublicationStatus[]),
+            )
+          }
+          className="max-h-80 overflow-auto outline-none"
+        >
+          {PUBLICATION_STATUSES.map((s) => (
+            <MenuItem
+              key={s}
+              id={s}
+              textValue={STATUS_META[s].label}
+              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
+            >
+              {({ isSelected }) => (
+                <>
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
+                    }`}
+                  >
+                    {isSelected && <IconCheck size={12} stroke={3} />}
+                  </span>
+                  <Badge tone={STATUS_META[s].tone}>{STATUS_META[s].label}</Badge>
+                </>
+              )}
+            </MenuItem>
+          ))}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
+  );
+}
 
 // QueueItem is one decision waiting for the admin. Metadata changes and version
 // submissions are different objects in the backend but the same job here - work
@@ -379,23 +445,15 @@ function waitedFor(iso: string): string {
 export function AdminApprovalsPage() {
   const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
-  const [filter, setFilter] = useState<Filter>("ALL");
+  const [shown, setShown] = useState<Set<PublicationStatus>>(new Set(PUBLICATION_STATUSES));
 
   if (loading) return <SkeletonRows rows={5} />;
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
   const queue = buildQueue(all, pendingVers ?? []);
-  const count = (s: Filter) =>
-    s === "ALL" ? all.length : all.filter((p) => effStatus(p) === s).length;
-  const rows = filter === "ALL" ? all : all.filter((p) => effStatus(p) === filter);
-  const filters: { id: Filter; label: string }[] = [
-    { id: "ALL", label: "Все" },
-    { id: "PENDING", label: "Ожидают" },
-    { id: "APPROVED", label: "Согласованные" },
-    { id: "REJECTED", label: "Отклонённые" },
-    { id: "DRAFT", label: "Черновики" },
-  ];
+  const rows = all.filter((p) => shown.has(effStatus(p)));
+  const filtersDefault = shown.size === PUBLICATION_STATUSES.length;
 
   return (
     <div className="flex flex-col gap-8">
@@ -443,23 +501,17 @@ export function AdminApprovalsPage() {
           <h2 className="text-sm font-semibold text-slate-800">Все публикации</h2>
         </div>
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          {filters.map((f) => (
+          <StatusFilter shown={shown} onChange={setShown} />
+          {!filtersDefault && (
             <button
-              key={f.id}
               type="button"
-              onClick={() => setFilter(f.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-                filter === f.id
-                  ? "border-brand-200 bg-brand-50 text-brand-700"
-                  : "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50"
-              }`}
+              onClick={() => setShown(new Set(PUBLICATION_STATUSES))}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
             >
-              {f.label}
-              <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">
-                {count(f.id)}
-              </span>
+              <IconX size={13} stroke={2} />
+              Сбросить
             </button>
-          ))}
+          )}
         </div>
 
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">

@@ -151,7 +151,10 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
   const doc = (cur.view_json ?? {}) as ViewDocument;
 
   return (
-    <>
+    // Same shell as the version editor: one flex column that owns the page's
+    // free height, so the document and the preview fill it and scroll inside
+    // themselves instead of growing the page.
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
           <ProductIcon project={project} name={name} size={22} />
@@ -283,7 +286,7 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
           {err && <FormErrors message={err} />}
         </Card>
       )}
-    </>
+    </div>
   );
 }
 
