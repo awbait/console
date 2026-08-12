@@ -34,7 +34,7 @@ import type { Category, ChartPublication, PublicationStatus } from "../api/types
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon } from "../components/icons";
-import { PublicationReview, VersionReview } from "../components/PublicationReview";
+import { PublicationReview } from "../components/PublicationReview";
 import { Button, ErrorBox, Loading, SkeletonRows } from "../components/ui";
 import { fieldMsg } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
@@ -109,6 +109,16 @@ const managePath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =
   `/catalog/${p.chart_project}/${p.chart_name}/manage`;
 const reviewPath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =>
   `/admin/approvals/${p.chart_project}/${p.chart_name}`;
+const versionReviewPath = (
+  p: Pick<ChartPublication, "chart_project" | "chart_name">,
+  version: string,
+) => `${reviewPath(p)}/${version}`;
+
+// Publications waiting on a metadata decision (category/owner). Counted off the
+// stored status, NOT the effective one: the effective status also turns PENDING
+// when any of the versions is pending, and those are counted separately - taking
+// it here would report one submitted version as two things to review.
+const metaPending = (p: ChartPublication) => p.status === "PENDING";
 
 // ---------------------------------------------------------------------------
 // section guard
@@ -140,7 +150,7 @@ export function AdminOverviewPage() {
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
-  const pendingMeta = all.filter((p) => p.status === "PENDING");
+  const pendingMeta = all.filter(metaPending);
   const pendingVersions = pendingVers ?? [];
   const pendingCount = pendingMeta.length + pendingVersions.length;
   const published = all.filter((p) => effStatus(p) === "APPROVED").length;
@@ -213,7 +223,7 @@ export function AdminOverviewPage() {
               {pendingVersions.map((pv) => (
                 <li key={`ver-${pv.version.id}`}>
                   <Link
-                    to={reviewPath(pv.publication)}
+                    to={versionReviewPath(pv.publication, pv.version.chart_version)}
                     className="group flex items-center justify-between gap-3 rounded-md px-2 py-2.5 hover:bg-slate-50"
                   >
                     <span className="flex min-w-0 items-center gap-3">
@@ -332,7 +342,11 @@ export function AdminApprovalsPage() {
     <div className="flex flex-col gap-5">
       <PageTitle
         title="Согласование публикаций"
-        badge={<Badge tone="amber">{count("PENDING") + pendingVersions.length} в очереди</Badge>}
+        badge={
+          <Badge tone="amber">
+            {all.filter(metaPending).length + pendingVersions.length} в очереди
+          </Badge>
+        }
       />
 
       {/* Per-version view submissions awaiting review (separate from the
@@ -346,7 +360,7 @@ export function AdminApprovalsPage() {
             {pendingVersions.map((pv) => (
               <li key={pv.version.id} className="border-b border-slate-100 last:border-0">
                 <Link
-                  to={reviewPath(pv.publication)}
+                  to={versionReviewPath(pv.publication, pv.version.chart_version)}
                   className="group flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
@@ -477,8 +491,8 @@ export function AdminApprovalDetailPage() {
     () => api.listPublications({ chart: name }).then((l) => l.find((p) => p.chart_project === project) ?? null),
     [project, name],
   );
-  // Pending versions of this chart (per-version submissions to review).
-  const { data: versions, reload: reloadVersions } = useAsync(
+  // Pending versions of this chart (each is decided on its own page).
+  const { data: versions } = useAsync(
     () => (pub ? api.listVersions(pub.id) : Promise.resolve([])),
     [pub?.id],
   );
@@ -526,18 +540,34 @@ export function AdminApprovalDetailPage() {
 
       {/* Metadata (category/owner) approval, if any. */}
       {pub.status === "PENDING" && <PublicationReview pub={pub} onReviewed={reload} />}
-      {/* Per-version view submissions awaiting review. */}
-      {pendingVersions.map((v) => (
-        <VersionReview
-          key={v.id}
-          pubId={pub.id}
-          version={v}
-          onReviewed={() => {
-            reloadVersions();
-            reload();
-          }}
-        />
-      ))}
+      {/* Version submissions are decided on their own page, where the document
+          sits next to a preview of the form it produces. Deciding from a list,
+          without seeing that form, is what this used to ask of the reviewer. */}
+      {pendingVersions.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-amber-200 bg-surface shadow-sm">
+          <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Версии на согласовании
+          </div>
+          <ul className="flex flex-col">
+            {pendingVersions.map((v) => (
+              <li key={v.id} className="border-b border-slate-100 last:border-0">
+                <Link
+                  to={versionReviewPath(pub, v.chart_version)}
+                  className="group flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
+                >
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                      <IconPackage size={16} stroke={1.8} />
+                    </span>
+                    <span className="font-medium text-slate-800">v{v.chart_version}</span>
+                  </span>
+                  <IconArrowRight size={14} className="text-slate-300 group-hover:text-brand-500" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {pub.status !== "PENDING" && pendingVersions.length === 0 && (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <p className="text-sm text-slate-600">

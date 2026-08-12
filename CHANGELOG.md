@@ -14,6 +14,10 @@ All notable changes to this project are documented in this file.
   turns dark or light along with the desktop.
 
 ### Changed
+- A service version is approved on a page of its own, where the document sits
+  next to the order form and the product page it produces, and what changed
+  against the version in force has a tab to itself. Approving a version for the
+  first time used to show nothing at all.
 - The theme is picked in a single switcher: every option is in view at once, the
   chosen one is lit, and the icon in the top bar shows which one it is.
 - The order history takes only the room its events need, and splits into pages
@@ -25,6 +29,7 @@ All notable changes to this project are documented in this file.
   the name of the file it comes from stays in the window's own header.
 
 ### Fixed
+- The approval queue no longer counts a single submitted version twice.
 - A service built on a graph can no longer be ordered empty: the portal asks for
   at least one connection, because without them the service gets no rules at all.
 - An order no longer stalls in silence when its change cannot be applied on its

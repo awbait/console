@@ -38,6 +38,7 @@ import {
 } from "./pages/SecuritySection";
 import { StatusPage } from "./pages/StatusPage";
 import { SupportOverviewPage, SupportRequestsPage, SupportSection } from "./pages/SupportSection";
+import { VersionApprovalPage } from "./pages/VersionApprovalPage";
 
 // Graph pages; lazy so @xyflow/react is split off the main bundle.
 const PoliciesMapPage = lazy(() =>
@@ -98,6 +99,7 @@ const router = createBrowserRouter([
           { index: true, element: <AdminOverviewPage /> },
           { path: "approvals", element: <AdminApprovalsPage /> },
           { path: "approvals/:project/:name", element: <AdminApprovalDetailPage /> },
+          { path: "approvals/:project/:name/:version", element: <VersionApprovalPage /> },
           { path: "categories", element: <AdminCategoriesPage /> },
           { path: "status", element: <StatusPage /> },
           { path: "config", element: <ConfigPage /> },
