@@ -125,19 +125,13 @@ export function ChartDetailPage() {
                 {categoryLabel}
               </Chip>
             )}
-            {pub &&
-              (isUnclaimed(pub) ? (
-                <Chip className="bg-slate-100 text-slate-600">
-                  <IconUsersGroup size={13} stroke={1.8} className="text-slate-400" />
-                  Без владельца
-                </Chip>
-              ) : (
-                <Chip className="bg-brand-50 text-brand-700">
-                  <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
-                  <span className="text-brand-400">Владелец:</span>
-                  {pub.owner_team}
-                </Chip>
-              ))}
+            {pub && !isUnclaimed(pub) && (
+              <Chip className="bg-brand-50 text-brand-700">
+                <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
+                <span className="text-brand-400">Владелец:</span>
+                {pub.owner_team}
+              </Chip>
+            )}
             {pub?.created_by_name && (
               <Chip className="bg-slate-100 text-slate-600">
                 <IconUser size={13} stroke={1.8} className="text-slate-400" />

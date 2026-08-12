@@ -447,24 +447,17 @@ function ChartCard({
               {category.label}
             </span>
           )}
-          {pub &&
-            (isUnclaimed(pub) ? (
-              <span
-                title="Чарт нашёлся в Harbor сам. Команда-владелец появится, когда его подберут."
-                className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-gray-500"
-              >
-                <IconUsersGroup size={12} stroke={1.8} className="text-gray-400" aria-hidden />
-                без владельца
-              </span>
-            ) : (
-              <span
-                title={`Владелец: ${pub.owner_team}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
-                className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-brand-700"
-              >
-                <IconUsersGroup size={12} stroke={1.8} className="text-brand-400" aria-hidden />
-                {pub.owner_team}
-              </span>
-            ))}
+          {/* A chart auto-discovery has not handed to anyone yet has no owner to
+              name: the admin group it is parked on is bookkeeping, not an owner. */}
+          {pub && !isUnclaimed(pub) && (
+            <span
+              title={`Владелец: ${pub.owner_team}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
+              className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-brand-700"
+            >
+              <IconUsersGroup size={12} stroke={1.8} className="text-brand-400" aria-hidden />
+              {pub.owner_team}
+            </span>
+          )}
           {c.allowed_teams && c.allowed_teams.length > 0 && (
             <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-700">
               teams: {c.allowed_teams.join(", ")}

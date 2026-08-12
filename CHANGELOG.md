@@ -26,8 +26,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - A chart the portal found on its own is no longer credited to the
-  administrators: its card says it has no owner yet instead of naming a team
-  that does not own it.
+  administrators: until somebody takes it on, it shows no owner at all.
 - A service built on a graph can no longer be ordered empty: the portal asks for
   at least one connection, because without them the service gets no rules at all.
 - An order no longer stalls in silence when its change cannot be applied on its
