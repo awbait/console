@@ -419,6 +419,20 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
   drift_cleared: { label: "Расхождение с Git устранено", Icon: IconGitMerge, tint: "emerald" },
   git_pulled: { label: "Заказ обновлён из Git", Icon: IconGitFork, tint: "sky" },
   imported: { label: "Заказ импортирован из Git", Icon: IconGitFork, tint: "sky" },
+  merge_blocked: {
+    label: "Изменение не удалось применить автоматически",
+    Icon: IconAlertTriangle,
+    tint: "amber",
+  },
+};
+
+// Why the platform stopped applying a change. The cause is recorded in the
+// upstream's own vocabulary; the order page says what it means for the service.
+// Causes nobody has configured on these repositories fall through to the plain
+// label above, which already tells the person the change is waiting for them.
+const MERGE_BLOCK_REASON: Record<string, string> = {
+  conflict: "мешает другое изменение этого сервиса",
+  need_rebase: "мешает другое изменение этого сервиса",
 };
 
 // What a status change means, phrased as an event. StatusBadge keeps its own
@@ -462,6 +476,7 @@ const NOTABLE_EVENTS = new Set([
   "renamed",
   "deleted",
   "drift_detected",
+  "merge_blocked",
 ]);
 const NOTABLE_STATUSES = new Set([
   "MR_CREATED",
@@ -490,7 +505,12 @@ function eventLabel(e: TimelineEvent): string {
     }
     return STATUS_EVENT[to] ?? statusMeta(to).label;
   }
-  return EVENT_META[e.event_type]?.label ?? e.event_type;
+  const label = EVENT_META[e.event_type]?.label ?? e.event_type;
+  if (e.event_type === "merge_blocked") {
+    const why = MERGE_BLOCK_REASON[String(e.payload?.reason ?? "")];
+    return why ? `${label}: ${why}` : label;
+  }
+  return label;
 }
 
 // ProductView is the view-driven body of the product (order) page: the tab strip

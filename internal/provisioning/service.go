@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,6 +48,13 @@ type Service struct {
 	// autoMerge makes the poller merge open portal MRs itself (no human gate).
 	// Convenient for local/demo against real GitLab; off in production.
 	autoMerge bool
+	// mergeBlocked remembers, per MR record, the reason auto-merge last gave up
+	// on it. The poller revisits every open MR each tick, so without this the
+	// same wedged order would log, count and journal itself every few seconds.
+	// Process-local on purpose: a restart re-reports once, which is cheaper than
+	// carrying the bookkeeping in the database.
+	mergeBlocked   map[string]string
+	mergeBlockedMu sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
 }
@@ -63,7 +71,8 @@ func (s *Service) logger() *slog.Logger {
 func New(st store.Store, gl gitlab.Port, argo argocd.Port, cat *catalog.Service,
 	g *GitOps, bus *events.Bus, defaultCluster, defaultBranch string, autoMerge bool) *Service {
 	return &Service{store: st, gl: gl, argo: argo, catalog: cat, gitops: g,
-		bus: bus, defaultCluster: defaultCluster, defaultBranch: defaultBranch, autoMerge: autoMerge}
+		bus: bus, defaultCluster: defaultCluster, defaultBranch: defaultBranch, autoMerge: autoMerge,
+		mergeBlocked: map[string]string{}}
 }
 
 // CreateInput is the payload for a new order.
@@ -1007,9 +1016,17 @@ func (s *Service) publishStatus(id, status string) {
 // action, but it is no longer swallowed silently: losing an audit row is logged
 // at Warn so it is visible. Transitions use Tx (above) for atomicity instead.
 func (s *Service) event(ctx context.Context, r *models.Request, a actorRef, typ string, from, to models.RequestStatus) {
+	s.eventWith(ctx, r, a, typ, from, to, nil)
+}
+
+// eventWith is event with a payload: extra structured detail the timeline needs
+// but the status columns cannot carry (why a merge was refused, for instance).
+func (s *Service) eventWith(ctx context.Context, r *models.Request, a actorRef, typ string,
+	from, to models.RequestStatus, payload map[string]any) {
+
 	if err := s.store.AddEvent(ctx, &models.RequestEvent{
 		RequestID: r.ID, Actor: a.subject, ActorName: a.name,
-		EventType: typ, FromStatus: from, ToStatus: to,
+		EventType: typ, FromStatus: from, ToStatus: to, Payload: payload,
 	}); err != nil {
 		s.logger().Warn("audit event not recorded", "order_id", r.ID, "event_type", typ, "err", err)
 	}

@@ -25,6 +25,9 @@ All notable changes to this project are documented in this file.
   the name of the file it comes from stays in the window's own header.
 
 ### Fixed
+- An order no longer stalls in silence when its change cannot be applied on its
+  own: the portal stops retrying, and the order's history records what happened
+  and what is in the way.
 - The placeholders that stand in for data while it loads are visible in the
   light theme instead of melting into the card they sit on.
 - A sign-in that does not go through comes back to the sign-in screen and says

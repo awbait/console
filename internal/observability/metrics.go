@@ -76,6 +76,15 @@ var (
 		Help: "Total admin-triggered ArgoCD syncs, by result.",
 	}, []string{"result"})
 
+	// mrMergesBlocked counts portal MRs that GitLab says will never merge as they
+	// stand, by its reason (conflict, ci_must_pass, not_approved, ...). Counted
+	// once per block rather than once per poller tick, so a single sample means a
+	// single wedged order waiting for a person.
+	mrMergesBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "console_mr_merge_blocked_total",
+		Help: "Total portal merge requests auto-merge gave up on, by GitLab's reason.",
+	}, []string{"reason"})
+
 	// mrMerges counts auto-merge attempts on the portal's own MRs by result
 	// (ok|error). A rising error count with no successes means an order is wedged
 	// unable to merge (conflict, required pipeline/approvals); the poller would
@@ -106,6 +115,12 @@ func ObserveMRMerge(err error) {
 		result = "error"
 	}
 	mrMerges.WithLabelValues(result).Inc()
+}
+
+// ObserveMRMergeBlocked records one portal MR that auto-merge stopped retrying,
+// with GitLab's reason. Call it once per block, not once per attempt.
+func ObserveMRMergeBlocked(reason string) {
+	mrMergesBlocked.WithLabelValues(reason).Inc()
 }
 
 // ObserveArgoSync records one admin-triggered ArgoCD sync and its result.

@@ -258,6 +258,24 @@ func (f *Fake) Healthz(ctx context.Context) error { return nil }
 
 // --- test/demo controls (not part of Port) ---
 
+// SetDetailedMergeStatus makes the fake report a mergeability status for an MR,
+// the way GitLab does (see ClassifyMerge). Empty is the default and means "not
+// reported", so tests that do not care keep the plain always-mergeable fake.
+func (f *Fake) SetDetailedMergeStatus(projectID, iid int, status string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projByID[projectID]
+	if !ok {
+		return models.ErrNotFound
+	}
+	m, ok := p.mrs[iid]
+	if !ok {
+		return models.ErrNotFound
+	}
+	m.mr.DetailedMergeStatus = status
+	return nil
+}
+
 // MergeMR merges the source branch into the target branch and marks the MR merged.
 func (f *Fake) MergeMR(ctx context.Context, projectID, iid int) error {
 	f.mu.Lock()
