@@ -99,12 +99,12 @@ spec:
 
 $valuesYaml = @"
 # Seeded directly in Git (bypassing the portal) to test import/discovery.
-# A schema-valid minimal instance: naming tags + one Gateway with one HTTP
+# A schema-valid minimal instance: identity tags + one Gateway with one HTTP
 # listener (gateway.required = [name, listeners]).
-naming:
-  instanceTag: ru1
-  clusterTag: k8s1
-  projectTag: nbox
+identity:
+  instance: ed
+  cluster: dev
+  project: nbox
 
 gateways:
   - name: $Service

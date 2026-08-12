@@ -62,6 +62,11 @@ $env:GITLAB_URL           = "http://localhost:8929"
 $env:GITLAB_TOKEN         = "glpat-localdev0123456789abcd"
 $env:GITLAB_AUTO_MERGE    = "true"   # poller merges portal MRs itself (no human gate)
 $env:STATUS_POLL_INTERVAL = "5s"     # snappier status progression for the demo
+# The reconcile loop reports its routine decisions at Debug (why a merge is
+# still waiting, which orders a sweep touched). At the default "info" the stand
+# shows only outcomes, which is exactly what you need on the stand when an order
+# stops moving and you want to know what the poller is seeing.
+$env:LOG_LEVEL = "debug"
 # Status freshness on the stand: hybrid (poll + webhooks). Default is already
 # hybrid; set explicit so it is obvious. Do NOT use "webhook" here - Harbor
 # webhooks cannot reach the host-run portal from a KinD pod (see kind/README.md).
@@ -80,6 +85,11 @@ $env:HARBOR_WEBHOOK_SECRET = "stand-hb-webhook-secret"
 #    default (creates order rows); on here to exercise it on the stand.
 $env:DRIFT_DETECTION_ENABLED  = "true"
 $env:IMPORT_DISCOVERY_ENABLED = "true"
+# Catalog autodiscovery: every chart found in the scanned Harbor projects becomes
+# a draft publication waiting to be curated (category + owner). Off by default
+# because it writes publication rows; on here so a freshly pushed chart shows up
+# on the stand without seeding the catalog by hand.
+$env:CATALOG_AUTODISCOVER = "true"
 # Harbor from the KinD stand (NodePort on host port 8084, self-signed TLS). The
 # host-run portal reads the catalog here via the published port (localhost, like
 # GITLAB_URL/ARGOCD_URL). Only the `platform` project holds charts on the stand -
