@@ -30,6 +30,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - The approval queue no longer counts a single submitted version twice.
+- A chart the portal found on its own is no longer credited to the
+  administrators: until somebody takes it on, it shows no owner at all.
 - A service built on a graph can no longer be ordered empty: the portal asks for
   at least one connection, because without them the service gets no rules at all.
 - An order no longer stalls in silence when its change cannot be applied on its

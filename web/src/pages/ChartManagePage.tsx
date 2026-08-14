@@ -30,7 +30,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication, PublicationStatus, PublicationVersion } from "../api/types";
-import { AUTO_DISCOVERY_ACTOR, publisherLabel } from "../api/types";
+import { AUTO_DISCOVERY_ACTOR, isUnclaimed, publisherLabel } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
@@ -344,7 +344,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
             />
           ) : pub.draft_owner_team ? (
             <ProposalChip label="Владелец" from={pub.owner_team} to={pub.draft_owner_team} />
-          ) : (
+          ) : isUnclaimed(pub) ? null : ( // parked on the admin group, not owned
             <Chip className="bg-brand-50 text-brand-700">
               <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
               <span className="text-brand-400">Владелец:</span>
