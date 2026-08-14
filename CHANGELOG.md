@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-14
+
+This release puts what a version does in front of the person approving it, and
+opens the graph of a service that is already running. The rest is polish: the
+portal follows the appearance of the system, an order's page reads better, and a
+release now carries the images themselves, for an installation with no registry
+within reach.
+
 ### Added
 - The graph opens straight from the page of an ordered service, in a window
   nearly the size of the screen, for the services that support it: you can see
@@ -231,6 +239,7 @@ chart publications, OIDC auth, and observability.
   merging a `release/*` PR, and multi-arch image publish to GHCR for portal and
   collector on `v*` tags.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/awbait/console/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/awbait/console/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/awbait/console/releases/tag/v0.1.0
