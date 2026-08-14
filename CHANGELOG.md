@@ -12,6 +12,9 @@ All notable changes to this project are documented in this file.
 - The portal can follow the appearance of the operating system: the theme menu
   has an option for it, it is what a first visit starts with, and the portal
   turns dark or light along with the desktop.
+- Every release now carries the portal and the collector as ready-to-load
+  archives, so the portal can be installed where the image registry is out of
+  reach.
 
 ### Changed
 - A service version is approved on a page of its own, where the document sits
