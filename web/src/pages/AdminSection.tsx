@@ -3,7 +3,9 @@ import {
   IconAlertTriangle,
   IconArrowLeft,
   IconArrowRight,
+  IconCheck,
   IconChecklist,
+  IconChevronDown,
   IconCircleCheck,
   IconClock,
   IconFileText,
@@ -16,27 +18,42 @@ import {
   IconStack,
   IconTags,
   IconTrash,
+  IconX,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
+  Cell,
+  Column,
   Dialog,
   DialogTrigger,
   Heading,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Modal,
   ModalOverlay,
   Popover,
+  Row,
+  Table,
+  TableBody,
+  TableHeader,
 } from "react-aria-components";
-import { Link, Outlet, useParams } from "react-router-dom";
+import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
-import type { Category, ChartPublication, PublicationStatus } from "../api/types";
+import type {
+  Category,
+  ChartPublication,
+  PendingVersion,
+  PublicationStatus,
+} from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
-import { CATEGORY_ICON_CHOICES, categoryIcon } from "../components/icons";
-import { PublicationReview, VersionReview } from "../components/PublicationReview";
-import { Button, ErrorBox, Loading, SkeletonRows } from "../components/ui";
-import { fieldMsg } from "../form/fieldErrors";
+import { CATEGORY_ICON_CHOICES, categoryIcon, ProductIcon } from "../components/icons";
+import { PublicationReview } from "../components/PublicationReview";
+import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
+import { fieldMsg, ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
 // ---------------------------------------------------------------------------
@@ -84,7 +101,7 @@ function StatCard({
   Icon: typeof IconClock;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
+    <Card className="flex items-center gap-3">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${TONE[tone]}`}>
         <Icon size={20} stroke={1.8} />
       </span>
@@ -92,16 +109,7 @@ function StatCard({
         <div className="text-2xl font-semibold leading-tight text-slate-900">{value}</div>
         <div className="truncate text-xs text-slate-500">{label}</div>
       </div>
-    </div>
-  );
-}
-
-function PageTitle({ title, badge }: { title: string; badge?: ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-      {badge}
-    </div>
+    </Card>
   );
 }
 
@@ -109,6 +117,16 @@ const managePath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =
   `/catalog/${p.chart_project}/${p.chart_name}/manage`;
 const reviewPath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =>
   `/admin/approvals/${p.chart_project}/${p.chart_name}`;
+const versionReviewPath = (
+  p: Pick<ChartPublication, "chart_project" | "chart_name">,
+  version: string,
+) => `${reviewPath(p)}/${version}`;
+
+// Publications waiting on a metadata decision (category/owner). Counted off the
+// stored status, NOT the effective one: the effective status also turns PENDING
+// when any of the versions is pending, and those are counted separately - taking
+// it here would report one submitted version as two things to review.
+const metaPending = (p: ChartPublication) => p.status === "PENDING";
 
 // ---------------------------------------------------------------------------
 // section guard
@@ -133,6 +151,11 @@ export function AdminSection() {
 // Overview
 // ---------------------------------------------------------------------------
 
+// How many queue rows the overview shows before sending the reader to the full
+// queue. Enough to see what is waiting, short enough that the page stays a
+// summary.
+const OVERVIEW_QUEUE_ROWS = 5;
+
 export function AdminOverviewPage() {
   const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
@@ -140,115 +163,58 @@ export function AdminOverviewPage() {
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
-  const pendingMeta = all.filter((p) => p.status === "PENDING");
-  const pendingVersions = pendingVers ?? [];
-  const pendingCount = pendingMeta.length + pendingVersions.length;
+  const queue = buildQueue(all, pendingVers ?? []);
   const published = all.filter((p) => effStatus(p) === "APPROVED").length;
   const drafts = all.filter((p) => effStatus(p) === "DRAFT" || effStatus(p) === "REJECTED").length;
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageTitle
-        title="Администрирование платформы"
-        badge={
-          <Badge tone="brand">
-            <IconSettings size={13} stroke={1.8} /> Admin
-          </Badge>
-        }
-      />
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Ждут согласования" value={pendingCount} tone="amber" Icon={IconClock} />
-        <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
-        <StatCard label="Черновики" value={drafts} tone="slate" Icon={IconFileText} />
-        <StatCard label="Всего публикаций" value={all.length} tone="brand" Icon={IconStack} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* approval queue preview */}
-        <div className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-800">Очередь на согласование</h2>
-            {pendingCount > 0 && (
-              <Link to="/admin/approvals" className="text-xs font-medium text-brand-600 hover:text-brand-700">
-                Все
-              </Link>
-            )}
-          </div>
-          {pendingCount === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-8 text-center">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <IconCircleCheck size={22} stroke={1.8} />
-              </span>
-              <p className="text-sm text-slate-500">Нет публикаций, ожидающих решения.</p>
-            </div>
-          ) : (
-            <ul className="-mx-2 flex flex-col">
-              {pendingMeta.map((p) => (
-                <li key={`meta-${p.id}`}>
-                  <Link
-                    to={reviewPath(p)}
-                    className="group flex items-center justify-between gap-3 rounded-md px-2 py-2.5 hover:bg-slate-50"
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                        <IconPackage size={16} stroke={1.8} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-slate-800">
-                          {chartLabel(p.chart_name)} <span className="text-slate-400">метаданные</span>
-                        </span>
-                        <span className="block truncate text-xs text-slate-400">
-                          {p.chart_project}/{p.chart_name}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Badge tone="brand">{p.owner_team}</Badge>
-                      <IconArrowRight size={16} className="text-slate-300 group-hover:text-brand-500" />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-              {pendingVersions.map((pv) => (
-                <li key={`ver-${pv.version.id}`}>
-                  <Link
-                    to={reviewPath(pv.publication)}
-                    className="group flex items-center justify-between gap-3 rounded-md px-2 py-2.5 hover:bg-slate-50"
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                        <IconPackage size={16} stroke={1.8} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-slate-800">
-                          {chartLabel(pv.publication.chart_name)}{" "}
-                          <span className="text-slate-400">v{pv.version.chart_version}</span>
-                        </span>
-                        <span className="block truncate text-xs text-slate-400">
-                          {pv.publication.chart_project}/{pv.publication.chart_name}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <Badge tone="brand">{pv.publication.owner_team}</Badge>
-                      <IconArrowRight size={16} className="text-slate-300 group-hover:text-brand-500" />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col">
+        <div className="mb-4 flex min-h-9 items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-slate-900">Администрирование платформы</h1>
+          <Chip className="bg-brand-50 text-brand-700">
+            <IconSettings size={13} stroke={1.8} className="text-brand-400" />
+            Admin
+          </Chip>
         </div>
 
-        {/* quick links */}
-        <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Ждут решения" value={queue.length} tone="amber" Icon={IconClock} />
+          <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
+          <StatCard label="Черновики" value={drafts} tone="slate" Icon={IconFileText} />
+          <StatCard label="Всего публикаций" value={all.length} tone="brand" Icon={IconStack} />
+        </div>
+      </section>
+
+      <section className="flex flex-col">
+        <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-800">Очередь на согласование</h2>
+          {queue.length > OVERVIEW_QUEUE_ROWS && (
+            <Link
+              to="/admin/approvals"
+              className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:text-brand-700"
+            >
+              Все {queue.length}
+              <IconArrowRight size={14} stroke={1.8} />
+            </Link>
+          )}
+        </div>
+        <QueueTable items={queue.slice(0, OVERVIEW_QUEUE_ROWS)} />
+      </section>
+
+      <section className="flex flex-col">
+        <h2 className="mb-3 text-sm font-semibold text-slate-800">Разделы</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <QuickLink
             to="/admin/approvals"
             tone="amber"
             Icon={IconChecklist}
             title="Согласование публикаций"
-            desc={pendingCount > 0 ? `${pendingCount} в очереди` : "очередь пуста"}
+            desc={
+              queue.length > 0
+                ? `${queue.length} ${ruPlural(queue.length, "решение", "решения", "решений")} ждёт`
+                : "очередь пуста"
+            }
           />
           <QuickLink
             to="/admin/status"
@@ -265,7 +231,7 @@ export function AdminOverviewPage() {
             desc="структура разделов каталога"
           />
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -306,156 +272,299 @@ function QuickLink({
 // Approvals queue
 // ---------------------------------------------------------------------------
 
-type Filter = "ALL" | PublicationStatus;
+const PUBLICATION_STATUSES: PublicationStatus[] = ["DRAFT", "PENDING", "APPROVED", "REJECTED"];
+
+// StatusFilter: the portal's list filter, the same control the orders lists use
+// - a pill that opens a checkbox menu, with the selected count on its face.
+// Everything shown is the default; an empty selection shows nothing, which is
+// what "I unticked them all" should mean.
+function StatusFilter({
+  shown,
+  onChange,
+}: {
+  shown: Set<PublicationStatus>;
+  onChange: (s: Set<PublicationStatus>) => void;
+}) {
+  return (
+    <MenuTrigger>
+      <AriaButton className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
+        Статусы
+        <span className="text-slate-400">
+          {shown.size}/{PUBLICATION_STATUSES.length}
+        </span>
+        <IconChevronDown size={13} stroke={1.8} className="text-slate-400" />
+      </AriaButton>
+      <Popover className="rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu
+          selectionMode="multiple"
+          selectedKeys={shown}
+          onSelectionChange={(keys) =>
+            onChange(
+              keys === "all"
+                ? new Set(PUBLICATION_STATUSES)
+                : new Set([...keys].map(String) as PublicationStatus[]),
+            )
+          }
+          className="max-h-80 overflow-auto outline-none"
+        >
+          {PUBLICATION_STATUSES.map((s) => (
+            <MenuItem
+              key={s}
+              id={s}
+              textValue={STATUS_META[s].label}
+              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
+            >
+              {({ isSelected }) => (
+                <>
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
+                    }`}
+                  >
+                    {isSelected && <IconCheck size={12} stroke={3} />}
+                  </span>
+                  <Badge tone={STATUS_META[s].tone}>{STATUS_META[s].label}</Badge>
+                </>
+              )}
+            </MenuItem>
+          ))}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
+  );
+}
+
+// QueueItem is one decision waiting for the admin. Metadata changes and version
+// submissions are different objects in the backend but the same job here - work
+// to look at and resolve - so the queue is one list, not two blocks side by side
+// that leave the reader adding up the total by hand.
+type QueueItem = {
+  key: string;
+  kind: "meta" | "version";
+  pub: ChartPublication;
+  version?: string;
+  to: string;
+  since: string;
+};
+
+function buildQueue(pubs: ChartPublication[], pending: PendingVersion[]): QueueItem[] {
+  const items: QueueItem[] = [
+    ...pubs.filter(metaPending).map<QueueItem>((p) => ({
+      key: `meta-${p.id}`,
+      kind: "meta",
+      pub: p,
+      to: reviewPath(p),
+      since: p.updated_at ?? "",
+    })),
+    ...pending.map<QueueItem>((pv) => ({
+      key: `ver-${pv.version.id}`,
+      kind: "version",
+      pub: pv.publication,
+      version: pv.version.chart_version,
+      to: versionReviewPath(pv.publication, pv.version.chart_version),
+      since: pv.version.updated_at,
+    })),
+  ];
+  // Oldest first: the queue is worked from the top, and what has waited longest
+  // is what someone is waiting on.
+  return items.sort((a, b) => a.since.localeCompare(b.since));
+}
+
+// waitedFor renders how long an item has been sitting in the queue. Days matter
+// here, minutes do not.
+function waitedFor(iso: string): string {
+  if (!iso) return "-";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (Number.isNaN(days)) return "-";
+  if (days <= 0) return "сегодня";
+  if (days === 1) return "вчера";
+  return `${days} ${ruPlural(days, "день", "дня", "дней")} назад`;
+}
 
 export function AdminApprovalsPage() {
   const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
-  const [filter, setFilter] = useState<Filter>("ALL");
+  const [shown, setShown] = useState<Set<PublicationStatus>>(new Set(PUBLICATION_STATUSES));
 
   if (loading) return <SkeletonRows rows={5} />;
   if (error) return <ErrorBox error={error} />;
 
   const all = pubs ?? [];
-  const pendingVersions = pendingVers ?? [];
-  const count = (s: Filter) => (s === "ALL" ? all.length : all.filter((p) => effStatus(p) === s).length);
-  const rows = filter === "ALL" ? all : all.filter((p) => effStatus(p) === filter);
-  const filters: { id: Filter; label: string }[] = [
-    { id: "ALL", label: "Все" },
-    { id: "PENDING", label: "Ожидают" },
-    { id: "APPROVED", label: "Согласованные" },
-    { id: "REJECTED", label: "Отклонённые" },
-    { id: "DRAFT", label: "Черновики" },
-  ];
+  const queue = buildQueue(all, pendingVers ?? []);
+  const rows = all.filter((p) => shown.has(effStatus(p)));
+  const filtersDefault = shown.size === PUBLICATION_STATUSES.length;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageTitle
-        title="Согласование публикаций"
-        badge={<Badge tone="amber">{count("PENDING") + pendingVersions.length} в очереди</Badge>}
-      />
-
-      {/* Per-version view submissions awaiting review (separate from the
-          publication metadata FSM below). */}
-      {pendingVersions.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-amber-200 bg-surface shadow-sm">
-          <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
-            Версии на согласовании
-          </div>
-          <ul className="flex flex-col">
-            {pendingVersions.map((pv) => (
-              <li key={pv.version.id} className="border-b border-slate-100 last:border-0">
-                <Link
-                  to={reviewPath(pv.publication)}
-                  className="group flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
-                >
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
-                      <IconPackage size={16} stroke={1.8} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block font-medium text-slate-800">
-                        {chartLabel(pv.publication.chart_name)}{" "}
-                        <span className="text-slate-400">v{pv.version.chart_version}</span>
-                      </span>
-                      <span className="block truncate text-xs text-slate-400">
-                        {pv.publication.chart_project}/{pv.publication.chart_name}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <Badge tone="brand">{pv.publication.owner_team}</Badge>
-                    <IconArrowRight size={14} className="text-slate-300 group-hover:text-brand-500" />
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col">
+        <div className="mb-4 flex min-h-9 items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-slate-900">Согласование публикаций</h1>
+          {queue.length > 0 && (
+            <Chip className="bg-amber-50 text-amber-700">
+              <IconClock size={13} stroke={1.8} className="text-amber-500" />
+              {queue.length} {ruPlural(queue.length, "решение", "решения", "решений")} ждёт
+            </Chip>
+          )}
         </div>
-      )}
 
-      <div className="flex flex-wrap gap-2">
-        {filters.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-              filter === f.id
-                ? "border-brand-200 bg-brand-50 text-brand-700"
-                : "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            {f.label}
-            <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">{count(f.id)}</span>
-          </button>
-        ))}
-      </div>
+        <QueueTable items={queue} />
+      </section>
 
-      {rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-surface py-12 text-center shadow-sm">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-            <IconChecklist size={22} stroke={1.8} />
-          </span>
-          <p className="text-sm text-slate-500">Публикаций в этой категории нет.</p>
+      <section className="flex flex-col">
+        <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-800">Все публикации</h2>
         </div>
-      ) : (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <StatusFilter shown={shown} onChange={setShown} />
+          {!filtersDefault && (
+            <button
+              type="button"
+              onClick={() => setShown(new Set(PUBLICATION_STATUSES))}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <IconX size={13} stroke={2} />
+              Сбросить
+            </button>
+          )}
+        </div>
+
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-4 py-2.5 font-medium">Чарт</th>
-                <th className="px-4 py-2.5 font-medium">Команда</th>
-                <th className="px-4 py-2.5 font-medium">Статус</th>
-                <th className="px-4 py-2.5 text-right font-medium">Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => {
-                const st = STATUS_META[effStatus(p)];
-                const isPending = effStatus(p) === "PENDING";
-                return (
-                  <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-2.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                          <IconPackage size={16} stroke={1.8} />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block font-medium text-slate-800">{chartLabel(p.chart_name)}</span>
-                          <span className="block truncate text-xs text-slate-400">
-                            {p.chart_project}/{p.chart_name}
-                          </span>
-                        </span>
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{p.owner_team}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={st.tone}>{st.label}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end">
-                        <Link
-                          to={isPending ? reviewPath(p) : managePath(p)}
-                          className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 ${
-                            isPending
-                              ? "border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100 focus-visible:ring-brand-500"
-                              : "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50 focus-visible:ring-brand-500"
-                          }`}
-                        >
-                          {isPending ? "Рассмотреть" : "Открыть"}
-                          <IconArrowRight size={14} stroke={1.8} />
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <Table aria-label="Публикации" className="w-full text-sm">
+            <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <Column isRowHeader className="px-4 py-2.5 text-left">
+                Сервис
+              </Column>
+              <Column className="px-4 py-2.5 text-left">Владелец</Column>
+              <Column className="px-4 py-2.5 text-left">В каталоге</Column>
+              <Column className="px-4 py-2.5 text-center">Статус</Column>
+            </TableHeader>
+            <TableBody
+              renderEmptyState={() => (
+                <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <IconChecklist size={24} stroke={1.6} />
+                  </span>
+                  <p className="text-sm text-slate-500">Публикаций в этой категории нет.</p>
+                </div>
+              )}
+            >
+              {rows.map((p) => (
+                <PublicationRow key={p.id} pub={p} />
+              ))}
+            </TableBody>
+          </Table>
         </div>
-      )}
+      </section>
     </div>
+  );
+}
+
+// QueueTable renders the decision queue. Shared by the overview (top rows) and
+// the approvals page (all of them) so the two never drift into two designs for
+// the same list.
+function QueueTable({ items }: { items: QueueItem[] }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+      <Table aria-label="Очередь на согласование" className="w-full text-sm">
+        <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <Column className="px-4 py-2.5 text-left">Что решаем</Column>
+          <Column isRowHeader className="px-4 py-2.5 text-left">
+            Сервис
+          </Column>
+          <Column className="px-4 py-2.5 text-left">Владелец</Column>
+          <Column className="px-4 py-2.5 text-right">В очереди</Column>
+        </TableHeader>
+        <TableBody
+          renderEmptyState={() => (
+            <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <IconCircleCheck size={24} stroke={1.6} />
+              </span>
+              <p className="text-sm text-slate-500">Всё решено, очередь пуста.</p>
+            </div>
+          )}
+        >
+          {items.map((item) => (
+            <QueueRow key={item.key} item={item} />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+// QueueRow: one decision. The whole row navigates, like the orders table.
+function QueueRow({ item }: { item: QueueItem }) {
+  const navigate = useNavigate();
+  const p = item.pub;
+  return (
+    <Row
+      onAction={() => navigate(item.to)}
+      className="cursor-pointer border-b border-slate-100 outline-none last:border-0 hover:bg-slate-50 focus-visible:bg-slate-50"
+    >
+      <Cell className="px-4 py-3 text-left">
+        {item.kind === "version" ? (
+          <Chip className="bg-amber-50 text-amber-700">
+            <IconPackage size={13} stroke={1.8} className="text-amber-500" />
+            Версия {item.version}
+          </Chip>
+        ) : (
+          <Chip className="bg-slate-100 text-slate-600">
+            <IconPencil size={13} stroke={1.8} className="text-slate-400" />
+            Категория и владелец
+          </Chip>
+        )}
+      </Cell>
+      <Cell className="px-4 py-3 text-left">
+        <span className="flex items-center gap-2 font-medium text-slate-800">
+          <ProductIcon project={p.chart_project} name={p.chart_name} />
+          {chartLabel(p.chart_name)}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-slate-400">
+          {p.chart_project}/{p.chart_name}
+        </span>
+      </Cell>
+      <Cell className="px-4 py-3 text-left text-slate-600">{p.owner_team}</Cell>
+      <Cell className="px-4 py-3 text-right text-slate-500">{waitedFor(item.since)}</Cell>
+    </Row>
+  );
+}
+
+// PublicationRow: the reference list below the queue - where a service stands,
+// with a way into it. Nothing here is waiting on the reader.
+function PublicationRow({ pub }: { pub: ChartPublication }) {
+  const navigate = useNavigate();
+  const st = STATUS_META[effStatus(pub)];
+  const to = effStatus(pub) === "PENDING" ? reviewPath(pub) : managePath(pub);
+  return (
+    <Row
+      onAction={() => navigate(to)}
+      className="cursor-pointer border-b border-slate-100 outline-none last:border-0 hover:bg-slate-50 focus-visible:bg-slate-50"
+    >
+      <Cell className="px-4 py-3 text-left">
+        <span className="flex items-center gap-2 font-medium text-slate-800">
+          <ProductIcon project={pub.chart_project} name={pub.chart_name} />
+          {chartLabel(pub.chart_name)}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-slate-400">
+          {pub.chart_project}/{pub.chart_name}
+        </span>
+      </Cell>
+      <Cell className="px-4 py-3 text-left text-slate-600">{pub.owner_team}</Cell>
+      {/* The version new orders are served by. Empty means nothing is orderable
+          yet, which "Согласовано" alone does not tell you: the metadata can be
+          approved while every version of the service is still a draft. */}
+      <Cell className="px-4 py-3 text-left">
+        {pub.recommended_version ? (
+          <Chip className="bg-slate-100 font-mono text-slate-600">v{pub.recommended_version}</Chip>
+        ) : (
+          <span className="text-slate-300">-</span>
+        )}
+      </Cell>
+      <Cell className="px-4 py-3 text-center">
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </Cell>
+    </Row>
   );
 }
 
@@ -477,8 +586,8 @@ export function AdminApprovalDetailPage() {
     () => api.listPublications({ chart: name }).then((l) => l.find((p) => p.chart_project === project) ?? null),
     [project, name],
   );
-  // Pending versions of this chart (per-version submissions to review).
-  const { data: versions, reload: reloadVersions } = useAsync(
+  // Pending versions of this chart (each is decided on its own page).
+  const { data: versions } = useAsync(
     () => (pub ? api.listVersions(pub.id) : Promise.resolve([])),
     [pub?.id],
   );
@@ -526,18 +635,34 @@ export function AdminApprovalDetailPage() {
 
       {/* Metadata (category/owner) approval, if any. */}
       {pub.status === "PENDING" && <PublicationReview pub={pub} onReviewed={reload} />}
-      {/* Per-version view submissions awaiting review. */}
-      {pendingVersions.map((v) => (
-        <VersionReview
-          key={v.id}
-          pubId={pub.id}
-          version={v}
-          onReviewed={() => {
-            reloadVersions();
-            reload();
-          }}
-        />
-      ))}
+      {/* Version submissions are decided on their own page, where the document
+          sits next to a preview of the form it produces. Deciding from a list,
+          without seeing that form, is what this used to ask of the reviewer. */}
+      {pendingVersions.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-amber-200 bg-surface shadow-sm">
+          <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Версии на согласовании
+          </div>
+          <ul className="flex flex-col">
+            {pendingVersions.map((v) => (
+              <li key={v.id} className="border-b border-slate-100 last:border-0">
+                <Link
+                  to={versionReviewPath(pub, v.chart_version)}
+                  className="group flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
+                >
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                      <IconPackage size={16} stroke={1.8} />
+                    </span>
+                    <span className="font-medium text-slate-800">v{v.chart_version}</span>
+                  </span>
+                  <IconArrowRight size={14} className="text-slate-300 group-hover:text-brand-500" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {pub.status !== "PENDING" && pendingVersions.length === 0 && (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <p className="text-sm text-slate-600">
