@@ -5,6 +5,10 @@ name: Publish
 # hotfix). The tag is the single source of the version stamped into the portal
 # binary (buildinfo -> the About page); .dockerignore excludes .git, so the
 # version/commit/date are injected via --build-arg here, as the Dockerfile expects.
+#
+# Each pushed image is also saved as a `docker load`-able archive and attached to
+# the GitHub Release of the tag, so an installation with no access to GHCR has
+# something to carry in.
 
 on:
   push:
@@ -78,3 +82,64 @@ jobs:
           provenance: mode=max
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      # The multi-platform build above goes straight to the registry and never
+      # lands in the local daemon, so the archive is made from the pushed image.
+      # linux/amd64 only: that is what the on-prem installations run.
+      - name: Archive the image
+        run: |
+          image="ghcr.io/${{ github.repository }}/${{ matrix.name }}:${GITHUB_REF_NAME}"
+          docker pull --platform linux/amd64 "$image"
+          docker save "$image" \
+            | gzip > "console-${{ matrix.name }}-${GITHUB_REF_NAME}-linux-amd64.tar.gz"
+          ls -lh console-*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-archive-${{ matrix.name }}
+          path: console-*.tar.gz
+          retention-days: 1
+
+  assets:
+    name: release assets
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-archive-*
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          sha256sum console-*.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      # release.yml creates the Release right after pushing the tag, minutes
+      # before the images are built, so it is normally already there. A tag
+      # pushed by hand may have no Release at all: then there is nothing to
+      # attach to and the images in GHCR are the whole result.
+      - name: Wait for the release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 30); do
+            if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "found=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "no release for $GITHUB_REF_NAME, nothing to attach the archives to"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+
+      - name: Attach the archives to the release
+        if: steps.release.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" console-*.tar.gz SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --clobber
