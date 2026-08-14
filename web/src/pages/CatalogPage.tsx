@@ -18,7 +18,7 @@ import {
 } from "react-aria-components";
 import { Link, useSearchParams } from "react-router-dom";
 import type { CatalogChart, Category } from "../api/types";
-import { publisherLabel } from "../api/types";
+import { isUnclaimed, publisherLabel } from "../api/types";
 import { CAPABILITIES } from "../app/capabilities";
 import { useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
@@ -447,7 +447,9 @@ function ChartCard({
               {category.label}
             </span>
           )}
-          {pub && (
+          {/* A chart auto-discovery has not handed to anyone yet has no owner to
+              name: the admin group it is parked on is bookkeeping, not an owner. */}
+          {pub && !isUnclaimed(pub) && (
             <span
               title={`Владелец: ${pub.owner_team}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
               className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-brand-700"

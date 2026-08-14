@@ -215,6 +215,15 @@ export function publisherLabel(createdBy: string): string {
   return createdBy === AUTO_DISCOVERY_ACTOR ? "Maintainer" : "Опубликовано";
 }
 
+// isUnclaimed reports whether a publication is still the one auto-discovery
+// created and nobody has taken over. Harbor knows nothing about teams, so such
+// a publication is parked on the admin group until someone adopts it - naming
+// that group as the owner would state something untrue, since the whole point
+// of the state is that it has no owner yet.
+export function isUnclaimed(pub: { created_by: string }): boolean {
+  return pub.created_by === AUTO_DISCOVERY_ACTOR;
+}
+
 // Lightweight publication projection in the /catalog response (without view-document bodies).
 export interface PublicationSummary {
   id: string;
