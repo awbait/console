@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 
@@ -128,6 +129,21 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
 	provSvc.Log = observability.Component(log, "provisioning")
+	// Self-registration of the inbound GitLab webhook. Both halves are needed: the
+	// secret proves the delivery, the URL is where GitLab sends it. Registered
+	// below, once; under the per-repository scope provSvc adds one to every repo
+	// it creates.
+	var hooks *gitlab.HookManager
+	if cfg.GitLabWebhookURL != "" && cfg.GitLabWebhookToken != "" {
+		hooks = gitlab.NewHookManager(gl, cfg.GitLabGitopsGroup, gitlab.Hook{
+			URL:   cfg.GitLabWebhookURL,
+			Token: cfg.GitLabWebhookToken,
+			// GitLab only verifies a certificate for an https:// callback; asking it
+			// to verify a plain http one is meaningless (and stands run http).
+			SSLVerify: strings.HasPrefix(cfg.GitLabWebhookURL, "https://"),
+		}, gitlab.HookScope(cfg.GitLabWebhookScope), observability.Component(log, "gitlab"))
+		provSvc.Hooks = hooks
+	}
 	pubsSvc := publications.New(st, catalogSvc)
 	pubsSvc.Log = observability.Component(log, "publications")
 	// The admin group owning auto-discovered drafts; also bounds which
@@ -178,6 +194,20 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// reconcile sweep. Routes register only for sources whose secret is set.
 	webhookHandler := webhooks.New(poller, observability.Component(log, "webhooks"),
 		cfg.GitLabWebhookToken, cfg.HarborWebhookKey)
+	// Register the portal's own hook in GitLab (GITLAB_WEBHOOK_URL set), so no
+	// human has to add it after a deploy. Whether a failure here is fatal depends
+	// on the mode: in hybrid the poll still advances every order, in webhook-only
+	// nothing else would.
+	if scope, err := hooks.Ensure(ctx); err != nil {
+		if cfg.StatusUpdateMode == config.StatusModeWebhook {
+			return fmt.Errorf("register gitlab webhook: %w", err)
+		}
+		log.Warn("could not register the GitLab webhook, falling back to polling",
+			"scope", cfg.GitLabWebhookScope, "err", err)
+	} else if scope == gitlab.HookScopeProject {
+		log.Info("gitlab webhook registered per repository",
+			"reason", "no group or system hook available; new repos are hooked as the portal creates them")
+	}
 	switch cfg.StatusUpdateMode {
 	case config.StatusModeWebhook:
 		// No poll backstop here: GitLab webhook is the only thing that advances the

@@ -1,6 +1,11 @@
 # Registers the GitLab -> portal merge-request webhook, so STATUS_UPDATE_MODE=
 # hybrid/webhook reacts to a merge at once instead of on the next poll tick.
 #
+# The portal does this itself when GITLAB_WEBHOOK_URL is set (same cascade, see
+# internal/gitlab/hooks.go). What it cannot do is flip the instance-wide network
+# setting below, which is why this script still exists: run it once against a
+# fresh GitLab, and whenever you want to register the hook without the portal.
+#
 # Three scopes, tried best-first (-Scope auto). Each one registers the SAME hook
 # URL and secret; only the coverage differs:
 #
