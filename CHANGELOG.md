@@ -6,9 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - The portal keeps its own notification from GitLab registered: fill in
-  `GITLAB_WEBHOOK_URL` and it sets the notification up at startup and on every
-  repository it creates afterwards, so nobody has to add one by hand after a
-  deployment or after a service is ordered. It takes the widest form the
+  `GITLAB_WEBHOOK_URL` and it sets the notification up at startup, on every
+  repository it creates afterwards, and on the ones it adopts from Git, so
+  nobody has to add one by hand after a deployment or after a service is
+  ordered. It takes the widest form the
   instance allows - one notification for the whole group, one for the whole
   GitLab, or one per repository - and `GITLAB_WEBHOOK_SCOPE` pins that choice.
 
