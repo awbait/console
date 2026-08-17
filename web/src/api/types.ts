@@ -243,6 +243,10 @@ export interface PublicationSummary {
   // Versions available for ordering (allowlist), highest first. The catalog card
   // shows the first as the main chip and the rest as "+N".
   orderable_versions?: string[];
+  // Versions approved for the catalog that the registry no longer has, highest
+  // first. Nothing offers them: this is what makes "approved but not published"
+  // explainable on the owner's and the admin's pages.
+  gone_versions?: string[];
   // Chart description at approval time (catalog shows this, not the live one).
   approved_description?: string;
   // Chart icon at approval time (catalog/profile show this, not the live one).

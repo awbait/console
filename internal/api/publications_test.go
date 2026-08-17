@@ -173,19 +173,19 @@ func TestHTTPPublicationsFlow(t *testing.T) {
 		t.Fatalf("metadata approve must apply the draft: %+v", approved)
 	}
 
-	// publish version 1.0.0: draft -> submit -> approve -> orderable
+	// publish version 3.1.0: draft -> submit -> approve -> orderable
 	view := map[string]any{"views": map[string]any{"order": map[string]any{"identity": "/gateways/0/name", "include": []string{"gateways"}}}}
 	base := "/api/v1/publications/" + pub.ID
-	if rec := do(devReq("PUT", base+"/versions/1.0.0", "core", map[string]any{"view": view})); rec.Code != http.StatusOK {
+	if rec := do(devReq("PUT", base+"/versions/3.1.0", "core", map[string]any{"view": view})); rec.Code != http.StatusOK {
 		t.Fatalf("save version view: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := do(devReq("POST", base+"/versions/1.0.0/submit", "core", nil)); rec.Code != http.StatusOK {
+	if rec := do(devReq("POST", base+"/versions/3.1.0/submit", "core", nil)); rec.Code != http.StatusOK {
 		t.Fatalf("submit version: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := do(adminReq("POST", base+"/versions/1.0.0/approve", nil)); rec.Code != http.StatusOK {
+	if rec := do(adminReq("POST", base+"/versions/3.1.0/approve", nil)); rec.Code != http.StatusOK {
 		t.Fatalf("approve version: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := do(devReq("POST", base+"/versions/1.0.0/orderable", "core",
+	if rec := do(devReq("POST", base+"/versions/3.1.0/orderable", "core",
 		map[string]any{"orderable": true})); rec.Code != http.StatusOK {
 		t.Fatalf("orderable: %d %s", rec.Code, rec.Body.String())
 	}

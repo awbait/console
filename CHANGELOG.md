@@ -11,20 +11,34 @@ All notable changes to this project are documented in this file.
   security team needs. Such a change still gets kept up to date with the branch
   on its own, so the reviewer is handed something they can simply approve.
 
+- The portal keeps its own notification from GitLab registered: fill in
+  `GITLAB_WEBHOOK_URL` and it sets the notification up at startup, on every
+  repository it creates afterwards, and on the ones it adopts from Git, so
+  nobody has to add one by hand after a deployment or after a service is
+  ordered. It takes the widest form the instance allows - one notification for
+  the whole group, one for the whole GitLab, or one per repository - and
+  `GITLAB_WEBHOOK_SCOPE` pins that choice.
+
+### Changed
+- The publication approvals page no longer scrolls away from you: the title
+  stays put and only the lists move. The services table gained the category and
+  the date it last changed, the "in the catalog" column now shows the versions
+  that can actually be ordered, and a service's actions open straight from its
+  row.
+
 ### Fixed
 - A change to a service no longer gets stuck because someone else's change to
   the same service arrived first. The portal combines the two field by field and
   sends the result on: your edit and theirs both survive, and you are asked
   about it only when you both changed the very same field.
-
-### Added
-- The portal keeps its own notification from GitLab registered: fill in
-  `GITLAB_WEBHOOK_URL` and it sets the notification up at startup, on every
-  repository it creates afterwards, and on the ones it adopts from Git, so
-  nobody has to add one by hand after a deployment or after a service is
-  ordered. It takes the widest form the
-  instance allows - one notification for the whole group, one for the whole
-  GitLab, or one per repository - and `GITLAB_WEBHOOK_SCOPE` pins that choice.
+- A service version deleted from the image registry is no longer offered: it is
+  gone from the catalog and from the order form, and an order for it is refused.
+  Before, it could be ordered and the service simply never deployed. An order
+  already running on it keeps running and can be moved to an available version,
+  but not edited in place. Its owner sees the loss on the service page and
+  cannot approve or publish what is not there.
+- The order form opens on the service's recommended version, not on whatever
+  reached the registry last.
 
 ## [0.3.0] - 2026-08-14
 

@@ -41,7 +41,8 @@ interface Props {
   // When set, render an "Заказать" button linking to this route.
   orderTo?: string;
   // When set (and orderTo is not), render a disabled "Заказать" button with this
-  // reason as a tooltip/label (e.g. the product's chart isn't in the registry).
+  // reason as its tooltip. The empty table says the same thing in full, so the
+  // button carries no label of its own.
   orderDisabledReason?: string;
   // Hint shown when the table is empty.
   emptyHint?: React.ReactNode;
@@ -196,7 +197,6 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           </LinkButton>
         ) : orderDisabledReason ? (
           <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-slate-400 sm:inline">нет в реестре</span>
             <span
               title={orderDisabledReason}
               aria-disabled="true"

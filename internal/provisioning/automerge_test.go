@@ -1,4 +1,4 @@
-package provisioning_test
+﻿package provisioning_test
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func newAutoMergeStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", true)
-	return &stack{prov, gl, argo, st, gitops}
+	return &stack{prov, gl, argo, hb, st, gitops}
 }
 
 // orderWithOpenMR creates an order and returns it with its open MR record.

@@ -142,6 +142,29 @@ func (f *Fake) add(c *fakeChart) {
 	f.charts[key(c.chart.Project, c.chart.Name)] = c
 }
 
+// RemoveVersion deletes one version of a chart, as deleting the artifact in
+// Harbor does. The chart itself stays when it has other versions and goes with
+// its last one. Not part of Port - it is how a test reaches the state a
+// registry cleanup leaves behind.
+func (f *Fake) RemoveVersion(project, name, version string) {
+	c, ok := f.charts[key(project, name)]
+	if !ok {
+		return
+	}
+	delete(c.versions, version)
+	if len(c.versions) == 0 {
+		delete(f.charts, key(project, name))
+		return
+	}
+	f.add(c) // recompute the version list and the latest tag
+}
+
+// RemoveChart deletes a chart with every version, as deleting the repository in
+// Harbor does.
+func (f *Fake) RemoveChart(project, name string) {
+	delete(f.charts, key(project, name))
+}
+
 func (f *Fake) ListCharts(ctx context.Context) ([]models.Chart, error) {
 	out := make([]models.Chart, 0, len(f.charts))
 	for _, c := range f.charts {

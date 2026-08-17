@@ -31,6 +31,24 @@ func seedVersionedPub(t *testing.T, s *stack, project, name, orderableVersion st
 	}
 }
 
+// seedVersion adds another approved, orderable version to a chart's existing
+// publication.
+func seedVersion(t *testing.T, s *stack, name, chartVersion string, view []byte) {
+	t.Helper()
+	ctx := context.Background()
+	pub, err := s.st.GetPublicationByChart(ctx, "platform", name)
+	if err != nil {
+		t.Fatalf("get pub %s: %v", name, err)
+	}
+	v := &models.PublicationVersion{
+		ID: "ver-" + name + "-" + chartVersion, PublicationID: pub.ID, ChartVersion: chartVersion,
+		ApprovedViewJSON: view, Status: models.PubApproved, Orderable: true,
+	}
+	if err := s.st.UpsertVersion(ctx, v); err != nil {
+		t.Fatalf("upsert version %s: %v", chartVersion, err)
+	}
+}
+
 func TestOrderGuardRejectsNonOrderableVersion(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)

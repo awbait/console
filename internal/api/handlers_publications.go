@@ -394,6 +394,10 @@ type publicationSummary struct {
 	// highest first - the catalog card shows the first as the main chip and the
 	// rest as "+N".
 	OrderableVersions []string `json:"orderable_versions,omitempty"`
+	// GoneVersions are versions approved for the catalog that the registry no
+	// longer has, highest first. Nothing offers them; the owner and the admin see
+	// them so that "approved but not published" carries its reason.
+	GoneVersions []string `json:"gone_versions,omitempty"`
 	// ApprovedDescription is the chart description at approval time (the catalog
 	// shows this, not the live one from Harbor).
 	ApprovedDescription string `json:"approved_description,omitempty"`
@@ -414,6 +418,44 @@ type catalogChart struct {
 // without a publication stay visible (live catalog); publications whose charts
 // lie outside the configured projects (added by path) are fetched from Harbor
 // one by one.
+// publicationSummaryFor renders a publication for the catalog: its metadata
+// plus what is orderable, which is the allowlist as it stands after the
+// registry has been taken into account (see publications.CatalogVersions).
+// A publication with nothing orderable reads as not published - there is
+// nothing behind the order button.
+func publicationSummaryFor(p *models.ChartPublication,
+	recommended *models.PublicationVersion, orderable, gone []string) *publicationSummary {
+
+	sum := &publicationSummary{
+		GoneVersions: gone,
+		ID:            p.ID,
+		CategoryID:    p.CategoryID,
+		OwnerTeam:     p.OwnerTeam,
+		CreatedBy:     p.CreatedBy,
+		CreatedByName: p.CreatedByName,
+		Status:        p.EffectiveStatus,
+		Published:     len(orderable) > 0,
+		// An orderable version always carries an approved view with an "order"
+		// form (submit/save enforce ValidateStructure), so any orderable version
+		// means the chart has an order form.
+		HasOrderView:      len(orderable) > 0,
+		OrderableVersions: orderable,
+	}
+	if len(orderable) > 0 {
+		// The "blessed" version: the view is checked up to the highest orderable
+		// one, orders on a lower version can be upgraded.
+		sum.ApprovedViewVersion = orderable[0]
+	}
+	if recommended != nil {
+		// The catalog card shows the default-served version's snapshots
+		// (description/icon at approve time), not the live Harbor data.
+		sum.RecommendedVersion = recommended.ChartVersion
+		sum.ApprovedDescription = recommended.ApprovedDescription
+		sum.ApprovedIconURL = recommended.ApprovedIconURL
+	}
+	return sum
+}
+
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := auth.UserFrom(ctx)
@@ -432,6 +474,13 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		writeDomainErr(w, err)
 		return
 	}
+	// What the registry holds right now, from the listing above: the allowlist is
+	// projected onto it, so a version deleted from the registry stops being
+	// offered without anything being written to the database.
+	inRegistry := make(map[string][]string, len(charts))
+	for _, c := range charts {
+		inRegistry[c.Project+"/"+c.Name] = c.Versions
+	}
 	byChart := make(map[string]*publicationSummary, len(pubs))
 	for _, p := range pubs {
 		// Per-version allowlist projection; empty for services that have no
@@ -439,31 +488,15 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		// shows as not published. An orderable version always carries an approved
 		// view with an "order" form (submit/save enforce ValidateStructure), so
 		// any orderable version means the chart has an order form.
-		recommended, orderable, _ := s.Pubs.CatalogVersions(ctx, p)
-		sum := &publicationSummary{
-			ID:                p.ID,
-			CategoryID:        p.CategoryID,
-			OwnerTeam:         p.OwnerTeam,
-			CreatedBy:         p.CreatedBy,
-			CreatedByName:     p.CreatedByName,
-			Status:            p.EffectiveStatus,
-			Published:         len(orderable) > 0,
-			HasOrderView:      len(orderable) > 0,
-			OrderableVersions: orderable,
+		// A chart absent from the listing is either hidden from this user or gone
+		// from the registry; either way it has no versions to offer, and the
+		// publication below is shown as orphaned.
+		versions, listed := inRegistry[p.ChartProject+"/"+p.ChartName]
+		if listed && versions == nil {
+			versions = []string{}
 		}
-		if len(orderable) > 0 {
-			// The "blessed" version: the view is checked up to the highest
-			// orderable one, orders on a lower version can be upgraded.
-			sum.ApprovedViewVersion = orderable[0]
-		}
-		if recommended != nil {
-			// The catalog card shows the default-served version's snapshots
-			// (description/icon at approve time), not the live Harbor data.
-			sum.RecommendedVersion = recommended.ChartVersion
-			sum.ApprovedDescription = recommended.ApprovedDescription
-			sum.ApprovedIconURL = recommended.ApprovedIconURL
-		}
-		byChart[p.ChartProject+"/"+p.ChartName] = sum
+		recommended, orderable, gone, _ := s.Pubs.CatalogVersions(ctx, p, versions)
+		byChart[p.ChartProject+"/"+p.ChartName] = publicationSummaryFor(p, recommended, orderable, gone)
 	}
 	out := make([]catalogChart, 0, len(charts))
 	listed := make(map[string]bool, len(charts))
@@ -488,8 +521,18 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			entry.Chart = *ch
+			// Now that the chart's versions are known, project the allowlist onto
+			// them, as the listed charts above already are.
+			if rec, orderable, gone, verr := s.Pubs.CatalogVersions(ctx, p, ch.Versions); verr == nil {
+				entry.Publication = publicationSummaryFor(p, rec, orderable, gone)
+			}
 		} else {
 			entry.Missing = true
+			// The chart is gone: nothing of it can be ordered, whatever the
+			// allowlist still says.
+			if rec, orderable, gone, verr := s.Pubs.CatalogVersions(ctx, p, []string{}); verr == nil {
+				entry.Publication = publicationSummaryFor(p, rec, orderable, gone)
+			}
 		}
 		out = append(out, entry)
 	}

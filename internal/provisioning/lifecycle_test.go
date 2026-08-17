@@ -1,4 +1,4 @@
-package provisioning_test
+﻿package provisioning_test
 
 import (
 	"context"
@@ -20,6 +20,7 @@ type stack struct {
 	prov   *provisioning.Service
 	gl     *gitlab.Fake
 	argo   *argocd.Fake
+	hb     *harbor.Fake
 	st     store.Store
 	gitops *provisioning.GitOps
 }
@@ -38,7 +39,7 @@ func newStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", false)
-	return &stack{prov, gl, argo, st, gitops}
+	return &stack{prov, gl, argo, hb, st, gitops}
 }
 
 func (s *stack) tick(ctx context.Context) {
@@ -377,7 +378,7 @@ func TestPollerAutoMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", true /* autoMerge */)
-	s := &stack{prov, gl, argo, st, gitops}
+	s := &stack{prov, gl, argo, hb, st, gitops}
 
 	req, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",

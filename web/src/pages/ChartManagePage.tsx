@@ -530,10 +530,13 @@ function VersionRow({
   onSetRecommended: (v: string) => void;
 }) {
   const st = row ? STATUS_LABELS[row.status] : null;
+  // A version the registry no longer has cannot be decided about: it is not
+  // orderable whatever the row says, and the portal refuses changes to it until
+  // it is back (the same rule is enforced on the server).
   const canToggleOrderable =
-    isOwner && !!row && row.status === "APPROVED" && !!row.approved_view_json;
+    isOwner && !missing && !!row && row.status === "APPROVED" && !!row.approved_view_json;
   const canRecommend =
-    isOwner && !!row && row.orderable && row.status === "APPROVED" && !recommended;
+    isOwner && !missing && !!row && row.orderable && row.status === "APPROVED" && !recommended;
 
   return (
     <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
@@ -547,12 +550,11 @@ function VersionRow({
             </Chip>
           )}
           {missing && (
-            <span
-              className="inline-flex items-center gap-1 text-xs text-amber-600"
-              title="Версии больше нет в Harbor"
-            >
-              <IconAlertTriangle size={13} stroke={1.8} />
-              нет в Harbor
+            <span title="Этой версии нет в реестре. Заказать её нельзя, изменить тоже - пока она не вернётся.">
+              <Chip className="bg-red-50 text-red-700">
+                <IconAlertTriangle size={12} stroke={2} />
+                Нет в реестре
+              </Chip>
             </span>
           )}
         </span>
@@ -570,7 +572,7 @@ function VersionRow({
         )}
       </td>
       <td className="px-4 py-3">
-        {row?.orderable ? (
+        {row?.orderable && !missing ? (
           <Chip className="bg-emerald-50 text-emerald-700">
             <IconCheck size={12} stroke={2.5} />
             Да
@@ -598,7 +600,7 @@ function VersionRow({
             to={`${basePath}/${encodeURIComponent(version)}`}
             className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 outline-none transition-colors hover:bg-brand-100 focus-visible:ring-2 focus-visible:ring-brand-500"
           >
-            {isOwner ? (row ? "Изменить" : "Настроить") : "Открыть"}
+            {isOwner && !missing ? (row ? "Изменить" : "Настроить") : "Открыть"}
             <IconArrowRight size={14} stroke={1.8} />
           </Link>
         </div>
