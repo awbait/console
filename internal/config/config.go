@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -153,18 +154,14 @@ func Load() (*Config, error) {
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
 	}
-	switch cfg.StatusUpdateMode {
-	case StatusModeHybrid, StatusModeWebhook:
-	default:
-		return nil, fmt.Errorf("STATUS_UPDATE_MODE must be %q or %q, got %q",
-			StatusModeHybrid, StatusModeWebhook, cfg.StatusUpdateMode)
-	}
-	switch cfg.GitLabWebhookScope {
-	case WebhookScopeAuto, WebhookScopeGroup, WebhookScopeSystem, WebhookScopeProject:
-	default:
-		return nil, fmt.Errorf("GITLAB_WEBHOOK_SCOPE must be one of %q, %q, %q, %q, got %q",
-			WebhookScopeAuto, WebhookScopeGroup, WebhookScopeSystem, WebhookScopeProject,
-			cfg.GitLabWebhookScope)
+	for _, v := range []struct{ name, value string }{
+		{"STATUS_UPDATE_MODE", cfg.StatusUpdateMode},
+		{"GITLAB_WEBHOOK_SCOPE", cfg.GitLabWebhookScope},
+	} {
+		if !allowed(v.name, v.value) {
+			return nil, fmt.Errorf("%s must be one of %s, got %q",
+				v.name, strings.Join(options[v.name], ", "), v.value)
+		}
 	}
 	return cfg, nil
 }

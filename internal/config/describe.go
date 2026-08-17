@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 )
@@ -74,12 +75,25 @@ var groups = []struct {
 // them. Booleans and durations are not listed here - their shape is obvious from
 // the value and the default.
 var options = map[string][]string{
-	"STORE":              {"postgres", "memory"},
-	"CACHE":              {"redis", "memory"},
-	"AUTH_MODE":          {"oidc"},
-	"STATUS_UPDATE_MODE": {StatusModeHybrid, StatusModeWebhook},
-	"LOG_LEVEL":          {"debug", "info", "warn", "error"},
-	"LOG_FORMAT":         {"json", "text"},
+	"STORE":                {"postgres", "memory"},
+	"CACHE":                {"redis", "memory"},
+	"AUTH_MODE":            {"oidc"},
+	"STATUS_UPDATE_MODE":   {StatusModeHybrid, StatusModeWebhook},
+	"GITLAB_WEBHOOK_SCOPE": {WebhookScopeAuto, WebhookScopeGroup, WebhookScopeSystem, WebhookScopeProject},
+	"LOG_LEVEL":            {"debug", "info", "warn", "error"},
+	"LOG_FORMAT":           {"json", "text"},
+}
+
+// allowed reports whether a variable accepts this value. Load validates against
+// the same list the configuration page and .env.example show, so what the portal
+// refuses and what it documents cannot drift apart. A variable with no list
+// accepts anything as far as this check is concerned.
+func allowed(name, value string) bool {
+	accepted, listed := options[name]
+	if !listed {
+		return true
+	}
+	return slices.Contains(accepted, value)
 }
 
 // secrets are the variables whose value never leaves the process. Listed by
