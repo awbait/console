@@ -112,7 +112,7 @@ type Config struct {
 	GitLabURL           string        `env:"GITLAB_URL,required,notEmpty" desc:"Address of GitLab." example:"http://localhost:8929"`
 	GitLabToken         string        `env:"GITLAB_TOKEN,required,notEmpty" desc:"Token the portal creates repositories and merge requests with. Needs the api scope." example:"glpat-localdev0123456789abcd"`
 	GitLabTimeout       time.Duration `env:"GITLAB_TIMEOUT" envDefault:"30s" desc:"How long to wait for a GitLab response."`
-	GitLabAutoMerge     bool          `env:"GITLAB_AUTO_MERGE" envDefault:"false" desc:"Merge the portal's own merge requests without waiting for a human."`
+	GitLabAutoMerge     bool          `env:"GITLAB_AUTO_MERGE" envDefault:"false" desc:"Merge the portal's own merge requests without waiting for a human. A service whose version asks for a review is merged by a person even so, and no service can merge itself where this is off."`
 	GitLabGitopsGroup   string        `env:"GITLAB_GITOPS_GROUP" envDefault:"managed-services" desc:"Top-level group the GitOps repositories live in."`
 	GitLabSubgroupTmpl  string        `env:"GITLAB_TEAM_SUBGROUP_TEMPLATE" envDefault:"team-{{.Team}}" desc:"Template for a team's subgroup path inside that group."`
 	GitLabDefaultBranch string        `env:"GITLAB_DEFAULT_BRANCH" envDefault:"main" desc:"Branch order changes are merged into and Argo CD tracks."`

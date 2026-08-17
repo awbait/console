@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- A service can require that every change to it is merged by a person, however
+  the portal is configured elsewhere. Its version says so in its document
+  (`"approval": {"autoMerge": false}`), which is what a service owned by the
+  security team needs. Such a change still gets kept up to date with the branch
+  on its own, so the reviewer is handed something they can simply approve.
+
 ### Fixed
 - A change to a service no longer gets stuck because someone else's change to
   the same service arrived first. The portal combines the two field by field and
