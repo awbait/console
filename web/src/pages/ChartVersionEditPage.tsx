@@ -630,6 +630,16 @@ function FormatHelp() {
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/namespace/namespaceName"</code>{" "}
                       - устаревшая форма-зеркало: ввод «Namespace» копируется в это поле.
                     </li>
+                    <li>
+                      <b>approval</b> (необязательно): как изменения этого сервиса попадают в кластер.{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">
+                        {'{"autoMerge": false}'}
+                      </code>{" "}
+                      означает, что каждое изменение сливает человек. Портал подготовит merge request и
+                      остановится - так делают для сервисов, которые смотрит информационная безопасность,
+                      например для политик сети. Без этой настройки решает конфигурация портала, и включить
+                      автоматическое слияние там, где его выключили, документ версии не может.
+                    </li>
                   </ul>
                   <pre className="mt-3 overflow-x-auto rounded-md bg-slate-50 p-3 ring-1 ring-slate-200">
                     {`{

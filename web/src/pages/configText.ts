@@ -107,7 +107,8 @@ export const CONFIG_TEXT: Record<string, string> = {
   GITLAB_URL: "Адрес GitLab.",
   GITLAB_TOKEN: "Токен, от имени которого портал создаёт репозитории и merge request.",
   GITLAB_TIMEOUT: "Сколько ждать ответа от GitLab.",
-  GITLAB_AUTO_MERGE: "Сливать merge request заказа сразу после создания, без ревью.",
+  GITLAB_AUTO_MERGE:
+    "Сливать merge request заказа сразу после создания, без ревью. Сервис, версия которого требует проверки человеком, сливается вручную в любом случае.",
   GITLAB_GITOPS_GROUP: "Группа GitLab, в которой лежат репозитории команд.",
   GITLAB_TEAM_SUBGROUP_TEMPLATE: "Как называется подгруппа команды внутри этой группы.",
   GITLAB_DEFAULT_BRANCH: "Ветка, в которую портал вливает изменения заказов.",
