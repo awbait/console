@@ -28,7 +28,16 @@ type MR struct {
 	ProjectID      int             `json:"project_id"`
 	WebURL         string          `json:"web_url"`
 	State          models.MRStatus `json:"state"`
+	SourceBranch   string          `json:"source_branch"`
 	MergeCommitSHA string          `json:"merge_commit_sha"` // set once merged; the target git revision
+	// DiffRefs names the commits this MR is measured against. BaseSHA is the one
+	// the branch was cut from, which is the only record of what the target branch
+	// held when the change was written - the base of a three-way merge when the
+	// target has moved since. GitLab reports it for as long as the branch exists.
+	DiffRefs struct {
+		BaseSHA string `json:"base_sha"`
+		HeadSHA string `json:"head_sha"`
+	} `json:"diff_refs"`
 	// DetailedMergeStatus is GitLab's machine-readable answer to "why can this
 	// not be merged" (see ClassifyMerge). It is the only thing that separates an
 	// MR that is not ready yet from one that never will be: the merge endpoint
@@ -119,6 +128,10 @@ type Port interface {
 	// MergeMR merges an open MR. Used by the optional auto-merge in the poller;
 	// a not-yet-mergeable MR returns an error and is retried on the next tick.
 	MergeMR(ctx context.Context, projectID, iid int) error
+	// CloseMR closes an open MR without merging it. Used when the portal
+	// supersedes a change with a rewritten one, so the abandoned merge request
+	// does not sit open next to it.
+	CloseMR(ctx context.Context, projectID, iid int) error
 
 	Healthz(ctx context.Context) error
 }
