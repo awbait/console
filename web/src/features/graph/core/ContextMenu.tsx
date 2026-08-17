@@ -75,6 +75,7 @@ export function ContextMenu({
             entry.onAction();
           }}
           className={`flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm outline-none focus-visible:bg-gray-50 ${
+            // impeccable-disable-next-line gray-on-color: the two branches never combine, slate-700 goes with gray-50
             entry.danger ? "text-red-600 hover:bg-red-50" : "text-slate-700 hover:bg-gray-50"
           }`}
         >
