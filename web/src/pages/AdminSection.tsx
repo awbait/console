@@ -984,6 +984,7 @@ function DeleteCategoryButton({
     <DialogTrigger>
       <AriaButton
         aria-label="Удалить категорию"
+        // impeccable-disable-next-line gray-on-color: the red background only appears on hover, and it comes with red-600 text
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 outline-none hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-red-500"
       >
         <IconTrash size={16} stroke={1.8} />

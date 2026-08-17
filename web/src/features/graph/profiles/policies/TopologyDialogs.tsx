@@ -307,6 +307,7 @@ export function WorkloadDialog({
                 type="button"
                 aria-label="Удалить лейбл"
                 onClick={() => setSelector((rows) => rows.filter((_, j) => j !== i))}
+                // impeccable-disable-next-line gray-on-color: the red background only appears on hover, and it comes with red-600 text
                 className="rounded-md p-1.5 text-gray-400 outline-none hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-brand-500"
               >
                 <IconTrash size={16} />
@@ -354,6 +355,7 @@ export function WorkloadDialog({
                 type="button"
                 aria-label="Удалить порт"
                 onClick={() => setPorts((rows) => rows.filter((_, j) => j !== i))}
+                // impeccable-disable-next-line gray-on-color: the red background only appears on hover, and it comes with red-600 text
                 className="rounded-md p-1.5 text-gray-400 outline-none hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-brand-500"
               >
                 <IconTrash size={16} />
