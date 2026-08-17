@@ -59,15 +59,40 @@ export interface FieldConstraints {
   maximum?: number;
 }
 
+// FieldRequirement is one rule a field states about itself, and the check for
+// it: the form ticks off what the typed value already satisfies, so the person
+// sees which part is still missing instead of finding out on submit.
+export interface FieldRequirement {
+  text: string;
+  // met answers for a non-empty value. An empty field is "not yet", not
+  // "wrong", and callers show those rules neutral rather than failing.
+  met: (value: string) => boolean;
+}
+
+const CHARSET_RE = /^[a-z0-9-]*$/;
+const INTEGER_RE = /^-?\d+$/;
+
 // Patterns charts use for names. A regular expression is not something to show
-// a person, so only the ones we can say in words are turned into a rule; an
+// a person, so only the ones we can say in words are turned into rules; an
 // unrecognised pattern contributes nothing and the field just says less.
-const CHARSET_PATTERNS = [
+const CHARSET_PATTERNS: { re: string; rules: FieldRequirement[] }[] = [
   // DNS label, with and without the edge-character clause.
-  { re: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", rules: [fieldHint.charset, fieldMsg.edgeChars] },
-  { re: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", rules: [fieldHint.charset, fieldMsg.edgeChars] },
-  { re: "^[a-z0-9-]+$", rules: [fieldHint.charset] },
-  { re: "^[a-z0-9-]*$", rules: [fieldHint.charset] },
+  {
+    re: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+    rules: [
+      { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
+      { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
+    ],
+  },
+  {
+    re: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+    rules: [
+      { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
+      { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
+    ],
+  },
+  { re: "^[a-z0-9-]+$", rules: [{ text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) }] },
+  { re: "^[a-z0-9-]*$", rules: [{ text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) }] },
 ];
 
 // fieldRequirements lists what a field accepts, in the same words the error
@@ -75,23 +100,39 @@ const CHARSET_PATTERNS = [
 // disagree. Order follows what a person checks first: characters, then length,
 // then range. Returns an empty list when the schema says nothing worth
 // repeating (an enum, for instance, states its own options).
-export function fieldRequirements(s: FieldConstraints): string[] {
-  const out: string[] = [];
+export function fieldRequirements(s: FieldConstraints): FieldRequirement[] {
+  const out: FieldRequirement[] = [];
   if (s.pattern) {
     const known = CHARSET_PATTERNS.find((p) => p.re === s.pattern);
     if (known) out.push(...known.rules);
   }
-  if (s.type === "integer") out.push(fieldHint.integer);
-  if (typeof s.minLength === "number" && s.minLength > 0) out.push(fieldMsg.minLen(s.minLength));
-  if (typeof s.maxLength === "number") out.push(fieldMsg.maxLen(s.maxLength));
-  if (typeof s.minimum === "number" && typeof s.maximum === "number") {
-    out.push(fieldMsg.range(s.minimum, s.maximum));
-  } else if (typeof s.minimum === "number") {
-    out.push(fieldMsg.min(s.minimum));
-  } else if (typeof s.maximum === "number") {
-    out.push(fieldMsg.max(s.maximum));
+  if (s.type === "integer") {
+    out.push({ text: fieldHint.integer, met: (v) => INTEGER_RE.test(v) });
+  }
+  if (typeof s.minLength === "number" && s.minLength > 0) {
+    const n = s.minLength;
+    out.push({ text: fieldMsg.minLen(n), met: (v) => v.length >= n });
+  }
+  if (typeof s.maxLength === "number") {
+    const n = s.maxLength;
+    out.push({ text: fieldMsg.maxLen(n), met: (v) => v.length <= n });
+  }
+  const { minimum: lo, maximum: hi } = s;
+  if (typeof lo === "number" && typeof hi === "number") {
+    out.push({ text: fieldMsg.range(lo, hi), met: (v) => inRange(v, lo, hi) });
+  } else if (typeof lo === "number") {
+    out.push({ text: fieldMsg.min(lo), met: (v) => inRange(v, lo, Number.POSITIVE_INFINITY) });
+  } else if (typeof hi === "number") {
+    out.push({ text: fieldMsg.max(hi), met: (v) => inRange(v, Number.NEGATIVE_INFINITY, hi) });
   }
   return out;
+}
+
+// inRange is false for anything that is not a number: a half-typed "-" or "1e"
+// satisfies no bound, and saying so is more honest than treating it as zero.
+function inRange(v: string, lo: number, hi: number): boolean {
+  const n = Number(v);
+  return v.trim() !== "" && !Number.isNaN(n) && n >= lo && n <= hi;
 }
 
 // dnsLabelError validates a DNS label and returns the canonical message for

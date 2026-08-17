@@ -7,7 +7,7 @@ import {
   Heading,
 } from "react-aria-components";
 import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
-import { fieldMsg, fieldRequirements, ruPlural } from "./fieldErrors";
+import { type FieldRequirement, fieldMsg, fieldRequirements, ruPlural } from "./fieldErrors";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -544,7 +544,7 @@ function NumberInput({
   onChange: (v: number | undefined) => void;
   label: string;
   description?: string;
-  requirements?: string[];
+  requirements?: FieldRequirement[];
   errorText?: string;
   hideLabel?: boolean;
   isRequired?: boolean;

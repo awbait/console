@@ -1,8 +1,11 @@
 import {
+  IconCheck,
   IconChevronDown,
   IconInfoCircle,
   IconPlugConnectedX,
+  IconPointFilled,
   IconRefresh,
+  IconX,
 } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
@@ -22,6 +25,7 @@ import {
   TooltipTrigger,
 } from "react-aria-components";
 import { Link, type LinkProps } from "react-router-dom";
+import type { FieldRequirement } from "../form/fieldErrors";
 
 const btnVariants = {
   primary:
@@ -48,12 +52,28 @@ export function buttonClass(variant: keyof typeof btnVariants = "secondary", cla
 // Hint wraps a focusable trigger (a react-aria Button) with a styled tooltip,
 // the same look as the small "i" hints. Note: a tooltip won't open on a truly
 // `isDisabled` trigger - keep the button enabled and gate its action instead.
-export function Hint({ text, children }: { text: ReactNode; children: ReactNode }) {
+export function Hint({
+  text,
+  children,
+  isOpen,
+  onOpenChange,
+  placement,
+}: {
+  text: ReactNode;
+  children: ReactNode;
+  // Controlled open state, for hints that have to be visible while the reader
+  // is doing something else (typing in the field the hint is about). Left out,
+  // the hint behaves as a plain tooltip: hover or focus its trigger.
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  placement?: "top" | "bottom" | "bottom start" | "top start";
+}) {
   return (
-    <TooltipTrigger delay={150} closeDelay={0}>
+    <TooltipTrigger delay={150} closeDelay={0} isOpen={isOpen} onOpenChange={onOpenChange}>
       {children}
       <AriaTooltip
         offset={6}
+        placement={placement}
         className="max-w-xs rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-xs text-slate-700 shadow-lg entering:animate-in entering:fade-in entering:zoom-in-95"
       >
         {text}
@@ -62,15 +82,40 @@ export function Hint({ text, children }: { text: ReactNode; children: ReactNode 
   );
 }
 
-// RequirementList: what a field accepts, one rule per line. A list, not a
-// paragraph - three rules run together into a sentence nobody finishes reading.
-function RequirementList({ items }: { items: string[] }) {
-  if (items.length === 1) return <>{items[0]}</>;
+// RequirementList: what a field accepts, one rule per line, each ticked off
+// against what is typed so far. A list, not a paragraph - three rules run
+// together into a sentence nobody finishes reading.
+//
+// An empty field is neutral: every rule unmet is true but useless, and a wall
+// of red in front of someone who has not typed anything reads as a telling-off.
+// State is carried by an icon as well as by colour, never by colour alone.
+function RequirementList({ items, value }: { items: FieldRequirement[]; value: string }) {
+  const empty = value.trim() === "";
   return (
-    <ul className="flex list-disc flex-col gap-0.5 pl-3.5">
-      {items.map((r) => (
-        <li key={r}>{r}</li>
-      ))}
+    <ul className="flex flex-col gap-1">
+      {items.map((r) => {
+        const met = !empty && r.met(value);
+        const failed = !empty && !met;
+        return (
+          <li
+            key={r.text}
+            className={`flex items-start gap-1.5 ${
+              met ? "text-emerald-700" : failed ? "text-red-700" : "text-slate-600"
+            }`}
+          >
+            <span className="mt-px shrink-0">
+              {met ? (
+                <IconCheck size={13} stroke={2.4} />
+              ) : failed ? (
+                <IconX size={13} stroke={2.4} />
+              ) : (
+                <IconPointFilled size={13} className="text-slate-300" />
+              )}
+            </span>
+            <span>{r.text}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -118,8 +163,10 @@ export function TextField({
   // What the field accepts (characters, length, range), one line per rule, in
   // the wording of form/fieldErrors. Shown behind the "i" inside the field
   // rather than under it: the description below says what the field is for, and
-  // the two used to be written into one sentence and read as neither.
-  requirements?: string[];
+  // the two used to be written into one sentence and read as neither. The list
+  // opens by itself while the field is being typed into, ticking off what the
+  // value already satisfies.
+  requirements?: FieldRequirement[];
   value: string;
   onChange: (v: string) => void;
   errorText?: string;
@@ -136,6 +183,11 @@ export function TextField({
 }) {
   const invalid = !!errorText;
   const hasRules = (requirements?.length ?? 0) > 0;
+  // The rules are needed while typing, and a tooltip on the icon is not open
+  // then - so the field holds it open for as long as it has the caret. Hovering
+  // the icon still works on its own, hence both states.
+  const [hintHovered, setHintHovered] = useState(false);
+  const [typing, setTyping] = useState(false);
   return (
     <AriaTextField
       value={value}
@@ -157,7 +209,11 @@ export function TextField({
           type={rest.type}
           inputMode={rest.inputMode}
           placeholder={rest.placeholder}
-          onBlur={onBlur}
+          onFocus={() => setTyping(true)}
+          onBlur={() => {
+            setTyping(false);
+            onBlur?.();
+          }}
           // bg-surface, not the browser's default: an unstyled control keeps the
           // UA field colour, which is a light box on a near-black card in the dark
           // themes. The field reads as a field by its border (see index.css).
@@ -172,7 +228,14 @@ export function TextField({
         />
         {hasRules && (
           <span className="absolute inset-y-0 right-1 flex items-center">
-            <Hint text={<RequirementList items={requirements ?? []} />}>
+            <Hint
+              text={<RequirementList items={requirements ?? []} value={value} />}
+              isOpen={typing || hintHovered}
+              onOpenChange={setHintHovered}
+              // Below the field: while typing, a hint over the label hides the
+              // name of what is being filled in.
+              placement="bottom"
+            >
               {/* A button, not a bare icon: the tooltip has to open on focus and
                   on tap too, not only under a mouse. */}
               <AriaButton
