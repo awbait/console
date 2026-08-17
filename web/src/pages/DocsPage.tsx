@@ -232,6 +232,7 @@ function makeComponents(headings: Heading[]): Components {
       const a = type ? ALERT[type] : undefined;
       if (a) {
         return (
+          // impeccable-disable-next-line side-tab: left rule is the standard callout mark, not a card accent
           <div className={`my-4 rounded-r-md border-l-4 py-2 pl-4 pr-3 ${a.box}`}>
             <div className={`mb-1 text-sm font-semibold ${a.title}`}>{a.label}</div>
             <div className="text-[15px] text-slate-700">{children}</div>
@@ -239,6 +240,7 @@ function makeComponents(headings: Heading[]): Components {
         );
       }
       return (
+        // impeccable-disable-next-line side-tab: left rule is the standard blockquote mark, not a card accent
         <blockquote className="my-4 rounded-r-md border-l-4 border-slate-300 bg-slate-50 py-2 pl-4 pr-3 text-[15px] text-slate-600">
           {children}
         </blockquote>
