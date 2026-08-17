@@ -43,6 +43,9 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 	if strings.TrimSpace(chartVersion) == "" {
 		return nil, invalid("chart_version is required")
 	}
+	if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
+		return nil, err
+	}
 	// A draft may carry schema flaws (the chart schema can drift), but the
 	// document format itself must be valid.
 	if issues := views.ValidateStructure(view); len(issues) > 0 {
@@ -70,6 +73,9 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 func (s *Service) SubmitVersion(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.PublicationVersion, error) {
 	p, v, err := s.loadManagedVersion(ctx, u, pubID, chartVersion)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
 		return nil, err
 	}
 	if v.Status == models.PubPending {
@@ -133,6 +139,13 @@ func (s *Service) reviewVersion(ctx context.Context, u *models.User, pubID, char
 	if err != nil {
 		return nil, err
 	}
+	// Approving publishes the version, so it has to exist; rejecting only clears
+	// the submission and stays available whatever the registry says.
+	if to == models.PubApproved {
+		if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
+			return nil, err
+		}
+	}
 	if v.Status != models.PubPending {
 		return nil, conflict("версия не находится на согласовании")
 	}
@@ -182,8 +195,15 @@ func (s *Service) SetVersionOrderable(ctx context.Context, u *models.User, pubID
 	if err != nil {
 		return nil, err
 	}
-	if orderable && (v.Status != models.PubApproved || len(v.ApprovedViewJSON) == 0) {
-		return nil, conflict("включить в каталог можно только согласованную версию")
+	if orderable {
+		if v.Status != models.PubApproved || len(v.ApprovedViewJSON) == 0 {
+			return nil, conflict("включить в каталог можно только согласованную версию")
+		}
+		// Putting it in the catalog means offering it; taking it out is always
+		// allowed, including when the registry has lost it.
+		if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
+			return nil, err
+		}
 	}
 	if v.Orderable == orderable {
 		return v, nil // no-op
@@ -221,6 +241,9 @@ func (s *Service) SetRecommendedVersion(ctx context.Context, u *models.User, pub
 		if err != nil {
 			return err
 		}
+		if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
+			return err
+		}
 		if !v.Published() {
 			return conflict("рекомендуемой можно сделать только доступную для заказа версию")
 		}
@@ -254,10 +277,20 @@ func (s *Service) PendingVersions(ctx context.Context) ([]PendingVersion, error)
 		if err != nil {
 			return nil, err
 		}
+		// A submission whose chart version has since been deleted is not a
+		// decision anyone can make: approving it would publish something that
+		// cannot be pulled. It leaves the queue rather than sitting in it, and
+		// comes back by itself if the version does. The owner still sees it on the
+		// chart's page, where it can be withdrawn.
+		present, known := s.inRegistry(ctx, p.ChartProject, p.ChartName)
 		for _, v := range vs {
-			if v.Status == models.PubPending {
-				out = append(out, PendingVersion{Publication: p, Version: v})
+			if v.Status != models.PubPending {
+				continue
 			}
+			if known && !present[v.ChartVersion] {
+				continue
+			}
+			out = append(out, PendingVersion{Publication: p, Version: v})
 		}
 	}
 	return out, nil
@@ -279,11 +312,27 @@ func (s *Service) ValidateVersionView(ctx context.Context, pubID, chartVersion s
 // snapshots feed the catalog card - and the list of all orderable+APPROVED
 // versions, highest first (for the "+N" chip and tooltip). recommended is nil
 // and orderable empty when the publication has no orderable versions yet.
-func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublication) (recommended *models.PublicationVersion, orderable []string, err error) {
+// inRegistry lists the chart versions the registry currently holds, so a
+// version the allowlist still names but the registry has lost is not offered.
+// Pass nil when that is not known (a registry outage) and the allowlist is used
+// as it stands.
+// The third result names the versions a person did approve for the catalog that
+// the registry has since lost. They are not orderable; the owner and the admin
+// need them said out loud, or a service whose version was deleted is
+// indistinguishable from one nobody has published yet.
+func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublication, inRegistry []string) (recommended *models.PublicationVersion, orderable, gone []string, err error) {
 	versions, err := s.store.ListVersions(ctx, p.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	present := presentSet(inRegistry)
+	for _, v := range versions {
+		if v.Published() && present != nil && !present[v.ChartVersion] {
+			gone = append(gone, v.ChartVersion)
+		}
+	}
+	sort.Slice(gone, func(i, j int) bool { return models.CompareChartVersions(gone[i], gone[j]) > 0 })
+	versions = availableVersions(versions, present)
 	pub := make([]*models.PublicationVersion, 0, len(versions))
 	for _, v := range versions {
 		if v.Published() {
@@ -297,7 +346,7 @@ func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublicatio
 	for i, v := range pub {
 		orderable[i] = v.ChartVersion
 	}
-	return resolveOrderableVersion(p, versions, ""), orderable, nil
+	return resolveOrderableVersion(p, versions, ""), orderable, gone, nil
 }
 
 // ActiveViewVersion returns the approved view of an orderable version (for order
@@ -312,7 +361,11 @@ func (s *Service) ActiveViewVersion(ctx context.Context, project, name, chartVer
 	if err != nil {
 		return nil, err
 	}
-	v := resolveOrderableVersion(p, versions, chartVersion)
+	// An order form is the start of a deployment, so it only opens on a version
+	// that can actually be pulled. Without this the form opens, is filled in, and
+	// the order is refused at the end - or worse, goes through onto nothing.
+	present, _ := s.inRegistry(ctx, project, name)
+	v := resolveOrderableVersion(p, availableVersions(versions, present), chartVersion)
 	if v == nil {
 		return nil, models.ErrNotFound
 	}
@@ -375,7 +428,10 @@ func (s *Service) getOrInitVersion(ctx context.Context, p *models.ChartPublicati
 }
 
 // loadManagedVersion loads a publication and one of its existing versions,
-// enforcing manage rights.
+// enforcing manage rights. Whether the registry still has the version is a
+// separate question, asked only by the calls that would put it forward (see
+// RequireInRegistry): withdrawing one has to keep working, or a version that
+// vanished mid-review could never be cleared.
 func (s *Service) loadManagedVersion(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.ChartPublication, *models.PublicationVersion, error) {
 	p, err := s.store.GetPublication(ctx, pubID)
 	if err != nil {

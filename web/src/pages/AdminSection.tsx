@@ -8,6 +8,7 @@ import {
   IconChevronDown,
   IconCircleCheck,
   IconClock,
+  IconDots,
   IconFileText,
   IconGripVertical,
   IconLock,
@@ -41,14 +42,15 @@ import {
   TableHeader,
 } from "react-aria-components";
 import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
-import { api, HttpError } from "../api/client";
+import { api, errorMessage, HttpError } from "../api/client";
 import type {
   Category,
   ChartPublication,
   PendingVersion,
   PublicationStatus,
 } from "../api/types";
-import { chartLabel, useCatalog } from "../app/CatalogContext";
+import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { useToast } from "../app/ToastContext";
 import { useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon, ProductIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
@@ -382,7 +384,7 @@ function waitedFor(iso: string): string {
 }
 
 export function AdminApprovalsPage() {
-  const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
+  const { data: pubs, error, loading, reload } = useAsync(() => api.listPublications(), []);
   const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
   const [shown, setShown] = useState<Set<PublicationStatus>>(new Set(PUBLICATION_STATUSES));
 
@@ -395,66 +397,87 @@ export function AdminApprovalsPage() {
   const filtersDefault = shown.size === PUBLICATION_STATUSES.length;
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="flex flex-col">
-        <div className="mb-4 flex min-h-9 items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Согласование публикаций</h1>
-          {queue.length > 0 && (
-            <Chip className="bg-amber-50 text-amber-700">
-              <IconClock size={13} stroke={1.8} className="text-amber-500" />
-              {queue.length} {ruPlural(queue.length, "решение", "решения", "решений")} ждёт
-            </Chip>
-          )}
-        </div>
+    // The page stays within the viewport and only the lists below scroll, so
+    // the title and the pending count are still there after scrolling to the
+    // bottom of a long table. Same shape as the platform status page.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-slate-900">Согласование публикаций</h1>
+        {queue.length > 0 && (
+          <Chip className="bg-amber-50 text-amber-700">
+            <IconClock size={13} stroke={1.8} className="text-amber-500" />
+            {queue.length} {ruPlural(queue.length, "решение", "решения", "решений")} ждёт
+          </Chip>
+        )}
+      </div>
 
-        <QueueTable items={queue} />
-      </section>
+      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
+          room the clipping edge would otherwise cut off. */}
+      <div className="scroll-slim -mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
+        <section className="flex flex-col">
+          <QueueTable items={queue} />
+        </section>
 
-      <section className="flex flex-col">
-        <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-800">Все публикации</h2>
-        </div>
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <StatusFilter shown={shown} onChange={setShown} />
-          {!filtersDefault && (
-            <button
-              type="button"
-              onClick={() => setShown(new Set(PUBLICATION_STATUSES))}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-            >
-              <IconX size={13} stroke={2} />
-              Сбросить
-            </button>
-          )}
-        </div>
+        <section className="flex flex-col">
+          <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-slate-800">Все публикации</h2>
+          </div>
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <StatusFilter shown={shown} onChange={setShown} />
+            {!filtersDefault && (
+              <button
+                type="button"
+                onClick={() => setShown(new Set(PUBLICATION_STATUSES))}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                <IconX size={13} stroke={2} />
+                Сбросить
+              </button>
+            )}
+          </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-          <Table aria-label="Публикации" className="w-full text-sm">
-            <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
-              <Column isRowHeader className="px-4 py-2.5 text-left">
-                Сервис
-              </Column>
-              <Column className="px-4 py-2.5 text-left">Владелец</Column>
-              <Column className="px-4 py-2.5 text-left">В каталоге</Column>
-              <Column className="px-4 py-2.5 text-center">Статус</Column>
-            </TableHeader>
-            <TableBody
-              renderEmptyState={() => (
-                <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                    <IconChecklist size={24} stroke={1.6} />
-                  </span>
-                  <p className="text-sm text-slate-500">Публикаций в этой категории нет.</p>
-                </div>
-              )}
-            >
-              {rows.map((p) => (
-                <PublicationRow key={p.id} pub={p} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
+          {/* No overflow-hidden here: it would make this box the scroll container
+              and the sticky header below would have nothing to stick to. The
+              header rounds its own top corners instead. */}
+          <div className="rounded-lg border border-slate-200 bg-surface shadow-sm">
+            <Table aria-label="Публикации" className="w-full text-sm">
+              {/* Pinned to the top of the scroll box: the list runs past a
+                  screenful, and a table whose columns have scrolled out of sight
+                  is read by guesswork. -top-1 covers that box's own 4px padding,
+                  which would otherwise show a sliver of the rows passing beneath.
+                  The middle columns drop out on narrow screens rather than the
+                  table growing a horizontal scrollbar. */}
+              <TableHeader className="sticky -top-1 z-10 border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 [&_th:first-child]:rounded-tl-lg [&_th:last-child]:rounded-tr-lg">
+                <Column isRowHeader className="px-4 py-2.5 text-left">
+                  Сервис
+                </Column>
+                <Column className="hidden px-4 py-2.5 text-left lg:table-cell">Категория</Column>
+                <Column className="hidden px-4 py-2.5 text-left md:table-cell">Владелец</Column>
+                <Column className="px-4 py-2.5 text-left">В каталоге</Column>
+                <Column className="hidden px-4 py-2.5 text-left lg:table-cell">Изменена</Column>
+                <Column className="px-4 py-2.5 text-center">Статус</Column>
+                <Column className="px-4 py-2.5 text-right">
+                  <span className="sr-only">Действия</span>
+                </Column>
+              </TableHeader>
+              <TableBody
+                renderEmptyState={() => (
+                  <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <IconChecklist size={24} stroke={1.6} />
+                    </span>
+                    <p className="text-sm text-slate-500">Публикаций в этой категории нет.</p>
+                  </div>
+                )}
+              >
+                {rows.map((p) => (
+                  <PublicationRow key={p.id} pub={p} onChanged={reload} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -464,8 +487,10 @@ export function AdminApprovalsPage() {
 // the same list.
 function QueueTable({ items }: { items: QueueItem[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-surface shadow-sm">
       <Table aria-label="Очередь на согласование" className="w-full text-sm">
+        {/* Not pinned: the queue is a handful of rows and its empty state is a
+            card - a sticky header there just eats the block as it scrolls. */}
         <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
           <Column className="px-4 py-2.5 text-left">Что решаем</Column>
           <Column isRowHeader className="px-4 py-2.5 text-left">
@@ -532,10 +557,40 @@ function QueueRow({ item }: { item: QueueItem }) {
 
 // PublicationRow: the reference list below the queue - where a service stands,
 // with a way into it. Nothing here is waiting on the reader.
-function PublicationRow({ pub }: { pub: ChartPublication }) {
+function PublicationRow({ pub, onChanged }: { pub: ChartPublication; onChanged: () => void }) {
   const navigate = useNavigate();
-  const st = STATUS_META[effStatus(pub)];
-  const to = effStatus(pub) === "PENDING" ? reviewPath(pub) : managePath(pub);
+  const { user } = useUser();
+  const { charts, reload: reloadCatalog } = useCatalog();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const status = effStatus(pub);
+  const st = STATUS_META[status];
+  const to = status === "PENDING" ? reviewPath(pub) : managePath(pub);
+  const catalogPub = findCatalogChart(charts, pub.chart_project, pub.chart_name)?.publication;
+  // Approved, and still not in the catalog, because the registry has lost the
+  // versions it was approved for. Without this the row says "Согласовано" next
+  // to an empty catalog column and looks like an oversight.
+  const gone = catalogPub?.gone_versions ?? [];
+  const orderable = catalogPub?.orderable_versions ?? [];
+  // Only the metadata decision is made from here. A version submission is
+  // decided on its own page, where the document sits next to the form it
+  // produces - deciding that from a row is what the queue used to ask for.
+  const canApproveMeta = user?.role === "admin" && pub.status === "PENDING";
+
+  async function approve() {
+    setBusy(true);
+    try {
+      await api.approvePublication(pub.id);
+      toast.success(`${chartLabel(pub.chart_name)}: категория и владелец согласованы`);
+      onChanged();
+      reloadCatalog();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Row
       onAction={() => navigate(to)}
@@ -550,21 +605,130 @@ function PublicationRow({ pub }: { pub: ChartPublication }) {
           {pub.chart_project}/{pub.chart_name}
         </span>
       </Cell>
-      <Cell className="px-4 py-3 text-left text-slate-600">{pub.owner_team}</Cell>
-      {/* The version new orders are served by. Empty means nothing is orderable
-          yet, which "Согласовано" alone does not tell you: the metadata can be
-          approved while every version of the service is still a draft. */}
+      <Cell className="hidden px-4 py-3 text-left lg:table-cell">
+        <CategoryChip id={pub.category_id} />
+      </Cell>
+      <Cell className="hidden px-4 py-3 text-left text-slate-600 md:table-cell">
+        {pub.owner_team}
+      </Cell>
+      {/* What a user can order right now. Empty means nothing is orderable yet,
+          which "Согласовано" alone does not tell you: the metadata can be
+          approved while every version is still a draft - or while the registry
+          has lost the ones that were approved. */}
       <Cell className="px-4 py-3 text-left">
-        {pub.recommended_version ? (
-          <Chip className="bg-slate-100 font-mono text-slate-600">v{pub.recommended_version}</Chip>
+        {gone.length > 0 ? (
+          <span
+            className="inline-flex items-center gap-1.5"
+            title={`Заказ закрыт, пока версия не вернётся в реестр. Пропали: ${gone.join(", ")}`}
+          >
+            <Chip className="bg-red-50 font-mono text-red-700">v{gone[0]}</Chip>
+            <span className="text-xs text-red-600">
+              нет в реестре{gone.length > 1 ? ` +${gone.length - 1}` : ""}
+            </span>
+          </span>
+        ) : orderable.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Chip className="bg-slate-100 font-mono text-slate-600">v{orderable[0]}</Chip>
+            {orderable.length > 1 && (
+              <span
+                className="text-xs text-slate-400"
+                title={`Все версии в каталоге: ${orderable.join(", ")}`}
+              >
+                +{orderable.length - 1}
+              </span>
+            )}
+          </span>
         ) : (
           <span className="text-slate-300">-</span>
         )}
       </Cell>
+      <Cell className="hidden px-4 py-3 text-left text-slate-500 lg:table-cell">
+        {waitedFor(pub.updated_at ?? "")}
+      </Cell>
       <Cell className="px-4 py-3 text-center">
         <Badge tone={st.tone}>{st.label}</Badge>
       </Cell>
+      <Cell className="px-4 py-3 text-right">
+        <PublicationRowActions
+          busy={busy}
+          canApproveMeta={canApproveMeta}
+          onOpen={() => navigate(managePath(pub))}
+          onReview={status === "PENDING" ? () => navigate(reviewPath(pub)) : undefined}
+          onApprove={canApproveMeta ? approve : undefined}
+        />
+      </Cell>
     </Row>
+  );
+}
+
+// CategoryChip names the catalog section a service sits in, or says it has
+// none - "uncategorized" is a real state here, not missing data.
+function CategoryChip({ id }: { id?: string }) {
+  const { data: cats } = useAsync(() => api.listCategories(), []);
+  const label = (cats ?? []).find((c) => c.id === id)?.label;
+  if (!label) return <span className="text-xs text-slate-400">без категории</span>;
+  return <Chip className="bg-slate-100 text-slate-600">{label}</Chip>;
+}
+
+// PublicationRowActions: the decisions that can be made without leaving the
+// list. Everything that needs a document in front of the reader (a version, a
+// rejection with a reason) opens its page instead.
+function PublicationRowActions({
+  busy,
+  canApproveMeta,
+  onOpen,
+  onReview,
+  onApprove,
+}: {
+  busy: boolean;
+  canApproveMeta: boolean;
+  onOpen: () => void;
+  onReview?: () => void;
+  onApprove?: () => void;
+}) {
+  return (
+    <MenuTrigger>
+      <AriaButton
+        aria-label="Действия"
+        isDisabled={busy}
+        className="inline-flex rounded-md p-1 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+      >
+        <IconDots size={18} stroke={1.7} />
+      </AriaButton>
+      <Popover className="min-w-48 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu
+          className="outline-none"
+          onAction={(key) => {
+            if (key === "open") onOpen();
+            else if (key === "review") onReview?.();
+            else if (key === "approve") onApprove?.();
+          }}
+        >
+          <MenuItem
+            id="open"
+            className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+          >
+            Управление сервисом
+          </MenuItem>
+          {onReview && (
+            <MenuItem
+              id="review"
+              className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50"
+            >
+              Открыть согласование
+            </MenuItem>
+          )}
+          {canApproveMeta && onApprove && (
+            <MenuItem
+              id="approve"
+              className="cursor-pointer px-3 py-1.5 text-sm text-emerald-700 outline-none focus:bg-emerald-50"
+            >
+              Согласовать категорию и владельца
+            </MenuItem>
+          )}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
   );
 }
 

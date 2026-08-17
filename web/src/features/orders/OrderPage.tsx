@@ -171,11 +171,24 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
 
   // Initialize the new-order version once the catalog/publication is known:
   // recommended, else the highest orderable, else the chart's latest version.
+  //
+  // Waiting for the catalog matters: the chart itself loads first, and pinning
+  // its latest version there would open the form on whatever was pushed to the
+  // registry last - not on the version the service actually offers. Once set,
+  // this effect leaves the choice alone, so getting it wrong once is permanent.
   useEffect(() => {
-    if (editing || upgrade || selectedVersion) return;
+    if (editing || upgrade || selectedVersion || catalogLoading) return;
     const def = recommendedVersion || orderableVersions[0] || chart?.latest_version || "";
     if (def) setSelectedVersion(def);
-  }, [editing, upgrade, selectedVersion, recommendedVersion, orderableVersions, chart?.latest_version]);
+  }, [
+    editing,
+    upgrade,
+    selectedVersion,
+    catalogLoading,
+    recommendedVersion,
+    orderableVersions,
+    chart?.latest_version,
+  ]);
 
   // Upgrade: the chart's CHANGELOG between the order's current version and the
   // target, so the changes are visible.

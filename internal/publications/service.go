@@ -61,6 +61,10 @@ type SchemaSource interface {
 	// GetSchema returns values.schema.json for a specific chart version, used to
 	// cross-validate that version's view document.
 	GetSchema(ctx context.Context, project, name, version string) ([]byte, error)
+	// ListVersions returns the versions the registry currently holds, which is
+	// what decides whether an allowlisted version can still be ordered at all
+	// (see registry.go).
+	ListVersions(ctx context.Context, project, name string) ([]models.ChartVersion, error)
 }
 
 // Service owns publication metadata and the view-approval workflow.

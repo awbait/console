@@ -194,6 +194,20 @@ func (s *Service) orderView(ctx context.Context, chartProject, chartName, versio
 // with nothing published at all, are not restricted, so the guard only bites
 // once a service has at least one orderable version.
 func (s *Service) ensureOrderable(ctx context.Context, chartProject, chartName, version string) error {
+	// The registry decides what exists, this database only what is allowed. A
+	// version deleted from the registry cannot be deployed whatever the allowlist
+	// says, and its schema is gone with it - so accepting the change would also
+	// mean writing values nothing has checked.
+	if version != "" {
+		if _, err := s.catalog.GetVersion(ctx, chartProject, chartName, version); err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				return &ValidationError{
+					Message: "версии " + version + " больше нет в реестре чартов. Выберите доступную версию сервиса.",
+				}
+			}
+			return fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
+		}
+	}
 	pub, err := s.store.GetPublicationByChart(ctx, chartProject, chartName)
 	if err != nil || pub == nil {
 		return nil // no publication: provisioning is not restricted
@@ -375,14 +389,15 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err := checkEditorState(in.EditorState); err != nil {
 		return nil, err
 	}
-	if _, err := s.catalog.GetVersion(ctx, in.ChartProject, in.ChartName, in.Version); err != nil {
+	if _, err := s.catalog.GetChart(ctx, in.ChartProject, in.ChartName); err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			return nil, &ValidationError{Message: "unknown chart or version"}
 		}
 		return nil, fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
 	}
-	// Only an orderable+APPROVED version may be ordered (multi-version
-	// publications); a no-op for legacy single-view publications.
+	// The version has to exist in the registry and be an orderable+APPROVED one
+	// (multi-version publications); the registry half applies to every chart, the
+	// allowlist half is a no-op for legacy single-view publications.
 	if err := s.ensureOrderable(ctx, in.ChartProject, in.ChartName, in.Version); err != nil {
 		return nil, err
 	}

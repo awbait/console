@@ -1,9 +1,12 @@
 import Editor from "@monaco-editor/react";
 import {
   IconAlertCircle,
+  IconAlertTriangle,
   IconCheck,
   IconChevronDown,
+  IconCloudOff,
   IconHelpCircle,
+  IconPackageOff,
   IconTag,
   IconX,
 } from "@tabler/icons-react";
@@ -102,6 +105,19 @@ export function ChartVersionEditPage() {
   );
 }
 
+// PanelNotice fills a panel that has nothing to show: a circled icon and one
+// line, centred - the same empty state the catalog and the order lists use.
+function PanelNotice({ Icon, text }: { Icon: typeof IconPackageOff; text: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+        <Icon size={24} stroke={1.6} />
+      </span>
+      <p className="text-sm text-slate-500">{text}</p>
+    </div>
+  );
+}
+
 function VersionEditor({ pub, version }: { pub: ChartPublication; version: string }) {
   const { user } = useUser();
   const { reload: reloadCatalog } = useCatalog();
@@ -138,7 +154,19 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
 
   const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);
-  const editable = isOwner && !pending;
+  // A version the registry no longer has is read-only: the document can be
+  // looked at, but there is nothing to check it against and nothing to deploy,
+  // so the portal refuses to save or submit it (the server enforces the same).
+  // The catalog is the source for "does it exist" - the stored row outlives the
+  // artifact, which is the whole reason this state is possible.
+  const inRegistry = !chart || (chart.versions ?? []).includes(version);
+  const editable = isOwner && !pending && inRegistry;
+  // Without the chart there is no schema, so both the form preview and the
+  // schema tab have nothing to show. Naming the file that failed to load
+  // explains nothing to the person looking at it - say what happened instead.
+  const schemaMissing = inRegistry
+    ? { Icon: IconCloudOff, text: "Не удалось получить описание чарта" }
+    : { Icon: IconPackageOff, text: "Версия не найдена в реестре" };
   const recommended = pub.recommended_version ?? "";
   const isRecommended = recommended === version;
 
@@ -284,7 +312,15 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                 {st.label}
               </Chip>
             )}
-            {cur?.orderable && (
+            {!inRegistry && (
+              <span title="Этой версии нет в реестре. Документ можно посмотреть, изменить - пока она не вернётся - нет.">
+                <Chip className="bg-red-50 text-red-700">
+                  <IconAlertTriangle size={12} stroke={2} />
+                  Нет в реестре
+                </Chip>
+              </span>
+            )}
+            {cur?.orderable && inRegistry && (
               <Chip className="bg-emerald-50 text-emerald-700">
                 <IconCheck size={12} stroke={2.5} />
                 В каталоге
@@ -437,7 +473,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-gray-500">Схема values.schema.json недоступна.</p>
+                <PanelNotice {...schemaMissing} />
               )}
             </TabPanel>
           </Tabs>
@@ -447,9 +483,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
 
         <Card className="flex flex-col gap-2 lg:min-h-0 lg:min-w-0 lg:flex-1">
           {!schema ? (
-            <p className="text-sm text-gray-500">
-              Схема values.schema.json недоступна, предпросмотр невозможен.
-            </p>
+            <PanelNotice {...schemaMissing} />
           ) : viewNames.length === 0 ? (
             <p className="text-sm text-gray-500">Добавьте view в документ, чтобы увидеть форму.</p>
           ) : (

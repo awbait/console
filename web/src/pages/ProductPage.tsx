@@ -35,8 +35,11 @@ export function ProductPage() {
   const orderableKnown = !!chart;
   const orderable = !!chart?.publication?.published && !!chart?.publication?.has_order_view;
   const orderTo = orderable && !outage ? `/catalog/${project}/${name}/order` : undefined;
+  // One sentence, whatever the cause behind it - a version deleted from the
+  // registry, or none approved yet. Which of the two it is belongs to the
+  // owner's page, not here: it is not something the reader can act on.
   const orderDisabledReason =
-    outage ?? (orderableKnown && !orderable ? "Форма заказа не согласована для этого чарта" : undefined);
+    outage ?? (orderableKnown && !orderable ? "Нет версий, доступных для заказа" : undefined);
 
   return (
     <OrdersTable
@@ -59,7 +62,7 @@ export function ProductPage() {
         ) : outage ? (
           outage
         ) : orderDisabledReason ? (
-          <>{orderDisabledReason}. Заказ недоступен, пока view не согласована.</>
+          orderDisabledReason
         ) : undefined
       }
     />

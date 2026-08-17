@@ -1,4 +1,4 @@
-package provisioning_test
+﻿package provisioning_test
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func newAutoStack(t *testing.T) *stack {
 		t.Fatal(err)
 	}
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", true /* autoMerge */)
-	return &stack{prov, gl, argo, st, gitops}
+	return &stack{prov, gl, argo, hb, st, gitops}
 }
 
 func createHealthy(ctx context.Context, t *testing.T, s *stack, u *models.User, name string) *models.Request {
