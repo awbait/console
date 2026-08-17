@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- A change to a service no longer gets stuck because someone else's change to
+  the same service arrived first. The portal combines the two field by field and
+  sends the result on: your edit and theirs both survive, and you are asked
+  about it only when you both changed the very same field.
+
 ### Added
 - The portal keeps its own notification from GitLab registered: fill in
   `GITLAB_WEBHOOK_URL` and it sets the notification up at startup, on every

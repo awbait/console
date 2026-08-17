@@ -16,6 +16,12 @@ type fakeProject struct {
 	branches map[string]map[string]string // branch -> path -> content
 	mrs      map[int]*fakeMR
 	nextMR   int
+	// commits are frozen snapshots addressable by a synthetic SHA, written when a
+	// branch is cut. Real GitLab keeps history; the fake keeps only what the
+	// portal reads back - the state a branch forked from, which is the base of a
+	// three-way merge once the target branch has moved on.
+	commits map[string]map[string]string // sha -> path -> content
+	baseSHA map[string]string            // branch -> sha it was cut from
 }
 
 type fakeMR struct {
@@ -123,6 +129,8 @@ func (f *Fake) CreateProject(ctx context.Context, namespaceID int, name string) 
 		branches: map[string]map[string]string{},
 		mrs:      map[int]*fakeMR{},
 		nextMR:   1,
+		commits:  map[string]map[string]string{},
+		baseSHA:  map[string]string{},
 	}
 	f.nextID++
 	f.projects[fullPath] = p
@@ -147,6 +155,17 @@ func (f *Fake) CreateBranch(ctx context.Context, projectID int, branch, ref stri
 		cp[k] = v
 	}
 	p.branches[branch] = cp
+	// Freeze what the branch forked from, addressable by SHA. Both the branch and
+	// its target keep moving; this snapshot does not, which is what makes it the
+	// base of a later merge.
+	sha := fmt.Sprintf("sha%d", f.nextID)
+	f.nextID++
+	frozen := map[string]string{}
+	for k, v := range base {
+		frozen[k] = v
+	}
+	p.commits[sha] = frozen
+	p.baseSHA[branch] = sha
 	return nil
 }
 
@@ -198,6 +217,11 @@ func (f *Fake) GetFile(ctx context.Context, projectID int, path, ref string) ([]
 	}
 	files, ok := p.branches[ref]
 	if !ok {
+		// A ref is a branch or a commit, and the portal reads both: the base of a
+		// three-way merge is addressed by SHA, not by branch name.
+		files, ok = p.commits[ref]
+	}
+	if !ok {
 		return nil, models.ErrNotFound
 	}
 	content, ok := files[path]
@@ -239,9 +263,11 @@ func (f *Fake) CreateMR(ctx context.Context, projectID int, source, target, titl
 	p.nextMR++
 	m := &fakeMR{
 		mr: MR{IID: iid, ProjectID: projectID, State: models.MROpened,
-			WebURL: fmt.Sprintf("%s/-/merge_requests/%d", p.proj.WebURL, iid)},
+			SourceBranch: source,
+			WebURL:       fmt.Sprintf("%s/-/merge_requests/%d", p.proj.WebURL, iid)},
 		source: source, target: target,
 	}
+	m.mr.DiffRefs.BaseSHA = p.baseSHA[source]
 	p.mrs[iid] = m
 	auto := f.autoMerge
 	cp := m.mr
@@ -269,6 +295,24 @@ func (f *Fake) GetMR(ctx context.Context, projectID, iid int) (*MR, error) {
 	}
 	cp := m.mr
 	return &cp, nil
+}
+
+// CloseMR closes an open MR without touching the branches.
+func (f *Fake) CloseMR(ctx context.Context, projectID, iid int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projByID[projectID]
+	if !ok {
+		return models.ErrNotFound
+	}
+	m, ok := p.mrs[iid]
+	if !ok {
+		return models.ErrNotFound
+	}
+	if m.mr.State == models.MROpened {
+		m.mr.State = models.MRClosed
+	}
+	return nil
 }
 
 func (f *Fake) Healthz(ctx context.Context) error { return nil }

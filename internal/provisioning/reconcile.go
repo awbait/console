@@ -44,7 +44,13 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 			// Optional auto-merge: merge the open MR ourselves (no human gate).
 			if s.autoMerge && latest.Status == models.MROpened &&
 				(r.Status == models.StatusMRCreated || r.Status == models.StatusDeleteRequested) {
-				s.autoMergeMR(ctx, r, latest, live.DetailedMergeStatus)
+				// A change rewritten onto a moved branch leaves this record pointing
+				// at the merge request it replaced, now closed. Reading the order's
+				// state off it would call the order abandoned; it has a new change
+				// open instead, which the next tick picks up.
+				if s.autoMergeMR(ctx, r, latest, live.DetailedMergeStatus) {
+					return
+				}
 			}
 		} else {
 			// Without the live MR state the order cannot observe a merge/close and
@@ -110,7 +116,9 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 // The poller calls this for every open MR on every tick, so it has to stay
 // quiet while GitLab is still deciding and speak up exactly once when the MR
 // will never merge on its own. detailed is GitLab's detailed_merge_status.
-func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models.RequestMR, detailed string) {
+// Reports whether the merge request it was given has been superseded by a
+// rewritten one, in which case the caller is holding a stale record.
+func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models.RequestMR, detailed string) (superseded bool) {
 	switch gitlab.ClassifyMerge(detailed) {
 	case gitlab.MergePending:
 		// Mergeability is computed asynchronously. A just-opened MR, or one whose
@@ -118,13 +126,25 @@ func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models
 		// tick or two and then merges by itself - nothing to report.
 		s.logger().Debug("mr merge pending",
 			"order_id", r.ID, "mr_iid", mr.MRIID, "reason", detailed)
-		return
+		return false
 	case gitlab.MergeBlocked:
-		// A conflict, or a gate the project requires: no amount of retrying clears
-		// it. Report once and stop hammering the merge endpoint - the order sits
-		// here until a person resolves it.
+		// A conflict is the one blocked state the portal can clear by itself: the
+		// change is still good, it was written against a branch that has since
+		// moved. Rewrite it on top of the branch as it is now; only a field both
+		// changes moved needs a person.
+		if detailed == "conflict" {
+			switch s.retryConflictedMR(ctx, r, mr) {
+			case retryReopened:
+				return true
+			case retryReported:
+				return false
+			}
+		}
+		// Anything else is a gate the project requires and no amount of retrying
+		// clears it. Report once and stop hammering the merge endpoint - the order
+		// sits here until a person resolves it.
 		s.reportMergeBlocked(ctx, r, mr, detailed)
-		return
+		return false
 	}
 
 	merr := s.gl.MergeMR(ctx, mr.GitLabProjectID, mr.MRIID)
@@ -135,7 +155,7 @@ func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models
 		// like. Expected and self-correcting, so Debug, but carry GitLab's reason.
 		s.logger().Debug("mr auto-merge deferred",
 			"order_id", r.ID, "mr_iid", mr.MRIID, "err", merr)
-		return
+		return false
 	}
 	s.logger().Info("mr auto-merged", "order_id", r.ID, "mr_iid", mr.MRIID)
 	s.forgetMergeBlocked(mr.ID)
@@ -146,6 +166,7 @@ func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models
 		s.logger().Warn("mr state persist failed",
 			"order_id", r.ID, "mr_iid", mr.MRIID, "err", uerr)
 	}
+	return false
 }
 
 // reportMergeBlocked announces, once per reason per MR, that auto-merge has

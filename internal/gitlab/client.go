@@ -223,6 +223,12 @@ func (c *Client) MergeMR(ctx context.Context, projectID, iid int) error {
 		fmt.Sprintf("/projects/%d/merge_requests/%d/merge", projectID, iid), nil, nil, nil)
 }
 
+func (c *Client) CloseMR(ctx context.Context, projectID, iid int) error {
+	q := url.Values{"state_event": {"close"}}
+	return c.do(ctx, http.MethodPut,
+		fmt.Sprintf("/projects/%d/merge_requests/%d", projectID, iid), q, nil, nil)
+}
+
 func (c *Client) Healthz(ctx context.Context) error {
 	// /version requires auth, so it also validates the token and connectivity.
 	return c.do(ctx, http.MethodGet, "/version", nil, nil, nil)

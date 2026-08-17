@@ -81,12 +81,16 @@ func countEvents(ctx context.Context, t *testing.T, s *stack, reqID, typ string)
 // however many times the poller comes back around. Before this, the order sat
 // in MR_CREATED forever while the poller re-attempted the merge every tick and
 // logged nothing above Debug.
+//
+// The gate here is one only a person can open (a pipeline). A conflict is the
+// other kind - the portal clears those itself, which is what retry_test.go is
+// about.
 func TestAutoMergeBlockedReportsOnceAndStopsRetrying(t *testing.T) {
 	ctx := context.Background()
 	s := newAutoMergeStack(t)
 	req, mr := orderWithOpenMR(ctx, t, s)
 
-	if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "conflict"); err != nil {
+	if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "ci_must_pass"); err != nil {
 		t.Fatalf("set merge status: %v", err)
 	}
 	for range 3 {
@@ -94,14 +98,21 @@ func TestAutoMergeBlockedReportsOnceAndStopsRetrying(t *testing.T) {
 	}
 
 	if got := mrStatus(ctx, t, s, req.ID); got != models.MROpened {
-		t.Errorf("MR status = %q, want %q: a conflicted MR must not be merged", got, models.MROpened)
+		t.Errorf("MR status = %q, want %q: a blocked MR must not be merged", got, models.MROpened)
+	}
+	mrs, err := s.st.ListMRs(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("list mrs: %v", err)
+	}
+	if len(mrs) != 1 {
+		t.Errorf("merge requests = %d, want the change left as it is: rewriting it clears no gate", len(mrs))
 	}
 	blocked := countEvents(ctx, t, s, req.ID, "merge_blocked")
 	if len(blocked) != 1 {
 		t.Fatalf("merge_blocked events = %d, want 1 (one per block, not one per tick)", len(blocked))
 	}
-	if got := blocked[0].Payload["reason"]; got != "conflict" {
-		t.Errorf("merge_blocked reason = %v, want %q", got, "conflict")
+	if got := blocked[0].Payload["reason"]; got != "ci_must_pass" {
+		t.Errorf("merge_blocked reason = %v, want %q", got, "ci_must_pass")
 	}
 }
 

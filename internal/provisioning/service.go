@@ -53,7 +53,10 @@ type Service struct {
 	// same wedged order would log, count and journal itself every few seconds.
 	// Process-local on purpose: a restart re-reports once, which is cheaper than
 	// carrying the bookkeeping in the database.
-	mergeBlocked   map[string]string
+	mergeBlocked map[string]string
+	// mergeRetries counts, per order, how often the portal has rewritten its
+	// change onto a moved branch (see maxMergeRetries). Guarded by the same mutex.
+	mergeRetries   map[string]int
 	mergeBlockedMu sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
@@ -76,7 +79,7 @@ func New(st store.Store, gl gitlab.Port, argo argocd.Port, cat *catalog.Service,
 	g *GitOps, bus *events.Bus, defaultCluster, defaultBranch string, autoMerge bool) *Service {
 	return &Service{store: st, gl: gl, argo: argo, catalog: cat, gitops: g,
 		bus: bus, defaultCluster: defaultCluster, defaultBranch: defaultBranch, autoMerge: autoMerge,
-		mergeBlocked: map[string]string{}}
+		mergeBlocked: map[string]string{}, mergeRetries: map[string]int{}}
 }
 
 // CreateInput is the payload for a new order.

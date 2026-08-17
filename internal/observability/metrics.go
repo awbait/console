@@ -85,6 +85,17 @@ var (
 		Help: "Total portal merge requests auto-merge gave up on, by GitLab's reason.",
 	}, []string{"reason"})
 
+	// mrMergesRetried counts what became of a merge GitLab refused as conflicted,
+	// by outcome: reopened - the portal merged the two changes field by field and
+	// reopened the change from the current branch; conflict - both changes moved
+	// the same field, so a person has to choose. A rising "conflict" is the signal
+	// that the retry screen is worth building; a rising "reopened" is orders that
+	// used to wedge and no longer do.
+	mrMergesRetried = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "console_mr_merge_retried_total",
+		Help: "Total conflicted portal merge requests the portal rewrote onto the current branch, by outcome.",
+	}, []string{"outcome"})
+
 	// mrMerges counts auto-merge attempts on the portal's own MRs by result
 	// (ok|error). A rising error count with no successes means an order is wedged
 	// unable to merge (conflict, required pipeline/approvals); the poller would
@@ -121,6 +132,13 @@ func ObserveMRMerge(err error) {
 // with GitLab's reason. Call it once per block, not once per attempt.
 func ObserveMRMergeBlocked(reason string) {
 	mrMergesBlocked.WithLabelValues(reason).Inc()
+}
+
+// ObserveMRMergeRetried records what came of one conflicted merge request:
+// "reopened" when the portal merged the changes itself, "conflict" when the two
+// disagree on a field and a person has to choose.
+func ObserveMRMergeRetried(outcome string) {
+	mrMergesRetried.WithLabelValues(outcome).Inc()
 }
 
 // ObserveArgoSync records one admin-triggered ArgoCD sync and its result.
