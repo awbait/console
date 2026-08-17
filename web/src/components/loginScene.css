@@ -118,6 +118,7 @@
 
 /* Blueprint grid: the surface the board lies on. Faint on purpose - it gives
    the plane a direction without competing with the cards. */
+/* impeccable-disable-next-line codex-grid-background: a blueprint plane is the sanctioned use of a grid */
 .login-scene__grid {
   position: absolute;
   /* Oversized far beyond the panel: the layer is tilted and turned, so its own

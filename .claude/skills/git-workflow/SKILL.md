@@ -7,6 +7,8 @@ description: "Enforces the project's Git workflow: feature branches, conventiona
 
 This skill enforces the project's branching and release strategy. Every code change flows through feature branches and pull requests - main is always protected.
 
+Where this skill and the project's `CLAUDE.md` disagree, `CLAUDE.md` wins.
+
 ## Branch Rules
 
 ### Never commit to main
@@ -45,24 +47,30 @@ The unfinished work stays safe in its branch. Never lose uncommitted changes.
 
 ## Commits
 
-Use **Conventional Commits** format. Delegate to the `git-commit` skill for message generation.
-
-Format: `type(scope): description`
+Use **Conventional Commits** format: `type(scope): description`
 
 Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`
 
 Keep commits small and focused - one logical change per commit.
+
+The message, subject and body alike, is written in **English**. Never add a
+`Co-Authored-By` trailer and never mention that the change was generated. Do not
+use an em dash anywhere in the message.
 
 Before committing, pull the latest changes for the current branch to avoid conflicts:
 ```bash
 git pull origin <current-branch> --rebase
 ```
 
-## Pre-PR Checks
+## Checks
 
-Build, lint, and test checks are enforced by **lefthook** (pre-push hook). When you `git push`, lefthook runs automatically - no need to run checks manually.
+Checking the work is the author's job: build it, run the tests, run the
+typechecker for the part of the tree you touched, before the commit.
 
-If the push fails due to lefthook - read the error output, fix the issue, commit the fix, and push again.
+**lefthook** repeats those checks on `git push` as a backstop, not as a
+replacement. If the push fails there, read the error output, fix the issue,
+commit the fix, and push again. Never bypass the hook with `--no-verify` unless
+the user asks for it.
 
 ## Pull Requests
 

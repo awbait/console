@@ -142,6 +142,21 @@ translated, and it is translated as product text, not word by word.
 Category names in Russian: Added - Добавлено, Changed - Изменено, Deprecated -
 Устарело, Removed - Удалено, Fixed - Исправлено, Security - Безопасность.
 
+## This project
+
+The rules above are the whole method; this section is only what is specific to
+the Console repository.
+
+- Two files, kept in one change and identical in structure: `CHANGELOG.md`
+  (English) and `CHANGELOG.ru.md` (Russian).
+- The version number is never set by hand outside a release. `## [Unreleased]`
+  becomes `## [X.Y.Z] - YYYY-MM-DD` only in the release pull request
+  (`release/vX.Y.Z`); merging it lets a GitHub Action create the tag and the
+  GitHub Release from the changelog. The `git-workflow` skill has the order of
+  steps.
+- Chart changes are logged separately, in the chart's own `CHANGELOG.md` inside
+  the charts repository, not here.
+
 ## Rules
 
 **Must**

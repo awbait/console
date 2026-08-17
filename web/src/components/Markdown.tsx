@@ -22,6 +22,7 @@ function components(inline: boolean): Components {
       <pre className="my-3 overflow-x-auto rounded-md bg-gray-900 p-3 text-xs leading-relaxed text-gray-100" {...p} />
     ),
     blockquote: (p) => (
+      // impeccable-disable-next-line side-tab: left rule is the standard blockquote mark, not a card accent
       <blockquote className="my-2 border-l-4 border-gray-200 pl-3 text-sm italic text-gray-600" {...p} />
     ),
     table: (p) => (
@@ -33,6 +34,7 @@ function components(inline: boolean): Components {
     td: (p) => <td className="border border-gray-200 px-2 py-1 text-gray-700" {...p} />,
     hr: (p) => <hr className="my-4 border-gray-200" {...p} />,
     strong: (p) => <strong className="font-semibold text-gray-900" {...p} />,
+    // impeccable-disable-next-line broken-image: src comes from the markdown source through props
     img: (p) => <img className="my-2 max-w-full rounded" {...p} />,
   };
 }
