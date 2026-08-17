@@ -1,4 +1,4 @@
-package provisioning_test
+﻿package provisioning_test
 
 import (
 	"context"
@@ -198,6 +198,52 @@ func TestConflictedMRIsNotRetriedForever(t *testing.T) {
 	}
 	if len(mrs) != 2 {
 		t.Fatalf("want 2 merge requests after repeated ticks, got %d", len(mrs))
+	}
+}
+
+// The bound is on chasing one moving branch, not on how often an order may ever
+// be edited: once a change of its own merges, the count starts over.
+func TestRewritesAreCountedPerChangeNotPerOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := liveOrder(ctx, t, s)
+
+	// More editing rounds than the bound allows, each one merging before the next.
+	// This order only ever renames the database, the other side only ever renames
+	// the user, so every round is a clean merge rather than a disagreement. The
+	// form submits the whole tree, as the real one does - including the user name
+	// it was showing.
+	database, user := "app", ""
+	for i, next := range []string{"one", "two", "three", "four"} {
+		live, err := s.st.GetRequest(ctx, r.ID)
+		if err != nil {
+			t.Fatalf("round %d: get order: %v", i, err)
+		}
+		mine := map[string]any{"database": next}
+		if user != "" {
+			mine["username"] = user
+		}
+		mr := openUpdateMR(ctx, t, s, live, map[string]any{"auth": mine})
+		user = "user" + next
+		editOnBranch(ctx, t, s, live, "auth:\n  database: "+database+"\n  username: "+user+"\n")
+		database = next
+		if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "conflict"); err != nil {
+			t.Fatalf("round %d: set merge status: %v", i, err)
+		}
+		s.tick(ctx) // rewrites the change onto the branch
+		s.tick(ctx) // merges the rewritten one
+		s.tick(ctx) // advances the order past the merge
+
+		after, err := s.st.GetRequest(ctx, r.ID)
+		if err != nil {
+			t.Fatalf("round %d: get order: %v", i, err)
+		}
+		if !strings.Contains(after.ValuesYAML, "database: "+next) {
+			t.Fatalf("round %d: edit lost, order holds:\n%s", i, after.ValuesYAML)
+		}
+	}
+	if got := countEvents(ctx, t, s, r.ID, "merge_retried"); len(got) != 4 {
+		t.Fatalf("merge_retried events = %d, want 4: every round has to be rewritten", len(got))
 	}
 }
 

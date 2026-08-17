@@ -256,3 +256,14 @@ func (s *Service) takeMergeRetry(requestID string) bool {
 	s.mergeRetries[requestID]++
 	return true
 }
+
+// clearMergeRetries forgets an order's attempts once one of its changes has
+// merged. The bound is on how long the portal chases a branch that keeps moving
+// under one change, not on how often an order may ever be edited: without this,
+// the fourth conflict in an order's life would be refused because of three
+// resolved months earlier.
+func (s *Service) clearMergeRetries(requestID string) {
+	s.mergeBlockedMu.Lock()
+	defer s.mergeBlockedMu.Unlock()
+	delete(s.mergeRetries, requestID)
+}

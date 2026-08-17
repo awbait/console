@@ -159,6 +159,7 @@ func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models
 	}
 	s.logger().Info("mr auto-merged", "order_id", r.ID, "mr_iid", mr.MRIID)
 	s.forgetMergeBlocked(mr.ID)
+	s.clearMergeRetries(r.ID)
 	// Record the merge now rather than waiting for the next tick to observe it,
 	// so the order reaches ArgoCD on this sweep.
 	mr.Status = models.MRMerged
