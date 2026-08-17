@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ type fakeMR struct {
 // exposes merged application.yaml manifests for the fake ArgoCD to reconcile.
 type Fake struct {
 	mu        sync.Mutex
+	topGroup  string
 	groups    map[string]*Group       // fullPath -> group
 	groupByID map[int]*Group          //
 	projects  map[string]*fakeProject // fullPath -> project
@@ -35,21 +37,36 @@ type Fake struct {
 	nextID    int
 	autoMerge bool
 	clock     func() time.Time
+
+	// Webhook registration (HookAPI). The two flags mimic what an instance
+	// refuses: no group hooks on a Free tier, no system hooks without an admin
+	// token. Both are off by default, so a bare fake behaves like GitLab CE with
+	// a plain token and the cascade lands on per-project hooks.
+	groupHooksOK  bool
+	systemHooksOK bool
+	groupHook     *Hook
+	systemHook    *Hook
+	projectHooks  map[int]Hook
 }
 
-var _ Port = (*Fake)(nil)
+var (
+	_ Port    = (*Fake)(nil)
+	_ HookAPI = (*Fake)(nil)
+)
 
 // NewFake returns a Fake. autoMerge merges open MRs immediately on creation
 // (handy for local demo); tests set it false and call MergeMR explicitly.
 func NewFake(topGroup string, teamSubgroups []string, autoMerge bool) *Fake {
 	f := &Fake{
-		groups:    map[string]*Group{},
-		groupByID: map[int]*Group{},
-		projects:  map[string]*fakeProject{},
-		projByID:  map[int]*fakeProject{},
-		nextID:    1,
-		autoMerge: autoMerge,
-		clock:     time.Now,
+		topGroup:     topGroup,
+		groups:       map[string]*Group{},
+		groupByID:    map[int]*Group{},
+		projects:     map[string]*fakeProject{},
+		projByID:     map[int]*fakeProject{},
+		projectHooks: map[int]Hook{},
+		nextID:       1,
+		autoMerge:    autoMerge,
+		clock:        time.Now,
 	}
 	top := f.addGroup(topGroup)
 	for _, sg := range teamSubgroups {
@@ -318,6 +335,74 @@ func (f *Fake) ListApplicationManifests(ctx context.Context) ([][]byte, error) {
 	for _, a := range apps {
 		out = append(out, a.Content)
 	}
+	return out, nil
+}
+
+// SetHookAvailability chooses which webhook scopes this fake instance accepts,
+// standing in for the tier (group hooks) and the token's role (system hooks).
+// Everything else falls through to per-project hooks, as GitLab CE does.
+func (f *Fake) SetHookAvailability(group, system bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.groupHooksOK, f.systemHooksOK = group, system
+}
+
+// Hooks returns the registered hooks: the group one, the system one (nil when
+// absent) and the per-project ones keyed by project ID.
+func (f *Fake) Hooks() (group, system *Hook, project map[int]Hook) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	project = map[int]Hook{}
+	for id, h := range f.projectHooks {
+		project[id] = h
+	}
+	return f.groupHook, f.systemHook, project
+}
+
+func (f *Fake) EnsureGroupHook(ctx context.Context, groupPath string, h Hook) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.groupHooksOK {
+		return fmt.Errorf("%w: fake instance has no group hooks", ErrScopeUnavailable)
+	}
+	if _, ok := f.groups[groupPath]; !ok {
+		return fmt.Errorf("gitlab: group %q: %w", groupPath, models.ErrNotFound)
+	}
+	f.groupHook = &h
+	return nil
+}
+
+func (f *Fake) EnsureSystemHook(ctx context.Context, h Hook) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.systemHooksOK {
+		return fmt.Errorf("%w: fake token is not an admin", ErrScopeUnavailable)
+	}
+	f.systemHook = &h
+	return nil
+}
+
+func (f *Fake) EnsureProjectHook(ctx context.Context, projectID int, h Hook) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.projByID[projectID]; !ok {
+		return models.ErrNotFound
+	}
+	f.projectHooks[projectID] = h
+	return nil
+}
+
+func (f *Fake) ListGroupProjects(ctx context.Context) ([]Project, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []Project
+	for _, p := range f.projects {
+		if strings.HasPrefix(p.proj.PathWithNamespace, f.topGroup+"/") {
+			out = append(out, p.proj)
+		}
+	}
+	// Stable order: callers register hooks in it, and tests compare it.
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }
 

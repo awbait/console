@@ -157,9 +157,11 @@ stand-token:
 stand-reset:
 	powershell -ExecutionPolicy Bypass -File deployments/scripts/reset-state.ps1 -Yes
 
-# Register the GitLab -> portal merge-request webhook on every order repo (for
-# STATUS_UPDATE_MODE=hybrid/webhook). GitLab CE has no group webhooks, so rerun
-# this after ordering a new service. Idempotent. See deployments/kind/README.md.
+# Register the GitLab -> portal merge-request webhook (for STATUS_UPDATE_MODE=
+# hybrid/webhook). Picks the widest scope the instance allows: group hook
+# (Premium) -> system hook (admin token) -> a hook per order repo. Only the last
+# one needs a rerun after ordering a new service. Idempotent.
+# See deployments/kind/README.md.
 stand-gitlab-webhooks:
 	powershell -ExecutionPolicy Bypass -File deployments/scripts/gitlab-webhooks.ps1
 

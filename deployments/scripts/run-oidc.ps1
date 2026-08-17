@@ -72,12 +72,17 @@ $env:LOG_LEVEL = "debug"
 # webhooks cannot reach the host-run portal from a KinD pod (see kind/README.md).
 $env:STATUS_UPDATE_MODE = "hybrid"
 # Webhook secrets (stand-fixed, NOT real) so STATUS_UPDATE_MODE=hybrid registers
-# the GitLab/Harbor webhook endpoints and the WARNs go away. Register a matching
-# GitLab group webhook to actually deliver events (see deployments/kind/README.md,
-# "Вебхуки апстримов в портал"). NOTE: Harbor -> portal does NOT reach this
-# host-run portal (KinD pod cannot connect to a native host port); GitLab does.
+# the GitLab/Harbor webhook endpoints and the WARNs go away. NOTE: Harbor ->
+# portal does NOT reach this host-run portal (KinD pod cannot connect to a native
+# host port); GitLab does.
 $env:GITLAB_WEBHOOK_TOKEN  = "stand-gl-webhook-secret"
 $env:HARBOR_WEBHOOK_SECRET = "stand-hb-webhook-secret"
+# With the URL set the portal registers that GitLab webhook itself at startup and
+# on every repo it creates, so no hook has to be added by hand. GitLab connects
+# from its container, where the host-run portal is host.docker.internal:8080 (NOT
+# localhost - that is the GitLab container). It still needs "allow local network
+# requests" enabled once: make stand-gitlab-webhooks does that.
+$env:GITLAB_WEBHOOK_URL = "http://host.docker.internal:8080/api/v1/webhooks/gitlab"
 # Reverse sync against Git:
 #  - drift: flag orders edited directly in Git (read-only). Default true anyway;
 #    set explicit so it's easy to flip off here.

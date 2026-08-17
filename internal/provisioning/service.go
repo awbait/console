@@ -57,6 +57,10 @@ type Service struct {
 	mergeBlockedMu sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
+	// Hooks keeps the portal's merge-request webhook registered in GitLab. Wired
+	// by main only when the webhook is configured; nil (and nil-safe) otherwise,
+	// which is the local/fakes case.
+	Hooks *gitlab.HookManager
 }
 
 // logger returns the configured logger, or the default if none was wired (tests).
@@ -912,6 +916,13 @@ func (s *Service) ensureRepo(ctx context.Context, team, chart string) (*gitlab.P
 		proj, err = s.gl.CreateProject(ctx, grp.ID, chart)
 		if err != nil {
 			return nil, fmt.Errorf("%w: gitlab create repo: %v", ErrUpstream, err)
+		}
+		// A group or system hook already covers the new repo; a per-repo one does
+		// not exist yet. Never fail the order over it: a missing webhook only
+		// delays the reaction to a merge until the next poll.
+		if herr := s.Hooks.EnsureProject(ctx, proj.ID); herr != nil {
+			s.logger().Warn("gitlab webhook not registered on new repo",
+				"chart", chart, "gitlab_project_id", proj.ID, "err", herr)
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("%w: gitlab: %v", ErrUpstream, err)

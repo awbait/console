@@ -98,6 +98,14 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 			continue
 		}
 		known[r.ArgoCDAppName] = struct{}{}
+		// The portal did not create this repo, so nothing has hooked it: under the
+		// per-repository scope its merges would go unnoticed until the next restart
+		// swept the group. Done here, at adoption, rather than per discovered app -
+		// this runs once per order, the sweep runs every tick.
+		if herr := s.Hooks.EnsureProject(ctx, d.ProjectID); herr != nil {
+			s.logger().Warn("gitlab webhook not registered on imported repo",
+				"order_id", r.ID, "gitlab_project_id", d.ProjectID, "err", herr)
+		}
 		s.event(ctx, r, bySystem(), "imported", "", r.Status)
 		s.publishStatus(r.ID, string(r.Status))
 	}

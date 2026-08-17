@@ -36,6 +36,34 @@ func TestDescribeCoversEveryVariable(t *testing.T) {
 	}
 }
 
+// A listed variable must accept the value it falls back to, or the portal would
+// document one thing and refuse to start on it.
+func TestOptionsIncludeTheDefault(t *testing.T) {
+	rt := reflect.TypeFor[Config]()
+	seen := map[string]bool{}
+	for i := range rt.NumField() {
+		ft := rt.Field(i)
+		name, _ := envKey(ft.Tag.Get("env"))
+		accepted, listed := options[name]
+		if !listed {
+			continue
+		}
+		seen[name] = true
+		def := ft.Tag.Get("envDefault")
+		if def == "" {
+			continue // no default: nothing to check against
+		}
+		if !allowed(name, def) {
+			t.Errorf("%s defaults to %q, which is not among %v", name, def, accepted)
+		}
+	}
+	for name := range options {
+		if !seen[name] {
+			t.Errorf("%s has a list of accepted values but no field in Config", name)
+		}
+	}
+}
+
 // TestDescribeHidesSecrets is the one that must never regress: this payload goes
 // over HTTP, and a token that reaches the browser is a leaked token.
 func TestDescribeHidesSecrets(t *testing.T) {

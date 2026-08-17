@@ -93,7 +93,7 @@ func (h *Handler) GitLab(w http.ResponseWriter, r *http.Request) {
 		(p.ObjectAttributes.Action == "merge" || p.ObjectAttributes.Action == "close" ||
 			p.ObjectAttributes.State == "merged" || p.ObjectAttributes.State == "closed")
 	if !terminal {
-		h.ignore(w, "gitlab", "merge_request_state", p.ObjectKind)
+		h.ignore(w, "gitlab", "object_kind", p.ObjectKind)
 		return
 	}
 	h.accept(w, "gitlab", "gitlab mr "+p.ObjectAttributes.State,

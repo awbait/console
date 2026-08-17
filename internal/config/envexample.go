@@ -85,7 +85,7 @@ func envFields() map[string][]envField {
 			continue
 		}
 		def, example := ft.Tag.Get("envDefault"), ft.Tag.Get("example")
-		f := envField{name: name, doc: ft.Tag.Get("desc")}
+		f := envField{name: name, doc: withOptions(name, ft.Tag.Get("desc"))}
 		switch {
 		case def != "":
 			f.value = def
@@ -100,6 +100,19 @@ func envFields() map[string][]envField {
 		out[group] = append(out[group], f)
 	}
 	return out
+}
+
+// withOptions appends the values a variable accepts to its description. The
+// description says what the variable is for, in prose; the list says what may be
+// typed on the line below, and it is spelled out rather than left to the reader
+// to guess from the default. Same list the configuration page shows, from
+// describe.go, so it is written down once.
+func withOptions(name, doc string) string {
+	accepted := options[name]
+	if len(accepted) == 0 {
+		return doc
+	}
+	return strings.TrimSpace(doc) + " Possible values: " + strings.Join(accepted, ", ") + "."
 }
 
 // comment turns prose into comment lines: paragraphs separated by a bare "#",

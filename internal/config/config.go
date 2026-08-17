@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -24,6 +25,18 @@ import (
 const (
 	StatusModeHybrid  = "hybrid"
 	StatusModeWebhook = "webhook"
+)
+
+// Webhook scopes (GITLAB_WEBHOOK_SCOPE) select where the portal registers its
+// own merge-request webhook, which decides what that hook covers. Group and
+// system hooks cover repositories created later on their own; project hooks are
+// registered per repository, as it is created. The values mirror
+// gitlab.HookScope, which is where the cascade lives.
+const (
+	WebhookScopeAuto    = "auto" // widest scope the instance allows
+	WebhookScopeGroup   = "group"
+	WebhookScopeSystem  = "system"
+	WebhookScopeProject = "project"
 )
 
 // DefaultSessionSecret is the insecure development default for SESSION_SECRET.
@@ -104,6 +117,8 @@ type Config struct {
 	GitLabSubgroupTmpl  string        `env:"GITLAB_TEAM_SUBGROUP_TEMPLATE" envDefault:"team-{{.Team}}" desc:"Template for a team's subgroup path inside that group."`
 	GitLabDefaultBranch string        `env:"GITLAB_DEFAULT_BRANCH" envDefault:"main" desc:"Branch order changes are merged into and Argo CD tracks."`
 	GitLabWebhookToken  string        `env:"GITLAB_WEBHOOK_TOKEN" desc:"Secret verifying notifications from GitLab. Set the same value as the webhook secret token there; empty leaves the portal to find merges by polling."`
+	GitLabWebhookURL    string        `env:"GITLAB_WEBHOOK_URL" desc:"Address GitLab delivers notifications to, as seen from GitLab itself. Setting it lets the portal register the webhook on its own, including on repositories it creates later; empty means somebody registers it by hand." example:"http://host.docker.internal:8080/api/v1/webhooks/gitlab"`
+	GitLabWebhookScope  string        `env:"GITLAB_WEBHOOK_SCOPE" envDefault:"auto" desc:"Where that webhook is registered: on the whole group (needs GitLab Premium), on the whole instance (needs an administrator token), on each repository, or whichever of those the instance allows."`
 
 	ArgoCDURL     string `env:"ARGOCD_URL,required,notEmpty" desc:"Address of Argo CD." example:"http://localhost:8083"`
 	ArgoCDToken   string `env:"ARGOCD_TOKEN,required,notEmpty" desc:"Token the portal reads application state with. On the stand, mint one with make stand-token."`
@@ -139,11 +154,14 @@ func Load() (*Config, error) {
 	if err := env.Parse(cfg); err != nil {
 		return nil, err
 	}
-	switch cfg.StatusUpdateMode {
-	case StatusModeHybrid, StatusModeWebhook:
-	default:
-		return nil, fmt.Errorf("STATUS_UPDATE_MODE must be %q or %q, got %q",
-			StatusModeHybrid, StatusModeWebhook, cfg.StatusUpdateMode)
+	for _, v := range []struct{ name, value string }{
+		{"STATUS_UPDATE_MODE", cfg.StatusUpdateMode},
+		{"GITLAB_WEBHOOK_SCOPE", cfg.GitLabWebhookScope},
+	} {
+		if !allowed(v.name, v.value) {
+			return nil, fmt.Errorf("%s must be one of %s, got %q",
+				v.name, strings.Join(options[v.name], ", "), v.value)
+		}
 	}
 	return cfg, nil
 }
