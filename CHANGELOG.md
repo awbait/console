@@ -20,6 +20,9 @@ All notable changes to this project are documented in this file.
   `GITLAB_WEBHOOK_SCOPE` pins that choice.
 
 ### Changed
+- The order form says what a field takes: the mark inside the field lists the
+  requirements - which characters, what length, what range. Until now that had
+  to be guessed, or learned from the error after sending the order.
 - The publication approvals page no longer scrolls away from you: the title
   stays put and only the lists move. The services table gained the category and
   the date it last changed, the "in the catalog" column now shows the versions

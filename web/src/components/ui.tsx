@@ -1,4 +1,9 @@
-import { IconChevronDown, IconPlugConnectedX, IconRefresh } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconInfoCircle,
+  IconPlugConnectedX,
+  IconRefresh,
+} from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
   Button as AriaButton,
@@ -43,7 +48,7 @@ export function buttonClass(variant: keyof typeof btnVariants = "secondary", cla
 // Hint wraps a focusable trigger (a react-aria Button) with a styled tooltip,
 // the same look as the small "i" hints. Note: a tooltip won't open on a truly
 // `isDisabled` trigger - keep the button enabled and gate its action instead.
-export function Hint({ text, children }: { text: string; children: ReactNode }) {
+export function Hint({ text, children }: { text: ReactNode; children: ReactNode }) {
   return (
     <TooltipTrigger delay={150} closeDelay={0}>
       {children}
@@ -54,6 +59,19 @@ export function Hint({ text, children }: { text: string; children: ReactNode }) 
         {text}
       </AriaTooltip>
     </TooltipTrigger>
+  );
+}
+
+// RequirementList: what a field accepts, one rule per line. A list, not a
+// paragraph - three rules run together into a sentence nobody finishes reading.
+function RequirementList({ items }: { items: string[] }) {
+  if (items.length === 1) return <>{items[0]}</>;
+  return (
+    <ul className="flex list-disc flex-col gap-0.5 pl-3.5">
+      {items.map((r) => (
+        <li key={r}>{r}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -87,6 +105,7 @@ export function LinkButton({
 export function TextField({
   label,
   description,
+  requirements,
   value,
   onChange,
   errorText,
@@ -96,6 +115,11 @@ export function TextField({
 }: {
   label: string;
   description?: string;
+  // What the field accepts (characters, length, range), one line per rule, in
+  // the wording of form/fieldErrors. Shown behind the "i" inside the field
+  // rather than under it: the description below says what the field is for, and
+  // the two used to be written into one sentence and read as neither.
+  requirements?: string[];
   value: string;
   onChange: (v: string) => void;
   errorText?: string;
@@ -111,6 +135,7 @@ export function TextField({
   inputMode?: "numeric" | "decimal";
 }) {
   const invalid = !!errorText;
+  const hasRules = (requirements?.length ?? 0) > 0;
   return (
     <AriaTextField
       value={value}
@@ -127,20 +152,39 @@ export function TextField({
           {rest.isRequired && <span className="text-red-500"> *</span>}
         </Label>
       )}
-      <Input
-        type={rest.type}
-        inputMode={rest.inputMode}
-        placeholder={rest.placeholder}
-        onBlur={onBlur}
-        // bg-surface, not the browser's default: an unstyled control keeps the
-        // UA field colour, which is a light box on a near-black card in the dark
-        // themes. The field reads as a field by its border (see index.css).
-        className={`rounded-md border bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
-          invalid
-            ? "border-red-500 focus:border-red-500 focus:ring-red-500"
-            : "border-gray-300 focus:border-brand-500 focus:ring-brand-500"
-        }`}
-      />
+      <div className="relative">
+        <Input
+          type={rest.type}
+          inputMode={rest.inputMode}
+          placeholder={rest.placeholder}
+          onBlur={onBlur}
+          // bg-surface, not the browser's default: an unstyled control keeps the
+          // UA field colour, which is a light box on a near-black card in the dark
+          // themes. The field reads as a field by its border (see index.css).
+          // pr-8 with rules: the text stops before the "i" instead of running under it.
+          className={`w-full rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+            hasRules ? "pr-8" : "pr-2"
+          } ${
+            invalid
+              ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+              : "border-gray-300 focus:border-brand-500 focus:ring-brand-500"
+          }`}
+        />
+        {hasRules && (
+          <span className="absolute inset-y-0 right-1 flex items-center">
+            <Hint text={<RequirementList items={requirements ?? []} />}>
+              {/* A button, not a bare icon: the tooltip has to open on focus and
+                  on tap too, not only under a mouse. */}
+              <AriaButton
+                aria-label="Требования к полю"
+                className="rounded p-1 text-slate-400 outline-none transition-colors hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                <IconInfoCircle size={15} stroke={1.8} />
+              </AriaButton>
+            </Hint>
+          </span>
+        )}
+      </div>
       {errorText ? (
         <span className="text-xs text-red-600">{errorText}</span>
       ) : (
