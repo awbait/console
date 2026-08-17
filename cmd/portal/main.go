@@ -206,7 +206,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			"scope", cfg.GitLabWebhookScope, "err", err)
 	} else if scope == gitlab.HookScopeProject {
 		log.Info("gitlab webhook registered per repository",
-			"reason", "no group or system hook available; new repos are hooked as the portal creates them")
+			"note", "one hook per repo; the portal hooks each repo it creates from now on")
 	}
 	switch cfg.StatusUpdateMode {
 	case config.StatusModeWebhook:

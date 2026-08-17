@@ -58,14 +58,19 @@ var ErrScopeUnavailable = errors.New("gitlab: webhook scope unavailable")
 
 // payload is the create/update body, identical for all three scopes. Only merge
 // requests are subscribed: the portal reacts to an MR reaching a terminal state
-// and ignores everything else (see internal/webhooks).
+// and ignores everything else (see internal/webhooks). The other event types are
+// turned off explicitly rather than left out - a system hook defaults
+// repository_update_events on, and every one of those deliveries would be a
+// round trip the portal answers with "ignored".
 func (h Hook) payload() map[string]any {
 	return map[string]any{
-		"url":                     h.URL,
-		"token":                   h.Token,
-		"merge_requests_events":   true,
-		"push_events":             false,
-		"enable_ssl_verification": h.SSLVerify,
+		"url":                      h.URL,
+		"token":                    h.Token,
+		"merge_requests_events":    true,
+		"push_events":              false,
+		"tag_push_events":          false,
+		"repository_update_events": false,
+		"enable_ssl_verification":  h.SSLVerify,
 	}
 }
 
