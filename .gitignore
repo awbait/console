@@ -38,6 +38,11 @@ __pycache__/
 # Claude local settings (skills are tracked)
 .claude/settings.local.json
 
+# Playwright Agent CLI: browser workspace and per-run artifacts (snapshots,
+# screenshots, traces, saved storage state). The skill itself is tracked.
+/.playwright/
+/.playwright-cli/
+
 # Docs: work in progress, not tracked for now
 /docs/
 
