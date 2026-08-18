@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,10 +114,10 @@ func checkEditorState(b json.RawMessage) error {
 		return nil
 	}
 	if len(b) > maxEditorState {
-		return &ValidationError{Message: "editor_state is too large"}
+		return &ValidationError{Message: MsgEditorTooBig}
 	}
 	if !json.Valid(b) {
-		return &ValidationError{Message: "editor_state must be valid JSON"}
+		return &ValidationError{Message: MsgEditorBadJSON}
 	}
 	return nil
 }
@@ -381,7 +383,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		return nil, ErrForbidden
 	}
 	if !nameRe.MatchString(in.ServiceName) || len(in.ServiceName) > 63 {
-		return nil, &ValidationError{Message: "service_name must be a valid Kubernetes name"}
+		return nil, &ValidationError{Message: MsgServiceName}
 	}
 	if in.Namespace != "" && !validNamespace(in.Namespace) {
 		return nil, &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
@@ -391,7 +393,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	}
 	if _, err := s.catalog.GetChart(ctx, in.ChartProject, in.ChartName); err != nil {
 		if errors.Is(err, models.ErrNotFound) {
-			return nil, &ValidationError{Message: "unknown chart or version"}
+			return nil, &ValidationError{Message: MsgUnknownChart}
 		}
 		return nil, fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
 	}
@@ -428,7 +430,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	// application.yaml destination; validate it like service_name so it cannot
 	// carry "../" or newlines into Git paths/manifests.
 	if !nameRe.MatchString(cluster) || len(cluster) > 63 {
-		return nil, &ValidationError{Message: "cluster must be a valid Kubernetes name"}
+		return nil, &ValidationError{Message: MsgCluster}
 	}
 	r := &models.Request{
 		ID:            newID(),
@@ -503,14 +505,14 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 		return nil, models.ErrNotFound
 	}
 	if r.Status != models.StatusDraft {
-		return nil, &ValidationError{Message: "only draft orders can be submitted"}
+		return nil, &ValidationError{Message: MsgNotDraft}
 	}
 	if !nameRe.MatchString(r.ServiceName) || len(r.ServiceName) > 63 {
-		return nil, &ValidationError{Message: "service_name must be a valid Kubernetes name"}
+		return nil, &ValidationError{Message: MsgServiceName}
 	}
 	var values map[string]any
 	if uerr := yaml.Unmarshal([]byte(r.ValuesYAML), &values); uerr != nil {
-		return nil, &ValidationError{Message: "invalid values: " + uerr.Error()}
+		return nil, &ValidationError{Message: MsgBadValues + uerr.Error()}
 	}
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, values, true)
 	if err != nil {
@@ -563,7 +565,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	// Checking first avoids opening an update MR we then can't transition into,
 	// which would leave a dangling open MR (mirrors the delete guard).
 	if !CanTransition(r.Status, models.StatusMRCreated) {
-		return nil, &ValidationError{Message: "service can only be edited after its create merge request is merged (current status: " + string(r.Status) + ")"}
+		return nil, &ValidationError{Message: MsgNotLiveEdit}
 	}
 	if err := s.guardOpenMR(ctx, id); err != nil {
 		return nil, err
@@ -632,7 +634,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	if in.Version != "" && in.Version != r.ChartVersion {
 		if _, err := s.catalog.GetVersion(ctx, r.ChartProject, r.ChartName, in.Version); err != nil {
 			if errors.Is(err, models.ErrNotFound) {
-				return nil, &ValidationError{Message: "unknown chart or version"}
+				return nil, &ValidationError{Message: MsgUnknownChart}
 			}
 			return nil, fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
 		}
@@ -643,7 +645,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	}
 	if in.ServiceName != "" && in.ServiceName != r.ServiceName {
 		if !nameRe.MatchString(in.ServiceName) || len(in.ServiceName) > 63 {
-			return nil, &ValidationError{Message: "service_name must be a valid Kubernetes name"}
+			return nil, &ValidationError{Message: MsgServiceName}
 		}
 		r.ServiceName = in.ServiceName
 		r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.ServiceName)
@@ -653,7 +655,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	}
 	if in.Cluster != "" {
 		if !nameRe.MatchString(in.Cluster) || len(in.Cluster) > 63 {
-			return nil, &ValidationError{Message: "cluster must be a valid Kubernetes name"}
+			return nil, &ValidationError{Message: MsgCluster}
 		}
 		r.Cluster = in.Cluster
 	}
@@ -746,7 +748,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	// delete MR we then can't transition into DELETE_REQUESTED, which would leave a
 	// dangling open MR the poller never auto-merges.
 	if !CanTransition(r.Status, models.StatusDeleteRequested) {
-		return nil, &ValidationError{Message: "service can only be deleted after its create merge request is merged (current status: " + string(r.Status) + ")"}
+		return nil, &ValidationError{Message: MsgNotLiveDelete}
 	}
 	if err := s.guardOpenMR(ctx, id); err != nil {
 		return nil, err
@@ -842,7 +844,7 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	if !validate {
 		out, merr := yaml.Marshal(values)
 		if merr != nil {
-			return "", &ValidationError{Message: "invalid values: " + merr.Error()}
+			return "", &ValidationError{Message: MsgBadValues + merr.Error()}
 		}
 		return string(out), nil
 	}
@@ -864,7 +866,7 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	}
 	out, merr := yaml.Marshal(values)
 	if merr != nil {
-		return "", &ValidationError{Message: "invalid values: " + merr.Error()}
+		return "", &ValidationError{Message: MsgBadValues + merr.Error()}
 	}
 	return string(out), nil
 }
@@ -907,14 +909,80 @@ func schemaValidationError(err error) *ValidationError {
 
 // collectSchemaLeaves gathers the leaf validation errors (the actionable ones,
 // each pinned to an instance location) from the error tree.
+//
+// Each leaf carries the keyword it broke, so the portal can say what the field
+// takes in its own words rather than forward the validator's English. A missing
+// property is split into one error per property, pinned to the field itself:
+// "this object lacks a name" is about the name field, and that is where the
+// form has to point.
 func collectSchemaLeaves(e *jsonschema.ValidationError, out *[]FieldError) {
 	if len(e.Causes) == 0 {
-		*out = append(*out, FieldError{Path: e.InstanceLocation, Message: e.Message})
+		kw := schemaKeyword(e.KeywordLocation)
+		if kw == keywordRequired {
+			if missing := missingProperties(e.Message); len(missing) > 0 {
+				for _, name := range missing {
+					*out = append(*out, FieldError{
+						Path:    e.InstanceLocation + "/" + escapePointerToken(name),
+						Message: e.Message,
+						Keyword: kw,
+					})
+				}
+				return
+			}
+		}
+		*out = append(*out, FieldError{Path: e.InstanceLocation, Message: e.Message, Keyword: kw})
 		return
 	}
 	for _, c := range e.Causes {
 		collectSchemaLeaves(c, out)
 	}
+}
+
+const keywordRequired = "required"
+
+// schemaKeyword is the rule a leaf failure broke, read off the end of its
+// keyword location ("/properties/port/minimum" -> "minimum"). A location that
+// ends in a step through the schema rather than in a rule ("$ref", a branch
+// index of anyOf) names no rule, and the portal falls back to a general
+// complaint about the value.
+func schemaKeyword(loc string) string {
+	i := strings.LastIndex(loc, "/")
+	if i < 0 {
+		return ""
+	}
+	kw := loc[i+1:]
+	if kw == "" || strings.HasPrefix(kw, "$") {
+		return ""
+	}
+	if _, err := strconv.Atoi(kw); err == nil {
+		return ""
+	}
+	return kw
+}
+
+// missingProperties reads the property names out of the validator's "required"
+// message, which is the only place it puts them: "missing properties: 'a', 'b'"
+// (see jsonschema/v5 schema.go). Returns nothing if the message is not in that
+// shape, and the caller keeps the failure whole.
+func missingProperties(msg string) []string {
+	const prefix = "missing properties: "
+	if !strings.HasPrefix(msg, prefix) {
+		return nil
+	}
+	var out []string
+	for part := range strings.SplitSeq(strings.TrimPrefix(msg, prefix), ", ") {
+		name := strings.Trim(strings.TrimSpace(part), "'")
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// escapePointerToken encodes one JSON Pointer token (RFC 6901): a property name
+// may itself contain "/" or "~".
+func escapePointerToken(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "~", "~0"), "/", "~1")
 }
 
 // ensureRepo verifies the (manually-created) team subgroup and idempotently

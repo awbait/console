@@ -1,6 +1,7 @@
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { HttpError } from "../api/client";
 import type { FieldError } from "../api/types";
+import { schemaViolationText } from "../form/fieldErrors";
 import { fieldAnchorId } from "../form/SchemaForm";
 
 // SubmitError is a normalized submission failure: the human message plus the
@@ -60,10 +61,11 @@ function nodeAt(pointer: string, root: Schema): Schema | undefined {
   return node;
 }
 
-// label is a field's schema title, falling back to its raw key.
-function label(parent: Schema | undefined, key: string, root: Schema): string {
-  const prop = parent?.properties?.[key];
-  return (prop && deref(prop, root).title) || key;
+// afterLabel is a canonical message put behind a field name: "Порт: не меньше
+// 1." The messages themselves are written to stand alone (fieldErrors.ts), and
+// the rows here always name the field first, whichever side found the problem.
+function afterLabel(msg: string): string {
+  return msg.charAt(0).toLowerCase() + msg.slice(1);
 }
 
 // breadcrumb turns a JSON Pointer into a friendly path that mirrors the form:
@@ -94,37 +96,21 @@ function breadcrumb(pointer: string, root?: Schema, view?: Schema): string {
   return out;
 }
 
-// translate maps the common jsonschema messages to short Russian text.
-function translate(msg: string): string {
-  let m: RegExpMatchArray | null;
-  if ((m = msg.match(/^value must be one of (.+)$/)))
-    return `допустимые значения: ${m[1].replace(/"/g, "")}`;
-  if ((m = msg.match(/^length must be >= (\d+).*$/))) return `минимальная длина: ${m[1]}`;
-  if ((m = msg.match(/^length must be <= (\d+).*$/))) return `максимальная длина: ${m[1]}`;
-  if ((m = msg.match(/^minimum:?\s*(.+)$/))) return `минимум: ${m[1]}`;
-  if ((m = msg.match(/^maximum:?\s*(.+)$/))) return `максимум: ${m[1]}`;
-  if (/does not match pattern/.test(msg)) return "недопустимый формат";
-  if (/minItems|minimum .* items/.test(msg)) return "добавьте хотя бы один элемент";
-  return msg;
-}
-
-// expand turns one field error into display rows. "missing properties" is split
-// so each missing field becomes its own row pinned to its full (titled) path.
+// expand turns one field error into a display row.
+//
+// The row is worded here, from the rule the value broke and from the schema the
+// form already has - never from the validator's own message, which is written
+// in English and in the vocabulary of JSON Schema. That way a complaint after
+// sending the order reads exactly like the hint that stood in the field while
+// it was being filled in (see form/fieldErrors.ts).
+// A failure that names neither a field nor a rule has nothing to add to the
+// headline the server already sent, and a row saying "значения: значение не
+// подходит." would only push that headline out of the way.
 function expand(d: FieldError, root?: Schema, view?: Schema): { field: string; message: string }[] {
+  if (!d.path && !d.keyword) return [];
   const base = breadcrumb(d.path, root, view);
-  const miss = d.message.match(/^missing properties:\s*(.+)$/);
-  if (miss) {
-    const parent = root ? nodeAt(d.path, root) : undefined;
-    return miss[1]
-      .split(",")
-      .map((s) => s.replace(/['"\s]/g, ""))
-      .filter(Boolean)
-      .map((name) => {
-        const text = root ? label(parent, name, root) : name;
-        return { field: base ? `${base} › ${text}` : text, message: "обязательное поле" };
-      });
-  }
-  return [{ field: base || "значения", message: translate(d.message) }];
+  const node = root ? nodeAt(d.path, root) : undefined;
+  return [{ field: base || "значения", message: afterLabel(schemaViolationText(d.keyword, node)) }];
 }
 
 // FormErrors renders a submission error: a headline plus, when present, a tidy
@@ -152,7 +138,7 @@ export function FormErrors({
   const clientRows: { field: string; message: string; path?: string }[] = fieldErrors
     ? [...fieldErrors].map(([path, msg]) => ({
         field: breadcrumb(path, schema, view) || "значения",
-        message: msg,
+        message: afterLabel(msg),
         path,
       }))
     : [];
