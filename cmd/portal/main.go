@@ -187,6 +187,12 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			categoryID: publications.DefaultDiscoveryCategory,
 		}))
 	}
+	// Owners hear about a release of their service they have not published yet.
+	// Not tied to auto-discovery: that one registers charts nobody has claimed,
+	// this one watches the ones that already have an owner.
+	reconcilers = append(reconcilers, status.Named("chart-versions", chartVersionsReconciler{
+		pubs: pubsSvc, cat: catalogSvc,
+	}))
 	// Notifications keep for 90 days once read; unread ones stay, however old.
 	reconcilers = append(reconcilers, status.Named("notification-sweep", notifySweeper{notifySvc}))
 	// In webhook-only mode the poller does not tick on its own (interval <= 0):
@@ -353,6 +359,29 @@ const notificationRetention = 90 * 24 * time.Hour
 type importReconciler struct{ s *provisioning.Service }
 
 func (i importReconciler) Reconcile(ctx context.Context) error { return i.s.ImportFromGit(ctx) }
+
+// chartVersionsReconciler tells owners about a release of their service that is
+// in the registry but not published yet. It reads the same chart list discovery
+// does - the catalog answers it from cache - and leaves the deciding to
+// publications, which knows what "published" means.
+type chartVersionsReconciler struct {
+	pubs *publications.Service
+	cat  *catalog.Service
+}
+
+func (c chartVersionsReconciler) Reconcile(ctx context.Context) error {
+	charts, err := c.cat.ListCharts(ctx, &models.User{Role: models.RoleAdmin})
+	if err != nil {
+		return err
+	}
+	refs := make([]publications.ChartVersionRef, 0, len(charts))
+	for _, ch := range charts {
+		refs = append(refs, publications.ChartVersionRef{
+			Project: ch.Project, Name: ch.Name, LatestVersion: ch.LatestVersion,
+		})
+	}
+	return c.pubs.NotifyNewVersions(ctx, refs)
+}
 
 // discoveryReconciler registers charts found in Harbor as draft publications
 // (owner - the admin group). It pulls the chart list from the catalog

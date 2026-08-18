@@ -111,6 +111,25 @@ func (s *Service) VersionRejected(ctx context.Context, st store.Store, p *models
 	})
 }
 
+// ChartVersionAvailable: the registry has a newer version of a service than
+// anything its owners have published. Until they write its document and have it
+// approved, the catalog and every order of that service stay where they are -
+// which is why this goes to the team rather than sitting on a page they would
+// have to think to open.
+func (s *Service) ChartVersionAvailable(ctx context.Context, st store.Store, p *models.ChartPublication, version string) {
+	s.Send(ctx, st, Notification{
+		Kind:        models.NotifyChartVersionAvailable,
+		SubjectType: models.SubjectVersion,
+		SubjectID:   p.ID + "/" + version,
+		Audience:    models.AudienceTeam,
+		AudienceKey: p.OwnerTeam,
+		Payload:     versionPayload(p, version, ""),
+		Level:       models.LevelInfo,
+		// The registry is read every tick; one release is one piece of news.
+		DedupKey: "chart:" + p.ChartProject + "/" + p.ChartName + ":new_version:" + version,
+	})
+}
+
 // PortalUpdated: the portal itself is a new version. Everyone sees it, and the
 // deduplication key is the version, so a restart is not news and a deployment
 // is - including a portal running in several copies, where whichever starts

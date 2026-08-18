@@ -88,6 +88,7 @@ type Service struct {
 type Notifier interface {
 	VersionApproved(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User)
 	VersionRejected(ctx context.Context, st store.Store, p *models.ChartPublication, version, comment string, u *models.User)
+	ChartVersionAvailable(ctx context.Context, st store.Store, p *models.ChartPublication, version string)
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
@@ -413,6 +414,72 @@ type DiscoveredChart struct {
 	Project string
 	Name    string
 	Author  string // from Chart.yaml maintainers, may be empty
+}
+
+// ChartVersionRef is a chart and the newest version of it the registry holds.
+type ChartVersionRef struct {
+	Project       string
+	Name          string
+	LatestVersion string
+}
+
+// NotifyNewVersions tells a service's owners that the registry has a version
+// newer than anything they have published. Acting on it is their work - write
+// the version's document, have it approved - and until they do, the catalog and
+// every order of that service stay on the old one.
+//
+// Only services somebody owns and has already published: an unclaimed chart is
+// the admins' business (they are told about the find itself), and a service
+// with nothing published yet has no "newer" to speak of.
+//
+// A system operation (no user/RBAC), called by the background reconciler. The
+// notification carries its own deduplication key, so being called every tick
+// costs a lookup and says nothing twice.
+func (s *Service) NotifyNewVersions(ctx context.Context, charts []ChartVersionRef) error {
+	if s.notify == nil {
+		return nil
+	}
+	for _, c := range charts {
+		if c.LatestVersion == "" {
+			continue
+		}
+		p, err := s.store.GetPublicationByChart(ctx, c.Project, c.Name)
+		if err != nil {
+			if errors.Is(err, models.ErrNotFound) {
+				continue
+			}
+			return err
+		}
+		if p.OwnerTeam == "" || p.OwnerTeam == s.discoveryOwner {
+			continue // nobody has claimed it yet
+		}
+		published, perr := s.highestPublished(ctx, p.ID)
+		if perr != nil {
+			return perr
+		}
+		if published == "" || models.CompareChartVersions(c.LatestVersion, published) <= 0 {
+			continue
+		}
+		s.notify.ChartVersionAvailable(ctx, nil, p, c.LatestVersion)
+	}
+	return nil
+}
+
+// highestPublished is the newest version of a service that can actually be
+// ordered - the one a new release in the registry is measured against. Empty
+// when the service has nothing published.
+func (s *Service) highestPublished(ctx context.Context, publicationID string) (string, error) {
+	versions, err := s.store.ListVersions(ctx, publicationID)
+	if err != nil {
+		return "", err
+	}
+	best := ""
+	for _, v := range versions {
+		if v.Published() && (best == "" || models.CompareChartVersions(v.ChartVersion, best) > 0) {
+			best = v.ChartVersion
+		}
+	}
+	return best, nil
 }
 
 // EnsureDiscovered creates draft publications for charts found in Harbor that
