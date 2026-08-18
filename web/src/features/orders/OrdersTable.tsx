@@ -17,6 +17,7 @@ import {
 } from "react-aria-components";
 import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
+import { changeInFlightText } from "@/api/errorText";
 import { qk } from "@/api/queryKeys";
 import type { OrderRequest, RequestStatus } from "@/api/types";
 import { useCatalog } from "@/app/CatalogContext";
@@ -25,7 +26,13 @@ import { useToast } from "@/app/ToastContext";
 import { canModify, useUser } from "@/auth/UserContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
-import { StatusBadge, StatusDot } from "@/components/StatusBadge";
+import {
+  STATUS_GROUPS,
+  StatusBadge,
+  StatusDot,
+  type StatusGroupKey,
+  statusGroup,
+} from "@/components/StatusBadge";
 import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
@@ -51,21 +58,10 @@ interface Props {
   allTeams?: boolean;
 }
 
-// Statuses offered in the filter, in lifecycle order. DELETED is hidden by default.
-const STATUSES: RequestStatus[] = [
-  "DRAFT",
-  "MR_CREATED",
-  "MR_MERGED",
-  "DEPLOYING",
-  "HEALTHY",
-  "DEGRADED",
-  "ARGO_MISSING",
-  "DELETE_REQUESTED",
-  "DELETE_MR_MERGED",
-  "MR_CLOSED",
-  "DELETED",
-];
-const DEFAULT_HIDDEN: RequestStatus[] = ["DELETED"];
+// The filter offers what the table shows: status groups, in lifecycle order.
+// Deleted orders are hidden by default.
+const DEFAULT_HIDDEN: StatusGroupKey[] = ["deleted"];
+const ALL_GROUPS = STATUS_GROUPS.map((g) => g.key);
 
 export function OrdersTable({ title, filter, orderTo, orderDisabledReason, emptyHint, allTeams }: Props) {
   // Fetch including deleted so the status filter can reveal them on demand.
@@ -109,8 +105,8 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     return v && isNewer(v, r.chart_version) ? v : null;
   };
 
-  const [shown, setShown] = useState<Set<RequestStatus>>(
-    () => new Set(STATUSES.filter((s) => !DEFAULT_HIDDEN.includes(s))),
+  const [shown, setShown] = useState<Set<StatusGroupKey>>(
+    () => new Set(ALL_GROUPS.filter((g) => !DEFAULT_HIDDEN.includes(g))),
   );
   const [newestFirst, setNewestFirst] = useState(true);
   // Cross-team facet filters (only used when allTeams). Empty set = no filter.
@@ -135,7 +131,12 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       .filter((r) => teamFilter.size === 0 || teamFilter.has(r.team))
       .filter((r) => productFilter.size === 0 || productFilter.has(r.chart_name))
       .filter((r) => (filter ? filter(r) : true))
-      .filter((r) => shown.has(r.status));
+      // A state this build does not know has no group to filter by, and hiding
+      // an order nobody can name is worse than showing it.
+      .filter((r) => {
+        const g = statusGroup(r.status);
+        return g === null || shown.has(g);
+      });
     const dir = newestFirst ? -1 : 1;
     return [...base].sort((a, b) => {
       // Drafts always on top, regardless of the date direction.
@@ -163,12 +164,10 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       await api.deleteRequest(deleting.id);
       reload();
     } catch (e) {
-      // An open MR blocks deletion: explain it in Russian (ConfirmDialog renders
-      // a thrown message inline) instead of the bare English domain string.
+      // A change still on its way blocks deletion: say so in the words the rest
+      // of the portal uses (ConfirmDialog renders a thrown message inline).
       if (e instanceof HttpError && e.code === "open_mr") {
-        throw new Error(
-          `Уже открыт запрос на слияние${e.mrIid ? ` #${e.mrIid}` : ""} для этого сервиса. Дождитесь его обработки или закройте его, прежде чем удалять сервис.`,
-        );
+        throw new Error(changeInFlightText("delete"));
       }
       throw e;
     }
@@ -178,9 +177,9 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     newestFirst &&
     teamFilter.size === 0 &&
     productFilter.size === 0 &&
-    STATUSES.every((s) => shown.has(s) === !DEFAULT_HIDDEN.includes(s));
+    ALL_GROUPS.every((g) => shown.has(g) === !DEFAULT_HIDDEN.includes(g));
   const resetFilters = () => {
-    setShown(new Set(STATUSES.filter((s) => !DEFAULT_HIDDEN.includes(s))));
+    setShown(new Set(ALL_GROUPS.filter((g) => !DEFAULT_HIDDEN.includes(g))));
     setNewestFirst(true);
     setTeamFilter(new Set());
     setProductFilter(new Set());
@@ -392,20 +391,21 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
 }
 
 // StatusFilter is one chip opening a multi-select of which statuses to show
-// (DELETED off by default).
+// (deleted orders off by default). It lists the same groups the badges show, so what
+// a person picks here is worded exactly like what they read in the table.
 function StatusFilter({
   shown,
   onChange,
 }: {
-  shown: Set<RequestStatus>;
-  onChange: (s: Set<RequestStatus>) => void;
+  shown: Set<StatusGroupKey>;
+  onChange: (s: Set<StatusGroupKey>) => void;
 }) {
   return (
     <MenuTrigger>
       <Button className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
         Статусы
         <span className="text-slate-400">
-          {shown.size}/{STATUSES.length}
+          {shown.size}/{ALL_GROUPS.length}
         </span>
         <IconChevronDown size={13} stroke={1.8} className="text-slate-400" />
       </Button>
@@ -414,15 +414,15 @@ function StatusFilter({
           selectionMode="multiple"
           selectedKeys={shown}
           onSelectionChange={(keys) =>
-            onChange(keys === "all" ? new Set(STATUSES) : new Set([...keys].map(String) as RequestStatus[]))
+            onChange(keys === "all" ? new Set(ALL_GROUPS) : new Set([...keys].map(String) as StatusGroupKey[]))
           }
           className="max-h-80 overflow-auto outline-none"
         >
-          {STATUSES.map((s) => (
+          {STATUS_GROUPS.map(({ key, statuses }) => (
             <MenuItem
-              key={s}
-              id={s}
-              textValue={s}
+              key={key}
+              id={key}
+              textValue={key}
               className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
             >
               {({ isSelected }) => (
@@ -434,7 +434,10 @@ function StatusFilter({
                   >
                     {isSelected && <IconCheck size={12} stroke={3} />}
                   </span>
-                  <StatusBadge status={s} />
+                  {/* Any state of the group renders the group's own badge:
+                      the badge is what a person is picking here, and it must
+                      not spin in a menu. */}
+                  <StatusBadge status={statuses[0]} noSpin />
                 </>
               )}
             </MenuItem>

@@ -60,3 +60,12 @@ export function canEditOrder(user: User | null, team: string): boolean {
   if (!user) return false;
   return user.role === "admin" || user.role === "support" || (user.teams ?? []).includes(team);
 }
+
+// isPlatformStaff holds for the people who run the platform rather than order
+// from it. What the portal does under an order - the merge request a change
+// rides in, the state machine behind a status - is shown to them and to nobody
+// else: for the person who ordered the service it is machinery, and naming it
+// only asks them to learn how the portal is built.
+export function isPlatformStaff(user: User | null): boolean {
+  return user?.role === "admin" || user?.role === "support";
+}

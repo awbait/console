@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- An order tells its state in words about the service: draft, being saved,
+  coming up, working, not working, rejected, being deleted, deleted. The eleven
+  internal states behind them are gone from the screen, the status filter in the
+  order list offers the same eight names as the orders themselves, and "Healthy"
+  and "Degraded" are finally in Russian. Support and admins still read the exact
+  state, in the detailed history of the order.
+- The portal no longer explains itself in merge requests, branches and Git to
+  the person who ordered a service. A change that has not landed yet simply says
+  the service is still being saved, everywhere it comes up: on the order page,
+  on the graph, and when a delete arrives too soon. The link to the merge request
+  carrying the change stays with support and admins, in the detailed history.
+
 ## [0.4.0] - 2026-08-18
 
 This release takes the guessing out of filling in a form: every field says what
