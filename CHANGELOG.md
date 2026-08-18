@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-18
+
+This release takes the guessing out of filling in a form: every field says what
+it takes while you are typing it, and the documentation now walks through the
+order form constructor from end to end. Around that, a service can insist that a
+person merges every change to it, the portal keeps its own notification from
+GitLab registered, and a version the image registry has lost is no longer
+offered anywhere.
+
 ### Added
 - The portal's documentation has an "Order form constructor" section: what a
   version document is, how it maps onto the chart schema, every block of it
@@ -16,7 +25,6 @@ All notable changes to this project are documented in this file.
   (`"approval": {"autoMerge": false}`), which is what a service owned by the
   security team needs. Such a change still gets kept up to date with the branch
   on its own, so the reviewer is handed something they can simply approve.
-
 - The portal keeps its own notification from GitLab registered: fill in
   `GITLAB_WEBHOOK_URL` and it sets the notification up at startup, on every
   repository it creates afterwards, and on the ones it adopts from Git, so
@@ -291,7 +299,8 @@ chart publications, OIDC auth, and observability.
   merging a `release/*` PR, and multi-arch image publish to GHCR for portal and
   collector on `v*` tags.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/awbait/console/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/awbait/console/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/awbait/console/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/awbait/console/releases/tag/v0.1.0
