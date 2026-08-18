@@ -7,7 +7,7 @@ import {
   Heading,
 } from "react-aria-components";
 import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
-import { type FieldRequirement, fieldMsg, fieldRequirements, ruPlural } from "./fieldErrors";
+import { type FieldRequirement, fieldMsg, fieldRequirements, patternError } from "./fieldErrors";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -76,7 +76,7 @@ function leafErrors(s: Schema, v: unknown, path: string, out: Map<string, string
   else if (typeof s.maxLength === "number" && v.length > s.maxLength)
     out.set(path, fieldMsg.maxLen(s.maxLength));
   else if (typeof s.pattern === "string" && !matchesPattern(s.pattern, v))
-    out.set(path, fieldMsg.badFormat);
+    out.set(path, patternError(s.pattern));
 }
 
 // walkErrors mirrors what the form RENDERS (same view/hidden/required/conditional
@@ -113,7 +113,7 @@ function walkErrors(
       const hasDefault = "default" in child || "const" in child;
       if (required.has(k) && emptyVal(cv) && !hasDefault) {
         // A required empty array needs an element added, not a value typed in.
-        out.set(cpath, child.type === "array" ? "Добавьте хотя бы один элемент." : fieldMsg.required);
+        out.set(cpath, child.type === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
         continue;
       }
       if (cv === undefined) continue;
@@ -124,10 +124,7 @@ function walkErrors(
   if (s.type === "array") {
     const arr = Array.isArray(value) ? value : [];
     if (typeof s.minItems === "number" && arr.length < s.minItems)
-      out.set(
-        base,
-        `Добавьте хотя бы ${s.minItems} ${ruPlural(s.minItems, "элемент", "элемента", "элементов")}.`,
-      );
+      out.set(base, fieldMsg.minItems(s.minItems));
     arr.forEach((it, i) => walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, `${base}/${i}`, out));
     return;
   }

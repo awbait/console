@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- A value the order was refused for is explained in the words the field itself
+  used while it was being filled in: "Не короче 3 символов." rather than "length
+  must be >= 3, but got 2". A missing value is now pointed at the field that is
+  missing instead of at the block around it, and a rule the portal cannot put
+  into words still gets a sentence of its own - the validator's English is not
+  shown to anyone any more.
+- Every refusal of an order is in Russian and about the service. A name that
+  does not fit says which characters it takes, a service that is still being
+  created says to come back when it is running, and a version that has gone says
+  to pick an available one. Until now several of those answers were the internal
+  English of the portal, down to the state of the order in brackets.
 - An order tells its state in words about the service: draft, being saved,
   coming up, working, not working, rejected, being deleted, deleted. The eleven
   internal states behind them are gone from the screen, the status filter in the

@@ -10,12 +10,25 @@ export const fieldMsg = {
   edgeChars: "Первый и последний символ - буква или цифра.",
   badFormat: "Недопустимый формат.",
   integer: "Введите целое число.",
+  number: "Введите число.",
+  // What is left to say when a value breaks a rule the portal cannot put into
+  // words: a schema keyword nobody has translated, or a failure that belongs to
+  // no single field. Says the value is the problem without pretending to know
+  // more than it does.
+  badValue: "Значение не подходит.",
+  notUnique: "Значения не должны повторяться.",
   minLen: (n: number) => `Не короче ${n} символов.`,
   maxLen: (n: number) => `Не длиннее ${n} символов.`,
   min: (n: number) => `Не меньше ${n}.`,
   max: (n: number) => `Не больше ${n}.`,
   range: (min: number, max: number) => `Значение от ${min} до ${max}.`,
   taken: (name: string) => `Имя «${name}» уже занято.`,
+  oneOf: (values: string[]) => `Допустимые значения: ${values.join(", ")}.`,
+  minItems: (n: number) =>
+    n <= 1
+      ? "Добавьте хотя бы один элемент."
+      : `Добавьте хотя бы ${n} ${ruPlural(n, "элемент", "элемента", "элементов")}.`,
+  maxItems: (n: number) => `Не больше ${n} ${ruPlural(n, "элемента", "элементов", "элементов")}.`,
 };
 
 // The same rules said as requirements rather than as complaints: a hint lists
@@ -200,3 +213,76 @@ export const fieldKind = {
     },
   }),
 };
+
+// patternError is what a value that does not match a field's pattern is told.
+// A regular expression is not something to show a person, so a pattern we can
+// say in words says it - in the same sentence the field's own hint uses - and
+// any other one only says the format is wrong.
+export function patternError(pattern: string): string {
+  return CHARSET_PATTERNS.some((p) => p.re === pattern) ? fieldMsg.charset : fieldMsg.badFormat;
+}
+
+// SchemaRule is the part of a schema node needed to word a complaint about it:
+// the constraints a field states, plus the ones that belong to a list or a
+// choice rather than to a typed value.
+export interface SchemaRule extends FieldConstraints {
+  enum?: unknown[];
+  const?: unknown;
+  minItems?: number;
+  maxItems?: number;
+}
+
+// schemaViolationText says, in the portal's own words, what a value broke.
+//
+// The backend validates the submitted values against the chart's schema and
+// reports the rule that failed ("minLength", "pattern", ...) rather than a
+// sentence: its validator speaks English and in the vocabulary of JSON Schema
+// ("length must be >= 3, but got 2"), which is not something to put in front of
+// a person. The sentence is written here instead, from the same fieldMsg the
+// form uses while the value is being typed - so what is said after sending the
+// order and what was said during typing are the same words.
+//
+// The rule itself comes from the schema the form already has, not from the
+// message: the field knows it is at most 63 characters long, and reading that
+// off the node is more honest than parsing it out of a complaint.
+export function schemaViolationText(keyword: string | undefined, s: SchemaRule = {}): string {
+  switch (keyword) {
+    case "required":
+      return fieldMsg.required;
+    case "type":
+      if (s.type === "integer") return fieldMsg.integer;
+      if (s.type === "number") return fieldMsg.number;
+      return fieldMsg.badValue;
+    case "minLength":
+      return typeof s.minLength === "number" ? fieldMsg.minLen(s.minLength) : fieldMsg.badValue;
+    case "maxLength":
+      return typeof s.maxLength === "number" ? fieldMsg.maxLen(s.maxLength) : fieldMsg.badValue;
+    case "minimum":
+    case "exclusiveMinimum":
+    case "maximum":
+    case "exclusiveMaximum":
+    case "multipleOf": {
+      const { minimum: lo, maximum: hi } = s;
+      if (typeof lo === "number" && typeof hi === "number") return fieldMsg.range(lo, hi);
+      if (typeof lo === "number") return fieldMsg.min(lo);
+      if (typeof hi === "number") return fieldMsg.max(hi);
+      return fieldMsg.badValue;
+    }
+    case "pattern":
+      return typeof s.pattern === "string" ? patternError(s.pattern) : fieldMsg.badFormat;
+    case "enum":
+    case "const": {
+      const values = s.enum ?? (s.const === undefined ? [] : [s.const]);
+      const named = values.filter((v) => v !== null && v !== undefined).map(String);
+      return named.length > 0 ? fieldMsg.oneOf(named) : fieldMsg.badValue;
+    }
+    case "minItems":
+      return fieldMsg.minItems(typeof s.minItems === "number" ? s.minItems : 1);
+    case "maxItems":
+      return typeof s.maxItems === "number" ? fieldMsg.maxItems(s.maxItems) : fieldMsg.badValue;
+    case "uniqueItems":
+      return fieldMsg.notUnique;
+    default:
+      return fieldMsg.badValue;
+  }
+}

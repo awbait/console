@@ -6,6 +6,7 @@ import {
   fieldKind,
   fieldMsg,
   fieldRequirements,
+  schemaViolationText,
 } from "./fieldErrors";
 import { namespaceError, namespaceKind, namespaceRequirements } from "./namespace";
 
@@ -168,6 +169,66 @@ describe("fieldKind", () => {
     for (const v of ["payments", "42", "Pay", "pay-"]) {
       const allMet = namespaceKind.requirements.every((r) => r.met(v));
       expect(allMet).toBe(namespaceKind.error(v) === null);
+    }
+  });
+});
+
+// What a rejected value is told after the order was sent. The backend names the
+// rule; the sentence is written here, and it has to be the same sentence the
+// field was hinting at while it was being filled in.
+describe("schemaViolationText", () => {
+  test("says a length in the same words as the hint beside the field", () => {
+    const s = { type: "string", minLength: 3, maxLength: 63 };
+    expect(schemaViolationText("minLength", s)).toBe(fieldMsg.minLen(3));
+    expect(schemaViolationText("maxLength", s)).toBe(fieldMsg.maxLen(63));
+    // Same rule, said forwards, is what the field itself shows.
+    expect(fieldRequirements(s)).toContainEqual(
+      expect.objectContaining({ text: fieldMsg.maxLen(63) }),
+    );
+  });
+
+  test("a bound reads as a range when the field has both", () => {
+    expect(schemaViolationText("minimum", { minimum: 1, maximum: 65535 })).toBe(
+      fieldMsg.range(1, 65535),
+    );
+    expect(schemaViolationText("maximum", { minimum: 1 })).toBe(fieldMsg.min(1));
+  });
+
+  test("a pattern we can say in words says it, and any other one does not pretend to", () => {
+    expect(schemaViolationText("pattern", { pattern: "^[a-z0-9-]+$" })).toBe(fieldMsg.charset);
+    expect(schemaViolationText("pattern", { pattern: "^v\d+(\.\d+)?$" })).toBe(fieldMsg.badFormat);
+  });
+
+  test("a choice lists what may be chosen", () => {
+    expect(schemaViolationText("enum", { enum: ["standalone", "replication"] })).toBe(
+      fieldMsg.oneOf(["standalone", "replication"]),
+    );
+  });
+
+  test("a missing property and a list too short read as the form's own messages", () => {
+    expect(schemaViolationText("required")).toBe(fieldMsg.required);
+    expect(schemaViolationText("minItems", { minItems: 1 })).toBe(fieldMsg.minItems(1));
+    expect(schemaViolationText("minItems", { minItems: 3 })).toBe(fieldMsg.minItems(3));
+  });
+
+  test("a rule nobody has translated still gets a sentence, never the validator's own", () => {
+    expect(schemaViolationText("propertyNames", {})).toBe(fieldMsg.badValue);
+    expect(schemaViolationText(undefined)).toBe(fieldMsg.badValue);
+    // A bound with nothing to name it by is a value complaint, not a broken one.
+    expect(schemaViolationText("minimum", {})).toBe(fieldMsg.badValue);
+  });
+
+  test("every sentence stands on its own: capital letter, full stop, no jargon", () => {
+    const all = [
+      schemaViolationText("required"),
+      schemaViolationText("type", { type: "integer" }),
+      schemaViolationText("pattern", { pattern: "^x$" }),
+      schemaViolationText("uniqueItems"),
+      schemaViolationText("nonsense"),
+    ];
+    for (const text of all) {
+      expect(text).toMatch(/^[А-ЯЁ].*\.$/);
+      expect(text).not.toMatch(/must be|length|pattern|schema|json/i);
     }
   });
 });

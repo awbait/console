@@ -455,6 +455,10 @@ export interface UpdateOrderBody {
 export interface FieldError {
   path: string; // JSON Pointer into the submitted values
   message: string;
+  // The schema rule the value broke ("required", "minLength", "pattern", ...).
+  // The portal words the complaint from it; `message` is the validator's own
+  // English and is not shown to anyone.
+  keyword?: string;
 }
 
 export interface ApiError {

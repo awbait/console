@@ -22,7 +22,34 @@ var (
 type FieldError struct {
 	Path    string `json:"path"`
 	Message string `json:"message"`
+	// Keyword is the schema rule the value broke: "required", "minLength",
+	// "pattern", "minimum" and so on. The portal words the complaint itself,
+	// in the same sentence the field's own hint uses, so what the validator
+	// says ("length must be >= 3, but got 2") stays in the logs. Empty when the
+	// failure did not come from a single keyword.
+	Keyword string `json:"keyword,omitempty"`
 }
+
+// What a refused order says to the person who filled the form in. Russian and
+// product-toned like the rest of the interface (see CLAUDE.md), and worded like
+// the form's own hints, because the two are read one after the other: the name
+// rule here is the sentence the field shows while it is being typed
+// (web/src/form/fieldErrors.ts). The machinery the portal runs on - merge
+// requests, states of the order's own FSM - is never what it answers with.
+const (
+	MsgServiceName   = "Имя сервиса: используйте строчные латинские буквы, цифры и дефис."
+	MsgCluster       = "Кластер: используйте строчные латинские буквы, цифры и дефис."
+	MsgUnknownChart  = "Такого сервиса или его версии больше нет. Обновите страницу и выберите доступную версию."
+	MsgNotDraft      = "Заказ уже отправлен. Обновите страницу, чтобы увидеть, что с ним происходит."
+	MsgNotLiveEdit   = "Сервис ещё создаётся. Изменить его можно будет, когда он заработает."
+	MsgNotLiveDelete = "Сервис ещё создаётся. Удалить его можно будет, когда он заработает."
+	// The detail of a values failure is kept: an order can be edited as YAML by
+	// hand, and "line 4: mapping values are not allowed here" is exactly what
+	// the person needs to fix what they typed.
+	MsgBadValues     = "Не удалось прочитать значения заказа: "
+	MsgEditorTooBig  = "На холсте слишком много элементов, портал не смог его сохранить."
+	MsgEditorBadJSON = "Не удалось сохранить холст. Откройте граф заново и повторите."
+)
 
 // ValidationError is a 422 with a human-readable reason and, when it comes from
 // schema validation, a per-field breakdown for the UI.

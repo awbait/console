@@ -33,7 +33,7 @@ type Values = Record<string, unknown>;
 // Shown when a view sources the deploy identity from the values but the field
 // is still empty - e.g. the policies graph has no links yet, so there is no
 // first policy to take the name from. Without this the empty name reaches the
-// backend and comes back as a bare "service_name must be a valid Kubernetes name".
+// backend, which answers about a field the person cannot see on this screen.
 const IDENTITY_MISSING = "Не удалось определить имя сервиса. Заполните данные заказа, из которых оно берётся.";
 
 // Shown when a chart drawn as a graph is ordered with nothing drawn on it. Kept
