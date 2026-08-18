@@ -17,12 +17,14 @@ import (
 	"console/internal/api"
 	"console/internal/argocd"
 	"console/internal/auth"
+	"console/internal/buildinfo"
 	"console/internal/cache"
 	"console/internal/catalog"
 	"console/internal/config"
 	"console/internal/events"
 	"console/internal/gitlab"
 	"console/internal/harbor"
+	"console/internal/notify"
 	"console/internal/observability"
 	"console/internal/provisioning"
 	"console/internal/publications"
@@ -154,6 +156,17 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}
 	pubsSvc.SetDiscoveryOwner(discoveryOwner)
 
+	// --- notifications ---
+	// One writer for every domain that has something to tell a person. Wired
+	// after the domains exist, so neither has to know how the other is built.
+	notifySvc := notify.New(st, bus, observability.Component(log, "notify"))
+	provSvc.SetNotifier(notifySvc)
+	pubsSvc.SetNotifier(notifySvc)
+	// A new build of the portal is news for everyone, once per version: the
+	// deduplication key is the version, so restarts and extra replicas stay
+	// quiet.
+	notifySvc.PortalUpdated(ctx, buildinfo.Get().Version)
+
 	// --- auth ---
 	authn, err := buildAuth(ctx, cfg, c, observability.Component(log, "auth"))
 	if err != nil {
@@ -174,6 +187,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 			categoryID: publications.DefaultDiscoveryCategory,
 		}))
 	}
+	// Notifications keep for 90 days once read; unread ones stay, however old.
+	reconcilers = append(reconcilers, status.Named("notification-sweep", notifySweeper{notifySvc}))
 	// In webhook-only mode the poller does not tick on its own (interval <= 0):
 	// state advances solely on webhook-triggered sweeps, plus one startup sweep to
 	// catch up after downtime. In hybrid the poll keeps running as a safety net.
@@ -318,6 +333,20 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 type driftReconciler struct{ s *provisioning.Service }
 
 func (d driftReconciler) Reconcile(ctx context.Context) error { return d.s.CheckDrift(ctx) }
+
+// notifySweeper drops notifications that have been read and are older than the
+// retention window. It rides the poller rather than a timer of its own: there is
+// exactly one background clock in the portal, and one more would be one more
+// thing to reason about at shutdown.
+type notifySweeper struct{ n *notify.Service }
+
+func (s notifySweeper) Reconcile(ctx context.Context) error {
+	return s.n.SweepRead(ctx, notificationRetention)
+}
+
+// How long a read notification is kept. Unread ones are never swept: nobody has
+// seen them, so dropping one is losing the message rather than tidying up.
+const notificationRetention = 90 * 24 * time.Hour
 
 // importReconciler adapts Service.ImportFromGit to status.Reconciler so Git-side
 // discovery runs on the poller.

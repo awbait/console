@@ -1,7 +1,6 @@
 import {
   IconActivity,
   IconAdjustments,
-  IconBell,
   IconBook,
   IconBox,
   IconCheck,
@@ -41,6 +40,7 @@ import { api } from "../api/client";
 import type { CatalogChart } from "../api/types";
 import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
+import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { ThemeMenu } from "./ThemeMenu";
 import { useUser } from "../auth/UserContext";
 import { useAsync } from "../hooks/useAsync";
@@ -383,9 +383,7 @@ export function Layout() {
             >
               <IconInfoCircle size={20} stroke={1.7} />
             </Link>
-            <IconButton label="Уведомления">
-              <IconBell size={20} stroke={1.7} />
-            </IconButton>
+            <NotificationsBell />
             <UserMenu />
           </div>
         </div>
@@ -840,17 +838,6 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
         </Menu>
       </Popover>
     </MenuTrigger>
-  );
-}
-
-function IconButton({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <button
-      aria-label={label}
-      className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-    >
-      {children}
-    </button>
   );
 }
 

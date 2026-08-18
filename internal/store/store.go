@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"console/pkg/models"
 )
@@ -17,6 +18,19 @@ type RequestFilter struct {
 	Status         models.RequestStatus
 	Chart          string
 	IncludeDeleted bool
+}
+
+// NotificationFilter is who is reading, which is what decides both what is
+// visible and what counts as unread. Teams and Role come from the session, so a
+// person who leaves a team stops seeing its notifications without anything
+// being rewritten.
+type NotificationFilter struct {
+	Subject string
+	Teams   []string
+	Role    string
+	// Before pages backwards through the feed; zero means "from the newest".
+	Before time.Time
+	Limit  int
 }
 
 // PublicationFilter narrows ListPublications.
@@ -49,6 +63,26 @@ type Store interface {
 	// Events / audit
 	AddEvent(ctx context.Context, e *models.RequestEvent) error
 	ListEvents(ctx context.Context, requestID string) ([]*models.RequestEvent, error)
+
+	// Notifications
+	// AddNotification stores one notification. A row whose DedupKey is already
+	// present is dropped silently: the background loop revisits the same order
+	// every few seconds and only the first pass is news.
+	AddNotification(ctx context.Context, n *models.Notification) error
+	// ListNotifications returns what the reader may see, newest first, older
+	// than `before` when it is non-zero. Each row carries its own read flag.
+	ListNotifications(ctx context.Context, f NotificationFilter) ([]*models.Notification, error)
+	// CountUnread is the number for the bell.
+	CountUnread(ctx context.Context, f NotificationFilter) (int, error)
+	// MarkRead marks one notification read by this reader. Marking a
+	// notification the reader cannot see is not an error, only a no-op.
+	MarkRead(ctx context.Context, id, subject string) error
+	// MarkAllRead moves the reader's cursor to now: everything already sent is
+	// read, without a row per notification.
+	MarkAllRead(ctx context.Context, subject string) error
+	// DeleteReadNotificationsBefore drops notifications everyone concerned has
+	// read and that are older than the cutoff. Returns how many went.
+	DeleteReadNotificationsBefore(ctx context.Context, cutoff time.Time) (int, error)
 
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id

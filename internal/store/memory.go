@@ -21,6 +21,9 @@ type Memory struct {
 	pubVersions map[string]*models.PublicationVersion // keyed by version ID
 	pubEvents   []*models.PublicationEvent
 	pubEventSeq int64
+	notifications []*models.Notification
+	notifRead     map[string]map[string]bool // subject -> notification id -> read
+	notifCursor   map[string]time.Time       // subject -> "everything before this is read"
 	now       func() time.Time
 	lastStamp time.Time
 }
@@ -35,6 +38,8 @@ func NewMemory() *Memory {
 		categories:  map[string]*models.Category{},
 		pubs:        map[string]*models.ChartPublication{},
 		pubVersions: map[string]*models.PublicationVersion{},
+		notifRead:   map[string]map[string]bool{},
+		notifCursor: map[string]time.Time{},
 		now:         time.Now,
 	}
 }
@@ -282,6 +287,128 @@ func (m *Memory) ListEvents(ctx context.Context, requestID string) ([]*models.Re
 // Tx runs fn against the same in-memory store. It is NOT a real transaction:
 // the memory backend has no rollback, so a mid-fn failure leaves earlier writes
 // applied. Adequate for tests/local; the production Postgres store is atomic.
+// --- Notifications ---
+
+func (m *Memory) AddNotification(ctx context.Context, n *models.Notification) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if n.DedupKey != "" {
+		for _, ex := range m.notifications {
+			if ex.DedupKey == n.DedupKey {
+				return nil // already said once
+			}
+		}
+	}
+	if n.CreatedAt.IsZero() {
+		n.CreatedAt = m.stamp()
+	}
+	m.notifications = append(m.notifications, clone(n))
+	return nil
+}
+
+// visible answers the audience rule for one reader (callers hold m.mu).
+func visible(n *models.Notification, f NotificationFilter) bool {
+	switch n.Audience {
+	case models.AudienceAll:
+		return true
+	case models.AudienceUser:
+		return n.AudienceKey == f.Subject
+	case models.AudienceRole:
+		return n.AudienceKey == f.Role
+	case models.AudienceTeam:
+		return contains(f.Teams, n.AudienceKey)
+	}
+	return false
+}
+
+// readBy answers whether this reader has seen a notification: either marked
+// individually, or covered by the cursor a "read all" left behind.
+func (m *Memory) readBy(n *models.Notification, subject string) bool {
+	if m.notifRead[subject][n.ID] {
+		return true
+	}
+	cleared, ok := m.notifCursor[subject]
+	return ok && !n.CreatedAt.After(cleared)
+}
+
+func (m *Memory) ListNotifications(ctx context.Context, f NotificationFilter) ([]*models.Notification, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []*models.Notification
+	for _, n := range m.notifications {
+		if !visible(n, f) {
+			continue
+		}
+		if !f.Before.IsZero() && !n.CreatedAt.Before(f.Before) {
+			continue
+		}
+		cp := clone(n)
+		cp.Read = m.readBy(n, f.Subject)
+		out = append(out, cp)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	if f.Limit > 0 && len(out) > f.Limit {
+		out = out[:f.Limit]
+	}
+	return out, nil
+}
+
+func (m *Memory) CountUnread(ctx context.Context, f NotificationFilter) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	for _, n := range m.notifications {
+		if visible(n, f) && !m.readBy(n, f.Subject) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *Memory) MarkRead(ctx context.Context, id, subject string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.notifRead[subject] == nil {
+		m.notifRead[subject] = map[string]bool{}
+	}
+	m.notifRead[subject][id] = true
+	return nil
+}
+
+func (m *Memory) MarkAllRead(ctx context.Context, subject string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.notifCursor[subject] = m.stamp()
+	return nil
+}
+
+func (m *Memory) DeleteReadNotificationsBefore(ctx context.Context, cutoff time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.notifications[:0]
+	gone := 0
+	for _, n := range m.notifications {
+		if n.CreatedAt.Before(cutoff) && len(m.readersOf(n.ID)) > 0 {
+			gone++
+			continue
+		}
+		kept = append(kept, n)
+	}
+	m.notifications = kept
+	return gone, nil
+}
+
+// readersOf lists who marked a notification read (callers hold m.mu).
+func (m *Memory) readersOf(id string) []string {
+	var out []string
+	for subject, ids := range m.notifRead {
+		if ids[id] {
+			out = append(out, subject)
+		}
+	}
+	return out
+}
+
 func (m *Memory) Tx(ctx context.Context, fn func(Store) error) error {
 	return fn(m)
 }

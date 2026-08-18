@@ -12,6 +12,7 @@ import { ToastProvider } from "./app/ToastContext";
 import { UserProvider, useUser } from "./auth/UserContext";
 import { Layout } from "./components/Layout";
 import { NotFound } from "./components/NotFound";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { AboutPage } from "./pages/AboutPage";
 import {
   AdminApprovalDetailPage,
@@ -80,6 +81,9 @@ const router = createBrowserRouter([
       { index: true, element: <RoleHome /> },
       // About is informational and available to every role (outside PlatformOnly).
       { path: "about", element: <AboutPage /> },
+      // The feed belongs to whoever is reading it, whatever section they work
+      // in, so it sits beside About rather than inside PlatformOnly.
+      { path: "notifications", element: <NotificationsPage /> },
       {
         path: "security",
         element: <SecuritySection />,

@@ -75,13 +75,27 @@ type Service struct {
 	// by main from config). Adoption is allowed only while a discovered
 	// publication still belongs to this group; empty relaxes the owner check.
 	discoveryOwner string
+	// notify tells a service's owners what a reviewer decided. Optional: nil in
+	// tests, where nobody is listening.
+	notify Notifier
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
+}
+
+// Notifier is what publications need of the notification domain: a reviewer
+// decided something about a version, and the team that owns the service should
+// hear about it without watching the page.
+type Notifier interface {
+	VersionApproved(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User)
+	VersionRejected(ctx context.Context, st store.Store, p *models.ChartPublication, version, comment string, u *models.User)
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
 	return &Service{store: st, schemas: schemas}
 }
+
+// SetNotifier wires the notification domain in (main does it after both exist).
+func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
 // SetDiscoveryOwner wires the admin group owning auto-discovered drafts (from
 // config); it bounds which publications are considered unclaimed by Adopt.

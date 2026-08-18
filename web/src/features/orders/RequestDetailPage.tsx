@@ -35,7 +35,8 @@ import { useAsync } from "@/hooks/useAsync";
 import { safeHref } from "@/lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { attachSseLogger } from "@/lib/sse";
-import { DetailActions, fmtDateTime, Meta, ProductView } from "./requestDetailParts";
+import { fmtDateTime } from "@/lib/time";
+import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
 export function RequestDetailPage() {
   const { id = "" } = useParams();

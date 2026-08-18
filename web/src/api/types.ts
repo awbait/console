@@ -468,3 +468,19 @@ export interface ApiError {
   mr_url?: string; // open merge request blocking the change (error "open_mr")
   mr_iid?: number;
 }
+
+// One thing the portal has to tell somebody about. The sentence is not here:
+// the server sends what happened (`kind`) and the facts it happened to
+// (`payload`), and the wording is composed in the interface, next to the rest of
+// the product's text (features/notifications/text.ts).
+export interface AppNotification {
+  id: string;
+  kind: string;
+  subject_type: "order" | "publication" | "version" | "platform" | string;
+  subject_id?: string;
+  actor_name?: string;
+  payload?: Record<string, unknown>;
+  level: "info" | "attention";
+  created_at: string;
+  read: boolean;
+}

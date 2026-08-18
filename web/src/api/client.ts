@@ -2,6 +2,7 @@ import { apiErrorText } from "./errorText";
 import type {
   AboutInfo,
   ApiError,
+  AppNotification,
   CatalogResponse,
   Category,
   ChangelogEntry,
@@ -265,6 +266,15 @@ export const api = {
   syncRequest: (id: string) => req<unknown>("POST", `/requests/${enc(id)}/sync`),
   // Adopt the order's current Git state (values + version) into the portal.
   pullRequest: (id: string) => req<OrderRequest>("POST", `/requests/${enc(id)}/pull`),
+
+  // notifications: the reader's own feed. Who a notification is for is decided
+  // on the server from the session, so there is nothing to pass here.
+  listNotifications: (params?: Record<string, string>, signal?: AbortSignal) =>
+    req<AppNotification[]>("GET", "/notifications" + qs(params), undefined, signal),
+  unreadNotifications: (signal?: AbortSignal) =>
+    req<{ unread: number }>("GET", "/notifications/unread", undefined, signal),
+  readNotification: (id: string) => req<void>("POST", `/notifications/${enc(id)}/read`),
+  readAllNotifications: () => req<void>("POST", "/notifications/read-all"),
 
   // system status (integrations + storage health)
   getSystemStatus: () => req<SystemStatus>("GET", "/status"),

@@ -181,6 +181,16 @@ func (s *Service) reviewVersion(ctx context.Context, u *models.User, pubID, char
 		payload = map[string]any{"chart_version": chartVersion}
 	}
 	s.addEvent(ctx, p.ID, u, event, from, to, payload)
+	// The owning team hears the decision. A rejection carries the reviewer's
+	// comment: it is the whole point of the message, and going to look for it is
+	// what the notification saves.
+	if s.notify != nil {
+		if to == models.PubRejected {
+			s.notify.VersionRejected(ctx, nil, p, chartVersion, comment, u)
+		} else {
+			s.notify.VersionApproved(ctx, nil, p, chartVersion, u)
+		}
+	}
 	observability.ObservePublicationVersionEvent(metric)
 	s.logger().Debug("publication version review",
 		"publication_id", p.ID, "chart", p.ChartName, "chart_version", chartVersion,

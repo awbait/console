@@ -36,6 +36,7 @@ import {
 import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
+import { fmtDateTime } from "@/lib/time";
 import { attachSseLogger } from "@/lib/sse";
 
 // Live order statuses (create-MR merged): only these can be upgraded to a new version.
@@ -546,12 +547,6 @@ function SearchFilter({
       </Popover>
     </DialogTrigger>
   );
-}
-
-function fmtDateTime(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function RowActions({

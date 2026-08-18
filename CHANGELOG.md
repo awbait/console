@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- The portal tells you what happened while you were elsewhere. The bell in the
+  top bar counts what is new, opens on the latest of it and has a page of its
+  own for the whole history; a notification opens the thing it is about, and
+  "Прочитать все" clears the count in one go. It arrives when a service you
+  ordered comes up, stops working or cannot apply your change, when a version of
+  a service you own is approved or rejected - with the reviewer's comment, which
+  used to be a page away - and when the portal itself is updated. What has been
+  read is kept for 90 days; what has not is kept until it is.
+
 ### Changed
 - A value the order was refused for is explained in the words the field itself
   used while it was being filled in: "Не короче 3 символов." rather than "length

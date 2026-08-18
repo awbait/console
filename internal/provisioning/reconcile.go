@@ -226,6 +226,9 @@ func (s *Service) reportMergeBlocked(ctx context.Context, r *models.Request,
 	s.logger().Warn("mr merge blocked",
 		"order_id", r.ID, "mr_iid", mr.MRIID, "reason", reason)
 	s.eventWith(ctx, r, bySystem(), "merge_blocked", "", "", map[string]any{"reason": reason})
+	if s.notify != nil {
+		s.notify.OrderChangeBlocked(ctx, nil, r, reason)
+	}
 }
 
 // forgetMergeBlocked drops an MR from the reported set once it merges, so a
