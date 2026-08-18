@@ -11,8 +11,8 @@
 // on the receiver comes back as egress on the sender, same semantics.
 
 import type { Edge } from "@xyflow/react";
-import type { XY } from "../../core/model";
-import { entriesLabel, type GraphMapping, readEntries } from "../../mapping";
+import type { XY } from "@/features/graph/core/model";
+import { entriesLabel, type GraphMapping, readEntries } from "@/features/graph/mapping";
 import type { SavedGraphState } from "./editorState";
 import {
   type PortProtocol,

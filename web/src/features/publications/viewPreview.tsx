@@ -20,14 +20,14 @@ import {
   TooltipTrigger,
 } from "react-aria-components";
 import { IconInfoCircle } from "@tabler/icons-react";
-import type { OrderRequest, ViewDocument } from "../../api/types";
-import { useUser } from "../../auth/UserContext";
-import { ProductIcon } from "../../components/icons";
-import type { PersistValues } from "../../components/products/GenericProductTabs";
-import { StatusBadge } from "../../components/StatusBadge";
-import { Card } from "../../components/ui";
-import { parseNamespaceDirective, resolveDestNamespace } from "../../form/namespace";
-import { pruneEmpty, type View } from "../../form/SchemaForm";
+import type { OrderRequest, ViewDocument } from "@/api/types";
+import { useUser } from "@/auth/UserContext";
+import { ProductIcon } from "@/components/icons";
+import type { PersistValues } from "@/components/products/GenericProductTabs";
+import { StatusBadge } from "@/components/StatusBadge";
+import { Card } from "@/components/ui";
+import { parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
+import { pruneEmpty, type View } from "@/form/SchemaForm";
 import { OrderMetaCard, OrderValuesCard } from "../orders/OrderFormParts";
 import { Meta, ProductView } from "../orders/requestDetailParts";
 import { valuesEditorFor } from "../orders/valuesEditors";

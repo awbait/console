@@ -10,7 +10,7 @@
 // Every field defaults to a values key of its own name, so a chart that follows
 // the convention needs nothing but {"graph": {"profile": "policies"}}.
 
-import type { ViewDocument } from "../../api/types";
+import type { ViewDocument } from "@/api/types";
 
 export interface GraphMapping {
   profile: string;

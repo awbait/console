@@ -6,8 +6,8 @@
 // canvas itself needs a DOM, these do not.
 
 import yaml from "js-yaml";
-import type { OrderRequest, RequestMR, ViewDocument } from "../../api/types";
-import { productTabs } from "../../components/products/genericView";
+import type { OrderRequest, RequestMR, ViewDocument } from "@/api/types";
+import { productTabs } from "@/components/products/genericView";
 import { type GraphMapping, readEntries } from "../graph/mapping";
 import { type ActiveValuesEditor, valuesEditorFor } from "./valuesEditors";
 

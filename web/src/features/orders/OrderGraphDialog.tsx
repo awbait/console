@@ -34,12 +34,12 @@ import {
   Modal,
   ModalOverlay,
 } from "react-aria-components";
-import { api } from "../../api/client";
-import type { OrderRequest, RequestMR, ViewDocument } from "../../api/types";
-import { useToast } from "../../app/ToastContext";
-import { FormErrors, type SubmitError, toSubmitError } from "../../components/FormErrors";
-import type { PersistValues } from "../../components/products/GenericProductTabs";
-import { Button, buttonClass } from "../../components/ui";
+import { api } from "@/api/client";
+import type { OrderRequest, RequestMR, ViewDocument } from "@/api/types";
+import { useToast } from "@/app/ToastContext";
+import { FormErrors, type SubmitError, toSubmitError } from "@/components/FormErrors";
+import type { PersistValues } from "@/components/products/GenericProductTabs";
+import { Button, buttonClass } from "@/components/ui";
 import { entriesHiddenFromTabs, entryCount, graphLock, sameValues } from "./orderGraph";
 import type { ActiveValuesEditor } from "./valuesEditors";
 

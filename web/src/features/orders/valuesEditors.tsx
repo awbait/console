@@ -9,7 +9,7 @@
 // and two versions of one chart can carry two different mappings.
 
 import { type ComponentType, lazy } from "react";
-import type { ViewDocument } from "../../api/types";
+import type { ViewDocument } from "@/api/types";
 import { type GraphMapping, readGraphMapping } from "../graph/mapping";
 
 type Values = Record<string, unknown>;

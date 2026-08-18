@@ -7,7 +7,7 @@
 // document and a version, so a later format change can be detected instead of
 // crashing on a stale canvas.
 
-import type { XY } from "../../core/model";
+import type { XY } from "@/features/graph/core/model";
 import type { TopoNamespace } from "./topology";
 
 export const POLICIES_PROFILE = "policies";

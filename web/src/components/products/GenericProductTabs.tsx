@@ -19,9 +19,9 @@ import {
   ModalOverlay,
   Popover,
 } from "react-aria-components";
-import { api, HttpError } from "../../api/client";
-import type { OrderRequest, ViewDocument, ViewTab } from "../../api/types";
-import { chartLabel } from "../../app/CatalogContext";
+import { api, HttpError } from "@/api/client";
+import type { OrderRequest, ViewDocument, ViewTab } from "@/api/types";
+import { chartLabel } from "@/app/CatalogContext";
 import {
   collectErrors,
   pruneEmpty,
@@ -29,8 +29,8 @@ import {
   sameValues,
   seedDefaults,
   type View,
-} from "../../form/SchemaForm";
-import { useAsync } from "../../hooks/useAsync";
+} from "@/form/SchemaForm";
+import { useAsync } from "@/hooks/useAsync";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { FormErrors, type SubmitError, toSubmitError } from "../FormErrors";
 import { Button, Hint, Loading } from "../ui";

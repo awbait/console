@@ -11,8 +11,8 @@
 // and is reported out of scope.
 
 import type { Edge } from "@xyflow/react";
-import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
-import { type GraphMapping, writeEntries } from "../../mapping";
+import { dnsLabelError, fieldMsg, withField } from "@/form/fieldErrors";
+import { type GraphMapping, writeEntries } from "@/features/graph/mapping";
 import {
   findWorkload,
   nsOfWorkload,
