@@ -1,3 +1,6 @@
+// Package status answers "is the platform working": it runs the background
+// poller that advances order states, probes the upstreams the portal depends on,
+// and maps their health onto the capabilities a person can still use.
 package status
 
 import (

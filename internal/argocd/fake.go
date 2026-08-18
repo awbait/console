@@ -2,7 +2,6 @@ package argocd
 
 import (
 	"context"
-	"sort"
 	"sync"
 
 	"console/pkg/models"
@@ -94,19 +93,6 @@ func (f *Fake) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-func (f *Fake) ListApplications(ctx context.Context, selector map[string]string) ([]Application, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []Application
-	for _, a := range f.apps {
-		if matches(a.Labels, selector) {
-			out = append(out, *a)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
-}
-
 func (f *Fake) GetApplication(ctx context.Context, name string) (*Application, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -139,11 +125,3 @@ func (f *Fake) Upsert(a Application) {
 	f.apps[a.Name] = &cp
 }
 
-func matches(labels, selector map[string]string) bool {
-	for k, v := range selector {
-		if labels[k] != v {
-			return false
-		}
-	}
-	return true
-}

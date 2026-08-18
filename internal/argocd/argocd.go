@@ -41,10 +41,9 @@ type Application struct {
 	Revisions []string `json:"revisions,omitempty"`
 }
 
-// Port is the status layer's view of ArgoCD.
+// Port is the portal's view of ArgoCD: one application at a time, which is how
+// the portal works with it - an order knows the name of its own application.
 type Port interface {
-	// ListApplications returns applications matching a label selector (may be empty).
-	ListApplications(ctx context.Context, selector map[string]string) ([]Application, error)
 	// GetApplication returns one application; ErrNotFound if absent.
 	GetApplication(ctx context.Context, name string) (*Application, error)
 	// Sync forces a sync (admin action).

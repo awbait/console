@@ -20,48 +20,6 @@ func newServer(t *testing.T, h http.HandlerFunc) *argocd.Client {
 	return argocd.NewClient(srv.URL, "tok", 0)
 }
 
-func TestClientListApplications(t *testing.T) {
-	ctx := context.Background()
-	c := newServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer tok" {
-			t.Errorf("missing bearer token, got %q", got)
-		}
-		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/applications" {
-			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusInternalServerError)
-			return
-		}
-		// selector keys must be sorted and equality-joined.
-		if got := r.URL.Query().Get("selector"); got != "idp.team=core,managed-by=portal" {
-			t.Errorf("selector = %q", got)
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"items": []map[string]any{
-				{
-					"metadata": map[string]any{"name": "core-pg1", "labels": map[string]string{"idp.team": "core"}},
-					"spec":     map[string]any{"project": "portal-managed", "destination": map[string]any{"name": "in-cluster"}},
-					"status": map[string]any{
-						"sync":   map[string]any{"status": "Synced"},
-						"health": map[string]any{"status": "Healthy"},
-					},
-				},
-			},
-		})
-	})
-
-	apps, err := c.ListApplications(ctx, map[string]string{"managed-by": "portal", "idp.team": "core"})
-	if err != nil {
-		t.Fatalf("ListApplications err=%v", err)
-	}
-	if len(apps) != 1 {
-		t.Fatalf("want 1 app, got %d", len(apps))
-	}
-	a := apps[0]
-	if a.Name != "core-pg1" || a.Project != "portal-managed" || a.Cluster != "in-cluster" ||
-		a.Sync != argocd.SyncSynced || a.Health != argocd.HealthHealthy || a.Labels["idp.team"] != "core" {
-		t.Fatalf("unexpected app: %+v", a)
-	}
-}
-
 func TestClientGetApplicationDefaultsUnknown(t *testing.T) {
 	ctx := context.Background()
 	c := newServer(t, func(w http.ResponseWriter, r *http.Request) {

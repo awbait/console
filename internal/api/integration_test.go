@@ -19,7 +19,6 @@ import (
 	"console/internal/observability"
 	"console/internal/provisioning"
 	"console/internal/publications"
-	"console/internal/status"
 	"console/internal/store"
 	"console/pkg/models"
 )
@@ -35,7 +34,7 @@ func newServer(t *testing.T) (*api.Server, *argocd.Fake, *provisioning.Service) 
 	gitops, _ := provisioning.NewGitOps("managed-services", "team-{{.Team}}", "{{.Team}}-{{.ServiceName}}", "portal-managed", "main")
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", false)
 	srv := &api.Server{
-		Auth: auth.NewDev(), Catalog: cat, Prov: prov, Pubs: publications.New(st, cat), Status: status.New(argo),
+		Auth: auth.NewDev(), Catalog: cat, Prov: prov, Pubs: publications.New(st, cat),
 		Store: st, Cache: c, Bus: events.New(), Log: observability.NewLogger("error", "text"),
 	}
 	return srv, argo, prov
@@ -169,25 +168,5 @@ func TestHTTPCreateAndReconcile(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &detail)
 	if detail.Request.Status != models.StatusHealthy {
 		t.Fatalf("want HEALTHY, got %s", detail.Request.Status)
-	}
-
-	// applications endpoint shows the app for the team
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, devReq("GET", "/api/v1/applications", "core", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("apps: %d", rec.Code)
-	}
-	var apps []argocd.Application
-	_ = json.Unmarshal(rec.Body.Bytes(), &apps)
-	if len(apps) != 1 || apps[0].Name != "core-pg1" {
-		t.Fatalf("unexpected apps: %+v", apps)
-	}
-
-	// a different team must not see it
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, devReq("GET", "/api/v1/applications", "payments", nil))
-	_ = json.Unmarshal(rec.Body.Bytes(), &apps)
-	if len(apps) != 0 {
-		t.Fatalf("payments should see no apps, got %+v", apps)
 	}
 }
