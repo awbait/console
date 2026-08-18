@@ -38,6 +38,12 @@ All notable changes to this project are documented in this file.
   on the graph, and when a delete arrives too soon. The link to the merge request
   carrying the change stays with support and admins, in the detailed history.
 
+### Fixed
+- A page keeps updating itself after the portal restarts or the connection
+  breaks for good. Until now the live updates stopped for good too, and the page
+  went on looking current while it no longer was - the orders list, an order and
+  the bell all waited for somebody to reload them by hand.
+
 ## [0.4.0] - 2026-08-18
 
 This release takes the guessing out of filling in a form: every field says what

@@ -34,7 +34,7 @@ import { Button, Card, Select, SkeletonRows } from "@/components/ui";
 import { useAsync } from "@/hooks/useAsync";
 import { safeHref } from "@/lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
-import { attachSseLogger } from "@/lib/sse";
+import { subscribe } from "@/lib/sse";
 import { fmtDateTime } from "@/lib/time";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
@@ -79,14 +79,11 @@ export function RequestDetailPage() {
   }, [editingName]);
 
   useEffect(() => {
-    const es = new EventSource(`/api/v1/requests/${encodeURIComponent(id)}/events`);
-    attachSseLogger(es, "order");
-    const onChange = () => reload();
-    es.addEventListener("status_changed", onChange);
-    return () => {
-      es.removeEventListener("status_changed", onChange);
-      es.close();
-    };
+    return subscribe(
+      `/api/v1/requests/${encodeURIComponent(id)}/events`,
+      { status_changed: () => reload() },
+      "order",
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 

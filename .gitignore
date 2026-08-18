@@ -40,8 +40,10 @@ __pycache__/
 
 # Playwright Agent CLI: browser workspace and per-run artifacts (snapshots,
 # screenshots, traces, saved storage state). The skill itself is tracked.
-/.playwright/
-/.playwright-cli/
+# Unanchored: the CLI writes beside the working directory it was run from, so
+# a session started in web/ leaves them there and not only in the repo root.
+.playwright/
+.playwright-cli/
 
 # Docs: work in progress, not tracked for now
 /docs/
