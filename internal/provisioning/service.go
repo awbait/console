@@ -66,7 +66,23 @@ type Service struct {
 	// by main only when the webhook is configured; nil (and nil-safe) otherwise,
 	// which is the local/fakes case.
 	Hooks *gitlab.HookManager
+	// notify tells the person who ordered a service what became of it. Optional:
+	// nil in tests, where nobody is listening.
+	notify Notifier
 }
+
+// Notifier is what provisioning needs of the notification domain: an order got
+// somewhere, and its owner should hear about it. An interface rather than the
+// package itself so a test can watch what would be sent without a store behind
+// it.
+type Notifier interface {
+	OrderHealthy(ctx context.Context, st store.Store, r *models.Request, from string)
+	OrderDegraded(ctx context.Context, st store.Store, r *models.Request, detail string)
+	OrderChangeBlocked(ctx context.Context, st store.Store, r *models.Request, reason string)
+}
+
+// SetNotifier wires the notification domain in (main does it after both exist).
+func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
 // logger returns the configured logger, or the default if none was wired (tests).
 func (s *Service) logger() *slog.Logger {
@@ -1119,10 +1135,27 @@ func (s *Service) transition(ctx context.Context, r *models.Request, to models.R
 	}); err != nil {
 		return err
 	}
+	s.notifyStatus(ctx, r, from, to)
 	s.publishStatus(r.ID, string(to))
 	s.logger().Debug("order transition",
 		"order_id", r.ID, "from", from, "to", to, "actor", a.subject)
 	return nil
+}
+
+// notifyStatus tells the person who ordered the service what became of it. Only
+// the two states they can act on: it works now, or it stopped working. The
+// steps in between are the portal moving the order along, and the order page
+// shows them to whoever is watching.
+func (s *Service) notifyStatus(ctx context.Context, r *models.Request, from, to models.RequestStatus) {
+	if s.notify == nil {
+		return
+	}
+	switch to {
+	case models.StatusHealthy:
+		s.notify.OrderHealthy(ctx, nil, r, string(from))
+	case models.StatusDegraded, models.StatusArgoMissing:
+		s.notify.OrderDegraded(ctx, nil, r, r.DriftDetail)
+	}
 }
 
 // publishStatus fans a status change out to the per-request topic (detail page)

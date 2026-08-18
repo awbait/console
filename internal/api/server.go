@@ -195,6 +195,13 @@ func (s *Server) Router() http.Handler {
 			r.Post("/requests/{id}/sync", s.handleSyncRequest)
 			r.Post("/requests/{id}/pull", s.handlePullRequest) // adopt Git state into the portal
 			r.Get("/requests/{id}/events", s.handleRequestEvents)
+
+			// notifications: the reader's own feed (audience comes from the session)
+			r.Get("/notifications", s.handleListNotifications)
+			r.Get("/notifications/unread", s.handleUnreadNotifications)
+			r.Get("/notifications/events", s.handleNotificationEvents) // signal only, no content
+			r.Post("/notifications/read-all", s.handleReadAllNotifications)
+			r.Post("/notifications/{id}/read", s.handleReadNotification)
 		})
 	})
 

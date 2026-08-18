@@ -183,6 +183,9 @@ func (s *Service) reportMergeConflicts(ctx context.Context, r *models.Request,
 		"reason": "conflict",
 		"fields": paths,
 	})
+	if s.notify != nil {
+		s.notify.OrderChangeBlocked(ctx, nil, r, "conflict")
+	}
 }
 
 // supersedeMR closes the merge request the rewritten change replaces, in GitLab

@@ -1,0 +1,62 @@
+- generic [ref=f3e1]:
+  - generic [ref=f3e19]:
+    - banner [ref=f3e20]:
+      - generic [ref=f3e21]:
+        - link "console" [ref=f3e22] [cursor=pointer]:
+          - /url: /
+        - generic [ref=f3e23]:
+          - button "Платформа работает" [ref=f3e24] [cursor=pointer]
+          - button "Тема оформления" [ref=f3e31] [cursor=pointer]
+          - link "О портале" [ref=f3e34] [cursor=pointer]:
+            - /url: /about
+          - button "Уведомления" [expanded] [ref=f3e38] [cursor=pointer]
+          - button "Platform Admin Администратор платформы" [ref=f3e42] [cursor=pointer]:
+            - generic [ref=f3e47]:
+              - generic [ref=f3e48]: Platform Admin
+              - generic [ref=f3e49]: Администратор платформы
+    - generic [ref=f3e50]:
+      - generic [ref=f3e51]:
+        - generic [ref=f3e56]:
+          - button "Проекты" [expanded] [ref=f3e57] [cursor=pointer]
+          - list [ref=f3e71]:
+            - listitem [ref=f3e72]:
+              - button "core" [pressed] [ref=f3e73] [cursor=pointer]
+            - listitem [ref=f3e80]:
+              - button "dbaas" [ref=f3e81] [cursor=pointer]
+        - complementary [ref=f3e86]:
+          - generic [ref=f3e87]:
+            - button "Платформа" [ref=f3e89] [cursor=pointer]
+            - navigation [ref=f3e99]:
+              - list [ref=f3e100]:
+                - listitem [ref=f3e101]:
+                  - link "Список заказов" [ref=f3e102] [cursor=pointer]:
+                    - /url: /requests
+                - listitem [ref=f3e108]:
+                  - link "Каталог" [ref=f3e109] [cursor=pointer]:
+                    - /url: /catalog
+            - navigation [ref=f3e121]:
+              - generic [ref=f3e122]:
+                - button "Сеть" [expanded] [ref=f3e123] [cursor=pointer]
+                - list [ref=f3e135]:
+                  - listitem [ref=f3e136]:
+                    - link "Policies" [ref=f3e137] [cursor=pointer]:
+                      - /url: /products/platform/policies
+          - link "Документация" [ref=f3e139] [cursor=pointer]:
+            - /url: /docs
+          - button "Свернуть меню" [ref=f3e145] [cursor=pointer]
+      - main [ref=f3e150]:
+        - generic [ref=f3e151]:
+          - generic [ref=f3e152]:
+            - status [ref=f3e155]: В работе платформы есть проблемы, мы уже их устраняем. Подробности - по значку в верхней панели.
+            - button [ref=f3e156] [cursor=pointer]
+          - generic [ref=f3e160]:
+            - heading "Уведомления" [level=1] [ref=f3e162]
+            - paragraph [ref=f3e164]: Не удалось выполнить запрос. Попробуйте ещё раз.
+  - generic "Уведомления" [ref=f3e167]:
+    - button "Dismiss" [ref=f3e169] [cursor=pointer]
+    - dialog "Уведомления" [active] [ref=f3e170]:
+      - heading "Уведомления" [level=2] [ref=f3e172]
+      - paragraph [ref=f3e174]: Пока ничего не произошло. Здесь появятся новости о ваших сервисах.
+      - link "Все уведомления" [ref=f3e176] [cursor=pointer]:
+        - /url: /notifications
+    - button "Dismiss" [ref=f3e178] [cursor=pointer]
