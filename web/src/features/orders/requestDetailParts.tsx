@@ -49,14 +49,14 @@ import type {
 } from "@/api/types";
 import { chartLabel } from "@/app/CatalogContext";
 import { useTheme } from "@/app/ThemeContext";
-import { useUser } from "@/auth/UserContext";
+import { isPlatformStaff, useUser } from "@/auth/UserContext";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
 } from "@/components/products/GenericProductTabs";
 import { productTabs } from "@/components/products/genericView";
-import { statusMeta } from "@/components/StatusBadge";
+import { statusMeta, statusTitle } from "@/components/StatusBadge";
 import { buttonClass, Card, Checkbox } from "@/components/ui";
 import { safeHref } from "@/lib/href";
 import { OrderGraphDialog } from "./OrderGraphDialog";
@@ -796,7 +796,7 @@ function TimelineCard({ events }: { events: TimelineEvent[] }) {
   // which is a question the platform team gets and the person who ordered the
   // service does not ask. So it is theirs to switch on, and it is remembered -
   // whoever works in it works in it all day.
-  const canSeeAll = user?.role === "admin" || user?.role === "support";
+  const canSeeAll = isPlatformStaff(user);
   const [detailed, setDetailed] = useDetailedHistory(canSeeAll);
   const shown = detailed ? events : events.filter(isNotable);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
@@ -1105,11 +1105,16 @@ function TimelineRow({
       </span>
       <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{eventLabel(e)}</span>
       {detailed && isStatus && <StatusEdge from={e.from_status} to={e.to_status} />}
-      {/* A chip, not a link in a sentence: it is a destination sitting at the
+      {/* The merge request the row rode in on, offered with the rest of the
+          machinery under "Подробно" - the row already says in words what
+          happened, and whoever ordered the service has no use for the change's
+          bookkeeping in Git.
+
+          A chip, not a link in a sentence: it is a destination sitting at the
           end of a row, so it carries its own outline and lifts on hover. The
           underline is what a link inside running text needs to be found - here
           it would only add a line across an already busy row. */}
-      {e.mr && (
+      {detailed && e.mr && (
         <a
           href={safeHref(e.mr.mr_url)}
           target="_blank"
@@ -1166,7 +1171,9 @@ function StatusDot({ status, muted = false }: { status: RequestStatus; muted?: b
   const Icon = m.staticIcon ?? m.Icon;
   return (
     <span
-      title={m.label}
+      // Only the detailed history renders these, and its reader is the one
+      // person who needs the exact state rather than the group it is shown in.
+      title={statusTitle(status, true)}
       className={`flex h-5 w-5 items-center justify-center rounded-full ${m.badge} ${
         muted ? "opacity-50" : ""
       }`}

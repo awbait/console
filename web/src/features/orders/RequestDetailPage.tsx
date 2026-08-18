@@ -7,8 +7,9 @@ import {
   IconAlertTriangle,
   IconArrowUpCircle,
   IconCheck,
+  IconDeviceFloppy,
+  IconExternalLink,
   IconGitFork,
-  IconGitPullRequest,
   IconPencil,
   IconRefresh,
   IconTrash,
@@ -18,12 +19,12 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
-import { openMRBlockedText } from "@/api/errorText";
+import { changeInFlightText } from "@/api/errorText";
 import type { ViewDocument } from "@/api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
-import { canEditOrder, canModify, useUser } from "@/auth/UserContext";
+import { canEditOrder, canModify, isPlatformStaff, useUser } from "@/auth/UserContext";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
@@ -145,6 +146,9 @@ export function RequestDetailPage() {
   // editable: value/rename/upgrade affordances - also support, across teams.
   const modifiable = canModify(user, r.team) && r.status !== "DELETED";
   const editable = canEditOrder(user, r.team) && r.status !== "DELETED";
+  // platformStaff: who is offered the machinery behind the order (the merge
+  // request a pending change rides in).
+  const platformStaff = isPlatformStaff(user);
   const isDraft = r.status === "DRAFT";
   const driftMissing = r.drifted && /отсутству/i.test(r.drift_detail ?? "");
 
@@ -177,10 +181,10 @@ export function RequestDetailPage() {
       await api.deleteRequest(id);
       isDraft ? navigate("/requests") : reload();
     } catch (e) {
-      // Race: an MR may have opened between load and confirm. Show the blocked
-      // reason in Russian (ConfirmDialog renders a thrown message inline).
+      // Race: another change may have started between load and confirm. Show
+      // the blocked reason (ConfirmDialog renders a thrown message inline).
       if (e instanceof HttpError && e.code === "open_mr") {
-        throw new Error(openMRBlockedText(e.mrIid));
+        throw new Error(changeInFlightText("delete"));
       }
       throw e;
     }
@@ -291,26 +295,31 @@ export function RequestDetailPage() {
             )}
         </div>
       )}
+      {/* A change of this service is on its way. For the person who ordered it
+          that is all there is to say: the merge request carrying it is how the
+          portal records the change, and the link to it is offered only to those
+          who go and look at it. */}
       {openMR && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <div className="flex items-start gap-2">
-            <IconGitPullRequest size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+            <IconDeviceFloppy size={18} stroke={1.8} className="mt-0.5 shrink-0" />
             <div>
-              <p className="font-medium">Открыт запрос на слияние{openMR.mr_iid ? ` #${openMR.mr_iid}` : ""}</p>
+              <p className="font-medium">Изменение сервиса сохраняется</p>
               <p className="mt-0.5 text-amber-700">
-                Пока он не обработан, изменение, обновление и удаление сервиса недоступны.
+                Пока оно не применится, менять, обновлять и удалять сервис нельзя.
               </p>
             </div>
           </div>
-          {safeHref(openMR.mr_url) && (
+          {platformStaff && safeHref(openMR.mr_url) && (
             <a
               href={safeHref(openMR.mr_url)}
               target="_blank"
               rel="noreferrer"
+              title={`Запрос на слияние${openMR.mr_iid ? ` #${openMR.mr_iid}` : ""} в GitLab`}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-xs font-medium text-amber-800 outline-none hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500"
             >
-              <IconGitPullRequest size={14} stroke={1.8} />
-              Открыть MR
+              <IconExternalLink size={14} stroke={1.8} />
+              Открыть в GitLab
             </a>
           )}
         </div>

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TabList, TabPanel, Tabs } from "react-aria-components";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, HttpError } from "@/api/client";
+import { changeInFlightText } from "@/api/errorText";
 import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "@/api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
 import { usePlatformHealth } from "@/app/PlatformHealthContext";
@@ -393,12 +394,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
 
   function fail(e: unknown) {
     if (e instanceof HttpError) {
-      // An open MR blocks the change: explain it in Russian instead of the bare
-      // English domain string. The order page itself links to the MR.
-      const message =
-        e.code === "open_mr"
-          ? `Уже открыт запрос на слияние${e.mrIid ? ` #${e.mrIid}` : ""} для этого сервиса. Дождитесь его обработки или закройте его, прежде чем вносить новые изменения.`
-          : e.message;
+      // A change still on its way blocks the next one: say it in the words the
+      // rest of the portal uses, not in the bare English domain string.
+      const message = e.code === "open_mr" ? changeInFlightText() : e.message;
       setSubmitErr({ message, details: e.details });
     } else setSubmitErr({ message: (e as Error).message });
   }

@@ -12,9 +12,8 @@
 // for logs and for screens that show a debug line.
 
 // Codes whose server message is meant for the user and is more specific than
-// anything written here: field-level validation, a name already taken, the open
-// merge request blocking a change.
-const KEEP_SERVER_MESSAGE = new Set(["validation_failed", "conflict", "open_mr"]);
+// anything written here: field-level validation and a name already taken.
+const KEEP_SERVER_MESSAGE = new Set(["validation_failed", "conflict"]);
 
 const BY_CODE: Record<string, string> = {
   // Any upstream: the registry, the git server, the delivery system. Which one
@@ -26,14 +25,26 @@ const BY_CODE: Record<string, string> = {
   not_found: "Мы не нашли то, что вы открыли. Возможно, это уже удалили.",
   forbidden: "У вас нет доступа к этому разделу.",
   unauthorized: "Сессия закончилась. Войдите заново.",
+  // A change of this service is still on its way (the backend answers 409
+  // open_mr). Its own message names the merge request that blocks it, which is
+  // how the portal records a change and not something the person asked for.
+  open_mr: changeInFlightText(),
 };
 
-// An order with an open merge request refuses every further change (the backend
-// answers 409 open_mr). Several screens have to say so - the banner on the order
-// page, the graph that cannot be drawn on, the delete that loses the race - and
-// they say it in one voice, from here.
-export function openMRBlockedText(iid?: number): string {
-  return `Уже открыт запрос на слияние${iid ? ` #${iid}` : ""} для этого сервиса. Дождитесь его обработки или закройте его, прежде чем вносить новые изменения.`;
+// A service whose previous change has not landed yet refuses the next one. Every
+// screen that runs into it says so in one voice, from here - the banner on the
+// order page, the graph that cannot be drawn on, the delete that loses the race.
+//
+// The wording is the same the graph uses (features/orders/orderGraph.ts): from
+// where the person stands they saved their service, and saving is still going
+// on. The merge request behind it, and its number, are the portal's own
+// bookkeeping - support and admin reach them from the order's history.
+export function changeInFlightText(action: "change" | "delete" = "change"): string {
+  const tail =
+    action === "delete"
+      ? "Удалить сервис можно будет, когда оно применится."
+      : "Дождитесь, пока оно применится, и повторите.";
+  return `Предыдущее изменение этого сервиса ещё сохраняется. ${tail}`;
 }
 
 // apiErrorText turns one API failure into a sentence for the user.
