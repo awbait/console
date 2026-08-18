@@ -360,9 +360,11 @@ CREATE UNIQUE INDEX uniq_active_service
 
 ### Статус деплоя
 
-- `GET /applications` - все ArgoCD Applications, видимые пользователю
-- `GET /applications/{name}` - детали (sync status, health, ресурсы, история деплоев)
-- `GET /applications/{name}/events` - SSE-стрим
+Отдельных эндпоинтов про Applications у портала нет: состояние сервиса
+пользователь смотрит на заказе, которому оно принадлежит (`GET /requests/{id}`
+отдаёт статус и ссылку на приложение в Argo CD, `GET /requests/{id}/events`
+сообщает об изменениях). Argo CD портал опрашивает сам, в фоновом воркере, и
+переводит заказы по состояниям.
 
 ### Health
 

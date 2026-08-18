@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 
@@ -148,25 +147,6 @@ func (a *apiApp) toApp() Application {
 	}
 }
 
-func (c *Client) ListApplications(ctx context.Context, selector map[string]string) ([]Application, error) {
-	q := url.Values{}
-	if s := encodeSelector(selector); s != "" {
-		q.Set("selector", s)
-	}
-	var resp struct {
-		Items []apiApp `json:"items"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/applications", q, nil, &resp); err != nil {
-		return nil, err
-	}
-	out := make([]Application, 0, len(resp.Items))
-	for i := range resp.Items {
-		out = append(out, resp.Items[i].toApp())
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
-}
-
 func (c *Client) GetApplication(ctx context.Context, name string) (*Application, error) {
 	return c.getApplication(ctx, name, "")
 }
@@ -220,22 +200,4 @@ func (c *Client) Healthz(ctx context.Context) error {
 		return errors.New("argocd: token rejected (not logged in)")
 	}
 	return nil
-}
-
-// encodeSelector renders an equality label selector "k1=v1,k2=v2" with keys
-// sorted for deterministic requests.
-func encodeSelector(selector map[string]string) string {
-	if len(selector) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(selector))
-	for k := range selector {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, k+"="+selector[k])
-	}
-	return strings.Join(parts, ",")
 }

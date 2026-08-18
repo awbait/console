@@ -6,9 +6,9 @@ package events
 
 import "sync"
 
-// Event is a status update for a request or application.
+// Event is a status update for an order.
 type Event struct {
-	Topic string         `json:"-"`    // e.g. "request:<id>" or "app:<name>"
+	Topic string         `json:"-"`    // "requests" (all of them) or "request:<id>"
 	Type  string         `json:"type"` // status_changed, mr_updated, ...
 	Data  map[string]any `json:"data"`
 }

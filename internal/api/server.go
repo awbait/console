@@ -17,7 +17,6 @@ import (
 	"console/internal/provisioning"
 	"console/internal/publications"
 	"console/internal/spa"
-	"console/internal/status"
 	"console/internal/store"
 	"console/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -41,7 +40,6 @@ type Server struct {
 	Catalog *catalog.Service
 	Prov    *provisioning.Service
 	Pubs    *publications.Service
-	Status  *status.Service
 	Store   store.Store
 	Cache   cache.Cache
 	Bus     *events.Bus
@@ -197,11 +195,6 @@ func (s *Server) Router() http.Handler {
 			r.Post("/requests/{id}/sync", s.handleSyncRequest)
 			r.Post("/requests/{id}/pull", s.handlePullRequest) // adopt Git state into the portal
 			r.Get("/requests/{id}/events", s.handleRequestEvents)
-
-			// applications
-			r.Get("/applications", s.handleListApplications)
-			r.Get("/applications/{name}", s.handleGetApplication)
-			r.Get("/applications/{name}/events", s.handleAppEvents)
 		})
 	})
 

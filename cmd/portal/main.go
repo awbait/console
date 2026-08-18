@@ -153,7 +153,6 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		discoveryOwner = cfg.AdminGroups[0]
 	}
 	pubsSvc.SetDiscoveryOwner(discoveryOwner)
-	statusSvc := status.New(argo)
 
 	// --- auth ---
 	authn, err := buildAuth(ctx, cfg, c, observability.Component(log, "auth"))
@@ -233,7 +232,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 
 	// --- HTTP ---
 	srv := &api.Server{
-		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc, Status: statusSvc,
+		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc,
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
 		// The loaded config backs the admin configuration page (read-only).
