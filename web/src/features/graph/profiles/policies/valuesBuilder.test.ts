@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Edge } from "@xyflow/react";
 import { type TopoNamespace, type TopoWorkload, workloadId } from "./topology";
-import { defaultMapping } from "../../mapping";
+import { defaultMapping } from "@/features/graph/mapping";
 import { buildPolicies, partitionEdges } from "./valuesBuilder";
 import { parseValues } from "./valuesParser";
 import { bodyHandleId, portHandleId } from "./WorkloadNode";

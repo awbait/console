@@ -7,7 +7,7 @@ import {
   Heading,
 } from "react-aria-components";
 import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
-import { fieldMsg, ruPlural } from "./fieldErrors";
+import { type FieldRequirement, fieldMsg, fieldRequirements, ruPlural } from "./fieldErrors";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -431,6 +431,9 @@ function Field({
   const locked = ancestorLocked || lockedPaths.has(path) || (lockActive && isReadOnly(s));
   const label = text(s.title) ?? name;
   const desc = text(s.description);
+  // What the field accepts, read off the schema: it sits behind the "i" in the
+  // field, while desc stays under it and says what the field is for.
+  const requirements = fieldRequirements(s);
   // Inline error for leaf fields: shown once touched or after a submit attempt.
   const err = validation.showAll || validation.touched.has(path) ? validation.errors.get(path) : undefined;
   const change = (v: unknown) => {
@@ -472,6 +475,7 @@ function Field({
         <NumberInput
           label={label}
           description={desc}
+          requirements={requirements}
           isRequired={required}
           isDisabled={locked}
           errorText={err}
@@ -505,6 +509,7 @@ function Field({
         <TextField
           label={label}
           description={desc}
+          requirements={requirements}
           isRequired={required}
           isDisabled={locked}
           errorText={err}
@@ -539,6 +544,7 @@ function NumberInput({
   onChange: (v: number | undefined) => void;
   label: string;
   description?: string;
+  requirements?: FieldRequirement[];
   errorText?: string;
   hideLabel?: boolean;
   isRequired?: boolean;

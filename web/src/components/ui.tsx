@@ -1,4 +1,12 @@
-import { IconChevronDown, IconPlugConnectedX, IconRefresh } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconChevronDown,
+  IconInfoCircle,
+  IconPlugConnectedX,
+  IconPointFilled,
+  IconRefresh,
+  IconX,
+} from "@tabler/icons-react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
   Button as AriaButton,
@@ -12,11 +20,13 @@ import {
   Label,
   ListBox,
   ListBoxItem,
+  OverlayArrow,
   Popover,
   SelectValue,
   TooltipTrigger,
 } from "react-aria-components";
 import { Link, type LinkProps } from "react-router-dom";
+import type { FieldKind, FieldRequirement } from "../form/fieldErrors";
 
 const btnVariants = {
   primary:
@@ -43,17 +53,93 @@ export function buttonClass(variant: keyof typeof btnVariants = "secondary", cla
 // Hint wraps a focusable trigger (a react-aria Button) with a styled tooltip,
 // the same look as the small "i" hints. Note: a tooltip won't open on a truly
 // `isDisabled` trigger - keep the button enabled and gate its action instead.
-export function Hint({ text, children }: { text: string; children: ReactNode }) {
+export function Hint({
+  text,
+  children,
+  isOpen,
+  onOpenChange,
+  placement,
+}: {
+  text: ReactNode;
+  children: ReactNode;
+  // Controlled open state, for hints that have to be visible while the reader
+  // is doing something else (typing in the field the hint is about). Left out,
+  // the hint behaves as a plain tooltip: hover or focus its trigger.
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  placement?: "top" | "bottom" | "bottom start" | "bottom end" | "top start" | "top end";
+}) {
   return (
-    <TooltipTrigger delay={150} closeDelay={0}>
+    <TooltipTrigger delay={150} closeDelay={0} isOpen={isOpen} onOpenChange={onOpenChange}>
       {children}
+      {/* The floating layer, not another card: bg-overlay sits above whatever it
+          covers (in the dark themes by lightness, since a shadow on black is
+          invisible), the edge is a shade stronger than a card border, and the
+          arrow points at what the hint is about. Without those three it reads as
+          a block that grew out of the page.
+
+          It also arrives from somewhere: a few pixels along the axis it opened
+          on, out of the trigger and back into it. A panel that only fades in has
+          no direction and reads as appearing over the page rather than as
+          coming out of the icon. Closing is quicker than opening - a hint on
+          its way out should not be in the way. */}
       <AriaTooltip
-        offset={6}
-        className="max-w-xs rounded-md border border-slate-200 bg-surface px-2.5 py-1.5 text-xs text-slate-700 shadow-lg entering:animate-in entering:fade-in entering:zoom-in-95"
+        offset={8}
+        placement={placement}
+        className="group max-w-xs rounded-lg border border-overlay-edge overlay-panel bg-overlay px-3 py-2 text-xs text-slate-700 entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-150 entering:placement-bottom:slide-in-from-top-1 entering:placement-left:slide-in-from-right-1 entering:placement-right:slide-in-from-left-1 entering:placement-top:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 motion-reduce:transition-none motion-reduce:animate-none"
       >
+        <OverlayArrow className="group">
+          {/* Rotated square rather than an SVG triangle: it inherits the panel's
+              own background and border, so the two can never drift apart in
+              either theme. Only the two outward edges are drawn; the panel
+              covers the rest, which is what the 1px nudge is for. */}
+          <span className="block h-2 w-2 rotate-45 border-b border-r border-overlay-edge bg-overlay group-placement-bottom:-mb-px group-placement-bottom:rotate-[225deg] group-placement-top:-mt-px" />
+        </OverlayArrow>
         {text}
       </AriaTooltip>
     </TooltipTrigger>
+  );
+}
+
+// RequirementList: what a field accepts, one rule per line, each ticked off
+// against what is typed so far. A list, not a paragraph - three rules run
+// together into a sentence nobody finishes reading.
+//
+// An empty field is neutral: every rule unmet is true but useless, and a wall
+// of red in front of someone who has not typed anything reads as a telling-off.
+// State is carried by an icon as well as by colour, never by colour alone.
+function RequirementList({ items, value }: { items: FieldRequirement[]; value: string }) {
+  const empty = value.trim() === "";
+  return (
+    <ul className="flex flex-col gap-1">
+      {items.map((r) => {
+        const met = !empty && r.met(value);
+        const failed = !empty && !met;
+        return (
+          <li
+            key={r.text}
+            className={`flex items-start gap-1.5 ${
+              met ? "text-emerald-700" : failed ? "text-red-700" : "text-slate-600"
+            }`}
+          >
+            <span className="mt-px shrink-0">
+              {met ? (
+                <IconCheck size={13} stroke={2.4} />
+              ) : failed ? (
+                <IconX size={13} stroke={2.4} />
+              ) : (
+                // slate-500, not slate-300: in the dark themes slate-300 is
+                // darker than the panel it sits on, so the dot vanished. This
+                // one stays quieter than the row it belongs to and is still
+                // above the 3:1 a glyph needs, in both themes.
+                <IconPointFilled size={13} className="text-slate-500" />
+              )}
+            </span>
+            <span>{r.text}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -87,6 +173,8 @@ export function LinkButton({
 export function TextField({
   label,
   description,
+  kind,
+  requirements,
   value,
   onChange,
   errorText,
@@ -96,8 +184,25 @@ export function TextField({
 }: {
   label: string;
   description?: string;
+  // What kind of value this field takes (form/fieldErrors: a DNS label, a port,
+  // a namespace). One prop instead of two: the field states the rules in its
+  // hint and reports the first broken one under itself, from the same
+  // definition, so a field cannot promise one thing and complain about another.
+  // Fields built from a chart schema pass `requirements` and `errorText`
+  // separately - the schema is their kind.
+  kind?: FieldKind;
+  // What the field accepts (characters, length, range), one line per rule, in
+  // the wording of form/fieldErrors. Shown behind the "i" inside the field
+  // rather than under it: the description below says what the field is for, and
+  // the two used to be written into one sentence and read as neither. The list
+  // opens by itself while the field is being typed into, ticking off what the
+  // value already satisfies.
+  requirements?: FieldRequirement[];
   value: string;
   onChange: (v: string) => void;
+  // Everything the rules cannot know: a required field left empty, a name
+  // already taken, a refusal from the server. The kind's own complaint comes
+  // first - while the value is still malformed, that is the thing to fix.
   errorText?: string;
   onBlur?: () => void;
   // Render without a visible label (label becomes the aria-label). Used for
@@ -110,7 +215,15 @@ export function TextField({
   // Mobile keyboard hint for filtered numeric text inputs (see NumberInput).
   inputMode?: "numeric" | "decimal";
 }) {
-  const invalid = !!errorText;
+  const rules = requirements ?? kind?.requirements;
+  const error = kind?.error(value) ?? errorText;
+  const invalid = !!error;
+  const hasRules = (rules?.length ?? 0) > 0;
+  // The rules are needed while typing, and a tooltip on the icon is not open
+  // then - so the field holds it open for as long as it has the caret. Hovering
+  // the icon still works on its own, hence both states.
+  const [hintHovered, setHintHovered] = useState(false);
+  const [typing, setTyping] = useState(false);
   return (
     <AriaTextField
       value={value}
@@ -127,22 +240,55 @@ export function TextField({
           {rest.isRequired && <span className="text-red-500"> *</span>}
         </Label>
       )}
-      <Input
-        type={rest.type}
-        inputMode={rest.inputMode}
-        placeholder={rest.placeholder}
-        onBlur={onBlur}
-        // bg-surface, not the browser's default: an unstyled control keeps the
-        // UA field colour, which is a light box on a near-black card in the dark
-        // themes. The field reads as a field by its border (see index.css).
-        className={`rounded-md border bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
-          invalid
-            ? "border-red-500 focus:border-red-500 focus:ring-red-500"
-            : "border-gray-300 focus:border-brand-500 focus:ring-brand-500"
-        }`}
-      />
-      {errorText ? (
-        <span className="text-xs text-red-600">{errorText}</span>
+      <div className="relative">
+        <Input
+          type={rest.type}
+          inputMode={rest.inputMode}
+          placeholder={rest.placeholder}
+          onFocus={() => setTyping(true)}
+          onBlur={() => {
+            setTyping(false);
+            onBlur?.();
+          }}
+          // bg-surface, not the browser's default: an unstyled control keeps the
+          // UA field colour, which is a light box on a near-black card in the dark
+          // themes. The field reads as a field by its border (see index.css).
+          // pr-8 with rules: the text stops before the "i" instead of running under it.
+          className={`w-full rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+            hasRules ? "pr-8" : "pr-2"
+          } ${
+            invalid
+              ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+              : "border-gray-300 focus:border-brand-500 focus:ring-brand-500"
+          }`}
+        />
+        {hasRules && (
+          <span className="absolute inset-y-0 right-1 flex items-center">
+            <Hint
+              text={<RequirementList items={rules ?? []} value={value} />}
+              isOpen={typing || hintHovered}
+              onOpenChange={setHintHovered}
+              // Below the field: while typing, a hint over the label hides the
+              // name of what is being filled in. Aligned to the end rather than
+              // centred on the icon, so the panel finishes where the field
+              // does instead of hanging past its right edge, which is what made
+              // it look like a block of its own.
+              placement="bottom end"
+            >
+              {/* A button, not a bare icon: the tooltip has to open on focus and
+                  on tap too, not only under a mouse. */}
+              <AriaButton
+                aria-label="Требования к полю"
+                className="rounded p-1 text-slate-400 outline-none transition-colors hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                <IconInfoCircle size={15} stroke={1.8} />
+              </AriaButton>
+            </Hint>
+          </span>
+        )}
+      </div>
+      {error ? (
+        <span className="text-xs text-red-600">{error}</span>
       ) : (
         description && <span className="text-xs text-gray-500">{description}</span>
       )}

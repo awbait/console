@@ -1,9 +1,10 @@
 import yaml from "js-yaml";
 import { useEffect, useState } from "react";
-import { FormErrors } from "../../../../components/FormErrors";
-import { Button, TextField } from "../../../../components/ui";
-import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
-import { type GraphMapping, readEntries } from "../../mapping";
+import { FormErrors } from "@/components/FormErrors";
+import { Button, TextField } from "@/components/ui";
+import { fieldMsg, withField } from "@/form/fieldErrors";
+import { namespaceError, namespaceKind } from "@/form/namespace";
+import { type GraphMapping, readEntries } from "@/features/graph/mapping";
 import { MapDialog } from "./TopologyDialogs";
 import { type ParsedGraph, parseValues } from "./valuesParser";
 
@@ -46,9 +47,10 @@ export function ImportValuesDialog({
   function submit() {
     const errors: string[] = [];
     const n = ns.trim();
-    const nsErr = n ? dnsLabelError(n) : fieldMsg.required;
-    if (nsErr) {
-      errors.push(withField("Namespace заказа", nsErr));
+    // A malformed namespace is the field's own complaint, shown under it; the
+    // banner only reports it being missing altogether.
+    if (!n) {
+      errors.push(withField("Namespace заказа", fieldMsg.required));
     }
     let obj: Record<string, unknown> | null = null;
     try {
@@ -88,6 +90,7 @@ export function ImportValuesDialog({
           onChange={setNs}
           isRequired
           placeholder="team-app"
+          kind={namespaceKind}
           description="Values его не хранят: это namespace, куда ставился бы заказ policies."
         />
         <label className="flex flex-col gap-1">
@@ -109,7 +112,7 @@ export function ImportValuesDialog({
         {errs.length > 0 && <FormErrors message={errs.join(" ")} />}
         <div className="flex justify-end gap-2 border-t border-gray-200 pt-3">
           <Button onPress={() => onOpenChange(false)}>Отмена</Button>
-          <Button variant="primary" onPress={submit}>
+          <Button variant="primary" isDisabled={!!namespaceError(ns.trim())} onPress={submit}>
             Загрузить
           </Button>
         </div>

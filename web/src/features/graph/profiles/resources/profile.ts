@@ -1,4 +1,4 @@
-import type { GraphProfile } from "../../core/model";
+import type { GraphProfile } from "@/features/graph/core/model";
 
 // Resource topology profile: what actually runs in a namespace and how the
 // objects reference each other. Read-only by nature - the portal shows the

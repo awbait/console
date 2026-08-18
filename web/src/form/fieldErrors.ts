@@ -18,6 +18,15 @@ export const fieldMsg = {
   taken: (name: string) => `Имя «${name}» уже занято.`,
 };
 
+// The same rules said as requirements rather than as complaints: a hint lists
+// what the field takes, so it names it instead of telling the reader what to
+// do. Only the messages that read as an instruction need a second form - "Не
+// длиннее 63 символов." is already a statement.
+export const fieldHint = {
+  charset: "Строчные латинские буквы, цифры и дефис.",
+  integer: "Целое число.",
+};
+
 // withField prefixes a canonical message with a field label for error lists
 // where several fields report at once ("projectTag: не короче 2 символов.").
 export function withField(label: string, msg: string): string {
@@ -39,6 +48,93 @@ export function ruPlural(n: number, one: string, few: string, many: string): str
 // tags all follow it.
 export const DNS_LABEL_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
+// FieldConstraints is the part of a chart's values.schema.json that says what
+// may be typed into a field.
+export interface FieldConstraints {
+  type?: string;
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+  minimum?: number;
+  maximum?: number;
+}
+
+// FieldRequirement is one rule a field states about itself, and the check for
+// it: the form ticks off what the typed value already satisfies, so the person
+// sees which part is still missing instead of finding out on submit.
+export interface FieldRequirement {
+  text: string;
+  // met answers for a non-empty value. An empty field is "not yet", not
+  // "wrong", and callers show those rules neutral rather than failing.
+  met: (value: string) => boolean;
+}
+
+const CHARSET_RE = /^[a-z0-9-]*$/;
+const INTEGER_RE = /^-?\d+$/;
+
+// Patterns charts use for names. A regular expression is not something to show
+// a person, so only the ones we can say in words are turned into rules; an
+// unrecognised pattern contributes nothing and the field just says less.
+const CHARSET_PATTERNS: { re: string; rules: FieldRequirement[] }[] = [
+  // DNS label, with and without the edge-character clause.
+  {
+    re: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+    rules: [
+      { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
+      { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
+    ],
+  },
+  {
+    re: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+    rules: [
+      { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
+      { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
+    ],
+  },
+  { re: "^[a-z0-9-]+$", rules: [{ text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) }] },
+  { re: "^[a-z0-9-]*$", rules: [{ text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) }] },
+];
+
+// fieldRequirements lists what a field accepts, in the same words the error
+// would use if the value were wrong - so the hint and the complaint never
+// disagree. Order follows what a person checks first: characters, then length,
+// then range. Returns an empty list when the schema says nothing worth
+// repeating (an enum, for instance, states its own options).
+export function fieldRequirements(s: FieldConstraints): FieldRequirement[] {
+  const out: FieldRequirement[] = [];
+  if (s.pattern) {
+    const known = CHARSET_PATTERNS.find((p) => p.re === s.pattern);
+    if (known) out.push(...known.rules);
+  }
+  if (s.type === "integer") {
+    out.push({ text: fieldHint.integer, met: (v) => INTEGER_RE.test(v) });
+  }
+  if (typeof s.minLength === "number" && s.minLength > 0) {
+    const n = s.minLength;
+    out.push({ text: fieldMsg.minLen(n), met: (v) => v.length >= n });
+  }
+  if (typeof s.maxLength === "number") {
+    const n = s.maxLength;
+    out.push({ text: fieldMsg.maxLen(n), met: (v) => v.length <= n });
+  }
+  const { minimum: lo, maximum: hi } = s;
+  if (typeof lo === "number" && typeof hi === "number") {
+    out.push({ text: fieldMsg.range(lo, hi), met: (v) => inRange(v, lo, hi) });
+  } else if (typeof lo === "number") {
+    out.push({ text: fieldMsg.min(lo), met: (v) => inRange(v, lo, Number.POSITIVE_INFINITY) });
+  } else if (typeof hi === "number") {
+    out.push({ text: fieldMsg.max(hi), met: (v) => inRange(v, Number.NEGATIVE_INFINITY, hi) });
+  }
+  return out;
+}
+
+// inRange is false for anything that is not a number: a half-typed "-" or "1e"
+// satisfies no bound, and saying so is more honest than treating it as zero.
+function inRange(v: string, lo: number, hi: number): boolean {
+  const n = Number(v);
+  return v.trim() !== "" && !Number.isNaN(n) && n >= lo && n <= hi;
+}
+
 // dnsLabelError validates a DNS label and returns the canonical message for
 // the first failed check only (bad characters and a hyphen on the edge are
 // separate checks), or null when valid. Empty input is valid here:
@@ -50,3 +146,57 @@ export function dnsLabelError(v: string, maxLen = 63): string | null {
   if (!DNS_LABEL_RE.test(v)) return fieldMsg.edgeChars;
   return null;
 }
+
+// dnsLabelRequirements is dnsLabelError said forwards: the same three checks,
+// as rules the field states about itself before anything is wrong. Fields the
+// portal writes by hand - service name, cluster, namespace - have no chart
+// schema for fieldRequirements to read, so their list is built here, next to
+// the validator it has to agree with. Order matches the other lists:
+// characters first, then length.
+export function dnsLabelRequirements(maxLen = 63): FieldRequirement[] {
+  return [
+    { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
+    { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
+    { text: fieldMsg.maxLen(maxLen), met: (v) => v.length <= maxLen },
+  ];
+}
+
+// FieldKind is the two halves of one rule set travelling together: what the
+// field says it takes, and what it says when the value is not that. A field
+// driven by a chart schema gets both from the schema; a field the portal writes
+// by hand - the order card, the map dialogs - names a kind instead of wiring
+// the hint and the check separately, which is how the two used to disagree.
+//
+// Pass it to TextField as `kind` and the field grows an "i" with the rules
+// ticking off as they are met, and reports the first broken one under itself.
+export interface FieldKind {
+  requirements: FieldRequirement[];
+  // The canonical message for the first failed check, or null when the value is
+  // acceptable. Empty input is always acceptable here: whether a field may be
+  // left blank is the form's business, not the rule set's.
+  error: (value: string) => string | null;
+}
+
+// The kinds a hand-written field can be. Anything used in more than one place
+// belongs here; a rule that is true of exactly one field (the Harbor path) is
+// better declared next to that field.
+export const fieldKind = {
+  // RFC 1123 DNS label: cluster names, workload names, service accounts.
+  dnsLabel: (maxLen = 63): FieldKind => ({
+    requirements: dnsLabelRequirements(maxLen),
+    error: (v) => dnsLabelError(v, maxLen),
+  }),
+
+  // A whole number within bounds: ports, replica counts, sizes.
+  integerRange: (lo: number, hi: number): FieldKind => ({
+    requirements: [
+      { text: fieldHint.integer, met: (v) => INTEGER_RE.test(v) },
+      { text: fieldMsg.range(lo, hi), met: (v) => inRange(v, lo, hi) },
+    ],
+    error: (v) => {
+      if (!v) return null;
+      if (!INTEGER_RE.test(v)) return fieldMsg.integer;
+      return inRange(v, lo, hi) ? null : fieldMsg.range(lo, hi);
+    },
+  }),
+};

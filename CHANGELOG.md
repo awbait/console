@@ -20,6 +20,16 @@ All notable changes to this project are documented in this file.
   `GITLAB_WEBHOOK_SCOPE` pins that choice.
 
 ### Changed
+- Fields say what they take: while you type, the requirements are listed beside
+  them - which characters, what length, what range - with the ones already
+  satisfied ticked off. That now covers a service's parameters in an order, the
+  cluster and the namespace, and the fields in the network map and add-service
+  windows. Until now it had to be guessed, or learned from the error after
+  sending the order.
+- The network map and add-service windows report an unsuitable value under the
+  field itself, while you type. It used to be listed at the bottom of the
+  window, and only after pressing the button. The button stays unavailable
+  until the value is fixed.
 - The publication approvals page no longer scrolls away from you: the title
   stays put and only the lists move. The services table gained the category and
   the date it last changed, the "in the catalog" column now shows the versions

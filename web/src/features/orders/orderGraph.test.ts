@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { OrderRequest, RequestMR, ViewDocument } from "../../api/types";
+import type { OrderRequest, RequestMR, ViewDocument } from "@/api/types";
 import { defaultMapping } from "../graph/mapping";
 import { entriesHiddenFromTabs, entryCount, graphFor, graphLock, sameValues } from "./orderGraph";
 

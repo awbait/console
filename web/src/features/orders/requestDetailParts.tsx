@@ -46,19 +46,19 @@ import type {
   RequestMR,
   RequestStatus,
   ViewDocument,
-} from "../../api/types";
-import { chartLabel } from "../../app/CatalogContext";
-import { useTheme } from "../../app/ThemeContext";
-import { useUser } from "../../auth/UserContext";
+} from "@/api/types";
+import { chartLabel } from "@/app/CatalogContext";
+import { useTheme } from "@/app/ThemeContext";
+import { useUser } from "@/auth/UserContext";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
-} from "../../components/products/GenericProductTabs";
-import { productTabs } from "../../components/products/genericView";
-import { statusMeta } from "../../components/StatusBadge";
-import { buttonClass, Card, Checkbox } from "../../components/ui";
-import { safeHref } from "../../lib/href";
+} from "@/components/products/GenericProductTabs";
+import { productTabs } from "@/components/products/genericView";
+import { statusMeta } from "@/components/StatusBadge";
+import { buttonClass, Card, Checkbox } from "@/components/ui";
+import { safeHref } from "@/lib/href";
 import { OrderGraphDialog } from "./OrderGraphDialog";
 import { graphFor } from "./orderGraph";
 import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";

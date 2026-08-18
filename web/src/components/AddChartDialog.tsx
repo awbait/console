@@ -13,7 +13,18 @@ import { api, HttpError } from "../api/client";
 import type { ChartCheckResult } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
+import type { FieldKind } from "../form/fieldErrors";
 import { Button, Select, TextField } from "./ui";
+
+// Nothing else in the portal asks for a Harbor path, so the kind is declared
+// here rather than in the shared catalogue - which is the point of the shape:
+// a rule that belongs to one field lives with it, and still gives that field
+// the same hint and the same complaint as any other.
+const HARBOR_PATH_RE = /^[^/\s]+\/[^\s]+$/;
+const HARBOR_PATH: FieldKind = {
+  requirements: [{ text: "Путь вида project/name.", met: (v) => HARBOR_PATH_RE.test(v) }],
+  error: (v) => (!v || HARBOR_PATH_RE.test(v) ? null : "Укажите путь вида project/name."),
+};
 
 // "Add chart": a chart may live at an arbitrary path in Harbor (outside the
 // configured projects). Enter project/name -> check it exists and the files are
@@ -118,9 +129,13 @@ export function AddChartDialog() {
                       value={path}
                       onChange={(v: string) => setPath(v)}
                       placeholder="project/name"
+                      kind={HARBOR_PATH}
                     />
                   </div>
-                  <Button isDisabled={checking || !path.includes("/")} onPress={onCheck}>
+                  <Button
+                    isDisabled={checking || !HARBOR_PATH.requirements[0].met(path.trim())}
+                    onPress={onCheck}
+                  >
                     {checking ? "Проверяем…" : "Проверить"}
                   </Button>
                 </div>

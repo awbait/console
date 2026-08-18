@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ViewDocument } from "../../api/types";
+import type { ViewDocument } from "@/api/types";
 import { valuesEditorFor } from "./valuesEditors";
 
 // Which editor a chart version offers is declared by that version's own view

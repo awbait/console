@@ -2,26 +2,26 @@ import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TabList, TabPanel, Tabs } from "react-aria-components";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, HttpError } from "../../api/client";
-import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "../../api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "../../app/CatalogContext";
-import { usePlatformHealth } from "../../app/PlatformHealthContext";
-import { useTeam } from "../../app/TeamContext";
-import { useUser } from "../../auth/UserContext";
-import { Breadcrumbs } from "../../components/Breadcrumbs";
-import { FormErrors } from "../../components/FormErrors";
-import { NotFound } from "../../components/NotFound";
+import { api, HttpError } from "@/api/client";
+import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "@/api/types";
+import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
+import { usePlatformHealth } from "@/app/PlatformHealthContext";
+import { useTeam } from "@/app/TeamContext";
+import { useUser } from "@/auth/UserContext";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { FormErrors } from "@/components/FormErrors";
+import { NotFound } from "@/components/NotFound";
 import {
   GenericInfoActions,
   GenericListTab,
   type PersistValues,
-} from "../../components/products/GenericProductTabs";
-import { actionViews, productTabs } from "../../components/products/genericView";
-import { Button, Card, ErrorBox, Loading } from "../../components/ui";
-import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "../../form/namespace";
-import { collectErrors, pruneEmpty } from "../../form/SchemaForm";
-import { useAsync } from "../../hooks/useAsync";
-import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "../../lib/semver";
+} from "@/components/products/GenericProductTabs";
+import { actionViews, productTabs } from "@/components/products/genericView";
+import { Button, Card, ErrorBox, Loading } from "@/components/ui";
+import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
+import { collectErrors, pruneEmpty } from "@/form/SchemaForm";
+import { useAsync } from "@/hooks/useAsync";
+import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { countGraphRules } from "../graph/mapping";
 import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";

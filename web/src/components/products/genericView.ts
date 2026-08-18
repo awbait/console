@@ -7,8 +7,8 @@
 // A tab may also declare dynamic enums (applyEnums) and computed lookup columns
 // (computeCell). Save-time auto-fill of hidden fields is the chart's job, not the
 // portal's, so there is no prepare/onSave step here.
-import { deref, type View } from "../../form/SchemaForm";
-import type { ViewDocument, ViewTab } from "../../api/types";
+import { deref, type View } from "@/form/SchemaForm";
+import type { ViewDocument, ViewTab } from "@/api/types";
 
 type Schema = Record<string, any>;
 

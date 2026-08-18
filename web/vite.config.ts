@@ -47,6 +47,11 @@ function selfHostMonaco(): Plugin {
 // so no request headers are injected.
 export default defineConfig({
   plugins: [react(), selfHostMonaco()],
+  // "@/x" is src/x. Declared in tsconfig.json too (and read from there by tsc
+  // and by bun test); all three have to agree, so change them together.
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   server: {
     port: 5173,
     proxy: {

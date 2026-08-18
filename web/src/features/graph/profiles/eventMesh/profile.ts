@@ -1,4 +1,4 @@
-import type { GraphProfile } from "../../core/model";
+import type { GraphProfile } from "@/features/graph/core/model";
 
 // Event mesh profile: Knative eventing seen as producers, brokers and the
 // services that consume filtered events. Read-only - it shows what a cluster

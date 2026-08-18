@@ -1,4 +1,4 @@
-import type { GraphData } from "../../core/model";
+import type { GraphData } from "@/features/graph/core/model";
 
 // Hand-written sample of a Knative mesh for one shop namespace: a payment
 // gateway and a scheduler publish into the broker, three services consume

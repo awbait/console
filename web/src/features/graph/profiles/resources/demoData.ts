@@ -1,4 +1,4 @@
-import type { GraphData } from "../../core/model";
+import type { GraphData } from "@/features/graph/core/model";
 
 // Hand-written sample of one namespace: an ingress in front of two services,
 // their workloads and the config, secret and volume those workloads mount. One
