@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- The portal's documentation has an "Order form constructor" section: what a
+  version document is, how it maps onto the chart schema, every block of it
+  walked through with examples to copy, screenshots of the form beside the
+  document that produces it, and the errors the constructor reports explained.
+  Until now a service owner assembled the document from the hints on the page
+  itself and from somebody else's publication.
 - A service can require that every change to it is merged by a person, however
   the portal is configured elsewhere. Its version says so in its document
   (`"approval": {"autoMerge": false}`), which is what a service owned by the

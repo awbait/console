@@ -52,5 +52,3 @@ managed-services/                       группа managed-services
 | Репозиторий | `<service>` | `ingress-gateway` |
 | Папка экземпляра | `<cluster>/<namespace>-<instance>` | `prod/payments-igw-public` |
 | Файлы | `application.yaml`, `values.yaml` | - |
-
-Дальше: [Архитектура и интеграции](architecture).

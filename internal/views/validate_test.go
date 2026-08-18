@@ -132,6 +132,31 @@ func TestOrderWithoutIdentityIsValid(t *testing.T) {
 	}
 }
 
+// The approval block is what a service uses to demand a human merge, so a
+// document carrying it has to survive validation - otherwise the constructor
+// refuses to save the very rule the service exists to state.
+func TestApprovalBlock(t *testing.T) {
+	valid := `{"views":{"order":{}},"approval":{"autoMerge":false}}`
+	if issues := views.Validate([]byte(valid), nil); len(issues) > 0 {
+		t.Fatalf("approval block must validate: %+v", issues)
+	}
+	cases := []struct {
+		name, doc, path, msg string
+	}{
+		{"not object", `{"views":{"order":{}},"approval":true}`, "/approval", "объектом"},
+		{"autoMerge not bool", `{"views":{"order":{}},"approval":{"autoMerge":"no"}}`, "/approval/autoMerge", "true или false"},
+		{"unknown key", `{"views":{"order":{}},"approval":{"autoMergo":false}}`, "/approval/autoMergo", "Лишнее поле"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			issues := views.Validate([]byte(c.doc), nil)
+			if !hasIssue(issues, c.path, c.msg) {
+				t.Fatalf("want issue %q at %q, got %+v", c.msg, c.path, issues)
+			}
+		})
+	}
+}
+
 func TestSchemaCrossChecks(t *testing.T) {
 	cases := []struct {
 		name, doc, path, msg string

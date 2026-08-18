@@ -46,10 +46,10 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	issues = append(issues, duplicateKeys(viewJSON)...)
 	for k := range doc {
 		switch k {
-		case "views", "tabs", "actions", "defaults", "graph", "version", "$comment":
+		case "views", "tabs", "actions", "defaults", "graph", "approval", "version", "$comment":
 		default:
 			issues = append(issues, Issue{"/" + k,
-				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\" и \"version\"", k)})
+				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\"", k)})
 		}
 	}
 	viewsRaw, ok := doc["views"]
@@ -137,6 +137,39 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	// fields live in the values.
 	if graphRaw, ok := doc["graph"]; ok {
 		issues = append(issues, validateGraph(graphRaw, schema)...)
+	}
+
+	// approval: how this version's changes are allowed to reach the cluster
+	// (see ReadAutoMergeRule in approval.go).
+	if approvalRaw, ok := doc["approval"]; ok {
+		issues = append(issues, validateApproval(approvalRaw)...)
+	}
+	return issues
+}
+
+// validateApproval checks the "approval" block. Today it holds one rule,
+// autoMerge, and an unknown key is reported rather than ignored: a misspelled
+// rule would silently leave the version on the installation's default, which is
+// exactly the outcome the author wrote the block to avoid.
+func validateApproval(raw any) []Issue {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return []Issue{{"/approval",
+			`Блок "approval" должен быть объектом: {"autoMerge": false}`}}
+	}
+	var issues []Issue
+	for k, v := range m {
+		switch k {
+		case "$comment":
+		case "autoMerge":
+			if _, ok := v.(bool); !ok {
+				issues = append(issues, Issue{"/approval/autoMerge",
+					`Поле "autoMerge" должно быть true или false`})
+			}
+		default:
+			issues = append(issues, Issue{"/approval/" + k,
+				fmt.Sprintf("Лишнее поле %q: в \"approval\" допустимо только \"autoMerge\"", k)})
+		}
 	}
 	return issues
 }
