@@ -18,6 +18,11 @@
      does from black, and a placeholder also spends half of its pulse at half
      opacity, which halves what little was there. */
   --c-skeleton: 226 232 240; /* #e2e8f0 */
+  /* Floating layer: hints, menus, popovers. On a light page it is the same
+     white as a card, so the shadow and a border a shade darker than a card's
+     do the separating. */
+  --c-overlay: 255 255 255;
+  --c-overlay-edge: 203 213 225; /* #cbd5e1 */
 
   --c-brand-50: 239 246 255;
   --c-brand-100: 219 234 254;
@@ -95,6 +100,12 @@
   --c-surface: 10 10 10; /* #0a0a0a - cards/nav, one step above the page */
   --c-app: 0 0 0; /* #000 - page background */
   --c-skeleton: 25 25 25; /* #191919 - loading placeholder, a card divider's worth above the card */
+  /* Floating layer. A shadow is invisible here, so the popup steps up in
+     lightness instead: above the card it covers, with a border lighter still,
+     which is what makes it read as hovering rather than as part of the page. */
+  --c-overlay: 46 46 46; /* #2e2e2e - the popup carries its own light: nothing else
+                            separates it from a near-black card */
+  --c-overlay-edge: 92 92 92; /* #5c5c5c - a rim, not a hairline */
 
   --c-neutral-50: 20 20 20; /* #141414 - hover/fill, lighter than the card it sits on */
   --c-neutral-100: 25 25 25; /* #191919 - dividers inside a card */
@@ -181,6 +192,37 @@
 
 body {
   @apply bg-app text-slate-800 antialiased;
+}
+
+/* A panel that floats over the page: hints, and anything else that has to read
+   as lifted rather than as part of what it covers.
+
+   On a light page the shadow does the lifting, and one blurred layer is not
+   enough for that: a near shadow draws the panel's own edge, the far one is the
+   soft pool a raised object casts on what is below it. Two layers separated
+   like that read as height; a single mid-sized blur reads as a grey smudge. The
+   shadow is slate-tinted rather than black - neutral surfaces under a black
+   shadow go muddy. */
+.overlay-panel {
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.08),
+    0 6px 12px -4px rgb(15 23 42 / 0.14),
+    0 18px 32px -10px rgb(15 23 42 / 0.2),
+    0 36px 60px -20px rgb(15 23 42 / 0.24);
+}
+
+/* On black none of that shows: a shadow needs something lighter than itself to
+   darken. So the panel is lit instead of shaded, the way a raised surface is -
+   a highlight along the top edge where the light lands, and a dark rim just
+   outside the border where the panel's own body shades the surface it covers.
+   Between them the border reads as a lifted edge and not as a drawn line. */
+[data-theme="dark"] .overlay-panel,
+[data-theme="rn"] .overlay-panel {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 0 0 1px rgb(0 0 0 / 0.8),
+    0 6px 12px -4px rgb(0 0 0 / 0.9),
+    0 24px 48px -12px rgb(0 0 0 / 0.95);
 }
 
 /* Dimming behind a modal. A fixed black-at-30% works on a light page but

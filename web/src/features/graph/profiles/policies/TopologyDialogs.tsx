@@ -1,9 +1,10 @@
 import { IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { FormErrors } from "../../../../components/FormErrors";
-import { Button, Select, TextField } from "../../../../components/ui";
-import { dnsLabelError, fieldMsg, withField } from "../../../../form/fieldErrors";
+import { FormErrors } from "@/components/FormErrors";
+import { Button, Select, TextField } from "@/components/ui";
+import { fieldKind, fieldMsg, withField } from "@/form/fieldErrors";
+import { namespaceError, namespaceKind } from "@/form/namespace";
 import {
   KIND_LABELS,
   PORT_PROTOCOLS,
@@ -83,11 +84,16 @@ export function NamespaceDialog({
     }
   }, [isOpen]);
 
+  // The field states its own rules and complains about a malformed name as it
+  // is typed, so the banner is left with what the field cannot know: an empty
+  // required field and a name the canvas already has. Repeating the format here
+  // would say the same thing twice, in two places, at two different moments.
+  const malformed = !!namespaceError(name.trim());
+
   function submit() {
     const n = name.trim();
-    const nErr = n ? dnsLabelError(n) : fieldMsg.required;
-    if (nErr) {
-      setErr(nErr);
+    if (!n) {
+      setErr(fieldMsg.required);
       return;
     }
     if (existing.includes(n)) {
@@ -107,7 +113,7 @@ export function NamespaceDialog({
           onChange={setName}
           isRequired
           placeholder="team-app"
-          description="Строчные латинские буквы, цифры и дефис."
+          kind={namespaceKind}
         />
         {suggestions.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -128,7 +134,7 @@ export function NamespaceDialog({
         {err && <FormErrors message={err} />}
         <div className="flex justify-end gap-2 border-t border-gray-200 pt-3">
           <Button onPress={() => onOpenChange(false)}>Отмена</Button>
-          <Button variant="primary" onPress={submit}>
+          <Button variant="primary" isDisabled={malformed} onPress={submit}>
             Добавить
           </Button>
         </div>
@@ -136,6 +142,11 @@ export function NamespaceDialog({
     </MapDialog>
   );
 }
+
+// What the workload dialog's fields take. Named once here, and both the hint
+// inside the field and the complaint under it come from these.
+const WORKLOAD_NAME = fieldKind.dnsLabel();
+const PORT = fieldKind.integerRange(1, 65535);
 
 interface KVRow {
   key: string;
@@ -191,23 +202,25 @@ export function WorkloadDialog({
 
   if (!namespace) return null;
 
+  // Every field states its own rules and reports its own broken one, so saving
+  // is simply unavailable while one of them is wrong: the reason is already on
+  // screen, under the field it belongs to, and does not need repeating in the
+  // banner at the bottom.
+  const malformed =
+    !!WORKLOAD_NAME.error(name.trim()) ||
+    !!WORKLOAD_NAME.error(sa.trim()) ||
+    ports.some((r) => !!PORT.error(r.port.trim()));
+
   function submit() {
     if (!namespace) return;
     const errors: string[] = [];
     const n = name.trim();
-    const nameErr = n ? dnsLabelError(n) : fieldMsg.required;
-    if (nameErr) {
-      errors.push(withField("Имя workload", nameErr));
-    } else if (
-      namespace.workloads.some((w) => w.name === n && w.id !== workload?.id)
-    ) {
+    if (!n) {
+      errors.push(withField("Имя workload", fieldMsg.required));
+    } else if (namespace.workloads.some((w) => w.name === n && w.id !== workload?.id)) {
       errors.push(`Workload «${n}» уже есть в namespace ${namespace.name}.`);
     }
     const saTrim = sa.trim();
-    const saErr = saTrim ? dnsLabelError(saTrim) : null;
-    if (saErr) {
-      errors.push(withField("Service account", saErr));
-    }
     const sel: Record<string, string> = {};
     for (const row of selector) {
       const k = row.key.trim();
@@ -228,10 +241,9 @@ export function WorkloadDialog({
       const t = row.port.trim();
       if (!t) continue;
       const num = Number(t);
-      if (!Number.isInteger(num) || num < 1 || num > 65535) {
-        errors.push(withField(`Порт «${t}»`, fieldMsg.range(1, 65535)));
-        continue;
-      }
+      // Out of range is the row's own complaint (PORT), shown under it as it is
+      // typed; the row is skipped here rather than reported a second time.
+      if (PORT.error(t)) continue;
       if (seen.has(num)) {
         errors.push(`Порт ${num} указан дважды.`);
         continue;
@@ -262,7 +274,14 @@ export function WorkloadDialog({
     >
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
-          <TextField label="Имя" value={name} onChange={setName} isRequired placeholder="backend" />
+          <TextField
+            label="Имя"
+            value={name}
+            onChange={setName}
+            isRequired
+            placeholder="backend"
+            kind={WORKLOAD_NAME}
+          />
           <Select
             label="Тип"
             selectedKey={kind}
@@ -275,6 +294,7 @@ export function WorkloadDialog({
           value={sa}
           onChange={setSa}
           placeholder="backend-sa"
+          kind={WORKLOAD_NAME}
           description="Пусто - workload будет помечен как невалидный конец стрелки."
         />
 
@@ -327,11 +347,14 @@ export function WorkloadDialog({
           {ports.map((row, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: positional editor rows
             <div key={i} className="flex items-center gap-2">
-              <div className="w-28">
+              {/* Wider than the number needs: the row carries the "i" and, when
+                  the port is out of range, the reason underneath. */}
+              <div className="w-36">
                 <TextField
                   label={`Порт ${i + 1}`}
                   hideLabel
                   inputMode="numeric"
+                  kind={PORT}
                   value={row.port}
                   onChange={(v) => {
                     if (!/^\d*$/.test(v)) return;
@@ -370,7 +393,7 @@ export function WorkloadDialog({
         {errs.length > 0 && <FormErrors message={errs.join(" ")} />}
         <div className="flex justify-end gap-2 border-t border-gray-200 pt-3">
           <Button onPress={() => onOpenChange(false)}>Отмена</Button>
-          <Button variant="primary" onPress={submit}>
+          <Button variant="primary" isDisabled={malformed} onPress={submit}>
             {workload ? "Сохранить" : "Добавить"}
           </Button>
         </div>

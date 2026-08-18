@@ -146,3 +146,57 @@ export function dnsLabelError(v: string, maxLen = 63): string | null {
   if (!DNS_LABEL_RE.test(v)) return fieldMsg.edgeChars;
   return null;
 }
+
+// dnsLabelRequirements is dnsLabelError said forwards: the same three checks,
+// as rules the field states about itself before anything is wrong. Fields the
+// portal writes by hand - service name, cluster, namespace - have no chart
+// schema for fieldRequirements to read, so their list is built here, next to
+// the validator it has to agree with. Order matches the other lists:
+// characters first, then length.
+export function dnsLabelRequirements(maxLen = 63): FieldRequirement[] {
+  return [
+    { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
+    { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
+    { text: fieldMsg.maxLen(maxLen), met: (v) => v.length <= maxLen },
+  ];
+}
+
+// FieldKind is the two halves of one rule set travelling together: what the
+// field says it takes, and what it says when the value is not that. A field
+// driven by a chart schema gets both from the schema; a field the portal writes
+// by hand - the order card, the map dialogs - names a kind instead of wiring
+// the hint and the check separately, which is how the two used to disagree.
+//
+// Pass it to TextField as `kind` and the field grows an "i" with the rules
+// ticking off as they are met, and reports the first broken one under itself.
+export interface FieldKind {
+  requirements: FieldRequirement[];
+  // The canonical message for the first failed check, or null when the value is
+  // acceptable. Empty input is always acceptable here: whether a field may be
+  // left blank is the form's business, not the rule set's.
+  error: (value: string) => string | null;
+}
+
+// The kinds a hand-written field can be. Anything used in more than one place
+// belongs here; a rule that is true of exactly one field (the Harbor path) is
+// better declared next to that field.
+export const fieldKind = {
+  // RFC 1123 DNS label: cluster names, workload names, service accounts.
+  dnsLabel: (maxLen = 63): FieldKind => ({
+    requirements: dnsLabelRequirements(maxLen),
+    error: (v) => dnsLabelError(v, maxLen),
+  }),
+
+  // A whole number within bounds: ports, replica counts, sizes.
+  integerRange: (lo: number, hi: number): FieldKind => ({
+    requirements: [
+      { text: fieldHint.integer, met: (v) => INTEGER_RE.test(v) },
+      { text: fieldMsg.range(lo, hi), met: (v) => inRange(v, lo, hi) },
+    ],
+    error: (v) => {
+      if (!v) return null;
+      if (!INTEGER_RE.test(v)) return fieldMsg.integer;
+      return inRange(v, lo, hi) ? null : fieldMsg.range(lo, hi);
+    },
+  }),
+};

@@ -4,13 +4,13 @@
 // and OrderValuesCard (Form/Raw YAML toggle over the schema-driven form).
 import Editor from "@monaco-editor/react";
 import { Suspense } from "react";
-import type { JSONSchema } from "../../api/types";
-import { useTheme } from "../../app/ThemeContext";
-import { dnsLabelError, fieldMsg } from "../../form/fieldErrors";
-import { namespaceError } from "../../form/namespace";
-import { SchemaForm, type View } from "../../form/SchemaForm";
+import type { JSONSchema } from "@/api/types";
+import { useTheme } from "@/app/ThemeContext";
+import { Card, Loading, Select, TextField } from "@/components/ui";
+import { fieldKind, fieldMsg } from "@/form/fieldErrors";
+import { namespaceKind } from "@/form/namespace";
+import { SchemaForm, type View } from "@/form/SchemaForm";
 import type { ActiveValuesEditor } from "./valuesEditors";
-import { Card, Loading, Select, TextField } from "../../components/ui";
 
 type Values = Record<string, unknown>;
 
@@ -80,12 +80,10 @@ export function OrderMetaCard({
           label="Service name"
           isRequired
           placeholder="payments-db"
+          kind={fieldKind.dnsLabel()}
           value={serviceName}
           onChange={onServiceName}
-          errorText={
-            dnsLabelError(serviceName) ??
-            (showErrors && !serviceName ? fieldMsg.required : undefined)
-          }
+          errorText={showErrors && !serviceName ? fieldMsg.required : undefined}
         />
       )}
       <TextField
@@ -93,11 +91,10 @@ export function OrderMetaCard({
         description="Кластер назначения ArgoCD (destination.name)."
         isRequired
         placeholder="in-cluster"
+        kind={fieldKind.dnsLabel()}
         value={cluster}
         onChange={onCluster}
-        errorText={
-          dnsLabelError(cluster) ?? (showErrors && !cluster ? fieldMsg.required : undefined)
-        }
+        errorText={showErrors && !cluster ? fieldMsg.required : undefined}
       />
       {!hideNamespace ? (
         <TextField
@@ -105,12 +102,10 @@ export function OrderMetaCard({
           description="Namespace назначения в кластере (destination.namespace)."
           isRequired
           placeholder="my-namespace"
+          kind={namespaceKind}
           value={namespace}
           onChange={onNamespace}
-          errorText={
-            namespaceError(namespace) ??
-            (showErrors && !namespace ? fieldMsg.required : undefined)
-          }
+          errorText={showErrors && !namespace ? fieldMsg.required : undefined}
         />
       ) : (
         // The input is hidden (the chart names the namespace itself); still show
