@@ -15,6 +15,11 @@ All notable changes to this project are documented in this file.
   read is kept for 90 days; what has not is kept until it is.
 
 ### Changed
+- A release of your service that is in the registry but not published yet now
+  comes as a notification, and opens on the version to describe. It used to be a
+  stripe across the top of the catalog, which only whoever happened to open the
+  catalog would see - and the catalog is where a person comes to order
+  something, not to be handed work.
 - A value the order was refused for is explained in the words the field itself
   used while it was being filled in: "Не короче 3 символов." rather than "length
   must be >= 3, but got 2". A missing value is now pointed at the field that is

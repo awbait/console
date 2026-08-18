@@ -1,5 +1,6 @@
 import {
   IconAlertTriangle,
+  IconArrowUpCircle,
   IconCircleCheck,
   IconInfoCircle,
   IconRefreshAlert,
@@ -23,6 +24,7 @@ const ICONS: Record<string, IconType> = {
   order_change_blocked: IconRefreshAlert,
   version_approved: IconCircleCheck,
   version_rejected: IconAlertTriangle,
+  chart_version_available: IconArrowUpCircle,
   portal_updated: IconSparkles,
 };
 

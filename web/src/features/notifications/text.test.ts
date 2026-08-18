@@ -42,6 +42,19 @@ describe("notificationText", () => {
     expect(text).toContain("Уберите hpa из формы.");
   });
 
+  test("a release nobody has published yet says what to do about it", () => {
+    const text = notificationText(
+      notification({
+        kind: "chart_version_available",
+        subject_type: "version",
+        payload: { chart_project: "platform", chart_name: "ingress-gateway", chart_version: "1.3.0" },
+      }),
+    );
+    expect(text).toContain("ingress-gateway");
+    expect(text).toContain("1.3.0");
+    expect(text).toMatch(/согласовани/i);
+  });
+
   test("a payload that lost a field still reads as a sentence", () => {
     expect(notificationText(notification({ kind: "order_degraded" }))).toBe("Сервис сервис не работает.");
   });
@@ -59,6 +72,7 @@ describe("notificationText", () => {
       "order_change_blocked",
       "version_approved",
       "version_rejected",
+      "chart_version_available",
       "portal_updated",
     ];
     for (const kind of kinds) {

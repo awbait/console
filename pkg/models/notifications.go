@@ -48,6 +48,8 @@ const (
 	// A version of a service its owner published.
 	NotifyVersionApproved = "version_approved"
 	NotifyVersionRejected = "version_rejected"
+	// A release in the registry the owners have not published yet.
+	NotifyChartVersionAvailable = "chart_version_available"
 	// The portal itself.
 	NotifyPortalUpdated = "portal_updated"
 )

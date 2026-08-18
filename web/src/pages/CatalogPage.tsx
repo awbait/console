@@ -1,5 +1,4 @@
 import {
-  IconArrowUpCircle,
   IconCategory,
   IconChevronDown,
   IconPackageOff,
@@ -22,11 +21,9 @@ import { isUnclaimed, publisherLabel } from "../api/types";
 import { CAPABILITIES } from "../app/capabilities";
 import { useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
-import { canModify, useUser } from "../auth/UserContext";
 import { AddChartDialog } from "../components/AddChartDialog";
 import { categoryIcon, ProductIcon } from "../components/icons";
 import { Button, Card, OutageState, SkeletonCards } from "../components/ui";
-import { isNewer } from "../lib/semver";
 
 type CategoryOf = (id?: string) => Category | undefined;
 
@@ -48,7 +45,6 @@ function matchesQuery(c: CatalogChart, q: string): boolean {
 export function CatalogPage() {
   const { categories, charts, error, loading, reload } = useCatalog();
   const { team } = useTeam();
-  const { user } = useUser();
   // Search/filter state lives in the URL (?q=&cat=), so a filtered view can be
   // shared and survives navigation back to the catalog.
   const [params, setParams] = useSearchParams();
@@ -101,18 +97,6 @@ export function CatalogPage() {
   const approved = filtered.filter(isApprovedChart);
   const others = filtered.filter((c) => !isApprovedChart(c));
 
-  // Notify owners: a version newer than the approved one is out in Harbor for their charts.
-  const outdated = visible.filter((c) => {
-    const p = c.publication;
-    return (
-      !!p &&
-      canModify(user, p.owner_team) &&
-      !!p.approved_view_version &&
-      !c.missing &&
-      isNewer(c.latest_version, p.approved_view_version)
-    );
-  });
-
   const hasFilter = !!q || !!activeCat;
 
   return (
@@ -122,32 +106,9 @@ export function CatalogPage() {
         <AddChartDialog />
       </div>
 
-      {outdated.length > 0 && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <IconArrowUpCircle size={18} stroke={1.8} className="mt-0.5 shrink-0 text-amber-500" />
-          <div className="min-w-0">
-            <p className="font-medium">В Harbor вышли новые версии ваших чартов</p>
-            <p className="mt-0.5 text-amber-700">
-              Обновите view под новую схему и согласуйте, чтобы актуализировать данные в каталоге и
-              открыть обновление заказов:
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {outdated.map((c) => (
-                <Link
-                  key={`${c.project}/${c.name}`}
-                  to={`/catalog/${c.project}/${c.name}/manage`}
-                  className="inline-flex items-center gap-1 rounded-md bg-surface px-2 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100"
-                >
-                  {c.name}
-                  <span className="text-amber-500">
-                    {c.publication!.approved_view_version} → {c.latest_version}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* A release the owners have not published yet used to be a banner here.
+          It is a notification now: the catalog is where a person comes to order
+          something, and the work belongs to whoever owns the service. */}
 
       {/* Search + category filter. Hidden while the catalog is empty: the
           empty state below explains how services get here. */}

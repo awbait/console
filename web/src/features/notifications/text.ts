@@ -45,6 +45,8 @@ export function notificationText(n: AppNotification): string {
         ? `Изменение сервиса ${service} не удалось применить: ${why}.`
         : `Изменение сервиса ${service} не удалось применить.`;
     }
+    case "chart_version_available":
+      return `Для сервиса ${str(n, "chart_name")} вышла версия ${str(n, "chart_version")}. Опишите её и отправьте на согласование, чтобы её можно было заказывать.`;
     case "version_approved":
       return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} согласована.`;
     case "version_rejected": {
