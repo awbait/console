@@ -44,6 +44,7 @@ export const DOCS_NAV: DocGroup[] = [
       link("ordering", "Заказ сервиса"),
       link("statuses", "Статусы и развёртывание"),
       link("publishing", "Публикация сервиса"),
+      link("view-document", "Конструктор формы заказа"),
     ],
   },
   {
