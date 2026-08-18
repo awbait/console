@@ -37,7 +37,7 @@ import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
 import { fmtDateTime } from "@/lib/time";
-import { attachSseLogger } from "@/lib/sse";
+import { subscribe } from "@/lib/sse";
 
 // Live order statuses (create-MR merged): only these can be upgraded to a new version.
 const LIVE_STATUSES: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];
@@ -79,10 +79,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // request status change; we re-fetch the (team-scoped) list. Browser handles
   // reconnect. One-way server->client - SSE, not WebSockets.
   useEffect(() => {
-    const es = new EventSource("/api/v1/requests/events");
-    attachSseLogger(es, "orders");
-    es.addEventListener("status_changed", () => reload());
-    return () => es.close();
+    return subscribe("/api/v1/requests/events", { status_changed: () => reload() }, "orders");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

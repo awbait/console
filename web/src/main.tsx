@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-rou
 import "./index.css";
 import "./lib/monaco";
 import { CatalogProvider } from "./app/CatalogContext";
+import { NotificationsProvider } from "./app/NotificationsContext";
 import { PlatformHealthProvider } from "./app/PlatformHealthContext";
 import { TeamProvider } from "./app/TeamContext";
 import { ThemeProvider } from "./app/ThemeContext";
@@ -202,7 +203,11 @@ createRoot(document.getElementById("root")!).render(
             <UserProvider>
               <TeamProvider>
                 <CatalogProvider>
-                  <RouterProvider router={router} />
+                  {/* Below the session: who is reading decides what they are
+                      told, and the auditor is told nothing. */}
+                  <NotificationsProvider>
+                    <RouterProvider router={router} />
+                  </NotificationsProvider>
                 </CatalogProvider>
               </TeamProvider>
             </UserProvider>

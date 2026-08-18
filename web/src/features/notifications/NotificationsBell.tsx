@@ -4,8 +4,8 @@ import { Button, Dialog, DialogTrigger, Popover } from "react-aria-components";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import type { AppNotification } from "@/api/types";
+import { useNotifications } from "@/app/NotificationsContext";
 import { useUser } from "@/auth/UserContext";
-import { attachSseLogger } from "@/lib/sse";
 import { NotificationRow } from "./NotificationRow";
 
 // How many notifications the popover holds. It is a glance at what is new, not
@@ -15,24 +15,15 @@ const POPOVER_SIZE = 8;
 // The bell in the top bar: how many notifications are waiting, and what they
 // are.
 //
-// The count is fetched once and then kept fresh by the portal's own event
-// stream, which sends a signal and no content - the feed itself is read over
-// the normal endpoint, filtered by who is asking, so a browser never receives a
-// notification addressed to somebody else.
+// The count comes from the notifications context, which owns it for the whole
+// app - reading one on the feed page has to change the number here too, and it
+// used to leave it stale. The list is the bell's own business: it is only ever
+// shown while the popover is open.
 export function NotificationsBell() {
   const { user } = useUser();
-  const [unread, setUnread] = useState(0);
+  const { unread, markRead, markAllRead, onChange } = useNotifications();
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [open, setOpen] = useState(false);
-
-  const refreshCount = useCallback(() => {
-    api
-      .unreadNotifications()
-      .then((r) => setUnread(r.unread))
-      .catch(() => {
-        /* the bell is not worth an error banner: the next signal retries */
-      });
-  }, []);
 
   const loadItems = useCallback(() => {
     api
@@ -41,44 +32,26 @@ export function NotificationsBell() {
       .catch(() => setItems([]));
   }, []);
 
+  // While the popover is open, news re-reads it; closed, there is nothing to
+  // refresh and the count in the context is enough.
   useEffect(() => {
-    refreshCount();
-    const es = new EventSource("/api/v1/notifications/events");
-    attachSseLogger(es, "notifications");
-    es.addEventListener("notifications_changed", () => {
-      refreshCount();
-      // Only when somebody is looking: a closed popover has nothing to refresh.
-      setOpen((isOpen) => {
-        if (isOpen) loadItems();
-        return isOpen;
-      });
-    });
-    return () => es.close();
-  }, [refreshCount, loadItems]);
-
-  // A tab left open for hours misses signals if the stream drops; asking again
-  // when the person comes back is cheap and covers it.
-  useEffect(() => {
-    const onFocus = () => refreshCount();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [refreshCount]);
+    if (!open) return;
+    return onChange(loadItems);
+  }, [open, onChange, loadItems]);
 
   // The auditor is addressed by nothing: the role reads, it does not own orders
   // or publish services. A bell that can only ever be empty is furniture.
   if (!user || user.role === "auditor") return null;
 
-  async function markAllRead() {
-    await api.readAllNotifications().catch(() => {});
-    setUnread(0);
+  async function readAll() {
     setItems((list) => list?.map((n) => ({ ...n, read: true })) ?? null);
+    await markAllRead();
   }
 
-  async function markRead(n: AppNotification) {
+  async function readOne(n: AppNotification) {
     if (n.read) return;
     setItems((list) => list?.map((x) => (x.id === n.id ? { ...x, read: true } : x)) ?? null);
-    setUnread((c) => Math.max(0, c - 1));
-    await api.readNotification(n.id).catch(refreshCount);
+    await markRead(n.id);
   }
 
   return (
@@ -109,7 +82,7 @@ export function NotificationsBell() {
             {unread > 0 && (
               <button
                 type="button"
-                onClick={markAllRead}
+                onClick={readAll}
                 className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
               >
                 <IconCheck size={14} stroke={2} />
@@ -129,7 +102,7 @@ export function NotificationsBell() {
               <ul className="flex flex-col">
                 {items.map((n) => (
                   <li key={n.id} className="border-b border-slate-100 last:border-0">
-                    <NotificationRow n={n} onRead={() => markRead(n)} onNavigate={() => setOpen(false)} />
+                    <NotificationRow n={n} onRead={() => readOne(n)} onNavigate={() => setOpen(false)} />
                   </li>
                 ))}
               </ul>

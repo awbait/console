@@ -2,6 +2,7 @@ import { IconBellOff, IconCheck } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/api/client";
 import type { AppNotification } from "@/api/types";
+import { useNotifications } from "@/app/NotificationsContext";
 import { NotificationRow } from "@/features/notifications/NotificationRow";
 import { Card, ErrorBox, SkeletonRows } from "@/components/ui";
 
@@ -15,6 +16,7 @@ import { Card, ErrorBox, SkeletonRows } from "@/components/ui";
 const PAGE = 30;
 
 export function NotificationsPage() {
+  const { markRead, markAllRead, onChange } = useNotifications();
   const [items, setItems] = useState<AppNotification[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export function NotificationsPage() {
     return api.listNotifications(params);
   }, []);
 
-  useEffect(() => {
+  const loadFirstPage = useCallback(() => {
     let alive = true;
     load()
       .then((list) => {
@@ -41,6 +43,13 @@ export function NotificationsPage() {
     };
   }, [load]);
 
+  useEffect(() => loadFirstPage(), [loadFirstPage]);
+
+  // News while the page is open belongs at the top of it, not behind a reload.
+  // The pages already loaded below are dropped with it: a new notification
+  // shifts everything down, and keeping them would mean showing a row twice.
+  useEffect(() => onChange(() => loadFirstPage()), [onChange, loadFirstPage]);
+
   async function loadMore() {
     const oldest = items[items.length - 1];
     if (!oldest) return;
@@ -53,15 +62,15 @@ export function NotificationsPage() {
     }
   }
 
-  async function markAllRead() {
-    await api.readAllNotifications().catch(() => {});
+  async function readAll() {
     setItems((list) => list.map((n) => ({ ...n, read: true })));
+    await markAllRead();
   }
 
-  function markRead(n: AppNotification) {
+  function readOne(n: AppNotification) {
     if (n.read) return;
     setItems((list) => list.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-    api.readNotification(n.id).catch(() => {});
+    void markRead(n.id);
   }
 
   const unread = items.some((n) => !n.read);
@@ -73,7 +82,7 @@ export function NotificationsPage() {
         {unread && (
           <button
             type="button"
-            onClick={markAllRead}
+            onClick={readAll}
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
           >
             <IconCheck size={16} stroke={2} />
@@ -100,7 +109,7 @@ export function NotificationsPage() {
           <ul className="flex flex-col">
             {items.map((n) => (
               <li key={n.id} className="border-b border-slate-100 last:border-0">
-                <NotificationRow n={n} onRead={() => markRead(n)} />
+                <NotificationRow n={n} onRead={() => readOne(n)} />
               </li>
             ))}
           </ul>
