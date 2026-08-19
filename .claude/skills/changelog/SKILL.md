@@ -73,10 +73,23 @@ two bullets, possibly in two categories.
 
 ## Step 2: the style
 
-Write for the person using the product, in their language, in one finished
-sentence. Say what is different and, when it is not obvious, what it gives them
+Write for the person using the product, in their language, in short finished
+sentences. Say what is different and, when it is not obvious, what it gives them
 or what to do about it.
 
+**Sentence length is the rule that matters most.** A changelog is skimmed, not
+read. An entry written as one flowing sentence with clauses hanging off it is
+the single most common way to make it unreadable, and it is what this section
+exists to prevent.
+
+- **One sentence, one thought, about 15 words.** Two thoughts are two sentences.
+- **At most three sentences per entry.** More than that means it is two entries.
+- **No parenthetical asides set off by dashes, and no semicolons.** If a clause
+  needs punctuation to be squeezed in, it is a sentence of its own.
+- **Lead with what the reader sees now.** How it used to be comes after, in one
+  short sentence, and only when the change makes no sense without it.
+- **No narrator.** "The portal tells you...", "This is what a team needs...",
+  "which used to be a page away" - drop all of it and state the fact.
 - No internal vocabulary: no function, file, package, table, flag or endpoint
   names, no ticket numbers, no branch or commit references.
 - No implementation detail: the reader does not care which layer changed or how
@@ -95,6 +108,12 @@ or what to do about it.
 | Fixed a nil pointer dereference in the order poller | An order no longer gets stuck without a status when the deployment takes a long time. |
 | Performance improvements | The catalog opens in about a second even with several hundred products. |
 | Bumped the OIDC library | (no entry: nothing changed for the user) |
+
+One more pair, because length is where entries go wrong:
+
+| Instead of | Write |
+| --- | --- |
+| Значение, из-за которого заказ не приняли, объясняется теми же словами, которыми поле подсказывало при заполнении: «Не короче 3 символов.» вместо «length must be >= 3, but got 2», а пропущенное значение показывается на самом поле, а не на блоке вокруг него. | Ошибки формы заказа стали понятными. Вместо «length must be >= 3, but got 2» портал пишет «Не короче 3 символов». Незаполненное поле подсвечивается само. |
 
 Breaking changes go into **Changed**, **Removed** or **Deprecated** and always
 say what to do instead: what replaces the removed thing, or what has to be
@@ -117,7 +136,8 @@ When a release is prepared:
    most first.
 
 Never edit a section of an already released version, except to correct an error
-in it.
+in it. Text nobody can read is such an error: rewording a released entry so it
+can be understood is allowed, dropping or rewriting what it says is not.
 
 ## Step 4: the version number
 
