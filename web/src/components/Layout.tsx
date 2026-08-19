@@ -530,7 +530,7 @@ export function Layout() {
               {sectionNav ? (
                 /* security/admin section: its own flat nav, no product categories */
                 <nav className="px-2 py-2">
-                  <ul className="flex flex-col gap-0.5">
+                  <ul className="flex flex-col gap-1.5">
                     {sectionNav.map((n) => {
                       const Icon = n.Icon;
                       const active = n.exact ? pathname === n.to : navActive(n.to);
@@ -555,7 +555,7 @@ export function Layout() {
                 <>
                   {/* flat group: Resources / Charts (active via navActive aria-current) */}
                   <nav className="px-2 py-2">
-                    <ul className="flex flex-col gap-0.5">
+                    <ul className="flex flex-col gap-1.5">
                       {navItems.map((n) => {
                         const Icon = n.Icon;
                         return (
@@ -583,7 +583,7 @@ export function Layout() {
                       it used to be a plain link to the first chart, which left
                       every other service in the category unreachable. */}
                   {collapsed ? (
-                    <nav className="flex flex-col gap-0.5 px-2 py-2">
+                    <nav className="flex flex-col gap-1.5 px-2 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
                         return (
