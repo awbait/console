@@ -10,15 +10,15 @@ import { NotificationRow } from "./NotificationRow";
 
 // How many notifications the popover holds. It is a glance at what is new, not
 // the archive: the whole feed has a page of its own.
-const POPOVER_SIZE = 8;
+const POPOVER_SIZE = 5;
 
 // The bell in the top bar: how many notifications are waiting, and what they
 // are.
 //
 // The count comes from the notifications context, which owns it for the whole
-// app - reading one on the feed page has to change the number here too, and it
-// used to leave it stale. The list is the bell's own business: it is only ever
-// shown while the popover is open.
+// app - reading one on the feed page has to change the number here too. The
+// list is the bell's own business: it is only ever shown while the popover is
+// open.
 export function NotificationsBell() {
   const { user } = useUser();
   const { unread, markRead, markAllRead, onChange } = useNotifications();
@@ -64,26 +64,41 @@ export function NotificationsBell() {
     >
       <Button
         aria-label={unread > 0 ? `Уведомления, непрочитанных: ${unread}` : "Уведомления"}
-        className="relative rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+        className="relative cursor-pointer rounded-md p-2 text-slate-500 outline-none transition-colors hover:bg-slate-50 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
       >
-        <IconBell size={20} stroke={1.7} />
-        {/* The count sits on the bell rather than beside it: it belongs to the
-            bell, and the top bar has no room for a second element per state. */}
+        {/* The bell nods while something is waiting: a short swing every few
+            seconds rather than a number to read. It stays still for a reader who
+            asked not to be moved. */}
+        <IconBell
+          // Remounted when the bell goes from empty to waiting, so the swing
+          // starts over at that moment: a CSS animation added to an element
+          // that is already there picks up wherever its clock happens to be.
+          key={unread > 0 ? "waiting" : "empty"}
+          size={20}
+          stroke={1.7}
+          className={unread > 0 ? "bell-swing" : undefined}
+        />
+        {/* A dot, not a count: in the top bar the exact number is noise - what
+            matters is whether there is anything at all, and the feed says how
+            much. The ring cuts the dot out of the icon underneath instead of
+            leaving the two to overlap. */}
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold leading-none text-on-accent">
-            {unread > 99 ? "99+" : unread}
-          </span>
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-600 ring-2 ring-surface" />
         )}
       </Button>
-      <Popover className="w-[26rem] max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-surface shadow-lg outline-none entering:animate-in entering:fade-in">
+
+      <Popover
+        offset={8}
+        className="w-[24rem] max-w-[calc(100vw-2rem)] rounded-md border border-slate-200 bg-surface shadow-lg outline-none entering:animate-in entering:fade-in entering:zoom-in-95 exiting:animate-out exiting:fade-out motion-reduce:animate-none"
+      >
         <Dialog aria-label="Уведомления" className="outline-none">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
             <h2 className="text-sm font-semibold text-slate-800">Уведомления</h2>
             {unread > 0 && (
               <button
                 type="button"
                 onClick={readAll}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+                className="inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-slate-500 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
               >
                 <IconCheck size={14} stroke={2} />
                 Прочитать все
@@ -91,29 +106,37 @@ export function NotificationsBell() {
             )}
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="scroll-slim max-h-[min(28rem,60vh)] overflow-y-auto">
             {items === null ? (
-              <p className="px-4 py-6 text-center text-sm text-slate-400">Загружаем...</p>
+              <p className="px-3 py-6 text-center text-sm text-slate-400">Загружаем...</p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-400">
-                Пока ничего не произошло. Здесь появятся новости о ваших сервисах.
-              </p>
+              <div className="px-3 py-7 text-center">
+                <p className="text-sm text-slate-600">Пока ничего не произошло</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Здесь появятся новости о ваших сервисах и заказах.
+                </p>
+              </div>
             ) : (
               <ul className="flex flex-col">
                 {items.map((n) => (
                   <li key={n.id} className="border-b border-slate-100 last:border-0">
-                    <NotificationRow n={n} onRead={() => readOne(n)} onNavigate={() => setOpen(false)} />
+                    <NotificationRow
+                      n={n}
+                      compact
+                      onRead={() => readOne(n)}
+                      onNavigate={() => setOpen(false)}
+                    />
                   </li>
                 ))}
               </ul>
             )}
           </div>
 
-          <div className="border-t border-slate-100 px-4 py-2 text-center">
+          <div className="border-t border-slate-100 p-1.5">
             <Link
               to="/notifications"
               onClick={() => setOpen(false)}
-              className="text-xs font-medium text-brand-700 outline-none hover:text-brand-800 focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="block cursor-pointer rounded px-2 py-1.5 text-center text-xs font-medium text-brand-700 outline-none transition-colors hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
             >
               Все уведомления
             </Link>

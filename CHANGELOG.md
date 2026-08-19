@@ -6,8 +6,9 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - Notifications. The portal sends one when something happens to your service or
-  your order. The top bar gained a bell with a count of unread ones, and the
-  whole history is on the "Уведомления" page.
+  your order. The top bar gained a bell: while something is unread it carries a
+  dot and swings gently. The whole history is on the "Уведомления" page, laid
+  out day by day, with chips above the list for everything or unread only.
 - A notification arrives when a service you ordered comes up, stops working, or
   cannot accept your change. Clicking it opens that order.
 - The team publishing a service is notified what became of its version:

@@ -1,23 +1,30 @@
-import { IconBellOff, IconCheck } from "@tabler/icons-react";
+import { IconBellOff, IconCheck, IconInbox } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/api/client";
 import type { AppNotification } from "@/api/types";
 import { useNotifications } from "@/app/NotificationsContext";
-import { NotificationRow } from "@/features/notifications/NotificationRow";
 import { Card, ErrorBox, SkeletonRows } from "@/components/ui";
+import { NotificationRow } from "@/features/notifications/NotificationRow";
+import { dayLabel } from "@/lib/time";
 
-// The whole feed, page by page.
+// The whole feed, day by day.
 //
 // The popover in the top bar answers "what is new"; this page answers "what
-// happened" - so it pages backwards through the history instead of holding the
-// last handful. Paging is by the time of the oldest row on screen rather than
-// by an offset: notifications arrive while the page is open, and an offset
-// would quietly show the same row twice.
+// happened", so it reads as a history: rows grouped under the day they belong
+// to, the same way an order's own history reads. A flat list of forty lines is
+// what it was before, and nothing in it told you where yesterday ended.
+//
+// Paging is by the time of the oldest row on screen rather than by an offset:
+// notifications arrive while the page is open, and an offset would quietly show
+// the same row twice.
 const PAGE = 30;
 
+type Filter = "all" | "unread";
+
 export function NotificationsPage() {
-  const { markRead, markAllRead, onChange } = useNotifications();
+  const { unread, markRead, markAllRead, onChange } = useNotifications();
   const [items, setItems] = useState<AppNotification[]>([]);
+  const [filter, setFilter] = useState<Filter>("all");
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState(false);
@@ -73,17 +80,18 @@ export function NotificationsPage() {
     void markRead(n.id);
   }
 
-  const unread = items.some((n) => !n.read);
+  const shown = filter === "unread" ? items.filter((n) => !n.read) : items;
+  const days = groupByDay(shown);
 
   return (
-    <div>
-      <div className="mb-4 flex min-h-9 items-center justify-between">
+    <div className="flex max-w-3xl flex-col gap-4">
+      <div className="flex min-h-9 items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-slate-900">Уведомления</h1>
-        {unread && (
+        {unread > 0 && (
           <button
             type="button"
             onClick={readAll}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
           >
             <IconCheck size={16} stroke={2} />
             Прочитать все
@@ -91,34 +99,52 @@ export function NotificationsPage() {
         )}
       </div>
 
+      {/* Two chips rather than a dropdown: there are two answers, and the one in
+          force has to be readable without opening anything. Same shape as the
+          filters over the order list. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
+          Все
+        </FilterChip>
+        <FilterChip active={filter === "unread"} onClick={() => setFilter("unread")}>
+          Непрочитанные
+          {unread > 0 && <span className="ml-1 tabular-nums text-slate-400">{unread}</span>}
+        </FilterChip>
+      </div>
+
       {loading ? (
         <SkeletonRows rows={6} />
       ) : error ? (
         <ErrorBox error={error} />
-      ) : items.length === 0 ? (
-        <Card className="flex flex-col items-center gap-3 py-12 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-            <IconBellOff size={24} stroke={1.6} />
-          </span>
-          <p className="text-sm text-slate-500">
-            Пока ничего не произошло. Здесь появятся новости о ваших сервисах.
-          </p>
-        </Card>
+      ) : shown.length === 0 ? (
+        <EmptyFeed filter={filter} onShowAll={() => setFilter("all")} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-          <ul className="flex flex-col">
-            {items.map((n) => (
-              <li key={n.id} className="border-b border-slate-100 last:border-0">
-                <NotificationRow n={n} onRead={() => readOne(n)} />
-              </li>
-            ))}
-          </ul>
+        <div className="flex flex-col gap-5">
+          {days.map(([day, rows]) => (
+            <section key={day}>
+              {/* The day names the group and keeps its place while the list
+                  scrolls, so a long history never loses which day you are in. */}
+              <h2 className="sticky top-0 z-10 -mx-1 mb-1.5 bg-app/95 px-1 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur">
+                {day}
+              </h2>
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+                <ul className="flex flex-col">
+                  {rows.map((n) => (
+                    <li key={n.id} className="border-b border-slate-100 last:border-0">
+                      <NotificationRow n={n} onRead={() => readOne(n)} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          ))}
+
           {!done && (
-            <div className="border-t border-slate-100 p-3 text-center">
+            <div className="text-center">
               <button
                 type="button"
                 onClick={loadMore}
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-brand-700 outline-none hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+                className="cursor-pointer rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
               >
                 Показать ещё
               </button>
@@ -127,5 +153,77 @@ export function NotificationsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// groupByDay keeps the order it was given - the feed arrives newest first - and
+// puts each row under the day it happened.
+function groupByDay(items: AppNotification[]): [string, AppNotification[]][] {
+  const days: [string, AppNotification[]][] = [];
+  for (const n of items) {
+    const label = dayLabel(n.created_at);
+    const last = days[days.length - 1];
+    if (last && last[0] === label) last[1].push(n);
+    else days.push([label, [n]]);
+  }
+  return days;
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex cursor-pointer items-center rounded-full border px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
+        active
+          ? "border-brand-200 bg-brand-50 text-brand-700"
+          : "border-slate-200 text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// An empty feed says which emptiness it is: nothing has happened yet, or
+// nothing is left unread. The second one is an achievement and offers the way
+// back to the history.
+function EmptyFeed({ filter, onShowAll }: { filter: Filter; onShowAll: () => void }) {
+  const unreadFilter = filter === "unread";
+  const Icon = unreadFilter ? IconInbox : IconBellOff;
+  return (
+    <Card className="flex flex-col items-center gap-3 py-12 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+        <Icon size={24} stroke={1.6} />
+      </span>
+      <div>
+        <p className="text-sm font-medium text-slate-700">
+          {unreadFilter ? "Всё прочитано" : "Пока ничего не произошло"}
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          {unreadFilter
+            ? "Новые уведомления появятся здесь и на колокольчике в шапке."
+            : "Здесь появятся новости о ваших сервисах и заказах."}
+        </p>
+      </div>
+      {unreadFilter && (
+        <button
+          type="button"
+          onClick={onShowAll}
+          className="cursor-pointer rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          Показать все
+        </button>
+      )}
+    </Card>
   );
 }

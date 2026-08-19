@@ -59,7 +59,7 @@ import { productTabs } from "@/components/products/genericView";
 import { statusMeta, statusTitle } from "@/components/StatusBadge";
 import { buttonClass, Card, Checkbox } from "@/components/ui";
 import { safeHref } from "@/lib/href";
-import { fmtDateTime, fmtRelative } from "@/lib/time";
+import { dayLabel, fmtDateTime, fmtRelative } from "@/lib/time";
 import { OrderGraphDialog } from "./OrderGraphDialog";
 import { graphFor } from "./orderGraph";
 import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
@@ -327,33 +327,6 @@ function useNow(ms = 15_000): number {
     };
   }, [ms]);
   return now;
-}
-
-const MONTHS_GEN = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
-];
-
-// dayLabel names the day an event belongs to: today and yesterday by name, the
-// rest by date. It is what makes a flat list read as a sequence.
-function dayLabel(iso: string, now: number): string {
-  const d = new Date(iso);
-  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((startOf(new Date(now)) - startOf(d)) / 86_400_000);
-  if (days === 0) return "Сегодня";
-  if (days === 1) return "Вчера";
-  const date = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
-  return d.getFullYear() === new Date(now).getFullYear() ? date : `${date} ${d.getFullYear()}`;
 }
 
 // Time of one row. The day it happened is already written above the group, so

@@ -27,3 +27,31 @@ export function fmtRelative(iso: string, now: number = Date.now()): string {
   if (day < 7) return `${day} дн назад`;
   return fmtDateTime(iso);
 }
+
+const MONTHS_GEN = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
+
+// dayLabel names the day something belongs to: today and yesterday by name, the
+// rest by date. It is what makes a flat list read as a sequence, and it is the
+// same in the order history and in the notification feed.
+export function dayLabel(iso: string, now: number = Date.now()): string {
+  const d = new Date(iso);
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(new Date(now)) - startOf(d)) / 86_400_000);
+  if (days === 0) return "Сегодня";
+  if (days === 1) return "Вчера";
+  const date = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
+  return d.getFullYear() === new Date(now).getFullYear() ? date : `${date} ${d.getFullYear()}`;
+}
