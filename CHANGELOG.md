@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- On the sign-in screen the "Войти через Keycloak" button goes out while the
+  portal does not answer. Pressing it used to lead to a browser error page with
+  no way back. The screen now says the portal is not answering and what to try.
+
 ## [0.5.0] - 2026-08-19
 
 A release about notifications. The portal now says what happened to your

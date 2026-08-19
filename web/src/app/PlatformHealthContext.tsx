@@ -31,6 +31,12 @@ interface PlatformHealthState {
   // True until the first answer arrives, and while it cannot be fetched at all.
   // Nothing is blocked in that state: an unknown platform is not a broken one.
   unknown: boolean;
+  // False once the portal itself stops answering. That is a different thing from
+  // a capability being down: the portal has no verdict at all, not even a bad
+  // one. Actions inside the portal stay open on it (a request that fails shows
+  // its own error), but a step that leaves the interface has nowhere to report
+  // back to and asks about this first.
+  reachable: boolean;
   // Whether one capability works. Unknown capabilities read as working.
   ok: (id: string) => boolean;
   // Why an action is blocked right now, or undefined when it is not. Meant to be
@@ -43,6 +49,7 @@ const HEALTHY: PlatformHealthState = {
   degraded: [],
   healthy: true,
   unknown: true,
+  reachable: true,
   ok: () => true,
   blockedReason: () => undefined,
 };
@@ -54,7 +61,7 @@ const Ctx = createContext<PlatformHealthState>(HEALTHY);
 // has to know whether signing in works, and that is exactly when there is no
 // session yet.
 export function PlatformHealthProvider({ children }: { children: ReactNode }) {
-  const { data, reload } = useAsync(
+  const { data, error, reload } = useAsync(
     (signal) => api.getPlatformHealth(signal),
     [],
     qk.platformHealth(),
@@ -86,7 +93,10 @@ export function PlatformHealthProvider({ children }: { children: ReactNode }) {
     // state rather than the "broken" one: the endpoint being unreachable is not
     // evidence that ordering is down, and blocking buttons on a guess is worse
     // than letting a request fail with its own error.
-    if (!data) return HEALTHY;
+    // Reachability is reported even in that state, and it is the one thing a
+    // failed request does say for certain: the poll keeps running, so the answer
+    // comes back on its own once the portal does.
+    if (!data) return error ? { ...HEALTHY, reachable: false } : HEALTHY;
     const capabilities = (data.capabilities ?? []).map((c: CapabilityStatus) => ({
       id: c.id,
       ok: c.ok,
@@ -99,10 +109,14 @@ export function PlatformHealthProvider({ children }: { children: ReactNode }) {
       degraded,
       healthy: degraded.length === 0,
       unknown: false,
+      // An answer that arrived earlier keeps describing the capabilities, but it
+      // stops being evidence that the portal is still there: a page left open
+      // outlives the backend it was loaded from.
+      reachable: !error,
       ok: (id) => !broken.has(id),
       blockedReason: (id) => (broken.has(id) ? capabilityText(id).impact : undefined),
     };
-  }, [data]);
+  }, [data, error]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
