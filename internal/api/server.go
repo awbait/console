@@ -161,6 +161,7 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/categories/{id}", s.handleDeleteCategory) // admin
 
 			// chart publications: metadata + view builder + approval
+			r.Get("/view-schema", s.handleViewSchema) // format of the view document, for the constructor's editor
 			r.Get("/publications", s.handleListPublications)
 			r.Post("/publications", s.handleCreatePublication)
 			r.Get("/publications/{id}", s.handleGetPublication)
