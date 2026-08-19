@@ -40,11 +40,18 @@ func (p *Postgres) AddNotification(ctx context.Context, n *models.Notification) 
 	}
 	// ON CONFLICT DO NOTHING on the dedup key: the same news twice is not an
 	// error, it is the background loop coming round again.
+	//
+	// The WHERE clause is not optional. The unique index is partial (a
+	// notification without a key is never a duplicate of another), and Postgres
+	// only matches ON CONFLICT to a partial index when the statement repeats its
+	// predicate. Without it every insert fails with "no unique or exclusion
+	// constraint matching the ON CONFLICT specification" - including the ones
+	// that carry no key at all.
 	tag, err := p.db.Exec(ctx, `
 		INSERT INTO notifications
 			(id, kind, subject_type, subject_id, audience, audience_key, actor, actor_name, payload, level, dedup_key, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, COALESCE($12, NOW()))
-		ON CONFLICT (dedup_key) DO NOTHING`,
+		ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING`,
 		n.ID, n.Kind, n.SubjectType, n.SubjectID, string(n.Audience), n.AudienceKey,
 		n.Actor, n.ActorName, payload, string(n.Level), nullStr(n.DedupKey), nullTime(n.CreatedAt))
 	if err != nil {
