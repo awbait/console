@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | grep -qiE 'web[/\\\\]src[/\\\\].*\\.(tsx|css)$' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Правка разметки в web/src. Правило .claude/rules/frontend.md: оформление выбирается ДО кода скиллом ui-ux-pro-max (python .claude/skills/ui-ux-pro-max/scripts/search.py \\\"<что за экран>\\\" --design-system), а результат проверяется bun run detect и playwright-cli. Если скилл уже вызван в этой сессии, просто продолжай.\"}}' || true"
+          }
+        ]
+      }
+    ]
+  }
+}
