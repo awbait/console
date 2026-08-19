@@ -5,344 +5,237 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- The portal tells you what happened while you were elsewhere. The bell in the
-  top bar counts what is new, opens on the latest of it and has a page of its
-  own for the whole history; a notification opens the thing it is about, and
-  "Прочитать все" clears the count in one go. It arrives when a service you
-  ordered comes up, stops working or cannot apply your change, when a version of
-  a service you own is approved or rejected - with the reviewer's comment, which
-  used to be a page away - and when the portal itself is updated. What has been
-  read is kept for 90 days; what has not is kept until it is.
+- Notifications. The top bar has a bell with a count of unread ones. The whole
+  history is on the "Уведомления" page.
+- A notification arrives when a service comes up, breaks, or cannot accept a
+  change. Clicking it opens the order.
+- A service owner learns that a version was approved or rejected. A rejection
+  carries the reviewer's comment.
+- The portal announces its own updates.
+- "Прочитать все" clears the count at once. Read notifications are kept for 90
+  days, unread ones are never deleted.
 
 ### Changed
-- A release of your service that is in the registry but not published yet now
-  comes as a notification, and opens on the version to describe. It used to be a
-  stripe across the top of the catalog, which only whoever happened to open the
-  catalog would see - and the catalog is where a person comes to order
-  something, not to be handed work.
-- A value the order was refused for is explained in the words the field itself
-  used while it was being filled in: "Не короче 3 символов." rather than "length
-  must be >= 3, but got 2". A missing value is now pointed at the field that is
-  missing instead of at the block around it, and a rule the portal cannot put
-  into words still gets a sentence of its own - the validator's English is not
-  shown to anyone any more.
-- Every refusal of an order is in Russian and about the service. A name that
-  does not fit says which characters it takes, a service that is still being
-  created says to come back when it is running, and a version that has gone says
-  to pick an available one. Until now several of those answers were the internal
-  English of the portal, down to the state of the order in brackets.
-- An order tells its state in words about the service: draft, being saved,
-  coming up, working, not working, rejected, being deleted, deleted. The eleven
-  internal states behind them are gone from the screen, the status filter in the
-  order list offers the same eight names as the orders themselves, and "Healthy"
-  and "Degraded" are finally in Russian. Support and admins still read the exact
-  state, in the detailed history of the order.
-- The portal no longer explains itself in merge requests, branches and Git to
-  the person who ordered a service. A change that has not landed yet simply says
-  the service is still being saved, everywhere it comes up: on the order page,
-  on the graph, and when a delete arrives too soon. The link to the merge request
-  carrying the change stays with support and admins, in the detailed history.
+- A new version of your service in the registry now arrives as a notification.
+  It opens on that version. The stripe in the catalog is gone.
+- Order form errors are readable. Instead of "length must be >= 3, but got 2"
+  the portal says "Не короче 3 символов". An empty field is highlighted itself.
+- Refusals are in Russian and about the service. A name that does not fit says
+  which characters it takes. A version that is gone asks you to pick another.
+- An order has eight states instead of eleven: draft, saving, coming up,
+  working, not working, rejected, deleting, deleted. The filter offers the same
+  names. Support and admins see the exact state in the detailed history.
+- Merge requests, branches and Git are gone from the interface. A change on its
+  way says the service is being saved. The link to the merge request is left to
+  support and admins.
 
 ### Fixed
-- A page keeps updating itself after the portal restarts or the connection
-  breaks for good. Until now the live updates stopped for good too, and the page
-  went on looking current while it no longer was - the orders list, an order and
-  the bell all waited for somebody to reload them by hand.
+- A page updates itself again after the portal restarts or the connection
+  breaks. Live updates used to stop until the page was reloaded.
 
 ## [0.4.0] - 2026-08-18
 
-This release takes the guessing out of filling in a form: every field says what
-it takes while you are typing it, and the documentation now walks through the
-order form constructor from end to end. Around that, a service can insist that a
-person merges every change to it, the portal keeps its own notification from
-GitLab registered, and a version the image registry has lost is no longer
-offered anywhere.
+A release about filling in the form: fields say what they take. The
+documentation now covers the order form constructor.
 
 ### Added
-- The portal's documentation has an "Order form constructor" section: what a
-  version document is, how it maps onto the chart schema, every block of it
-  walked through with examples to copy, screenshots of the form beside the
-  document that produces it, and the errors the constructor reports explained.
-  Until now a service owner assembled the document from the hints on the page
-  itself and from somebody else's publication.
-- A service can require that every change to it is merged by a person, however
-  the portal is configured elsewhere. Its version says so in its document
-  (`"approval": {"autoMerge": false}`), which is what a service owned by the
-  security team needs. Such a change still gets kept up to date with the branch
-  on its own, so the reviewer is handed something they can simply approve.
-- The portal keeps its own notification from GitLab registered: fill in
-  `GITLAB_WEBHOOK_URL` and it sets the notification up at startup, on every
-  repository it creates afterwards, and on the ones it adopts from Git, so
-  nobody has to add one by hand after a deployment or after a service is
-  ordered. It takes the widest form the instance allows - one notification for
-  the whole group, one for the whole GitLab, or one per repository - and
-  `GITLAB_WEBHOOK_SCOPE` pins that choice.
+- The documentation has an "Order form constructor" section. It walks through
+  every block of a version document, with examples and screenshots.
+- A service can require that every change is merged by a person. Its version
+  document says so: `"approval": {"autoMerge": false}`. The portal still keeps
+  the change up to date with the branch.
+- The portal registers its own merge notification in GitLab. Setting
+  `GITLAB_WEBHOOK_URL` is enough. The scope is set by `GITLAB_WEBHOOK_SCOPE`.
 
 ### Changed
-- Fields say what they take: while you type, the requirements are listed beside
-  them - which characters, what length, what range - with the ones already
-  satisfied ticked off. That now covers a service's parameters in an order, the
-  cluster and the namespace, and the fields in the network map and add-service
-  windows. Until now it had to be guessed, or learned from the error after
-  sending the order.
-- The network map and add-service windows report an unsuitable value under the
-  field itself, while you type. It used to be listed at the bottom of the
-  window, and only after pressing the button. The button stays unavailable
-  until the value is fixed.
-- The publication approvals page no longer scrolls away from you: the title
-  stays put and only the lists move. The services table gained the category and
-  the date it last changed, the "in the catalog" column now shows the versions
-  that can actually be ordered, and a service's actions open straight from its
-  row.
+- Fields say what they take: which characters, what length, what range. Rules
+  already satisfied are ticked off as you type.
+- The map and add-service windows report a bad value under the field itself. The
+  button stays off until the value is fixed.
+- The publication approvals page no longer scrolls away. The table gained the
+  category and the date of the last change. Actions open from the row.
 
 ### Fixed
-- A change to a service no longer gets stuck because someone else's change to
-  the same service arrived first. The portal combines the two field by field and
-  sends the result on: your edit and theirs both survive, and you are asked
-  about it only when you both changed the very same field.
-- A service version deleted from the image registry is no longer offered: it is
-  gone from the catalog and from the order form, and an order for it is refused.
-  Before, it could be ordered and the service simply never deployed. An order
-  already running on it keeps running and can be moved to an available version,
-  but not edited in place. Its owner sees the loss on the service page and
-  cannot approve or publish what is not there.
-- The order form opens on the service's recommended version, not on whatever
-  reached the registry last.
+- A change to a service no longer gets stuck behind somebody else's change. The
+  portal merges the two field by field. It asks only about a field you both
+  changed.
+- A version deleted from the registry can no longer be ordered. An order running
+  on it keeps working and can be moved to an available version.
+- The order form opens on the service's recommended version.
 
 ## [0.3.0] - 2026-08-14
 
-This release puts what a version does in front of the person approving it, and
-opens the graph of a service that is already running. The rest is polish: the
-portal follows the appearance of the system, an order's page reads better, and a
-release now carries the images themselves, for an installation with no registry
-within reach.
+A release about approving versions and about graphs. A reviewer sees what a
+version of a service does. The graph opens for a service that already runs.
 
 ### Added
-- The graph opens straight from the page of an ordered service, in a window
-  nearly the size of the screen, for the services that support it: you can see
-  what talks to what, redraw the arrows and save them. How the boxes are arranged
-  is remembered on its own.
-- The portal can follow the appearance of the operating system: the theme menu
-  has an option for it, it is what a first visit starts with, and the portal
-  turns dark or light along with the desktop.
-- Every release now carries the portal and the collector as ready-to-load
-  archives, so the portal can be installed where the image registry is out of
-  reach.
+- The graph opens from the page of an ordered service. Connections can be
+  redrawn and saved. The portal remembers how the boxes are arranged.
+- The portal can follow the theme of the operating system. A first visit starts
+  with it.
+- Every release carries images of the portal and the collector. They install
+  where the image registry is out of reach.
 
 ### Changed
-- A service version is approved on a page of its own, where the document sits
-  next to the order form and the product page it produces, and what changed
-  against the version in force has a tab to itself. Approving a version for the
-  first time used to show nothing at all.
-- The theme is picked in a single switcher: every option is in view at once, the
-  chosen one is lit, and the icon in the top bar shows which one it is.
-- The order history takes only the room its events need, and splits into pages
-  only once they would not fit down to the bottom of the screen.
-- The general information about an order is labelled in Russian and keeps to the
-  six facts about the service itself; the chart it came from, its application in
-  ArgoCD and its configuration wait under "Подробнее", which opens in place.
-- The order's configuration opens from a button named after what it shows, and
-  the name of the file it comes from stays in the window's own header.
+- A version of a service is approved on its own page. The order form and the
+  product page it produces are shown beside it. Differences from the version in
+  force have a tab of their own.
+- The theme is picked in one switcher. The icon in the top bar shows which one
+  is on.
+- The order history takes as much room as its events need. It splits into pages
+  only when they do not fit on the screen.
+- The general information about an order is labelled in Russian. The chart, the
+  ArgoCD application and the configuration moved under "Подробнее".
+- The order's configuration opens from a button named after what it shows.
 
 ### Fixed
-- The approval queue no longer counts a single submitted version twice.
-- A chart the portal found on its own is no longer credited to the
-  administrators: until somebody takes it on, it shows no owner at all.
-- A service built on a graph can no longer be ordered empty: the portal asks for
-  at least one connection, because without them the service gets no rules at all.
-- An order no longer stalls in silence when its change cannot be applied on its
-  own: the portal stops retrying, and the order's history records what happened
-  and what is in the way.
-- The placeholders that stand in for data while it loads are visible in the
-  light theme instead of melting into the card they sit on.
-- A sign-in that does not go through comes back to the sign-in screen and says
-  what happened and what to do, instead of leaving the person on a page with an
-  error message meant for nobody.
-- Signing in no longer fails just because the sign-in page stood open for a few
-  minutes: there is now time for a password, a second factor and a reset along
-  the way.
+- The approval queue no longer counts one version twice.
+- A chart the portal found itself is no longer credited to the administrators.
+  Until somebody takes it on, it shows no owner.
+- A service built on a graph can no longer be ordered empty. The portal asks for
+  at least one connection.
+- An order no longer stalls in silence. The portal stops retrying and writes to
+  the history what is in the way.
+- The placeholders shown while data loads are visible in the light theme.
+- A failed sign-in returns to the sign-in screen and says what to do.
+- Signing in no longer fails because the page stood open for a few minutes.
 
 ## [0.2.0] - 2026-08-10
 
 This release takes the portal out of demonstration mode. The stand-in registry,
-git server and delivery system are gone, so an installation talks to the real
-ones from the first start and will not run without their addresses and tokens.
-Alongside that: services published version by version, network policies drawn as
-a map instead of written by hand, sections for administrators and for support,
-and a portal that says out loud when part of the platform is not answering.
+git server and delivery system are gone. The portal talks to the real ones and
+will not start without their addresses and tokens.
 
 ### Added
-- Several versions of one service. A service is published version by version:
-  each version has its own order form and is approved on its own, the catalog
-  card shows the recommended one and how many more are available, and the order
-  form lets you pick among them.
+- Several versions of one service. Each version has its own order form and its
+  own approval. The order form lets you pick among them.
 - An upgrade offers only the versions the service owner allowed.
-- A network interaction map. Draw arrows between workloads of different
-  namespaces and the map writes the values for the network policies service,
-  with an example scenario to start from.
-- Ordering straight from the map: the drawn arrows are split into policy orders
-  per namespace, the first one opens in the order form and the rest wait as
-  drafts.
-- Values written by hand can be pasted into the map to be drawn and edited.
-- A Graph tab on the order form of the services that support it, kept in sync
-  with the form and the raw values.
-- A service version can declare its graph itself, so a new version can change
-  the shape of its values without breaking the orders that stay on the old one.
-- Search and a category filter in the catalog, both kept in the page address so
-  a filtered catalog can be shared as a link.
-- An Admin section: an overview, the approval queue, platform state and the
-  catalog categories.
-- A Support section with the orders of every team and filters by team and
-  product.
-- A service found in the registry by the platform can be adopted by a team:
-  pick its category and owner, and it becomes yours to publish.
-- Categories carry an icon, and a product shows the icon of its own chart.
+- A network interaction map. You draw arrows between workloads and the map
+  writes the values for the policies service. An example is included.
+- Ordering straight from the map. The arrows are split into policy orders per
+  namespace.
+- Values written by hand can be pasted into the map and edited with the mouse.
+- A Graph tab on the order form of the services that support it.
+- A service version declares its own graph. A new version does not break the
+  orders that stay on the old one.
+- Search and a category filter in the catalog. A filtered catalog can be shared
+  as a link.
+- An Admin section: an overview, the approval queue, platform state and catalog
+  categories.
+- A Support section: the orders of every team, with filters by team and product.
+- A service the platform found in the registry can be adopted by a team. Pick
+  its category and owner and it is yours to publish.
+- Categories carry an icon. A product shows the icon of its own chart.
 - Documentation in the portal: the catalog, ordering, statuses, publishing,
-  roles, sections, architecture and the roadmap.
+  roles, sections and architecture.
 - Platform state shows the health of the background cycles and links to Grafana.
-- The portal reacts to a merge or a chart push at once instead of waiting for
-  the next poll, when the webhooks are configured.
-- A service can name its namespace itself, and the order form then drops the
-  Namespace field and shows the namespace the chart will use.
-- An order with an open merge request shows a banner linking to it and refuses
-  further changes until it is closed.
-- The portal says when part of the platform is not responding: a message above
-  the page names what is unavailable right now, and a state icon in the top bar
-  lists what works and what does not.
-- Actions that cannot go through are switched off with an explanation instead of
-  failing halfway: signing in while the sign-in service is down, ordering or
-  changing a service while the platform cannot accept it. Drafts are still saved.
-- A Configuration page in the Admin section: every setting the portal runs with,
-  what it accepts and what it falls back to. Read-only, and passwords and tokens
-  are never shown - only whether they are set.
+- With webhooks configured, the portal reacts to a merge or a chart push at
+  once, without waiting for the next poll.
+- A service can name its namespace itself. The Namespace field then disappears
+  from the order form, and the portal shows which namespace will be used.
+- An order with a change on its way shows a banner and refuses further changes.
+- The portal says when part of the platform is not responding. An icon in the
+  top bar lists what works and what does not.
+- Actions that cannot go through are switched off with an explanation. Drafts
+  are still saved.
+- A Configuration page in the Admin section. Passwords and tokens are never
+  shown, only whether they are set.
 
 ### Changed
 - The sign-in screen shows what the portal does instead of setting services up
-  by hand, and asks for one click to sign in.
-- Refusing an empty change: saving an order without editing anything no longer
-  opens a merge request with nothing in it, and the save button stays off until
-  something really changes.
-- The order history reads as a list of events, one line each, grouped by day and
-  signed with the name of the person who acted. The transitions the pipeline
-  makes on its own are folded away under a details view.
-- Failures are written for the reader: a message instead of an error code, a hint
-  and a retry button, and a plain answer when the chart registry is unavailable,
-  saying that nothing can be ordered while it is down but existing orders still
-  open.
-- Waiting looks like the content that is coming, not like the English word
-  "Loading", so the page no longer jumps when the data lands.
-- The navigation menu keeps one geometry when it collapses, its rows carry
-  tooltips, and it remembers what was folded and what was open.
-- The dark themes are repainted: a neutral black page, cards a step above it,
-  and the blue accent as the only saturated colour.
-- Form dialogs open as a panel on the right, and every dialog and menu is
-  animated.
-- Field errors speak one language across the portal, numeric fields accept only
-  numbers, and an error inside a folded section highlights and opens it.
-- Catalog wording: Charts became the Catalog, Approved became Published, and a
-  chart's tabs are now Description and Changes.
-- The code editor is served by the portal itself, so the publishing screens work
-  in a network with no access to the internet.
-- Metrics are served on a port of their own (2112 by default, `METRICS_PORT`) so
-  they are not reachable through the application ingress.
-- A fresh installation starts with an empty catalog: services enter it by
+  by hand. Signing in takes one click.
+- An empty change is refused. The save button stays off until something really
+  changes.
+- The order history reads as a list of events: one line each, grouped by day,
+  signed with the name of the person who acted.
+- Failures are written for the reader: plain text, a hint and a retry button.
+  When the chart registry is down, the portal says plainly that nothing can be
+  ordered right now.
+- Waiting looks like the content that is coming. The page no longer jumps when
+  the data lands.
+- The menu keeps one geometry when it collapses. What was folded and what was
+  open is remembered.
+- The dark themes are repainted: a neutral black page and a blue accent.
+- Form dialogs open as a panel on the right. Dialogs and menus are animated.
+- Field errors speak one language across the portal. Numeric fields accept only
+  numbers.
+- Charts are now the Catalog, and Approved is now Published. A chart's tabs are
+  Description and Changes.
+- The code editor is served by the portal itself. The publishing screens work
+  with no access to the internet.
+- Metrics are served on a port of their own (2112 by default, `METRICS_PORT`).
+- A fresh installation starts with an empty catalog. Services enter it by
   registration or by adoption of what the platform finds.
-- The status update mode is now hybrid by default: webhooks speed the portal up,
-  polling stays as the safety net.
-- The "Synchronize" action is called "Deploy from Git" and now really re-reads
-  Git instead of reporting success without deploying anything.
-- The changelog on the About page reads the way a service's changes do -
-  categories as coloured marks, versions set apart - and it is the project's
-  real changelog rather than a forgotten copy that stopped being updated.
-- Platform state fills the page and explains itself: what users can do right
-  now, what each external system is responsible for, and what the background
-  tasks actually keep up to date.
+- Statuses are updated in hybrid mode by default: webhooks make the portal
+  quicker, polling stays as the safety net.
+- The "Synchronize" action is called "Deploy from Git" and really re-reads Git.
+- The changelog on the About page is the project's real changelog, not a
+  forgotten copy.
+- Platform state explains what users can do right now and what each external
+  system is responsible for.
 
 ### Removed
-- The fake registry, git server and delivery system are gone from the running
-  portal: it always talks to the real ones and refuses to start without their
-  addresses and tokens. Before starting a new installation, set them up.
-- The Applications page, which had no entry in the menu and duplicated the order
-  list.
-- The demonstration services and categories a fresh installation used to be
-  seeded with.
+- The fake registry, git server and delivery system. The portal will not start
+  without the addresses and tokens of the real ones, so set them up first.
+- The Applications page, which duplicated the order list.
+- The demonstration services and categories of a fresh installation.
 
 ### Fixed
-- A merge request that fails to merge on its own is now visible instead of
-  leaving an order silently stuck.
-- The graph no longer drops the values fields it does not know about, and it
-  refuses to draw values it cannot express instead of quietly rewriting them.
-- An unfinished view document degrades the preview panel only, instead of
-  breaking the whole editor page, and the publishing screens no longer scroll as
-  a whole.
-- A draft is no longer renamed on every save, and a service name that is already
-  taken is answered with the name, the cluster and the order holding it.
-- Table columns in a view document reach into nested lists and maps and can show
-  their keys, their values or a chosen element.
+- A change that could not be applied on its own is now visible. An order used to
+  stall in silence.
+- The graph no longer drops values fields it does not know. Values it cannot
+  express it refuses to draw instead of rewriting them.
+- An unfinished view document breaks the preview panel only, not the whole
+  editor page.
+- A draft is no longer renamed on every save. A name already taken is answered
+  with the order holding it.
+- Table columns in a view document reach into nested lists and maps.
 - Versions with a pre-release suffix are ordered correctly.
-- A request that hangs is dropped after 30 seconds with a clear message, and
-  errors arrive as a notification instead of a browser alert box.
-- Services published version by version are visible in the menu and read as
-  published in the approval queue.
+- A request that hangs is dropped after 30 seconds with a clear message.
+- Services published version by version are visible in the menu and in the
+  approval queue.
 - The namespace of an order is checked as you type.
-- In the dark themes the inputs and the select triggers no longer glow white:
-  they take the colour of the card, and the border is what makes them a field.
+- In the dark themes the inputs and the selects no longer glow white.
 - The editing panel on the right dims the page instead of covering it with a
-  light veil in the dark themes.
-- The picture on the sign-in screen no longer washes out in the light theme: the
-  backdrop, the cards and both sides of the comparison read as clearly as they
-  do in the dark one.
+  light veil.
+- The picture on the sign-in screen no longer washes out in the light theme.
 
 ### Security
-- Sessions are stored encrypted, so a dump of the cache no longer exposes the
+- Sessions are stored encrypted. A dump of the cache no longer exposes the
   tokens of everyone signed in.
-- Signing in uses PKCE and verifies the identity token against the request that
-  started it, and a refreshed session recomputes the roles, so a revoked group
-  takes effect at once.
-- Administrator rights are granted only for the exact group path: a nested
-  subgroup no longer escalates.
+- Signing in uses PKCE and verifies the token against the request that started
+  it. A refreshed session recomputes the roles, so a revoked group takes effect
+  at once.
+- Administrator rights are granted only for the exact group path.
 - A service hidden from a user cannot be opened by guessing its address.
-- A chart downloaded from the registry is verified against its checksum before
-  it is unpacked, and the names it carries are validated before they are used.
-- Request size, header size, stream count and idle connections are bounded, and
-  internal failures are no longer echoed back with their details.
-- The session cookie is Secure and same-site strict with an explicit lifetime
-  (`COOKIE_SECURE`), a re-login drops the previous session, and the portal
-  refuses to start with the default session secret.
-- The development sign-in shortcut is physically absent from the production
-  build.
+- A downloaded chart is verified against its checksum before it is unpacked.
+- Request size, header size, stream count and idle connections are bounded.
+  Internal failures are no longer echoed back with their details.
+- The session cookie is Secure with an explicit lifetime (`COOKIE_SECURE`). The
+  portal refuses to start with the default session secret.
+- The development sign-in shortcut is absent from the production build.
 
 ## [0.1.0] - 2026-06-19
 
-First tagged release. The platform console (portal) lets teams self-serve
-deployments from a chart catalog, with GitOps provisioning, an approval flow for
-chart publications, OIDC auth, and observability.
+The first release. The portal lets teams self-serve: order services from a
+catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 
 ### Added
-- Self-service portal: order and upgrade products from a catalog, with GitOps
-  provisioning into Argo CD applications and per-namespace resource identity
-  uniqueness.
-- Chart publications: categories, owners and a view document stored in the
-  database, an approval state machine (submit, withdraw, revoke), and
-  category/owner changes routed through approval.
-- View documents: dynamic enums and computed columns, document validation, and a
-  single canonical order view per chart.
-- Catalog: add a chart by an arbitrary Harbor path with completeness checks,
-  publication status on catalog cards, and a menu/catalog driven by publications.
-- Builder UI: view-document and values.schema.json editor with a real order/
-  product preview and inline format help.
-- Auth: OIDC login via Keycloak, RP-initiated logout, return-to-page after
-  re-login on 401, and RBAC roles (member, admin, support, security with an
-  InfoSec section).
-- Observability: platform metrics with a Grafana dashboard and structured,
-  component-tagged logging.
+- Ordering and upgrading products from a catalog. The portal provisions them
+  through GitOps into Argo CD applications.
+- Chart publications: categories, owners, a view document and approval.
+- View documents: dynamic value lists, computed columns and document validation.
+- Catalog: a chart is added by any Harbor path, with completeness checks.
+- Builder: an editor for the view document and values.schema.json, with a
+  preview of the order and the product.
+- Sign-in through OIDC and Keycloak. Roles: member, admin, support and security.
+- Metrics with a Grafana dashboard, and structured logs.
 - Collector: snapshots Kubernetes state into Valkey for the console.
-- Portal serves the embedded SPA directly (nginx dropped) and exposes an About
-  page with build version and links.
+- The portal serves its own interface, with no nginx. An About page shows the
+  build version.
 - Standalone documentation pages.
-- CI/release pipeline on GitHub Actions: PR checks, tag + GitHub Release on
-  merging a `release/*` PR, and multi-arch image publish to GHCR for portal and
-  collector on `v*` tags.
+- Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
+  and images of the portal and the collector.
 
 [Unreleased]: https://github.com/awbait/console/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/awbait/console/compare/v0.3.0...v0.4.0
