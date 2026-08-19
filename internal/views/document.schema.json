@@ -5,8 +5,11 @@
   "description": "Проекция values.schema.json на интерфейс портала: какие поля показать в форме заказа, какие вкладки завести у продукта и что подставить в заказ автоматически.",
   "type": "object",
   "required": ["views"],
-  "additionalProperties": false,
-  "x-extraMessage": "Лишнее поле {key}: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\"",
+  "propertyNames": {
+    "enum": ["$comment", "version", "views", "tabs", "actions", "defaults", "graph", "approval"],
+    "errorMessage": "На верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\"",
+    "x-extraMessage": "Лишнее поле {key}: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\""
+  },
   "properties": {
     "$comment": { "$ref": "#/definitions/comment" },
     "version": {
@@ -58,16 +61,18 @@
       "type": "object",
       "errorMessage": "Блок \"graph\" должен быть объектом: {\"profile\": \"policies\"}",
       "required": ["profile"],
-      "additionalProperties": false,
-      "x-extraMessage": "Лишнее поле {key}: допустимы \"profile\", \"enabled\", \"entries\", \"entry\", \"rule\" и \"peer\"",
+      "propertyNames": {
+        "enum": ["$comment", "profile", "enabled", "entries", "entry", "rule", "peer"],
+        "errorMessage": "В \"graph\" допустимы \"profile\", \"enabled\", \"entries\", \"entry\", \"rule\" и \"peer\"",
+        "x-extraMessage": "Лишнее поле {key}: допустимы \"profile\", \"enabled\", \"entries\", \"entry\", \"rule\" и \"peer\""
+      },
       "properties": {
         "$comment": { "$ref": "#/definitions/comment" },
         "profile": {
           "description": "Какой редактор включаем. Портал знает профиль \"policies\" - сетевые политики.",
           "type": "string",
           "minLength": 1,
-          "errorMessage": "Укажите \"profile\" - какой редактор включаем",
-          "examples": ["policies"]
+          "errorMessage": "Укажите \"profile\" - какой редактор включаем"
         },
         "enabled": {
           "description": "Выключатель редактора для этой версии. Без поля редактор включён.",
@@ -78,8 +83,7 @@
           "description": "JSON pointer на список записей в values, если чарт называет его не так, как ждёт профиль.",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Поле \"entries\" должно быть JSON pointer'ом, строкой вида \"/policies\"",
-          "examples": ["/policies"]
+          "errorMessage": "Поле \"entries\" должно быть JSON pointer'ом, строкой вида \"/policies\""
         },
         "entry": {
           "description": "Переименование полей записи: слева имя поля профиля, справа ключ в values.",
@@ -99,8 +103,11 @@
       "description": "Как изменения этой версии попадают в кластер.",
       "type": "object",
       "errorMessage": "Блок \"approval\" должен быть объектом: {\"autoMerge\": false}",
-      "additionalProperties": false,
-      "x-extraMessage": "Лишнее поле {key}: в \"approval\" допустимо только \"autoMerge\"",
+      "propertyNames": {
+        "enum": ["$comment", "autoMerge"],
+        "errorMessage": "В \"approval\" допустимо только \"autoMerge\"",
+        "x-extraMessage": "Лишнее поле {key}: в \"approval\" допустимо только \"autoMerge\""
+      },
       "properties": {
         "$comment": { "$ref": "#/definitions/comment" },
         "autoMerge": {
@@ -120,16 +127,18 @@
       "description": "Форма поверх values.schema.json: какие поля чарта показать и как их назвать.",
       "type": "object",
       "errorMessage": "View должна быть объектом с полями include/exclude/overrides",
-      "additionalProperties": false,
-      "x-extraMessage": "Неизвестное поле {key}: во view допустимы identity, namespace, include, exclude, required, overrides",
+      "propertyNames": {
+        "enum": ["$comment", "identity", "namespace", "include", "exclude", "required", "overrides"],
+        "errorMessage": "Во view допустимы identity, namespace, include, exclude, required, overrides",
+        "x-extraMessage": "Неизвестное поле {key}: во view допустимы identity, namespace, include, exclude, required, overrides"
+      },
       "properties": {
         "$comment": { "$ref": "#/definitions/comment" },
         "identity": {
           "description": "Поле values, по которому узнают развёрнутый экземпляр. По нему же портал проверяет, что имя в namespace не занято. Без него портал берёт имя сервиса.",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Поле \"identity\" должно быть JSON pointer'ом, строкой вида \"/gateways/0/name\"",
-          "examples": ["/gateways/0/name"]
+          "errorMessage": "Поле \"identity\" должно быть JSON pointer'ом, строкой вида \"/gateways/0/name\""
         },
         "namespace": {
           "description": "Откуда берётся namespace заказа: из поля формы, из значения в values или из константы.",
@@ -240,8 +249,11 @@
       "description": "Откуда берётся namespace заказа.",
       "type": "object",
       "errorMessage": "Поле \"namespace\" должно быть JSON pointer'ом или объектом {\"source\": \"field|values|fixed\", ...}",
-      "additionalProperties": false,
-      "x-extraMessage": "Лишнее поле {key}: в \"namespace\" допустимы \"source\", \"pointer\", \"value\" и \"hideOrderField\"",
+      "propertyNames": {
+        "enum": ["source", "pointer", "value", "hideOrderField"],
+        "errorMessage": "В \"namespace\" допустимы \"source\", \"pointer\", \"value\" и \"hideOrderField\"",
+        "x-extraMessage": "Лишнее поле {key}: в \"namespace\" допустимы \"source\", \"pointer\", \"value\" и \"hideOrderField\""
+      },
       "properties": {
         "source": {
           "description": "\"field\" - человек вводит namespace в форме, \"values\" - его берут из поля values, \"fixed\" - он всегда один и тот же.",
@@ -252,8 +264,7 @@
           "description": "Поле values, из которого берут namespace. Нужно при source \"values\".",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Для source \"values\" нужен \"pointer\" - JSON pointer вида \"/namespace/namespaceName\"",
-          "examples": ["/namespace/namespaceName"]
+          "errorMessage": "Для source \"values\" нужен \"pointer\" - JSON pointer вида \"/namespace/namespaceName\""
         },
         "value": {
           "description": "Имя namespace, одно на все заказы. Нужно при source \"fixed\".",
@@ -306,8 +317,7 @@
           "description": "JSON pointer на массив в values, строки которого показывает таблица.",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Укажите \"items\": JSON pointer на массив в values, например \"/gateways/0/listeners\"",
-          "examples": ["/gateways/0/listeners"]
+          "errorMessage": "Укажите \"items\": JSON pointer на массив в values, например \"/gateways/0/listeners\""
         },
         "form": {
           "description": "Имя view из блока \"views\", которой добавляют и правят строку. View \"order\" для этого не подходит.",
@@ -338,8 +348,7 @@
           "description": "Путь к полю внутри строки, сегменты через \"/\". Сегмент \"*\" проходит по вложенному массиву, например \"from/*/namespace\".",
           "type": "string",
           "minLength": 1,
-          "errorMessage": "Укажите \"path\": имя поля элемента, например \"name\", либо задайте \"lookup\"",
-          "examples": ["name", "from/*/namespace"]
+          "errorMessage": "Укажите \"path\": имя поля элемента, например \"name\", либо задайте \"lookup\""
         },
         "label": {
           "description": "Заголовок колонки. Без него портал берёт path.",
@@ -358,22 +367,23 @@
       "type": "object",
       "errorMessage": "Поле \"lookup\" должно быть объектом {\"keys\": \"...\", \"in\": \"...\", \"match\": \"...\", \"get\": \"...\"}",
       "required": ["keys", "in", "match", "get"],
-      "additionalProperties": false,
-      "x-extraMessage": "Лишнее поле {key}: в \"lookup\" допустимы \"keys\", \"in\", \"match\", \"get\"",
+      "propertyNames": {
+        "enum": ["keys", "in", "match", "get"],
+        "errorMessage": "В \"lookup\" допустимы \"keys\", \"in\", \"match\", \"get\"",
+        "x-extraMessage": "Лишнее поле {key}: в \"lookup\" допустимы \"keys\", \"in\", \"match\", \"get\""
+      },
       "properties": {
         "keys": {
           "description": "JSON pointer на ключи внутри строки, может содержать \"*\".",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Укажите \"keys\": JSON pointer внутри элемента, может содержать \"*\", например \"/parentRefs/*/sectionName\"",
-          "examples": ["/parentRefs/*/sectionName"]
+          "errorMessage": "Укажите \"keys\": JSON pointer внутри элемента, может содержать \"*\", например \"/parentRefs/*/sectionName\""
         },
         "in": {
           "description": "JSON pointer на массив в values, в котором ищут ключ.",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Укажите \"in\": JSON pointer на массив в values, например \"/gateways/0/listeners\"",
-          "examples": ["/gateways/0/listeners"]
+          "errorMessage": "Укажите \"in\": JSON pointer на массив в values, например \"/gateways/0/listeners\""
         },
         "match": {
           "description": "Имя поля строки массива, которое сравнивают с ключом.",
@@ -394,22 +404,23 @@
       "type": "object",
       "errorMessage": "Правило enum должно быть объектом {\"at\": \"...\", \"from\": \"...\", \"value\": \"...\"}",
       "required": ["at", "from", "value"],
-      "additionalProperties": false,
-      "x-extraMessage": "Лишнее поле {key}: в правиле enum допустимы \"at\", \"from\", \"value\"",
+      "propertyNames": {
+        "enum": ["at", "from", "value"],
+        "errorMessage": "В правиле enum допустимы \"at\", \"from\", \"value\"",
+        "x-extraMessage": "Лишнее поле {key}: в правиле enum допустимы \"at\", \"from\", \"value\""
+      },
       "properties": {
         "at": {
           "description": "JSON pointer на поле внутри строки, которому подставляют список.",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Укажите \"at\": JSON pointer на поле внутри элемента, например \"/parentRefs/0/sectionName\"",
-          "examples": ["/parentRefs/0/sectionName"]
+          "errorMessage": "Укажите \"at\": JSON pointer на поле внутри элемента, например \"/parentRefs/0/sectionName\""
         },
         "from": {
           "description": "JSON pointer на массив в values, из которого собирают значения.",
           "type": "string",
           "pattern": "^/",
-          "errorMessage": "Укажите \"from\": JSON pointer на массив-источник в values, например \"/gateways/0/listeners\"",
-          "examples": ["/gateways/0/listeners"]
+          "errorMessage": "Укажите \"from\": JSON pointer на массив-источник в values, например \"/gateways/0/listeners\""
         },
         "value": {
           "description": "Имя поля строки источника, которое даёт значение опции.",
@@ -436,8 +447,7 @@
           "type": "string",
           "pattern": "^(info|tab:.+)$",
           "errorMessage": "Неизвестное размещение: допустимо \"info\" или \"tab:<id>\"",
-          "x-missingMessage": "Укажите \"in\": \"info\" или \"tab:<id>\"",
-          "examples": ["info", "tab:listeners"]
+          "x-missingMessage": "Укажите \"in\": \"info\" или \"tab:<id>\""
         },
         "label": {
           "description": "Текст пункта в меню «Действия». Без него портал берёт имя view.",

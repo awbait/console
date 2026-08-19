@@ -2,6 +2,7 @@ package views_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,6 +27,51 @@ func TestDocumentSchemaIsUsableJSON(t *testing.T) {
 			t.Fatalf("block %q has no description, so the editor has nothing to show on hover", block)
 		}
 	}
+}
+
+// An object that lists its allowed keys says so twice: in "properties", which
+// the editor completes from, and in "propertyNames", which is what refuses an
+// unknown key in words the portal chose. A key added to one and not the other
+// would either be uncompletable or unwritable, and nothing else would notice.
+func TestAllowedKeysAreListedOnce(t *testing.T) {
+	var doc map[string]any
+	if err := json.Unmarshal(views.DocumentSchema(), &doc); err != nil {
+		t.Fatalf("document schema is not JSON: %v", err)
+	}
+	var walk func(path string, node map[string]any)
+	walk = func(path string, node map[string]any) {
+		names, _ := node["propertyNames"].(map[string]any)
+		allowed, hasEnum := names["enum"].([]any)
+		if hasEnum {
+			props, _ := node["properties"].(map[string]any)
+			listed := map[string]bool{}
+			for _, it := range allowed {
+				key, _ := it.(string)
+				listed[key] = true
+				if _, ok := props[key]; !ok {
+					t.Errorf("%s: %q is allowed but not described in \"properties\"", path, key)
+				}
+			}
+			for key := range props {
+				if !listed[key] {
+					t.Errorf("%s: %q is described but not allowed by \"propertyNames\"", path, key)
+				}
+			}
+		}
+		for key, v := range node {
+			switch child := v.(type) {
+			case map[string]any:
+				walk(path+"/"+key, child)
+			case []any:
+				for i, it := range child {
+					if m, ok := it.(map[string]any); ok {
+						walk(fmt.Sprintf("%s/%s/%d", path, key, i), m)
+					}
+				}
+			}
+		}
+	}
+	walk("", doc)
 }
 
 // A document that uses every block at once, against a schema that has the fields

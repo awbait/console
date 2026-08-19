@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -19,8 +18,8 @@ import (
 //
 // What stays in validate.go is what a static schema cannot say: whether a
 // pointer finds a field in THIS chart's values.schema.json, whether a tab id is
-// unique, whether a form named by a tab exists, and the graph/namespace
-// directives, whose allowed keys depend on a profile the portal implements.
+// free, whether a form named by a tab exists, and the graph directive, whose
+// allowed keys come from a profile the portal implements.
 //
 //go:embed document.schema.json
 var documentSchemaJSON []byte
@@ -107,15 +106,14 @@ func checkShape(doc any) []Issue {
 }
 
 // explain turns one leaf failure into the issues a person can act on. Most
-// failures are one issue at the failing value; "required" and
-// "additionalProperties" speak about keys, so they are reported at the key.
+// failures are one issue at the failing value; "required" speaks about keys that
+// are not there, so it is reported once per missing key.
 func explain(doc any, e *jsonschema.ValidationError) []Issue {
-	keyword := lastSegment(e.KeywordLocation)
-	owner, _ := resolveKeyword(parentLocation(e.KeywordLocation)).(map[string]any)
+	ownerLocation := parentLocation(e.KeywordLocation)
+	owner, _ := resolveKeyword(ownerLocation).(map[string]any)
 	inst := unescapePointer(e.InstanceLocation)
 
-	switch keyword {
-	case "required":
+	if lastSegment(e.KeywordLocation) == "required" {
 		var issues []Issue
 		for _, key := range missingProperties(doc, e) {
 			issues = append(issues, Issue{
@@ -124,23 +122,18 @@ func explain(doc any, e *jsonschema.ValidationError) []Issue {
 			})
 		}
 		return issues
-	case "additionalProperties":
-		var issues []Issue
-		for _, key := range extraProperties(doc, e.InstanceLocation, owner) {
-			msg, _ := owner[annExtra].(string)
-			if msg == "" {
-				msg = "Лишнее поле {key}"
-			}
-			issues = append(issues, Issue{
-				Path:    inst + "/" + key,
-				Message: strings.ReplaceAll(msg, "{key}", strconv.Quote(key)),
-			})
-		}
-		return issues
 	}
+
 	msg, _ := owner[annError].(string)
+	// A key the object does not allow: the failure is on the key itself (the
+	// instance location already points at it), so the message may name it.
+	if lastSegment(ownerLocation) == "propertyNames" {
+		if extra, _ := owner[annExtra].(string); extra != "" {
+			msg = strings.ReplaceAll(extra, "{key}", strconv.Quote(lastSegment(inst)))
+		}
+	}
 	if msg == "" {
-		msg = defaultMessage(keyword, owner)
+		msg = defaultMessage(lastSegment(e.KeywordLocation), owner)
 	}
 	return []Issue{{Path: inst, Message: msg}}
 }
@@ -206,26 +199,12 @@ func missingProperties(doc any, e *jsonschema.ValidationError) []string {
 	return missing
 }
 
-// extraProperties lists the instance keys the object schema does not describe.
-func extraProperties(doc any, instanceLocation string, owner map[string]any) []string {
-	obj, _ := instanceAt(doc, instanceLocation).(map[string]any)
-	props, _ := owner["properties"].(map[string]any)
-	var extra []string
-	for key := range obj {
-		if _, ok := props[key]; !ok {
-			extra = append(extra, key)
-		}
-	}
-	sort.Strings(extra) // map order, and issues are compared in tests
-	return extra
-}
-
 // resolveKeyword walks a keyword location (the path the library reports inside
 // the schema, e.g. /properties/views/additionalProperties/$ref/properties/include/type)
 // down the raw schema document, following "$ref" as it goes.
 func resolveKeyword(location string) any {
 	cur := any(documentSchemaRaw)
-	for _, seg := range strings.Split(strings.TrimPrefix(location, "/"), "/") {
+	for seg := range strings.SplitSeq(strings.TrimPrefix(location, "/"), "/") {
 		if seg == "" {
 			continue
 		}
@@ -257,7 +236,7 @@ func resolveKeyword(location string) any {
 // instanceAt returns the value a JSON pointer points to inside a decoded document.
 func instanceAt(doc any, pointer string) any {
 	cur := doc
-	for _, seg := range strings.Split(strings.TrimPrefix(pointer, "/"), "/") {
+	for seg := range strings.SplitSeq(strings.TrimPrefix(pointer, "/"), "/") {
 		if seg == "" {
 			continue
 		}

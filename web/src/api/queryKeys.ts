@@ -21,6 +21,7 @@ export const qk = {
     name,
     version,
   ],
+  viewSchema: (): QueryKey => ["view-schema"],
   changelog: (project: string, name: string): QueryKey => ["changelog", project, name],
   requests: (): QueryKey => ["requests"],
   platformHealth: (): QueryKey => ["platform-health"],
