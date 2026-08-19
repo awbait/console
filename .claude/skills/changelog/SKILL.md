@@ -82,14 +82,28 @@ read. An entry written as one flowing sentence with clauses hanging off it is
 the single most common way to make it unreadable, and it is what this section
 exists to prevent.
 
+- **Every entry stands on its own: what changed, where it is, what to do with
+  it.** Short is not the goal - understood is. "The owner learns that a version
+  was approved" answers nothing: learns where? "The portal announces its own
+  updates" - announces how? Name the place in the interface the reader will find
+  it, in the words the interface uses.
+- **Never refer to something the reader may never have seen.** "The stripe in
+  the catalog is gone" means nothing to somebody who never saw it. Say what it
+  was ("a message on the catalog page") or drop the comparison entirely.
+- **Name the feature, then use plain words.** Introduce the bell once, when the
+  notifications arrive; after that a notification simply "arrives", it is not
+  "written into the bell".
 - **One sentence, one thought, about 15 words.** Two thoughts are two sentences.
 - **At most three sentences per entry.** More than that means it is two entries.
 - **No parenthetical asides set off by dashes, and no semicolons.** If a clause
   needs punctuation to be squeezed in, it is a sentence of its own.
 - **Lead with what the reader sees now.** How it used to be comes after, in one
   short sentence, and only when the change makes no sense without it.
-- **No narrator.** "The portal tells you...", "This is what a team needs...",
-  "which used to be a page away" - drop all of it and state the fact.
+- **No narrator, and no writerly turns of phrase.** "The page went on looking
+  current", "waiting looks like the content that is coming", "the menu keeps one
+  geometry" - each of those made a reader stop and decode it. Say "the page kept
+  showing stale data", "an outline of the data is shown while it loads", "the
+  icons stay on the same line".
 - No internal vocabulary: no function, file, package, table, flag or endpoint
   names, no ticket numbers, no branch or commit references.
 - No implementation detail: the reader does not care which layer changed or how
@@ -109,11 +123,19 @@ exists to prevent.
 | Performance improvements | The catalog opens in about a second even with several hundred products. |
 | Bumped the OIDC library | (no entry: nothing changed for the user) |
 
-One more pair, because length is where entries go wrong:
+Length and missing context are where entries go wrong, and they go wrong in
+opposite directions - one long sentence nobody finishes, or a short one that
+answers nothing:
 
 | Instead of | Write |
 | --- | --- |
-| Значение, из-за которого заказ не приняли, объясняется теми же словами, которыми поле подсказывало при заполнении: «Не короче 3 символов.» вместо «length must be >= 3, but got 2», а пропущенное значение показывается на самом поле, а не на блоке вокруг него. | Ошибки формы заказа стали понятными. Вместо «length must be >= 3, but got 2» портал пишет «Не короче 3 символов». Незаполненное поле подсвечивается само. |
+| A value the order was refused for is explained in the words the field itself used while it was being filled in, and a missing value is pointed at the field rather than at the block around it. | The order form explains a refusal in the same words its hint used. A field you skipped is highlighted itself. |
+| The owner learns that a version was approved or rejected. | The team publishing a service is notified what became of its version: approved or rejected. A rejection carries the reviewer's comment. |
+| The stripe in the catalog is gone. | This used to be a message on the catalog page, and it is gone. |
+
+Read every entry back as the person using the product, and answer for them:
+what changed, where it is, what to do with it. If any of the three has no
+answer, the entry is not finished.
 
 Breaking changes go into **Changed**, **Removed** or **Deprecated** and always
 say what to do instead: what replaces the removed thing, or what has to be

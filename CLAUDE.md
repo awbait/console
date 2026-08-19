@@ -31,3 +31,4 @@
 | `ux-copy.md` | тексты интерфейса: тон, шаблоны ошибок | `web/**` |
 | `config.md` | переменные окружения и их описания | `internal/config/**`, `.env.example` |
 | `observability.md` | логи и метрики | `**/*.go` |
+| `changelog.md` | записи журнала изменений: пары «было/стало» на наших ошибках | `CHANGELOG.md`, `CHANGELOG.ru.md` |
