@@ -160,6 +160,9 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// One writer for every domain that has something to tell a person. Wired
 	// after the domains exist, so neither has to know how the other is built.
 	notifySvc := notify.New(st, bus, observability.Component(log, "notify"))
+	// What the admin group owns is addressed to the admin role: that group is
+	// not a team and appears in nobody's team list.
+	notifySvc.SetAdminTeam(discoveryOwner)
 	provSvc.SetNotifier(notifySvc)
 	pubsSvc.SetNotifier(notifySvc)
 	// A new build of the portal is news for everyone, once per version: the

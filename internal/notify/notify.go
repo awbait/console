@@ -27,6 +27,12 @@ type Service struct {
 	store store.Store
 	bus   *events.Bus
 	log   *slog.Logger
+	// adminTeam is the group that owns what the platform team owns: the charts
+	// nobody has adopted, and the services the platform runs itself. It is a
+	// group, not a team - it grants the admin role and never appears in
+	// anybody's team list (internal/auth/rbac.go) - so a notification addressed
+	// to it as a team would reach nobody at all.
+	adminTeam string
 }
 
 // New builds a notify service. The bus may be nil (tests, one-off tools): then
@@ -34,6 +40,10 @@ type Service struct {
 func New(st store.Store, bus *events.Bus, log *slog.Logger) *Service {
 	return &Service{store: st, bus: bus, log: log}
 }
+
+// SetAdminTeam names the admin group (main wires it from the configuration), so
+// what it owns is addressed to the admin role instead.
+func (s *Service) SetAdminTeam(team string) { s.adminTeam = team }
 
 func (s *Service) logger() *slog.Logger {
 	if s.log != nil {
