@@ -7,7 +7,10 @@
 export const fieldMsg = {
   required: "Обязательное поле.",
   charset: "Используйте строчные латинские буквы, цифры и дефис.",
+  charsetFromLetter: "Используйте строчные латинские буквы, цифры и дефис, начиная с буквы.",
   edgeChars: "Первый и последний символ - буква или цифра.",
+  firstLetter: "Первый символ - буква, последний - буква или цифра.",
+  pathSlash: "Начните путь с косой черты.",
   badFormat: "Недопустимый формат.",
   integer: "Введите целое число.",
   number: "Введите число.",
@@ -38,6 +41,7 @@ export const fieldMsg = {
 export const fieldHint = {
   charset: "Строчные латинские буквы, цифры и дефис.",
   integer: "Целое число.",
+  pathSlash: "Путь начинается с косой черты.",
 };
 
 // withField prefixes a canonical message with a field label for error lists
@@ -80,33 +84,76 @@ export interface FieldRequirement {
   // met answers for a non-empty value. An empty field is "not yet", not
   // "wrong", and callers show those rules neutral rather than failing.
   met: (value: string) => boolean;
+  // What to say when the value breaks this rule, if the requirement itself does
+  // not read as an instruction. "Первый символ - буква" already tells the
+  // reader what is wrong; "Строчные латинские буквы" needs "Используйте".
+  err?: string;
 }
 
 const CHARSET_RE = /^[a-z0-9-]*$/;
 const INTEGER_RE = /^-?\d+$/;
+// Like a DNS label, but the first character has to be a letter. Charts use it
+// for the tags that become the leading part of a resource name.
+const LETTER_LABEL_RE = /^[a-z]([a-z0-9-]*[a-z0-9])?$/;
 
-// Patterns charts use for names. A regular expression is not something to show
-// a person, so only the ones we can say in words are turned into rules; an
-// unrecognised pattern contributes nothing and the field just says less.
-const CHARSET_PATTERNS: { re: string; rules: FieldRequirement[] }[] = [
+// The rules a pattern is made of. Written once because two fields ask for them
+// in different voices: the hint names what the field takes, the error says what
+// to do about a value that does not.
+const charsetRule: FieldRequirement = {
+  text: fieldHint.charset,
+  met: (v) => CHARSET_RE.test(v),
+  err: fieldMsg.charset,
+};
+const edgeRule: FieldRequirement = { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) };
+const firstLetterRule: FieldRequirement = {
+  text: fieldMsg.firstLetter,
+  met: (v) => LETTER_LABEL_RE.test(v),
+};
+const pathRule: FieldRequirement = {
+  text: fieldHint.pathSlash,
+  met: (v) => v.startsWith("/"),
+  err: fieldMsg.pathSlash,
+};
+
+// Patterns charts use, and what each one says in words. A regular expression is
+// not something to show a person, so a pattern nobody has put into words
+// contributes no rules and the field simply says less.
+//
+// Matching is by the text of the pattern, which is exact by nature: an
+// equivalent regular expression written differently is a different string here.
+// That is why this list is meant to grow with the charts - and why a chart that
+// needs a shape the portal cannot phrase should say so itself rather than hope
+// its regular expression is recognised (see issue #189).
+const CHARSET_PATTERNS: { re: string; msg: string; rules: FieldRequirement[] }[] = [
   // DNS label, with and without the edge-character clause.
   {
     re: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
-    rules: [
-      { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
-      { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
-    ],
+    msg: fieldMsg.charset,
+    rules: [charsetRule, edgeRule],
   },
   {
     re: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
-    rules: [
-      { text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) },
-      { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) },
-    ],
+    msg: fieldMsg.charset,
+    rules: [charsetRule, edgeRule],
   },
-  { re: "^[a-z0-9-]+$", rules: [{ text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) }] },
-  { re: "^[a-z0-9-]*$", rules: [{ text: fieldHint.charset, met: (v) => CHARSET_RE.test(v) }] },
+  { re: "^[a-z0-9-]+$", msg: fieldMsg.charset, rules: [charsetRule] },
+  { re: "^[a-z0-9-]*$", msg: fieldMsg.charset, rules: [charsetRule] },
+  // The same label, but starting with a letter.
+  {
+    re: "^[a-z]([a-z0-9-]*[a-z0-9])?$",
+    msg: fieldMsg.charsetFromLetter,
+    rules: [charsetRule, firstLetterRule],
+  },
+  // An HTTP path: the only thing the pattern demands is the leading slash.
+  { re: "^/", msg: fieldMsg.pathSlash, rules: [pathRule] },
 ];
+
+// findPattern looks a pattern up by its text, ignoring the whitespace around
+// it: a chart that indents its schema differently means the same rule.
+function findPattern(pattern: string) {
+  const re = pattern.trim();
+  return CHARSET_PATTERNS.find((p) => p.re === re);
+}
 
 // fieldRequirements lists what a field accepts, in the same words the error
 // would use if the value were wrong - so the hint and the complaint never
@@ -116,7 +163,7 @@ const CHARSET_PATTERNS: { re: string; rules: FieldRequirement[] }[] = [
 export function fieldRequirements(s: FieldConstraints): FieldRequirement[] {
   const out: FieldRequirement[] = [];
   if (s.pattern) {
-    const known = CHARSET_PATTERNS.find((p) => p.re === s.pattern);
+    const known = findPattern(s.pattern);
     if (known) out.push(...known.rules);
   }
   if (s.type === "integer") {
@@ -218,8 +265,20 @@ export const fieldKind = {
 // A regular expression is not something to show a person, so a pattern we can
 // say in words says it - in the same sentence the field's own hint uses - and
 // any other one only says the format is wrong.
-export function patternError(pattern: string): string {
-  return CHARSET_PATTERNS.some((p) => p.re === pattern) ? fieldMsg.charset : fieldMsg.badFormat;
+//
+// Given the value, it names the rule that value actually broke, which is the
+// one thing the person needs: told "используйте строчные буквы" about "1abc",
+// they would go looking for a capital letter that is not there. Without a value
+// - a complaint that came back from the server, where only the field is known -
+// the pattern speaks for itself as a whole.
+export function patternError(pattern: string, value?: string): string {
+  const known = findPattern(pattern);
+  if (!known) return fieldMsg.badFormat;
+  if (value !== undefined) {
+    const broken = known.rules.find((r) => !r.met(value));
+    if (broken) return broken.err ?? broken.text;
+  }
+  return known.msg;
 }
 
 // SchemaRule is the part of a schema node needed to word a complaint about it:

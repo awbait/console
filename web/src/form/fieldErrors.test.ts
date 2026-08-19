@@ -6,6 +6,7 @@ import {
   fieldKind,
   fieldMsg,
   fieldRequirements,
+  patternError,
   schemaViolationText,
 } from "./fieldErrors";
 import { namespaceError, namespaceKind, namespaceRequirements } from "./namespace";
@@ -39,6 +40,23 @@ describe("fieldRequirements", () => {
   // pattern contributes nothing rather than leaking itself into the interface.
   test("an unknown pattern says nothing", () => {
     expect(texts({ type: "string", pattern: "^(foo|bar)[0-9]{2}$" })).toEqual([]);
+  });
+
+  test("a name that has to start with a letter says so", () => {
+    expect(texts({ type: "string", pattern: "^[a-z]([a-z0-9-]*[a-z0-9])?$" })).toEqual([
+      fieldHint.charset,
+      fieldMsg.firstLetter,
+    ]);
+  });
+
+  test("a path states the one thing its pattern asks for", () => {
+    expect(texts({ type: "string", pattern: "^/" })).toEqual([fieldHint.pathSlash]);
+  });
+
+  // The pattern is matched by its text, so whitespace around it must not turn a
+  // known rule into an unknown one.
+  test("a pattern written with spaces around it is the same pattern", () => {
+    expect(texts({ type: "string", pattern: " ^[a-z0-9-]+$ " })).toEqual([fieldHint.charset]);
   });
 
   test("a field with no constraints has no rules", () => {
@@ -197,6 +215,21 @@ describe("schemaViolationText", () => {
   test("a pattern we can say in words says it, and any other one does not pretend to", () => {
     expect(schemaViolationText("pattern", { pattern: "^[a-z0-9-]+$" })).toBe(fieldMsg.charset);
     expect(schemaViolationText("pattern", { pattern: "^v\d+(\.\d+)?$" })).toBe(fieldMsg.badFormat);
+  });
+
+  // Complaining about characters when the characters are fine sends the reader
+  // looking for a mistake that is not there.
+  test("with the value at hand, the complaint names the rule that value broke", () => {
+    const p = "^[a-z]([a-z0-9-]*[a-z0-9])?$";
+    expect(patternError(p, "Abc")).toBe(fieldMsg.charset);
+    expect(patternError(p, "1abc")).toBe(fieldMsg.firstLetter);
+    expect(patternError("^/", "routes")).toBe(fieldMsg.pathSlash);
+  });
+
+  test("without a value the pattern speaks for itself as a whole", () => {
+    expect(patternError("^[a-z]([a-z0-9-]*[a-z0-9])?$")).toBe(fieldMsg.charsetFromLetter);
+    expect(patternError("^/")).toBe(fieldMsg.pathSlash);
+    expect(patternError("^(foo|bar)$", "baz")).toBe(fieldMsg.badFormat);
   });
 
   test("a choice lists what may be chosen", () => {
