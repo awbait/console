@@ -1,5 +1,5 @@
 import { IconAlertTriangle, IconLogin } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { LoginScene } from "./LoginScene";
@@ -37,6 +37,19 @@ const LOGIN_ERRORS: Record<string, { title: string; text: string }> = {
 
 const FALLBACK_ERROR = { title: "Вход не завершён", text: "Попробуйте ещё раз." };
 
+// Why the way in is closed right now. Two different situations end in the same
+// closed button, and the person can do different things about them: one is on
+// the platform's side and being worked on, the other may pass by itself.
+const OFFLINE = {
+  title: "Вход временно недоступен",
+  text: "Портал не отвечает. Попробуйте обновить страницу через несколько минут.",
+};
+
+const DEGRADED = {
+  title: "Вход временно недоступен",
+  text: "В работе платформы есть проблемы, мы уже их устраняем.",
+};
+
 const ERROR_PARAM = "auth_error";
 
 // useLoginFailure reads the reason off the address and then takes it off the
@@ -68,8 +81,21 @@ export function LoginScreen() {
   // Signing in goes through Keycloak and nothing else, so when Keycloak is down
   // the button leads to a broken page of someone else's making. Better to say so
   // here than to hand the user off to a blank screen.
-  const { ok } = usePlatformHealth();
-  const canSignIn = ok("sign_in");
+  //
+  // The portal not answering closes the button for the same reason. Elsewhere an
+  // unreachable portal leaves the actions open, because a request that fails
+  // says so on the spot; here the press leaves the interface for an address that
+  // answers nothing, and the person is left on the browser's error page with no
+  // way back in.
+  const { ok, reachable } = usePlatformHealth();
+  const blocked = !reachable ? OFFLINE : ok("sign_in") ? undefined : DEGRADED;
+  const canSignIn = !blocked;
+  // The explanation folds away rather than disappearing, so it needs something
+  // to say while it closes. Keeping the last reason means the box that is going
+  // away still shows the one it opened with.
+  const lastBlocked = useRef(DEGRADED);
+  if (blocked) lastBlocked.current = blocked;
+  const shown = blocked ?? lastBlocked.current;
   const failure = useLoginFailure();
 
   return (
@@ -145,10 +171,8 @@ export function LoginScreen() {
                   className="mt-0.5 shrink-0 text-amber-600"
                 />
                 <span>
-                  <span className="block font-medium">Вход временно недоступен</span>
-                  <span className="mt-0.5 block">
-                    В работе платформы есть проблемы, мы уже их устраняем.
-                  </span>
+                  <span className="block font-medium">{shown.title}</span>
+                  <span className="mt-0.5 block">{shown.text}</span>
                 </span>
               </div>
             </div>
