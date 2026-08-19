@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-19
+
+A release about notifications. The portal now says what happened to your
+service, your order or your version, instead of waiting for you to open the
+right page.
+
 ### Added
 - Notifications. The portal sends one when something happens to your service or
   your order. The top bar gained a bell: while something is unread it carries a
@@ -14,18 +20,18 @@ All notable changes to this project are documented in this file.
 - The team publishing a service is notified what became of its version:
   approved or rejected. A rejection carries the reviewer's comment, which you
   used to have to open the version page to find.
-- The portal sends a notification about its own update too. Clicking it opens
-  the changelog at the section for that version.
+- When a published version disappears from the registry, the portal tells the
+  owning team and the admins. Such a version cannot be ordered, and in the
+  catalog the service looks as if nobody ever published it. Clicking the
+  notification opens that version.
 - An admin is notified when a version of a service is sent for approval.
   Clicking it opens the page where the decision is made. The queue used to be
   visible only by opening the approvals section.
 - An admin also hears about a service the portal found in the registry itself.
   Clicking it opens the service, to give it a category and an owner. Without
   those it never appears in the catalog.
-- When a published version disappears from the registry, the portal tells the
-  owning team and the admins. Such a version cannot be ordered, and in the
-  catalog the service looks as if nobody ever published it. Clicking the
-  notification opens that version.
+- The portal sends a notification about its own update too. Clicking it opens
+  the changelog at the section for that version.
 - A notification can be marked read without opening it: point at it and press
   the tick. "Прочитать все" clears the count at once. Read notifications are
   kept for 90 days, unread ones are never deleted.
@@ -263,7 +269,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/awbait/console/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/awbait/console/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/awbait/console/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/awbait/console/compare/v0.1.0...v0.2.0
