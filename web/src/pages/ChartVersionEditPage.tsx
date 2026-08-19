@@ -56,6 +56,11 @@ import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
 import { RejectedChip, STATUS_LABELS, versionHint } from "./ChartManagePage";
 
+// How long the typing has to stop before the draft saves itself. Long enough
+// that a pause for thought inside a sentence does not become a request, short
+// enough that what is lost by a browser crash is a sentence, not an evening.
+const AUTOSAVE_MS = 2000;
+
 // View-document template for a new draft.
 const VIEW_TEMPLATE = `{
   "views": {
@@ -98,9 +103,12 @@ export function ChartVersionEditPage() {
           { label: version },
         ]}
       />
-      {/* Keyed by version: switching versions remounts the editor, so draft
-          text/validation state never leaks between versions. */}
-      <VersionEditor key={version} pub={pub} version={version} />
+      {/* Keyed by the publication and the version: both halves matter, because
+          this route renders the editor for every chart. Two charts open at the
+          same version number would otherwise be the same element to React, the
+          editor would keep the text of the one just left, and the draft it saves
+          on the way out would land on the other one. */}
+      <VersionEditor key={`${pub.id}:${version}`} pub={pub} version={version} />
     </div>
   );
 }
@@ -173,14 +181,33 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   // View-document draft in the editor, loaded once the stored rows arrive. The
   // ref guards against a background refetch clobbering unsaved edits.
   const [text, setText] = useState(VIEW_TEMPLATE);
+  // The document as it stands on the server, as far as this page knows. Unsaved
+  // work is then a comparison rather than a flag somebody has to remember to
+  // clear, and null means the page has nothing to compare with yet.
+  const [saved, setSaved] = useState<string | null>(null);
+  // Whether this version has a stored document at all: a page opened on a
+  // version nobody has written yet says nothing about saving until it does.
+  const [stored, setStored] = useState(false);
+  // The exact text the server refused, if it did. A document it will not take -
+  // an unknown field, say - must not be offered again on a timer: the answer
+  // will not change until the document does, and a page left open would knock
+  // on the same closed door every two seconds.
+  const [refused, setRefused] = useState<string | null>(null);
   const loaded = useRef(false);
   useEffect(() => {
     if (loaded.current || versions === null) return;
     const row = versions.find((v) => v.chart_version === version) ?? null;
     const doc = row?.view_json ?? row?.approved_view_json ?? null;
-    setText(doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE);
+    const start = doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE;
+    setText(start);
+    // A version nobody has written yet starts from the template. Counting the
+    // template as the saved state is what keeps an untouched page from saving
+    // itself, while the first edit to it already counts as work.
+    setSaved(start);
+    setStored(doc !== null);
     loaded.current = true;
   }, [versions, version]);
+  const dirty = saved !== null && text !== saved;
 
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "save" | "submit" | "withdraw">(null);
@@ -225,21 +252,65 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
     return () => clearTimeout(debounce.current);
   }, [parsed, pub.id, version]);
 
+  // The document is written by hand, in a single long sitting, and a page left
+  // for a meeting used to come back empty: nothing here was stored until the
+  // button was pressed. So the draft saves itself on a pause in the typing.
+  //
+  // Only a document that parses is sent - half-typed JSON is not a draft worth
+  // keeping - and only where editing is allowed at all: a version on approval or
+  // gone from the registry is read-only, and the page says so.
+  useEffect(() => {
+    if (!editable || !dirty || !parsed || busy !== null || refused === text) return;
+    const id = setTimeout(() => void onSave(), AUTOSAVE_MS);
+    return () => clearTimeout(id);
+    // onSave is redeclared on every render; the state it reads is in the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, dirty, parsed, busy, text, refused]);
+
+  // Leaving the page is the case the pause does not cover: two seconds of typing
+  // are still unsaved when the person clicks away, and the timeout dies with the
+  // page. The last state is kept in a ref and sent on the way out - the request
+  // outlives the component, since nothing aborts it.
+  const pendingSave = useRef<ViewDocument | null>(null);
+  pendingSave.current = parsed && dirty && editable && refused !== text ? parsed : null;
+  useEffect(() => {
+    return () => {
+      const doc = pendingSave.current;
+      if (doc) void api.saveVersionView(pub.id, version, doc).catch(() => {});
+    };
+  }, [pub.id, version]);
+
+  // Closing the tab is the one exit the portal cannot save through, so it asks.
+  useEffect(() => {
+    if (!dirty) return;
+    const ask = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [dirty]);
+
   async function onSave(notify = false): Promise<boolean> {
     if (!parsed) {
       setErr("Исправьте синтаксис JSON перед сохранением.");
       return false;
     }
+    // What is being sent, remembered before the request rather than after it:
+    // by the time the answer arrives the editor may hold something newer, and
+    // calling that saved would lose it silently.
+    const sent = text;
     setBusy("save");
     setErr(null);
     try {
       await api.saveVersionView(pub.id, version, parsed);
+      setSaved(sent);
+      setStored(true);
+      setRefused(null);
       reloadVersions();
       reloadCatalog();
       if (notify) success("Черновик сохранён");
       return true;
     } catch (e) {
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
+      setRefused(sent);
       return false;
     } finally {
       setBusy(null);
@@ -335,7 +406,17 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
           </div>
         </div>
         {editable && (
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            {/* What happened to the work, in one line. It sits next to the
+                button rather than over the editor: the page already says
+                whether the document is valid, and two floating notices about
+                the same text would compete. */}
+            <SaveState
+              saving={busy === "save"}
+              dirty={dirty}
+              blocked={!!syntaxErr || refused === text}
+              stored={stored}
+            />
             <Button isDisabled={busy !== null} onPress={() => onSave(true)}>
               Сохранить черновик
             </Button>
@@ -501,6 +582,44 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
         </Card>
       </div>
     </div>
+  );
+}
+
+// Where the work stands: saved, on its way, or held back by a document that
+// does not parse. Muted and wordless where nothing is happening - a draft that
+// keeps saving itself should be felt as quiet, not as a stream of confirmations.
+//
+// role=status, so the same line is announced rather than only shown; a person
+// working in the editor by keyboard has no other way to learn that the pause
+// they took saved their work.
+function SaveState({
+  saving,
+  dirty,
+  blocked,
+  stored,
+}: {
+  saving: boolean;
+  dirty: boolean;
+  blocked: boolean;
+  // Whether anything has been saved for this version at all. An untouched page
+  // for a version nobody has written yet has nothing to report, and saying
+  // "сохранён" about a document that does not exist would be a lie.
+  stored: boolean;
+}) {
+  const text = saving
+    ? "Сохраняем…"
+    : blocked && dirty
+      ? "Не сохранено"
+      : dirty
+        ? "Черновик сохранится сам"
+        : stored
+          ? "Черновик сохранён"
+          : "";
+  if (!text) return null;
+  return (
+    <output className={`text-xs ${blocked && dirty ? "text-amber-700" : "text-slate-400"}`}>
+      {text}
+    </output>
   );
 }
 
