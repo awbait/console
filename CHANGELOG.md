@@ -15,6 +15,11 @@ All notable changes to this project are documented in this file.
   the portal remembers your choice as before.
 
 ### Fixed
+- A field explains a refusal by the rule that was actually broken. The value
+  `-abc` in a name used to be answered with the list of characters allowed,
+  although the characters were right and the hyphen on the edge was not.
+- Fields that have to start with a letter, and fields holding a path, now say so
+  too. They used to stay silent and answer "Недопустимый формат" on a mistake.
 - Removing a block from the middle of a list on the order form no longer
   disturbs the ones around it. The block that stays open is the one you opened,
   not the one that took its place.

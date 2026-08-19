@@ -76,7 +76,7 @@ function leafErrors(s: Schema, v: unknown, path: string, out: Map<string, string
   else if (typeof s.maxLength === "number" && v.length > s.maxLength)
     out.set(path, fieldMsg.maxLen(s.maxLength));
   else if (typeof s.pattern === "string" && !matchesPattern(s.pattern, v))
-    out.set(path, patternError(s.pattern));
+    out.set(path, patternError(s.pattern, v));
 }
 
 // walkErrors mirrors what the form RENDERS (same view/hidden/required/conditional
