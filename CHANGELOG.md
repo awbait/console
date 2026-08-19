@@ -14,6 +14,12 @@ All notable changes to this project are documented in this file.
   can still be unfolded there, by the button at its lower end. On a wide screen
   the portal remembers your choice as before.
 
+### Added
+- The version constructor saves its draft on its own, a couple of seconds after
+  you stop typing, and again when you leave the page. Next to the "Сохранить
+  черновик" button it says where the work stands: saved, saving, or not saved.
+  Closing a tab with unsaved edits no longer happens without a word.
+
 ### Fixed
 - A field explains a refusal by the rule that was actually broken. The value
   `-abc` in a name used to be answered with the list of characters allowed,
