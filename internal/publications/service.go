@@ -89,6 +89,8 @@ type Notifier interface {
 	VersionApproved(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User)
 	VersionRejected(ctx context.Context, st store.Store, p *models.ChartPublication, version, comment string, u *models.User)
 	ChartVersionAvailable(ctx context.Context, st store.Store, p *models.ChartPublication, version string)
+	VersionSubmitted(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User)
+	ChartDiscovered(ctx context.Context, st store.Store, p *models.ChartPublication)
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
@@ -511,6 +513,11 @@ func (s *Service) EnsureDiscovered(ctx context.Context, charts []DiscoveredChart
 		}
 		s.addEvent(ctx, p.ID, &models.User{Subject: DiscoveryActor}, "discovered", "", p.Status,
 			map[string]any{"owner_team": ownerTeam, "author": c.Author})
+		// A find nobody hears about is a draft that sits unadopted, and an
+		// unadopted chart is invisible in the catalog.
+		if s.notify != nil {
+			s.notify.ChartDiscovered(ctx, nil, p)
+		}
 	}
 	return nil
 }

@@ -3,7 +3,9 @@ import {
   IconArrowUpCircle,
   IconCheck,
   IconCircleCheck,
+  IconClipboardCheck,
   IconInfoCircle,
+  IconPackageImport,
   IconRefreshAlert,
   IconRocket,
   IconSparkles,
@@ -27,6 +29,8 @@ const ICONS: Record<string, IconType> = {
   version_approved: IconCircleCheck,
   version_rejected: IconAlertTriangle,
   chart_version_available: IconArrowUpCircle,
+  version_submitted: IconClipboardCheck,
+  chart_discovered: IconPackageImport,
   portal_updated: IconSparkles,
 };
 

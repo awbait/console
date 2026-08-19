@@ -93,6 +93,11 @@ func (s *Service) SubmitVersion(ctx context.Context, u *models.User, pubID, char
 		return nil, err
 	}
 	s.addEvent(ctx, p.ID, u, "version_submitted", from, v.Status, map[string]any{"chart_version": chartVersion})
+	// The queue is somebody's work now: the admins hear about it instead of
+	// finding out when they next open the approvals page.
+	if s.notify != nil {
+		s.notify.VersionSubmitted(ctx, nil, p, chartVersion, u)
+	}
 	observability.ObservePublicationVersionEvent("submitted")
 	return v, nil
 }

@@ -16,6 +16,12 @@ All notable changes to this project are documented in this file.
   used to have to open the version page to find.
 - The portal sends a notification about its own update too. Clicking it opens
   the changelog at the section for that version.
+- An admin is notified when a version of a service is sent for approval.
+  Clicking it opens the page where the decision is made. The queue used to be
+  visible only by opening the approvals section.
+- An admin also hears about a service the portal found in the registry itself.
+  Clicking it opens the service, to give it a category and an owner. Without
+  those it never appears in the catalog.
 - A notification can be marked read without opening it: point at it and press
   the tick. "Прочитать все" clears the count at once. Read notifications are
   kept for 90 days, unread ones are never deleted.

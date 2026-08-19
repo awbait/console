@@ -58,6 +58,10 @@ export function notificationText(n: AppNotification): string {
       const head = `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} отклонена`;
       return comment ? `${head}: ${comment}` : head;
     }
+    case "version_submitted":
+      return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} ждёт согласования`;
+    case "chart_discovered":
+      return `В реестре найден сервис ${str(n, "chart_name")}, задайте ему категорию и владельца`;
     case "portal_updated":
       return `Портал обновлён до версии ${str(n, "version")}`;
     default:
@@ -77,6 +81,16 @@ export function notificationLink(n: AppNotification): string | null {
   // merged since 0.4.0.
   if (n.kind === "portal_updated") {
     return `/about#${releaseAnchor(str(n, "version"))}`;
+  }
+  // A version waiting for approval leads to where the decision is made, not to
+  // where the version is written: this one is addressed to admins, and their
+  // page is the review page.
+  if (n.kind === "version_submitted") {
+    const project = str(n, "chart_project");
+    const name = str(n, "chart_name");
+    const version = str(n, "chart_version");
+    if (!project || !name || !version) return null;
+    return `/admin/approvals/${enc(project)}/${enc(name)}/${enc(version)}`;
   }
   switch (n.subject_type) {
     case "order":

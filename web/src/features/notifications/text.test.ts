@@ -73,6 +73,8 @@ describe("notificationText", () => {
       "version_approved",
       "version_rejected",
       "chart_version_available",
+      "version_submitted",
+      "chart_discovered",
       "portal_updated",
     ];
     for (const kind of kinds) {
@@ -127,5 +129,31 @@ describe("the portal's own update", () => {
     expect(notificationText(updated("v0.4.0-10-g2574d9b"))).toBe(
       "Портал обновлён до версии v0.4.0-10-g2574d9b",
     );
+  });
+});
+
+describe("what the platform team is told", () => {
+  test("a version waiting for approval opens the page where it is decided", () => {
+    const n = notification({
+      kind: "version_submitted",
+      subject_type: "version",
+      subject_id: "pub-1/1.4.0",
+      payload: { chart_project: "platform", chart_name: "policies", chart_version: "1.4.0" },
+    });
+    expect(notificationText(n)).toBe("Версия 1.4.0 сервиса policies ждёт согласования");
+    // Not the page where the version is written: this one is for admins.
+    expect(notificationLink(n)).toBe("/admin/approvals/platform/policies/1.4.0");
+  });
+
+  test("a chart found in the registry opens the service to adopt", () => {
+    const n = notification({
+      kind: "chart_discovered",
+      subject_type: "publication",
+      subject_id: "pub-2",
+      payload: { chart_project: "platform", chart_name: "waypoint" },
+    });
+    expect(notificationText(n)).toContain("waypoint");
+    expect(notificationText(n)).toMatch(/владельц/i);
+    expect(notificationLink(n)).toBe("/catalog/platform/waypoint/manage");
   });
 });

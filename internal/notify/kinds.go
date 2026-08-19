@@ -133,6 +133,48 @@ func (s *Service) ChartVersionAvailable(ctx context.Context, st store.Store, p *
 	})
 }
 
+// VersionSubmitted: a service owner sent a version for approval, and somebody
+// on the platform team has to decide. Addressed to the admin role rather than
+// to a person: whoever opens the queue first takes it, and the queue is the
+// role's job rather than anyone's in particular.
+func (s *Service) VersionSubmitted(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User) {
+	s.Send(ctx, st, Notification{
+		Kind:        models.NotifyVersionSubmitted,
+		SubjectType: models.SubjectVersion,
+		SubjectID:   p.ID + "/" + version,
+		Audience:    models.AudienceRole,
+		AudienceKey: string(models.RoleAdmin),
+		Actor:       actorSubject(u),
+		ActorName:   actorName(u),
+		Payload:     versionPayload(p, version, ""),
+		Level:       models.LevelAttention,
+		// A version withdrawn and sent again is a new decision to make, so the
+		// key carries the moment rather than only the version.
+		DedupKey: "",
+	})
+}
+
+// ChartDiscovered: the portal found a chart in the registry and registered a
+// draft nobody owns yet. Until an admin gives it a category and an owner it is
+// invisible in the catalog, so the find is only useful if somebody hears of it.
+func (s *Service) ChartDiscovered(ctx context.Context, st store.Store, p *models.ChartPublication) {
+	s.Send(ctx, st, Notification{
+		Kind:        models.NotifyChartDiscovered,
+		SubjectType: models.SubjectPublication,
+		SubjectID:   p.ID,
+		Audience:    models.AudienceRole,
+		AudienceKey: string(models.RoleAdmin),
+		Payload: map[string]any{
+			"chart_project": p.ChartProject,
+			"chart_name":    p.ChartName,
+		},
+		Level: models.LevelInfo,
+		// One chart, one find: the registry is swept every tick, and a chart
+		// that stays unadopted must not be announced on each of them.
+		DedupKey: "chart:" + p.ChartProject + "/" + p.ChartName + ":discovered",
+	})
+}
+
 // PortalUpdated: the portal itself is a new version. Everyone sees it, and the
 // deduplication key is the version, so a restart is not news and a deployment
 // is - including a portal running in several copies, where whichever starts
