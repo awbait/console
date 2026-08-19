@@ -2,6 +2,8 @@
 /portal
 /bin/
 *.exe
+# Where air puts the binary it rebuilds (see .air.toml).
+/tmp/
 
 # Env / secrets
 .env

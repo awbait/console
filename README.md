@@ -134,6 +134,10 @@ powershell -File deployments/scripts/run-oidc.ps1   # портал на :8080
 make web                                            # SPA на :5173
 ```
 
+Портал перезапускается на каждое изменение сам, если установлен
+[air](https://github.com/air-verse/air) (`go install github.com/air-verse/air@latest`).
+На Linux и macOS то же самое делает `make watch`.
+
 Открыть **http://localhost:5173** и войти через Keycloak (`alice` / `alice` -
 обычная команда, `padmin` / `padmin` - администратор платформы).
 
