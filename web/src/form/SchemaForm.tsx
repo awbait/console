@@ -695,11 +695,47 @@ function ArrayField({
   // Can't remove below the schema minimum, and not at all when the array is locked.
   const noRemove = items.length <= minItems || locked;
   const removeHint = locked ? "Только для чтения" : "Нельзя удалить последний элемент";
-  const update = (next: unknown[]) => onChange(next.length ? next : undefined);
-  const setAt = (i: number, v: unknown) => update(items.map((x, idx) => (idx === i ? v : x)));
+
+  // An item of an array has no identity of its own: two identical items are
+  // indistinguishable, and an index is the position, not the thing standing in
+  // it. So the identity is kept beside the array - one id per row, moved by the
+  // same mutations that move the rows. Keyed by index instead, removing a middle
+  // item handed its open card and its focus to the neighbour that took its
+  // place, because React was told they were the same element (FE-M2).
+  const [ids, setIds] = useState<string[]>(() => items.map(nextRowID));
+  // Item cards are collapsed by default, but auto-expand (and stay open) once a
+  // submit attempt reveals errors inside them, so hidden invalid/required fields
+  // are not stuck behind a closed disclosure. Toggling afterwards is honored.
+  // Kept per row id, not per index, for the same reason the keys are.
+  const [expandOverride, setExpandOverride] = useState<Record<string, boolean>>({});
+  // A length that no longer matches can only have come from outside: our own
+  // mutations move both halves at once. That is a draft being hydrated, values
+  // imported, a version switched - the rows that survive keep their id, the new
+  // ones get a fresh one.
+  useEffect(() => {
+    setIds((prev) =>
+      prev.length === items.length ? prev : items.map((_, i) => prev[i] ?? nextRowID()),
+    );
+  }, [items.length]);
+
+  const update = (next: unknown[], nextIds: string[]) => {
+    setIds(nextIds);
+    onChange(next.length ? next : undefined);
+  };
+  // Editing an item replaces its value, not the item: the ids stay as they are.
+  const setAt = (i: number, v: unknown) =>
+    update(
+      items.map((x, idx) => (idx === i ? v : x)),
+      ids,
+    );
   const removeAt = (i: number) => {
     if (noRemove) return;
-    update(items.filter((_, idx) => idx !== i));
+    const gone = ids[i];
+    update(
+      items.filter((_, idx) => idx !== i),
+      ids.filter((_, idx) => idx !== i),
+    );
+    setExpandOverride(({ [gone]: _removed, ...rest }) => rest);
   };
 
   // The array's own error (e.g. an empty required array, or minItems): shown once
@@ -708,24 +744,21 @@ function ArrayField({
   const arrErr =
     validation.showAll || validation.touched.has(path) ? validation.errors.get(path) : undefined;
 
-  // Item cards are collapsed by default, but auto-expand (and stay open) once a
-  // submit attempt reveals errors inside them, so hidden invalid/required fields
-  // are not stuck behind a closed disclosure. Toggling afterwards is honored.
-  const [expandOverride, setExpandOverride] = useState<Record<number, boolean>>({});
   useEffect(() => {
     if (!validation.showAll) return;
     setExpandOverride((prev) => {
       let next = prev;
       items.forEach((_, i) => {
-        if (next[i] === undefined && itemErrorCount(i) > 0) {
+        const id = ids[i];
+        if (id && next[id] === undefined && itemErrorCount(i) > 0) {
           if (next === prev) next = { ...prev };
-          next[i] = true;
+          next[id] = true;
         }
       });
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [validation.showAll, validation.errors, validation.touched, items.length]);
+  }, [validation.showAll, validation.errors, validation.touched, items.length, ids]);
 
   return (
     <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
@@ -738,14 +771,19 @@ function ArrayField({
 
         {items.map((it, i) => {
           const errCount = isObjectItem ? itemErrorCount(i) : 0;
+          // Until the effect above catches up with an array that arrived from
+          // outside, a row can be one render ahead of its id. The index is the
+          // only thing there is to say meanwhile, and it is right for exactly
+          // that render: nothing has moved yet.
+          const rowKey = ids[i] ?? `row-${i}`;
           return isObjectItem ? (
             // Collapsible card with a one-line summary; collapsed by default. A red
             // border + error badge flags items whose (possibly required) fields are
             // invalid while the card is collapsed, so the problem is not hidden.
             <Disclosure
-              key={i}
-              isExpanded={expandOverride[i] ?? false}
-              onExpandedChange={(e) => setExpandOverride((o) => ({ ...o, [i]: e }))}
+              key={rowKey}
+              isExpanded={expandOverride[rowKey] ?? false}
+              onExpandedChange={(e) => setExpandOverride((o) => ({ ...o, [rowKey]: e }))}
               className={`group rounded-md border bg-surface ${errCount > 0 ? "border-red-300" : "border-gray-200"}`}
             >
               <div className="flex items-center gap-1 pr-1.5">
@@ -797,7 +835,11 @@ function ArrayField({
           ) : (
             // Primitive item: a single label-less control + a remove button,
             // vertically centered so the button lines up with the input.
-            <div key={i} id={fieldAnchorId(`${path}/${i}`)} className="flex scroll-mt-24 items-center gap-2">
+            <div
+              key={rowKey}
+              id={fieldAnchorId(`${path}/${i}`)}
+              className="flex scroll-mt-24 items-center gap-2"
+            >
               <div className="flex-1">
                 <Field
                   name={`${name}[${i}]`}
@@ -826,7 +868,10 @@ function ArrayField({
 
         {!locked && (
           <div>
-            <Button variant="secondary" onPress={() => update([...items, newArrayItem(schema, root)])}>
+            <Button
+              variant="secondary"
+              onPress={() => update([...items, newArrayItem(schema, root)], [...ids, nextRowID()])}
+            >
               + Добавить
             </Button>
           </div>
@@ -903,6 +948,12 @@ function SingleField({
 type mapRow = { k: string; v: string; id: string };
 let mapRowSeq = 0;
 const nextMapRowID = () => `mr${++mapRowSeq}`;
+
+// The same for the rows of an array (see ArrayField). One counter per page load
+// is enough: an id only has to be unique among the rows it is compared against,
+// and it never leaves the browser.
+let rowSeq = 0;
+const nextRowID = () => `ai${++rowSeq}`;
 
 function valueToMapRows(value: unknown): mapRow[] {
   return value && typeof value === "object" && !Array.isArray(value)

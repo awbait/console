@@ -15,6 +15,9 @@ All notable changes to this project are documented in this file.
   the portal remembers your choice as before.
 
 ### Fixed
+- Removing a block from the middle of a list on the order form no longer
+  disturbs the ones around it. The block that stays open is the one you opened,
+  not the one that took its place.
 - On the sign-in screen the "Войти через Keycloak" button goes out while the
   portal does not answer. Pressing it used to lead to a browser error page with
   no way back. The screen now says the portal is not answering and what to try.
