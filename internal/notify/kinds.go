@@ -84,12 +84,13 @@ func (s *Service) OrderChangeBlocked(ctx context.Context, st store.Store, r *mod
 // submitted it: publishing a service is the team's job, and the person who
 // submitted may not be the one who fixes what the reviewer asked for.
 func (s *Service) VersionApproved(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User) {
+	audience, key := s.owners(p)
 	s.Send(ctx, st, Notification{
 		Kind:        models.NotifyVersionApproved,
 		SubjectType: models.SubjectVersion,
 		SubjectID:   p.ID + "/" + version,
-		Audience:    models.AudienceTeam,
-		AudienceKey: p.OwnerTeam,
+		Audience:    audience,
+		AudienceKey: key,
 		Actor:       actorSubject(u),
 		ActorName:   actorName(u),
 		Payload:     versionPayload(p, version, ""),
@@ -98,12 +99,13 @@ func (s *Service) VersionApproved(ctx context.Context, st store.Store, p *models
 }
 
 func (s *Service) VersionRejected(ctx context.Context, st store.Store, p *models.ChartPublication, version, comment string, u *models.User) {
+	audience, key := s.owners(p)
 	s.Send(ctx, st, Notification{
 		Kind:        models.NotifyVersionRejected,
 		SubjectType: models.SubjectVersion,
 		SubjectID:   p.ID + "/" + version,
-		Audience:    models.AudienceTeam,
-		AudienceKey: p.OwnerTeam,
+		Audience:    audience,
+		AudienceKey: key,
 		Actor:       actorSubject(u),
 		ActorName:   actorName(u),
 		Payload:     versionPayload(p, version, comment),
@@ -117,12 +119,13 @@ func (s *Service) VersionRejected(ctx context.Context, st store.Store, p *models
 // which is why this goes to the team rather than sitting on a page they would
 // have to think to open.
 func (s *Service) ChartVersionAvailable(ctx context.Context, st store.Store, p *models.ChartPublication, version string) {
+	audience, key := s.owners(p)
 	s.Send(ctx, st, Notification{
 		Kind:        models.NotifyChartVersionAvailable,
 		SubjectType: models.SubjectVersion,
 		SubjectID:   p.ID + "/" + version,
-		Audience:    models.AudienceTeam,
-		AudienceKey: p.OwnerTeam,
+		Audience:    audience,
+		AudienceKey: key,
 		Payload:     versionPayload(p, version, ""),
 		Level:       models.LevelInfo,
 		// The registry is read every tick; one release is one piece of news.
@@ -160,6 +163,21 @@ func (s *Service) SweepRead(ctx context.Context, olderThan time.Duration) error 
 		s.logger().Debug("notifications swept", "count", gone)
 	}
 	return nil
+}
+
+// owners is who to address about a service: its owning team, or the admin role
+// when the platform team owns it.
+//
+// A chart nobody has adopted belongs to the admin group, and so do the services
+// the platform runs itself. That group is not a team: it grants the admin role
+// and never lands in anybody's team list, so addressing it as a team reaches
+// nobody - which is exactly what happened to every notification about such a
+// service.
+func (s *Service) owners(p *models.ChartPublication) (models.NotificationAudience, string) {
+	if p.OwnerTeam == "" || (s.adminTeam != "" && p.OwnerTeam == s.adminTeam) {
+		return models.AudienceRole, string(models.RoleAdmin)
+	}
+	return models.AudienceTeam, p.OwnerTeam
 }
 
 // orderPayload is what every order notification says about its service: enough

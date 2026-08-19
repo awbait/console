@@ -181,3 +181,48 @@ func TestPortalUpdatedIgnoresAnUnstampedBuild(t *testing.T) {
 		t.Fatalf("want one announcement, got %d", got)
 	}
 }
+
+// A chart nobody has adopted belongs to the admin group. That group grants the
+// admin role and is in nobody's team list (internal/auth/rbac.go), so a
+// notification addressed to it as a team used to reach no one at all.
+func TestWhatTheAdminGroupOwnsGoesToAdmins(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemory()
+	svc := notify.New(st, nil, nil)
+	svc.SetAdminTeam("platform-admins")
+
+	unclaimed := &models.ChartPublication{ID: "p1", ChartProject: "platform", ChartName: "waypoint",
+		OwnerTeam: "platform-admins"}
+	owned := &models.ChartPublication{ID: "p2", ChartProject: "platform", ChartName: "postgres",
+		OwnerTeam: "core"}
+
+	svc.VersionRejected(ctx, nil, unclaimed, "1.0.0", "Опишите поле subnet.", nil)
+	svc.VersionApproved(ctx, nil, owned, "2.0.0", nil)
+
+	admin := reader("padmin", "admin")
+	if got := unread(t, st, admin); got != 1 {
+		t.Fatalf("admin should hear about what their group owns, got %d", got)
+	}
+	core := reader("alice", "member", "core")
+	if got := unread(t, st, core); got != 1 {
+		t.Fatalf("the owning team hears about its own service, got %d", got)
+	}
+
+	// And neither hears the other's.
+	list, _ := st.ListNotifications(ctx, admin)
+	if len(list) != 1 || list[0].Kind != models.NotifyVersionRejected {
+		t.Fatalf("admin feed = %+v", list)
+	}
+}
+
+// A publication with no owner at all is the platform's problem, not nobody's.
+func TestAnOwnerlessPublicationGoesToAdmins(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemory()
+	svc := notify.New(st, nil, nil)
+
+	svc.ChartVersionAvailable(ctx, nil, &models.ChartPublication{ID: "p3", ChartName: "orphan"}, "1.1.0")
+	if got := unread(t, st, reader("padmin", "admin")); got != 1 {
+		t.Fatalf("want the admin told, got %d", got)
+	}
+}
