@@ -5,33 +5,44 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- Notifications. The top bar has a bell with a count of unread ones. The whole
-  history is on the "Уведомления" page.
-- A notification arrives when a service comes up, breaks, or cannot accept a
-  change. Clicking it opens the order.
-- A service owner learns that a version was approved or rejected. A rejection
-  carries the reviewer's comment.
-- The portal announces its own updates.
-- "Прочитать все" clears the count at once. Read notifications are kept for 90
-  days, unread ones are never deleted.
+- Notifications. The portal sends one when something happens to your service or
+  your order. The top bar gained a bell with a count of unread ones, and the
+  whole history is on the "Уведомления" page.
+- A notification arrives when a service you ordered comes up, stops working, or
+  cannot accept your change. Clicking it opens that order.
+- The team publishing a service is notified what became of its version:
+  approved or rejected. A rejection carries the reviewer's comment, which you
+  used to have to open the version page to find.
+- The portal sends a notification about its own update too. Clicking it opens
+  the changelog at the section for that version.
+- A notification can be marked read without opening it: point at it and press
+  the tick. "Прочитать все" clears the count at once. Read notifications are
+  kept for 90 days, unread ones are never deleted.
 
 ### Changed
-- A new version of your service in the registry now arrives as a notification.
-  It opens on that version. The stripe in the catalog is gone.
-- Order form errors are readable. Instead of "length must be >= 3, but got 2"
-  the portal says "Не короче 3 символов". An empty field is highlighted itself.
-- Refusals are in Russian and about the service. A name that does not fit says
-  which characters it takes. A version that is gone asks you to pick another.
-- An order has eight states instead of eleven: draft, saving, coming up,
-  working, not working, rejected, deleting, deleted. The filter offers the same
-  names. Support and admins see the exact state in the detailed history.
-- Merge requests, branches and Git are gone from the interface. A change on its
-  way says the service is being saved. The link to the merge request is left to
-  support and admins.
+- When the registry gets a new version of a service your team publishes, the
+  portal sends a notification. Clicking it opens that version, to describe it
+  and send it for approval. This used to be a message on the catalog page, and
+  it is gone.
+- The order form explains a refusal in the same words its hint used. Instead of
+  "length must be >= 3, but got 2" the portal says "Не короче 3 символов", and a
+  field you skipped is highlighted itself.
+- An order the portal refuses explains why in Russian. A service name that does
+  not fit names the characters it takes, and a version gone from the registry
+  asks you to pick an available one.
+- The order list and the order itself now have eight states instead of eleven:
+  draft, saving, coming up, working, not working, rejected, deleting, deleted.
+  The filter above the list offers the same names. Support and admins see the
+  exact state in the order's history, under "Подробно".
+- An order no longer talks about merge requests, branches or Git. While a change
+  has not landed, the portal says the service is being saved. The link to the
+  merge request is shown to support and admins only, in the order's history
+  under "Подробно".
 
 ### Fixed
-- A page updates itself again after the portal restarts or the connection
-  breaks. Live updates used to stop until the page was reloaded.
+- The order list, an order and the notifications update themselves again after
+  the portal restarts or the connection breaks. Updates used to stop and the
+  page kept showing stale data until it was reloaded.
 
 ## [0.4.0] - 2026-08-18
 
@@ -41,19 +52,23 @@ documentation now covers the order form constructor.
 ### Added
 - The documentation has an "Order form constructor" section. It walks through
   every block of a version document, with examples and screenshots.
-- A service can require that every change is merged by a person. Its version
-  document says so: `"approval": {"autoMerge": false}`. The portal still keeps
-  the change up to date with the branch.
-- The portal registers its own merge notification in GitLab. Setting
-  `GITLAB_WEBHOOK_URL` is enough. The scope is set by `GITLAB_WEBHOOK_SCOPE`.
+- A service can require that every change is confirmed by a person, even where
+  the portal is set to apply them itself. Its owner says so in the version
+  document: `"approval": {"autoMerge": false}`. The portal still prepares the
+  change so the reviewer only has to confirm it.
+- The portal sets up the GitLab webhook that tells it about merges. Setting
+  `GITLAB_WEBHOOK_URL` is enough, and the scope is set by
+  `GITLAB_WEBHOOK_SCOPE`. The webhook used to be added by hand after an install.
 
 ### Changed
 - Fields say what they take: which characters, what length, what range. Rules
   already satisfied are ticked off as you type.
-- The map and add-service windows report a bad value under the field itself. The
+- The window for drawing a connection on the map, and the one for adding a
+  service to the catalog, report a bad value under the field as you type. The
   button stays off until the value is fixed.
-- The publication approvals page no longer scrolls away. The table gained the
-  category and the date of the last change. Actions open from the row.
+- On the publication approvals page the title stays put and only the lists below
+  it scroll. The services table gained the category and the date of the last
+  change, and a service's actions open from its row.
 
 ### Fixed
 - A change to a service no longer gets stuck behind somebody else's change. The
@@ -151,10 +166,10 @@ will not start without their addresses and tokens.
 - Failures are written for the reader: plain text, a hint and a retry button.
   When the chart registry is down, the portal says plainly that nothing can be
   ordered right now.
-- Waiting looks like the content that is coming. The page no longer jumps when
-  the data lands.
-- The menu keeps one geometry when it collapses. What was folded and what was
-  open is remembered.
+- While data loads, the portal shows an outline of it instead of the word
+  "Loading". The page does not jump when the data arrives.
+- A collapsed menu does not shift its icons, they stay on the same line. The
+  portal remembers which sections were open.
 - The dark themes are repainted: a neutral black page and a blue accent.
 - Form dialogs open as a panel on the right. Dialogs and menus are animated.
 - Field errors speak one language across the portal. Numeric fields accept only
