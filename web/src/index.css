@@ -264,3 +264,37 @@ body {
 .scroll-slim::-webkit-scrollbar-thumb:hover {
   background-color: rgb(var(--c-neutral-400));
 }
+
+/* Уведомление ждёт: колокольчик коротко качается раз в несколько секунд.
+   Движение укладывается в первые 12% цикла, дальше значок стоит - иначе шапка
+   дёргается постоянно. Поворот от верхней точки, как у настоящего язычка.
+
+   Здесь, а не в tailwind.config.js: правки конфига Tailwind подхватываются
+   только при перезапуске дев-сервера, и анимация молча пропадала из сборки. */
+@keyframes bell-swing {
+  0%,
+  12%,
+  100% {
+    transform: rotate(0deg);
+  }
+  2% {
+    transform: rotate(-14deg);
+  }
+  5% {
+    transform: rotate(10deg);
+  }
+  9% {
+    transform: rotate(-5deg);
+  }
+}
+
+.bell-swing {
+  transform-origin: top center;
+  animation: bell-swing 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bell-swing {
+    animation: none;
+  }
+}

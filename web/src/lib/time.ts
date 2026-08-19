@@ -27,3 +27,41 @@ export function fmtRelative(iso: string, now: number = Date.now()): string {
   if (day < 7) return `${day} дн назад`;
   return fmtDateTime(iso);
 }
+
+const MONTHS_GEN = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
+
+// dayLabel names the day something belongs to: today and yesterday by name, the
+// rest by date. It is what makes a flat list read as a sequence, and it is the
+// same in the order history and in the notification feed.
+export function dayLabel(iso: string, now: number = Date.now()): string {
+  const d = new Date(iso);
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(new Date(now)) - startOf(d)) / 86_400_000);
+  if (days === 0) return "Сегодня";
+  if (days === 1) return "Вчера";
+  const date = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
+  return d.getFullYear() === new Date(now).getFullYear() ? date : `${date} ${d.getFullYear()}`;
+}
+
+// How long ago, until a day has passed; after that, the date and the time.
+//
+// "2 дн назад" is a worse answer than "17.08.2026, 09:14": past a day nobody
+// counts in days, and a feed that keeps saying "5 дн назад" makes the reader do
+// the arithmetic the portal already did.
+export function fmtRecent(iso: string, now: number = Date.now()): string {
+  const age = now - new Date(iso).getTime();
+  return age < 24 * 60 * 60 * 1000 ? fmtRelative(iso, now) : fmtDateTime(iso);
+}
