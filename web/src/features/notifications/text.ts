@@ -58,6 +58,8 @@ export function notificationText(n: AppNotification): string {
       const head = `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} отклонена`;
       return comment ? `${head}: ${comment}` : head;
     }
+    case "chart_version_missing":
+      return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} пропала из реестра, заказать её больше нельзя`;
     case "version_submitted":
       return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} ждёт согласования`;
     case "chart_discovered":

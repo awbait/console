@@ -91,6 +91,7 @@ type Notifier interface {
 	ChartVersionAvailable(ctx context.Context, st store.Store, p *models.ChartPublication, version string)
 	VersionSubmitted(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User)
 	ChartDiscovered(ctx context.Context, st store.Store, p *models.ChartPublication)
+	ChartVersionMissing(ctx context.Context, st store.Store, p *models.ChartPublication, version string)
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
@@ -423,6 +424,9 @@ type ChartVersionRef struct {
 	Project       string
 	Name          string
 	LatestVersion string
+	// Versions is everything the registry holds for this chart. What is missing
+	// from it is what a published version has lost.
+	Versions []string
 }
 
 // NotifyNewVersions tells a service's owners that the registry has a version
@@ -442,15 +446,21 @@ func (s *Service) NotifyNewVersions(ctx context.Context, charts []ChartVersionRe
 		return nil
 	}
 	for _, c := range charts {
-		if c.LatestVersion == "" {
-			continue
-		}
 		p, err := s.store.GetPublicationByChart(ctx, c.Project, c.Name)
 		if err != nil {
 			if errors.Is(err, models.ErrNotFound) {
 				continue
 			}
 			return err
+		}
+		// A version that vanished from the registry is told about whoever owns
+		// the service, adopted or not: an unclaimed chart belongs to the admins,
+		// and a service nobody can deploy is their problem too.
+		if err := s.notifyMissingVersions(ctx, p, c.Versions); err != nil {
+			return err
+		}
+		if c.LatestVersion == "" {
+			continue
 		}
 		if p.OwnerTeam == "" || p.OwnerTeam == s.discoveryOwner {
 			continue // nobody has claimed it yet
@@ -463,6 +473,29 @@ func (s *Service) NotifyNewVersions(ctx context.Context, charts []ChartVersionRe
 			continue
 		}
 		s.notify.ChartVersionAvailable(ctx, nil, p, c.LatestVersion)
+	}
+	return nil
+}
+
+// notifyMissingVersions reports a published version the registry no longer has.
+//
+// The service does not stop working - an order already running on that version
+// keeps running - but nothing can be ordered from it, and the catalog quietly
+// drops it in with the services nobody ever published. Somebody has to know.
+//
+// Nothing is said while the registry answers with nothing at all: an empty list
+// is far more likely to be an outage than every version being deleted at once,
+// and announcing that would be a false alarm on every hiccup.
+func (s *Service) notifyMissingVersions(ctx context.Context, p *models.ChartPublication, inRegistry []string) error {
+	if len(inRegistry) == 0 {
+		return nil
+	}
+	_, _, gone, err := s.CatalogVersions(ctx, p, inRegistry)
+	if err != nil {
+		return err
+	}
+	for _, v := range gone {
+		s.notify.ChartVersionMissing(ctx, nil, p, v)
 	}
 	return nil
 }

@@ -54,6 +54,8 @@ const (
 	// chart the portal found in the registry that nobody has adopted.
 	NotifyVersionSubmitted = "version_submitted"
 	NotifyChartDiscovered  = "chart_discovered"
+	// A published version the registry no longer has.
+	NotifyChartVersionMissing = "chart_version_missing"
 	// The portal itself.
 	NotifyPortalUpdated = "portal_updated"
 )

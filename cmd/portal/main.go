@@ -381,6 +381,7 @@ func (c chartVersionsReconciler) Reconcile(ctx context.Context) error {
 	for _, ch := range charts {
 		refs = append(refs, publications.ChartVersionRef{
 			Project: ch.Project, Name: ch.Name, LatestVersion: ch.LatestVersion,
+			Versions: ch.Versions,
 		})
 	}
 	return c.pubs.NotifyNewVersions(ctx, refs)

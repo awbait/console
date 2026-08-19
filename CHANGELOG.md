@@ -22,6 +22,10 @@ All notable changes to this project are documented in this file.
 - An admin also hears about a service the portal found in the registry itself.
   Clicking it opens the service, to give it a category and an owner. Without
   those it never appears in the catalog.
+- When a published version disappears from the registry, the portal tells the
+  owning team and the admins. Such a version cannot be ordered, and in the
+  catalog the service looks as if nobody ever published it. Clicking the
+  notification opens that version.
 - A notification can be marked read without opening it: point at it and press
   the tick. "Прочитать все" clears the count at once. Read notifications are
   kept for 90 days, unread ones are never deleted.

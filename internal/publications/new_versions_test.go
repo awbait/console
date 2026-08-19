@@ -15,6 +15,7 @@ type recorder struct {
 	versions   []string // "<chart>@<version>" per ChartVersionAvailable
 	submitted  []string // "<chart>@<version>" per VersionSubmitted
 	discovered []string // "<project>/<chart>" per ChartDiscovered
+	missing    []string // "<chart>@<version>" per ChartVersionMissing
 }
 
 func (r *recorder) VersionApproved(context.Context, store.Store, *models.ChartPublication, string, *models.User) {
@@ -29,6 +30,9 @@ func (r *recorder) VersionSubmitted(_ context.Context, _ store.Store, p *models.
 }
 func (r *recorder) ChartDiscovered(_ context.Context, _ store.Store, p *models.ChartPublication) {
 	r.discovered = append(r.discovered, p.ChartProject+"/"+p.ChartName)
+}
+func (r *recorder) ChartVersionMissing(_ context.Context, _ store.Store, p *models.ChartPublication, v string) {
+	r.missing = append(r.missing, p.ChartName+"@"+v)
 }
 
 // publish puts a service in the catalog: one approved, orderable version with a
@@ -134,5 +138,70 @@ func TestAdminsHearAboutTheirQueue(t *testing.T) {
 	}
 	if len(rec.discovered) != 1 {
 		t.Fatalf("a second sweep said it again: %v", rec.discovered)
+	}
+}
+
+// A version deleted from the registry does not break the service that runs on
+// it, but nothing can be ordered from it any more, and in the catalog the
+// service falls in with the ones nobody ever published. Its owners have to hear
+// about it.
+func TestNotifyMissingVersions(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	rec := &recorder{}
+	svc.SetNotifier(rec)
+	publish(t, st, "ingress-gateway", "core", "1.2.0")
+
+	// The registry has other versions, but not the published one.
+	err := svc.NotifyNewVersions(ctx, []publications.ChartVersionRef{
+		{Project: "platform", Name: "ingress-gateway", LatestVersion: "1.3.0", Versions: []string{"1.3.0"}},
+	})
+	if err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if len(rec.missing) != 1 || rec.missing[0] != "ingress-gateway@1.2.0" {
+		t.Fatalf("missing = %v", rec.missing)
+	}
+}
+
+// An empty answer from the registry is an outage far more often than every
+// version being deleted at once. Announcing the second would mean a false alarm
+// on every hiccup.
+func TestSilentWhenTheRegistrySaysNothing(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	rec := &recorder{}
+	svc.SetNotifier(rec)
+	publish(t, st, "ingress-gateway", "core", "1.2.0")
+
+	for _, versions := range [][]string{nil, {}} {
+		err := svc.NotifyNewVersions(ctx, []publications.ChartVersionRef{
+			{Project: "platform", Name: "ingress-gateway", Versions: versions},
+		})
+		if err != nil {
+			t.Fatalf("notify: %v", err)
+		}
+	}
+	if len(rec.missing) != 0 {
+		t.Fatalf("want silence, got %v", rec.missing)
+	}
+}
+
+// A version still in the registry is not news, however often the sweep runs.
+func TestNoAlarmWhileTheVersionIsThere(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	rec := &recorder{}
+	svc.SetNotifier(rec)
+	publish(t, st, "ingress-gateway", "core", "1.2.0")
+
+	err := svc.NotifyNewVersions(ctx, []publications.ChartVersionRef{
+		{Project: "platform", Name: "ingress-gateway", LatestVersion: "1.2.0", Versions: []string{"1.2.0"}},
+	})
+	if err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if len(rec.missing) != 0 || len(rec.versions) != 0 {
+		t.Fatalf("missing=%v available=%v", rec.missing, rec.versions)
 	}
 }

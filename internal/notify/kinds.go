@@ -175,6 +175,46 @@ func (s *Service) ChartDiscovered(ctx context.Context, st store.Store, p *models
 	})
 }
 
+// ChartVersionMissing: a published version is gone from the registry. Nothing
+// can be ordered from it any more, and in the catalog the service falls in with
+// the ones nobody ever published - so it goes to the team that owns it and to
+// the admins, who are the ones who can put the chart back or publish another
+// version.
+//
+// The ordinary user is not told: they cannot act on it, and the service is not
+// offered to them anyway.
+func (s *Service) ChartVersionMissing(ctx context.Context, st store.Store, p *models.ChartPublication, version string) {
+	key := "chart:" + p.ChartProject + "/" + p.ChartName + ":missing:" + version
+	audience, audienceKey := s.owners(p)
+	s.Send(ctx, st, Notification{
+		Kind:        models.NotifyChartVersionMissing,
+		SubjectType: models.SubjectVersion,
+		SubjectID:   p.ID + "/" + version,
+		Audience:    audience,
+		AudienceKey: audienceKey,
+		Payload:     versionPayload(p, version, ""),
+		Level:       models.LevelAttention,
+		// The sweep notices it on every tick; one loss is one piece of news.
+		DedupKey: key,
+	})
+	// The owning team hears it as the owner, the admins as the platform. When
+	// the admin group owns the service those are the same audience, and the
+	// deduplication key would drop the second one anyway - but saying it once is
+	// clearer than relying on that.
+	if audience == models.AudienceTeam {
+		s.Send(ctx, st, Notification{
+			Kind:        models.NotifyChartVersionMissing,
+			SubjectType: models.SubjectVersion,
+			SubjectID:   p.ID + "/" + version,
+			Audience:    models.AudienceRole,
+			AudienceKey: string(models.RoleAdmin),
+			Payload:     versionPayload(p, version, ""),
+			Level:       models.LevelAttention,
+			DedupKey:    key + ":admin",
+		})
+	}
+}
+
 // PortalUpdated: the portal itself is a new version. Everyone sees it, and the
 // deduplication key is the version, so a restart is not news and a deployment
 // is - including a portal running in several copies, where whichever starts
