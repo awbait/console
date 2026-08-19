@@ -55,3 +55,13 @@ export function dayLabel(iso: string, now: number = Date.now()): string {
   const date = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
   return d.getFullYear() === new Date(now).getFullYear() ? date : `${date} ${d.getFullYear()}`;
 }
+
+// How long ago, until a day has passed; after that, the date and the time.
+//
+// "2 дн назад" is a worse answer than "17.08.2026, 09:14": past a day nobody
+// counts in days, and a feed that keeps saying "5 дн назад" makes the reader do
+// the arithmetic the portal already did.
+export function fmtRecent(iso: string, now: number = Date.now()): string {
+  const age = now - new Date(iso).getTime();
+  return age < 24 * 60 * 60 * 1000 ? fmtRelative(iso, now) : fmtDateTime(iso);
+}

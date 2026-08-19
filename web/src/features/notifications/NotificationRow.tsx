@@ -7,11 +7,12 @@ import {
   IconRefreshAlert,
   IconRocket,
   IconSparkles,
+  IconUser,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import { Link } from "react-router-dom";
 import type { AppNotification } from "@/api/types";
-import { fmtDateTime, fmtRelative } from "@/lib/time";
+import { fmtDateTime, fmtRecent } from "@/lib/time";
 import { notificationLink, notificationText } from "./text";
 
 type IconType = ComponentType<{ size?: number; stroke?: number; className?: string }>;
@@ -77,11 +78,20 @@ export function NotificationRow({
         >
           {notificationText(n)}
         </span>
-        <span className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+        {/* When and by whom, in that order. The icon stands in for a separator:
+            two plain words in a row read as one broken phrase, and a person is
+            named while the platform is not - the same way the order history
+            signs its rows. */}
+        <span className="mt-0.5 flex items-center gap-3 text-xs text-slate-500">
           <time dateTime={n.created_at} title={fmtDateTime(n.created_at)}>
-            {fmtRelative(n.created_at)}
+            {fmtRecent(n.created_at)}
           </time>
-          {n.actor_name && <span className="truncate">{n.actor_name}</span>}
+          {n.actor_name && (
+            <span className="flex min-w-0 items-center gap-1 text-slate-400">
+              <IconUser size={13} stroke={1.8} className="shrink-0" />
+              <span className="truncate">{n.actor_name}</span>
+            </span>
+          )}
         </span>
       </span>
     </>
