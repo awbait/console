@@ -43,6 +43,7 @@ import { useTeam } from "../app/TeamContext";
 import { useUser } from "../auth/UserContext";
 import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { useAsync } from "../hooks/useAsync";
+import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
 import { LoginScreen } from "./LoginScreen";
@@ -125,20 +126,20 @@ function SideTip({
 }
 
 // One geometry for every sidebar row, collapsed or not, so switching states
-// never nudges an icon: it always starts 26px from the card's left edge, which
-// is the centre line of the 72px collapsed column. Plain rows reach it with
-// 1px of card border + 12px of nav wrapper + 13px of their own padding; the
-// framed ones with 1px of card border + 12px of wrapper + 1px of their own
-// border + 12px of padding. The collapsed column is sized from that padding,
+// never nudges an icon: it always starts 18px from the card's left edge, which
+// is the centre line of the 56px collapsed column. Plain rows reach it with
+// 1px of card border + 8px of nav wrapper + 9px of their own padding; the
+// framed ones with 1px of card border + 8px of wrapper + 1px of their own
+// border + 8px of padding. The collapsed column is sized from that padding,
 // not the other way round: widening the menu's inner padding widens it too.
 // Padding rather than justify-center: a centred icon would slide across the row
 // while the width animates, and a scrollbar on the right would shift it too.
-const ROW = "py-2 pl-[13px] pr-3.5";
-const SELECT_ROW = "px-3 py-2";
+const ROW = "py-2 pl-[9px] pr-3.5";
+const SELECT_ROW = "px-2 py-2";
 // Rows inside a section share the horizontal geometry of a plain row - so a
 // child lines up with the header above it - but stay 32px tall instead of 36:
 // a shorter row keeps a long list compact and the section header taller.
-const SUB_ROW = "py-1.5 pl-[13px] pr-3.5";
+const SUB_ROW = "py-1.5 pl-[9px] pr-3.5";
 
 // Labels fade with the width instead of popping in and out. Leaving is quicker
 // than arriving so the text is gone before the column gets narrow enough to
@@ -225,11 +226,35 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "Администратор платформы",
 };
 
+// From this width on there is room for the menu to stand open beside the page,
+// so the choice is the person's. Below it the page is what matters and the menu
+// folds down to its icons. 1024px is the same line the rest of the shell already
+// uses (the `lg:` classes in the top bar and on the sign-in screen).
+const ROOMY = "(min-width: 1024px)";
+
+// useSidebarState decides whether the menu is folded, and remembers the part of
+// that decision worth remembering.
+//
+// Two states, not one. On a roomy screen it is a preference: someone who works
+// with the menu folded should not have to fold it on every visit, so it lives in
+// storage. On a narrow one it is a consequence of the width, so it is folded by
+// default and nothing is written down - otherwise a window resized for a minute
+// would silently overwrite a choice made deliberately, and the menu would come
+// back folded on the big screen with no way to tell why.
+//
+// Unfolding on a narrow screen still works. That decision lasts until the width
+// changes, which is what puts the person back in a state the width explains.
+function useSidebarState(): [boolean, (v: boolean) => void] {
+  const roomy = useMatchMedia(ROOMY);
+  const [stored, setStored] = useStored("sidebar.collapsed", false);
+  const [narrow, setNarrow] = useState(true);
+  useEffect(() => setNarrow(true), [roomy]);
+  return roomy ? [stored, setStored] : [narrow, setNarrow];
+}
+
 export function Layout() {
   const { user, loading, unauthenticated } = useUser();
-  // Whether the menu is folded is a preference too: a user who works with it
-  // collapsed should not have to collapse it on every visit.
-  const [collapsed, setCollapsed] = useStored("sidebar.collapsed", false);
+  const [collapsed, setCollapsed] = useSidebarState();
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
@@ -316,7 +341,7 @@ export function Layout() {
     isWide ? "max-w-full" : "max-w-[1440px]"
   }`;
 
-  if (loading) return <ShellSkeleton width={shellWidth} />;
+  if (loading) return <ShellSkeleton width={shellWidth} collapsed={collapsed} />;
   if (unauthenticated || !user) return <LoginScreen />;
 
   // Sections by role: security sees only its own section, admin sees all three,
@@ -399,7 +424,7 @@ export function Layout() {
             navigation below. Width animates (px->px) for a smooth collapse. */}
         <div
           className={`flex shrink-0 flex-col transition-[width] duration-300 ease-in-out ${
-            collapsed ? "w-[72px]" : "w-[260px]"
+            collapsed ? "w-[56px]" : "w-[260px]"
           }`}
         >
           {/* The project selector is a platform concept: the admin, support and
@@ -425,7 +450,7 @@ export function Layout() {
                       shown ? "opacity-100 duration-200 delay-150" : "opacity-0 duration-100"
                     }`}
                   >
-                    <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+                    <div className="rounded-xl border border-slate-200 bg-surface px-2 py-2 shadow-sm">
                       <OrgSelector collapsed={collapsed} />
                     </div>
                   </div>
@@ -448,7 +473,7 @@ export function Layout() {
                   trigger shows the active section's icon and the menu carries
                   the labels. */}
               {availableSections.length > 1 && (
-                <div className="px-3 pt-2">
+                <div className="px-2 pt-2">
                   <MenuTrigger>
                     <SideTip label={currentSection.label} enabled={collapsed}>
                       <Button
@@ -504,8 +529,8 @@ export function Layout() {
 
               {sectionNav ? (
                 /* security/admin section: its own flat nav, no product categories */
-                <nav className="px-3 py-2">
-                  <ul className="flex flex-col gap-0.5">
+                <nav className="px-2 py-2">
+                  <ul className="flex flex-col gap-1.5">
                     {sectionNav.map((n) => {
                       const Icon = n.Icon;
                       const active = n.exact ? pathname === n.to : navActive(n.to);
@@ -529,8 +554,8 @@ export function Layout() {
               ) : (
                 <>
                   {/* flat group: Resources / Charts (active via navActive aria-current) */}
-                  <nav className="px-3 py-2">
-                    <ul className="flex flex-col gap-0.5">
+                  <nav className="px-2 py-2">
+                    <ul className="flex flex-col gap-1.5">
                       {navItems.map((n) => {
                         const Icon = n.Icon;
                         return (
@@ -558,7 +583,7 @@ export function Layout() {
                       it used to be a plain link to the first chart, which left
                       every other service in the category unreachable. */}
                   {collapsed ? (
-                    <nav className="flex flex-col gap-0.5 px-3 py-2">
+                    <nav className="flex flex-col gap-1.5 px-2 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
                         return (
@@ -594,7 +619,7 @@ export function Layout() {
                       })}
                     </nav>
                   ) : (
-                    <nav className="px-3 py-2">
+                    <nav className="px-2 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
                         return (
@@ -630,7 +655,7 @@ export function Layout() {
             {/* Docs closes the navigation: a destination like the items above,
                 just a secondary one, so it stays inside the menu block with no
                 divider of its own. */}
-            <div className="shrink-0 px-3 pb-2">
+            <div className="shrink-0 px-2 pb-2">
               <SideTip label="Документация" enabled={collapsed}>
                 <Link
                   to="/docs"
@@ -645,10 +670,10 @@ export function Layout() {
 
             {/* Collapsing is shell chrome, not a place to go: it sits below the
                 divider, on its own, and never looks active. */}
-            <div className="shrink-0 border-t border-slate-100 px-3 py-2">
+            <div className="shrink-0 border-t border-slate-100 px-2 py-2">
               <SideTip label="Развернуть меню" enabled={collapsed}>
                 <Button
-                  onPress={() => setCollapsed((c) => !c)}
+                  onPress={() => setCollapsed(!collapsed)}
                   aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
                   aria-pressed={collapsed}
                   className={`flex w-full items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-400 outline-none hover:bg-slate-50 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500`}
@@ -714,7 +739,7 @@ export function Layout() {
 // bar, the menu card, the content column do not depend on who is signed in.
 // Drawing it right away means one continuous page instead of a bare word on
 // white that is then replaced by the whole portal.
-function ShellSkeleton({ width }: { width: string }) {
+function ShellSkeleton({ width, collapsed }: { width: string; collapsed: boolean }) {
   return (
     <div className="flex h-screen flex-col bg-app">
       <header className="shrink-0 border-b border-slate-200 bg-surface">
@@ -725,11 +750,17 @@ function ShellSkeleton({ width }: { width: string }) {
         </div>
       </header>
       <div className={`mx-auto flex min-h-0 w-full flex-1 gap-10 px-4 py-8 lg:px-6 ${width}`}>
-        <div className="hidden w-[260px] shrink-0 flex-col gap-4 sm:flex">
-          <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+        {/* The width the menu will have once the session resolves. Guessing it
+            wrong shifts the whole page sideways the moment the portal appears,
+            and both halves of the answer are already known here: the stored
+            preference and how much room the window has. */}
+        <div
+          className={`hidden shrink-0 flex-col gap-4 sm:flex ${collapsed ? "w-[56px]" : "w-[260px]"}`}
+        >
+          <div className="rounded-xl border border-slate-200 bg-surface px-2 py-2 shadow-sm">
             <Skeleton className="h-9 w-full rounded-lg" />
           </div>
-          <div className="flex flex-1 flex-col gap-2 rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+          <div className="flex flex-1 flex-col gap-2 rounded-xl border border-slate-200 bg-surface px-2 py-2 shadow-sm">
             {Array.from({ length: 6 }, (_, i) => (
               <Skeleton
                 // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
