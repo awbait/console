@@ -89,7 +89,9 @@ func (s *Service) Send(ctx context.Context, st store.Store, n Notification) {
 		DedupKey:    n.DedupKey,
 	}
 	if err := st.AddNotification(ctx, row); err != nil {
-		s.logger().Warn("notification not stored", "kind", n.Kind, "err", err)
+		// Error, not Warn: the message is gone for good. Nothing retries it, and
+		// the portal carries on looking like it told somebody.
+		s.logger().Error("notification not stored", "kind", n.Kind, "err", err)
 		return
 	}
 	s.signal()
