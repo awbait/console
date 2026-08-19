@@ -10,6 +10,7 @@
 // on the page it links to.
 
 import type { AppNotification } from "@/api/types";
+import { releaseAnchor } from "@/lib/release";
 
 // str reads a payload field as text. The payload is JSON from the server, and a
 // missing field is a notification worth showing anyway - with a little less in
@@ -30,36 +31,39 @@ const BLOCK_REASON: Record<string, string> = {
   need_rebase: "его правки разошлись с чужими",
 };
 
+// A notification is a headline, and a headline carries no full stop. A comment
+// quoted inside one keeps its own punctuation - it is somebody's sentence, not
+// ours.
 export function notificationText(n: AppNotification): string {
   const service = str(n, "service_name") || str(n, "chart_name") || "сервис";
   switch (n.kind) {
     case "order_healthy":
       return bool(n, "recovered")
-        ? `Сервис ${service} снова работает.`
-        : `Сервис ${service} развёрнут и работает.`;
+        ? `Сервис ${service} снова работает`
+        : `Сервис ${service} развёрнут и работает`;
     case "order_degraded":
-      return `Сервис ${service} не работает.`;
+      return `Сервис ${service} не работает`;
     case "order_change_blocked": {
       const why = BLOCK_REASON[str(n, "reason")];
       return why
-        ? `Изменение сервиса ${service} не удалось применить: ${why}.`
-        : `Изменение сервиса ${service} не удалось применить.`;
+        ? `Изменение сервиса ${service} не удалось применить: ${why}`
+        : `Изменение сервиса ${service} не удалось применить`;
     }
     case "chart_version_available":
-      return `Для сервиса ${str(n, "chart_name")} вышла версия ${str(n, "chart_version")}. Опишите её и отправьте на согласование, чтобы её можно было заказывать.`;
+      return `Для сервиса ${str(n, "chart_name")} вышла версия ${str(n, "chart_version")}, опишите её и отправьте на согласование`;
     case "version_approved":
-      return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} согласована.`;
+      return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} согласована`;
     case "version_rejected": {
       const comment = str(n, "comment");
-      const head = `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} отклонена.`;
-      return comment ? `${head} ${comment}` : head;
+      const head = `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} отклонена`;
+      return comment ? `${head}: ${comment}` : head;
     }
     case "portal_updated":
-      return `Портал обновлён до версии ${str(n, "version")}.`;
+      return `Портал обновлён до версии ${str(n, "version")}`;
     default:
       // A kind this build does not know: the portal is newer on the server than
       // in this browser. Saying so is better than an empty row.
-      return "Что-то произошло, но эта версия портала не знает, как об этом рассказать.";
+      return "Что-то произошло, но эта версия портала не знает, как об этом рассказать";
   }
 }
 
@@ -67,6 +71,13 @@ export function notificationText(n: AppNotification): string {
 // change, and a saved link rots quietly in an old row.
 export function notificationLink(n: AppNotification): string | null {
   const enc = encodeURIComponent;
+  // The portal's own update leads to its changelog, at the section that
+  // describes the build now running. Between releases that is "Ещё не
+  // выпущено": a build stamped "v0.4.0-10-g2574d9b" is exactly what has been
+  // merged since 0.4.0.
+  if (n.kind === "portal_updated") {
+    return `/about#${releaseAnchor(str(n, "version"))}`;
+  }
   switch (n.subject_type) {
     case "order":
       return n.subject_id ? `/requests/${enc(n.subject_id)}` : null;

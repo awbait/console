@@ -20,14 +20,14 @@ describe("notificationText", () => {
     const text = notificationText(
       notification({ kind: "order_healthy", payload: { service_name: "payments" } }),
     );
-    expect(text).toBe("Сервис payments развёрнут и работает.");
+    expect(text).toBe("Сервис payments развёрнут и работает");
   });
 
   test("coming back after a failure is different news from coming up", () => {
     const recovered = notificationText(
       notification({ kind: "order_healthy", payload: { service_name: "payments", recovered: true } }),
     );
-    expect(recovered).toBe("Сервис payments снова работает.");
+    expect(recovered).toBe("Сервис payments снова работает");
   });
 
   test("a rejected version carries the reviewer's comment: that is the message", () => {
@@ -56,7 +56,7 @@ describe("notificationText", () => {
   });
 
   test("a payload that lost a field still reads as a sentence", () => {
-    expect(notificationText(notification({ kind: "order_degraded" }))).toBe("Сервис сервис не работает.");
+    expect(notificationText(notification({ kind: "order_degraded" }))).toBe("Сервис сервис не работает");
   });
 
   test("a kind from a newer portal says so instead of rendering blank", () => {
@@ -78,7 +78,8 @@ describe("notificationText", () => {
     for (const kind of kinds) {
       const text = notificationText(notification({ kind, payload: { service_name: "svc", version: "1.0.0" } }));
       expect(text).not.toMatch(/\bMR\b|слияни|ветк|merge|git|argo|reconcil/i);
-      expect(text).toMatch(/\.$/);
+      // A headline, not a sentence: no full stop at the end of any of them.
+      expect(text).not.toMatch(/\.$/);
     }
   });
 });
@@ -99,11 +100,32 @@ describe("notificationLink", () => {
     expect(to).toBe("/catalog/platform/ingress-gateway/manage/1.2.0");
   });
 
-  test("a notification about the portal itself leads nowhere, and says so", () => {
+  test("a notification with nothing to point at leads nowhere", () => {
     expect(notificationLink(notification({ subject_type: "platform", subject_id: "" }))).toBeNull();
   });
 
   test("a version notification with nothing to address is not a broken link", () => {
     expect(notificationLink(notification({ subject_type: "version", subject_id: "pub-1/1.0.0" }))).toBeNull();
+  });
+});
+
+describe("the portal's own update", () => {
+  const updated = (version: string) =>
+    notification({ kind: "portal_updated", subject_type: "platform", subject_id: "", payload: { version } });
+
+  test("a release opens its own section of the changelog", () => {
+    expect(notificationLink(updated("v0.5.0"))).toBe("/about#release-0.5.0");
+    expect(notificationLink(updated("0.5.0"))).toBe("/about#release-0.5.0");
+  });
+
+  test("a build between releases opens what is not released yet", () => {
+    // That is exactly what such a build is: everything merged since 0.4.0.
+    expect(notificationLink(updated("v0.4.0-10-g2574d9b"))).toBe("/about#release-unreleased");
+  });
+
+  test("the version is named as it is stamped", () => {
+    expect(notificationText(updated("v0.4.0-10-g2574d9b"))).toBe(
+      "Портал обновлён до версии v0.4.0-10-g2574d9b",
+    );
   });
 });

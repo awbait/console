@@ -1,4 +1,5 @@
 import type { ChangelogEntry } from "../api/types";
+import { releaseAnchor } from "../lib/release";
 import { Markdown } from "./Markdown";
 
 // A Keep-a-Changelog section title to a chip style. Each category gets its own
@@ -30,11 +31,30 @@ const UNRELEASED = /^unreleased$/i;
 
 // Changelog renders parsed release notes: the portal's own on the About page
 // and a product's on its Changes tab, so both read the same way.
-export function Changelog({ entries }: { entries: ChangelogEntry[] }) {
+//
+// Every version carries the id of its section, so something elsewhere can link
+// to a version rather than to the page. `highlight` is that version arriving:
+// the section it names is lit until the reader looks away, because a page that
+// silently jumped is a page that looks like it opened in the wrong place.
+export function Changelog({
+  entries,
+  highlight,
+}: {
+  entries: ChangelogEntry[];
+  highlight?: string;
+}) {
   return (
     <div className="flex flex-col gap-9">
       {entries.map((e) => (
-        <section key={e.version}>
+        <section
+          key={e.version}
+          id={releaseAnchor(e.version)}
+          // Scrolled-to sections stop below the top edge of the scroller rather
+          // than flush against it.
+          className={`scroll-mt-4 rounded-lg transition-colors duration-500 ${
+            highlight === releaseAnchor(e.version) ? "bg-brand-50/60 p-3 -m-3" : ""
+          }`}
+        >
           {/* The version opens its release: a line of its own, above a rule that
               runs the full width, so a long list stays divided by version and
               not just by category. */}

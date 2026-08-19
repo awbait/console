@@ -5,18 +5,34 @@ import {
   IconInfoCircle,
   IconPackages,
 } from "@tabler/icons-react";
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { type ReactNode, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { useUser } from "../auth/UserContext";
 import { Changelog } from "../components/Changelog";
 import { Card, ErrorBox, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
+import { isRelease, releaseAnchor } from "../lib/release";
 
 export function AboutPage() {
   const { user } = useUser();
   const about = useAsync(() => api.getAbout(), []);
   const changelog = useAsync(() => api.getChangelog(), []);
+
+  // A link can name a version: /about#release-0.4.0, or #release-unreleased for
+  // a build between releases. The notification about a new portal is such a
+  // link, and so is anything else that wants to point at what changed.
+  //
+  // The scroll waits for the changelog: the section does not exist until it has
+  // loaded, and scrolling into a skeleton lands nowhere.
+  const { hash } = useLocation();
+  const target = hash.replace(/^#/, "");
+  const loaded = !!changelog.data;
+  useEffect(() => {
+    if (!target || !loaded) return;
+    const el = document.getElementById(target);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [target, loaded]);
 
   // User-facing portal links (not infra consoles - those live on the status page).
   // The security role has no catalog/orders, so it only gets documentation.
@@ -58,9 +74,25 @@ export function AboutPage() {
                 <div className="text-sm text-slate-500">Заказ и управление сервисами платформы</div>
               </div>
             </div>
-            <span className="shrink-0 rounded-full bg-brand-50 px-3 py-1 font-mono text-sm font-medium text-brand-700">
-              {info.version}
-            </span>
+            {/* The running version leads to what it changed. A build between
+                releases has no section of its own, so it points at "Ещё не
+                выпущено", which is precisely what such a build is. */}
+            <a
+              href={`#${releaseAnchor(info.version)}`}
+              title={
+                isRelease(info.version)
+                  ? "Что изменилось в этой версии"
+                  : "Сборка после последнего релиза, смотрите «Ещё не выпущено»"
+              }
+              className="flex shrink-0 flex-col items-end gap-0.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <span className="rounded-full bg-brand-50 px-3 py-1 font-mono text-sm font-medium text-brand-700 hover:bg-brand-100">
+                {info.version}
+              </span>
+              {!isRelease(info.version) && (
+                <span className="text-[11px] text-slate-400">Ещё не выпущено</span>
+              )}
+            </a>
           </Card>
 
           <div className="grid gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-3">
@@ -74,7 +106,7 @@ export function AboutPage() {
                 ) : changelog.data && changelog.data.length > 0 ? (
                   <Card padded={false} className="flex flex-col lg:min-h-0 lg:flex-1">
                     <div className="scroll-slim p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-                      <Changelog entries={changelog.data} />
+                      <Changelog entries={changelog.data} highlight={target} />
                     </div>
                   </Card>
                 ) : (
