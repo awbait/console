@@ -146,50 +146,28 @@ func defaultNames(fields []string) map[string]string {
 	return out
 }
 
-// validateGraph checks the "graph" block and, when the chart's values.schema.json
-// is known, that every field it names exists in that schema. This is the point of
-// the whole exercise: a mapping that no longer fits its chart is caught by the
-// author in the constructor, not by a user in the middle of an order.
-func validateGraph(raw any, schema map[string]any) []Issue {
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return []Issue{{"/graph", `Блок "graph" должен быть объектом: {"profile": "policies"}`}}
-	}
-	var issues []Issue
-	for k := range m {
-		switch k {
-		case "profile", "enabled", "entries", "entry", "rule", "peer", "$comment":
-		default:
-			issues = append(issues, Issue{"/graph/" + k, fmt.Sprintf(
-				"Лишнее поле %q: допустимы \"profile\", \"enabled\", \"entries\", \"entry\", \"rule\" и \"peer\"", k)})
-		}
-	}
-
+// checkGraph checks what the "graph" block's own profile decides: which profile
+// exists, which fields that profile understands, and - when the chart's
+// values.schema.json is known - that every field the block names exists in that
+// schema. This is the point of the whole exercise: a mapping that no longer fits
+// its chart is caught by the author in the constructor, not by a user in the
+// middle of an order. The block's plain shape is described in
+// document.schema.json and checked before this runs.
+func checkGraph(m map[string]any, schema map[string]any) []Issue {
 	profile, _ := m["profile"].(string)
 	if profile == "" {
-		return append(issues, Issue{"/graph/profile", fmt.Sprintf(
-			"Укажите \"profile\" - какой редактор включаем. Доступные: %s", graphProfileNames())})
+		return nil // the document schema already asked for a profile
 	}
 	p, known := graphProfiles[profile]
 	if !known {
-		return append(issues, Issue{"/graph/profile", fmt.Sprintf(
-			"Редактор %q не существует. Доступные: %s", profile, graphProfileNames())})
-	}
-	if v, ok := m["enabled"]; ok {
-		if _, ok := v.(bool); !ok {
-			issues = append(issues, Issue{"/graph/enabled", `Поле "enabled" должно быть true или false`})
-		}
+		return []Issue{{"/graph/profile", fmt.Sprintf(
+			"Редактор %q не существует. Доступные: %s", profile, graphProfileNames())}}
 	}
 
+	var issues []Issue
 	entries := p.entries
-	if v, ok := m["entries"]; ok {
-		s, ok := v.(string)
-		if !ok || !strings.HasPrefix(s, "/") {
-			issues = append(issues, Issue{"/graph/entries", fmt.Sprintf(
-				"Поле \"entries\" должно быть JSON pointer'ом, строкой вида %q", p.entries)})
-		} else {
-			entries = s
-		}
+	if s, ok := m["entries"].(string); ok && strings.HasPrefix(s, "/") {
+		entries = s
 	}
 
 	names := map[string]map[string]string{
@@ -201,16 +179,7 @@ func validateGraph(raw any, schema map[string]any) []Issue {
 		key     string
 		allowed []string
 	}{{"entry", p.entry}, {"rule", p.rule}, {"peer", p.peer}} {
-		raw, ok := m[group.key]
-		if !ok {
-			continue
-		}
-		gm, ok := raw.(map[string]any)
-		if !ok {
-			issues = append(issues, Issue{"/graph/" + group.key, fmt.Sprintf(
-				"Блок %q должен быть объектом: он переименовывает поля %s", group.key, strings.Join(group.allowed, ", "))})
-			continue
-		}
+		gm, _ := m[group.key].(map[string]any)
 		for k, v := range gm {
 			path := "/graph/" + group.key + "/" + k
 			if !slices.Contains(group.allowed, k) {
@@ -218,17 +187,12 @@ func validateGraph(raw any, schema map[string]any) []Issue {
 					"Поле %q редактор не использует. Здесь можно переименовать: %s", k, strings.Join(group.allowed, ", "))})
 				continue
 			}
-			s, ok := v.(string)
-			if !ok || s == "" {
-				issues = append(issues, Issue{path, "Укажите имя поля в values (строка)"})
-				continue
+			// A name the document schema has already refused (not a string, empty,
+			// or with a "/" in it) is left as the profile's default: the block is
+			// reported once, and the schema walk below stays on solid ground.
+			if s, ok := v.(string); ok && s != "" && !strings.Contains(s, "/") {
+				names[group.key][k] = s
 			}
-			if strings.Contains(s, "/") {
-				issues = append(issues, Issue{path, fmt.Sprintf(
-					"Значение %q должно быть именем одного поля, без \"/\"", s)})
-				continue
-			}
-			names[group.key][k] = s
 		}
 	}
 
