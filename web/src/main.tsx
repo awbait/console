@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, StrictMode, Suspense } from "react";
+import { type ComponentType, lazy, type ReactNode, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
 import "./index.css";
@@ -13,47 +13,72 @@ import { ToastProvider } from "./app/ToastContext";
 import { UserProvider, useUser } from "./auth/UserContext";
 import { Layout } from "./components/Layout";
 import { NotFound } from "./components/NotFound";
-import { NotificationsPage } from "./pages/NotificationsPage";
-import { AboutPage } from "./pages/AboutPage";
-import {
-  AdminApprovalDetailPage,
-  AdminApprovalsPage,
-  AdminCategoriesPage,
-  AdminOverviewPage,
-  AdminSection,
-} from "./pages/AdminSection";
-import { CatalogPage } from "./pages/CatalogPage";
-import { ChartDetailPage } from "./pages/ChartDetailPage";
-import { ChartManagePage } from "./pages/ChartManagePage";
-import { ChartVersionEditPage } from "./pages/ChartVersionEditPage";
-import { ConfigPage } from "./pages/ConfigPage";
-import { DocsPage } from "./pages/DocsPage";
 import { OrderPage } from "./features/orders/OrderPage";
-import { ProductPage } from "./pages/ProductPage";
 import { RequestDetailPage } from "./features/orders/RequestDetailPage";
 import { RequestsPage } from "./features/orders/RequestsPage";
-import {
-  KyvernoPage,
-  PolicyApprovalPage,
-  SecurityOverviewPage,
-  SecuritySection,
-} from "./pages/SecuritySection";
-import { StatusPage } from "./pages/StatusPage";
-import { SupportOverviewPage, SupportRequestsPage, SupportSection } from "./pages/SupportSection";
-import { VersionApprovalPage } from "./pages/VersionApprovalPage";
+import { CatalogPage } from "./pages/CatalogPage";
+import { ChartDetailPage } from "./pages/ChartDetailPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { ProductPage } from "./pages/ProductPage";
+
+// page loads a screen only when somebody opens it. Everything the portal keeps
+// in the first bundle is paid for by every person on every visit, and most of
+// what follows is opened by a few of them: the admin, the security and the
+// support sections, the documentation, the version constructor.
+//
+// Our pages are named exports, and lazy() wants a module with a default one, so
+// the name is passed along and picked out here.
+function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(() => load().then((m) => ({ default: m[name] })));
+}
+
+// The catalog, an order and a product stay in the first bundle: that is the
+// path everybody walks, and a screen split off it would be a wait bought for
+// nothing.
+const AboutPage = page(() => import("./pages/AboutPage"), "AboutPage");
+const AdminSection = page(() => import("./pages/AdminSection"), "AdminSection");
+const AdminOverviewPage = page(() => import("./pages/AdminSection"), "AdminOverviewPage");
+const AdminApprovalsPage = page(() => import("./pages/AdminSection"), "AdminApprovalsPage");
+const AdminApprovalDetailPage = page(
+  () => import("./pages/AdminSection"),
+  "AdminApprovalDetailPage",
+);
+const AdminCategoriesPage = page(() => import("./pages/AdminSection"), "AdminCategoriesPage");
+const ChartManagePage = page(() => import("./pages/ChartManagePage"), "ChartManagePage");
+const ChartVersionEditPage = page(
+  () => import("./pages/ChartVersionEditPage"),
+  "ChartVersionEditPage",
+);
+const ConfigPage = page(() => import("./pages/ConfigPage"), "ConfigPage");
+const DocsPage = page(() => import("./pages/DocsPage"), "DocsPage");
+const KyvernoPage = page(() => import("./pages/SecuritySection"), "KyvernoPage");
+const PolicyApprovalPage = page(() => import("./pages/SecuritySection"), "PolicyApprovalPage");
+const SecurityOverviewPage = page(() => import("./pages/SecuritySection"), "SecurityOverviewPage");
+const SecuritySection = page(() => import("./pages/SecuritySection"), "SecuritySection");
+const StatusPage = page(() => import("./pages/StatusPage"), "StatusPage");
+const SupportOverviewPage = page(() => import("./pages/SupportSection"), "SupportOverviewPage");
+const SupportRequestsPage = page(() => import("./pages/SupportSection"), "SupportRequestsPage");
+const SupportSection = page(() => import("./pages/SupportSection"), "SupportSection");
+const VersionApprovalPage = page(() => import("./pages/VersionApprovalPage"), "VersionApprovalPage");
 
 // Graph pages; lazy so @xyflow/react is split off the main bundle.
-const PoliciesMapPage = lazy(() =>
-  import("./features/graph/pages/PoliciesMapPage").then((m) => ({ default: m.PoliciesMapPage })),
+const PoliciesMapPage = page(
+  () => import("./features/graph/pages/PoliciesMapPage"),
+  "PoliciesMapPage",
 );
-const EventMeshPage = lazy(() =>
-  import("./features/graph/pages/EventMeshPage").then((m) => ({ default: m.EventMeshPage })),
+const EventMeshPage = page(() => import("./features/graph/pages/EventMeshPage"), "EventMeshPage");
+const ResourceTopologyPage = page(
+  () => import("./features/graph/pages/ResourceTopologyPage"),
+  "ResourceTopologyPage",
 );
-const ResourceTopologyPage = lazy(() =>
-  import("./features/graph/pages/ResourceTopologyPage").then((m) => ({
-    default: m.ResourceTopologyPage,
-  })),
-);
+
+// Standalone wraps the routes drawn outside the portal shell (the docs, the
+// full-screen graphs). Inside the shell the wait is held by Layout, around the
+// place the page appears; out here there is no shell to hold it, and these
+// pages take over the whole window anyway.
+function Standalone({ page }: { page: ReactNode }) {
+  return <Suspense fallback={null}>{page}</Suspense>;
+}
 
 // Role-aware landing: security users open their section by default; everyone
 // else lands on the catalog. Rendered inside Layout, which already gates on
@@ -143,36 +168,15 @@ const router = createBrowserRouter([
   },
   // Docs open standalone (no portal sidebar/topbar); they have a "Портал"
   // button to return to. Kept outside the Layout route on purpose.
-  { path: "/docs", element: <DocsPage /> },
-  { path: "/docs/:slug", element: <DocsPage /> },
+  { path: "/docs", element: <Standalone page={<DocsPage />} /> },
+  { path: "/docs/:slug", element: <Standalone page={<DocsPage />} /> },
   // Full-screen graph pages, outside the portal Layout. Lazy-loaded so React
   // Flow stays out of the main bundle. Not linked from the menu yet: the
   // policies map is the editor, the other two are read-only samples of the same
   // canvas rendering another domain.
-  {
-    path: "/policies-map",
-    element: (
-      <Suspense fallback={null}>
-        <PoliciesMapPage />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/graph/event-mesh",
-    element: (
-      <Suspense fallback={null}>
-        <EventMeshPage />
-      </Suspense>
-    ),
-  },
-  {
-    path: "/graph/topology",
-    element: (
-      <Suspense fallback={null}>
-        <ResourceTopologyPage />
-      </Suspense>
-    ),
-  },
+  { path: "/policies-map", element: <Standalone page={<PoliciesMapPage />} /> },
+  { path: "/graph/event-mesh", element: <Standalone page={<EventMeshPage />} /> },
+  { path: "/graph/topology", element: <Standalone page={<ResourceTopologyPage />} /> },
 ]);
 
 // Query cache: stale-while-revalidate. Every mount still revalidates

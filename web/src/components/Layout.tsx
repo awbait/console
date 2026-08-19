@@ -24,7 +24,7 @@ import {
   IconUser,
   IconUsersGroup,
 } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Focusable,
@@ -40,16 +40,16 @@ import { api } from "../api/client";
 import type { CatalogChart } from "../api/types";
 import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
-import { NotificationsBell } from "../features/notifications/NotificationsBell";
-import { ThemeMenu } from "./ThemeMenu";
 import { useUser } from "../auth/UserContext";
+import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { useAsync } from "../hooks/useAsync";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
 import { LoginScreen } from "./LoginScreen";
 import { PlatformHealthBanner } from "./PlatformHealthBanner";
 import { PlatformHealthIndicator } from "./PlatformHealthIndicator";
-import { Skeleton, SkeletonText } from "./ui";
+import { ThemeMenu } from "./ThemeMenu";
+import { Loading, Skeleton, SkeletonText } from "./ui";
 
 const navItems = [
   { to: "/requests", label: "Список заказов", Icon: IconBox },
@@ -694,7 +694,15 @@ export function Layout() {
             {/* Outside the page, above every route: an outage belongs to the
                 portal, not to whichever screen happens to be open. */}
             <PlatformHealthBanner />
-            <Outlet />
+            {/* Screens opened by few people are fetched when they are opened
+                (see main.tsx), and the fetch takes a moment on a slow link. The
+                wait is held here, around the page alone: the menu and the bar
+                are already drawn and have no reason to blink. Loading keeps
+                quiet for the first moments, so an ordinary fast switch shows
+                nothing at all. */}
+            <Suspense fallback={<Loading label="Открываем страницу" />}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>

@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The portal opens faster: its first load is a quarter lighter. The screens few
+  people open are now fetched when they are opened: the admin, security and
+  support sections, the documentation, the version constructor.
+
 ### Fixed
 - On the sign-in screen the "Войти через Keycloak" button goes out while the
   portal does not answer. Pressing it used to lead to a browser error page with
