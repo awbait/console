@@ -75,6 +75,7 @@ describe("notificationText", () => {
       "chart_version_available",
       "version_submitted",
       "chart_discovered",
+      "chart_version_missing",
       "portal_updated",
     ];
     for (const kind of kinds) {
@@ -155,5 +156,26 @@ describe("what the platform team is told", () => {
     expect(notificationText(n)).toContain("waypoint");
     expect(notificationText(n)).toMatch(/владельц/i);
     expect(notificationLink(n)).toBe("/catalog/platform/waypoint/manage");
+  });
+});
+
+describe("a version that vanished from the registry", () => {
+  const missing = notification({
+    kind: "chart_version_missing",
+    subject_type: "version",
+    subject_id: "pub-1/1.2.0",
+    level: "attention",
+    payload: { chart_project: "platform", chart_name: "ingress-gateway", chart_version: "1.2.0" },
+  });
+
+  test("says what it means, not just that it happened", () => {
+    // The service keeps running; what changed is that nobody can order it.
+    expect(notificationText(missing)).toBe(
+      "Версия 1.2.0 сервиса ingress-gateway пропала из реестра, заказать её больше нельзя",
+    );
+  });
+
+  test("opens the version it is about", () => {
+    expect(notificationLink(missing)).toBe("/catalog/platform/ingress-gateway/manage/1.2.0");
   });
 });
