@@ -12,7 +12,9 @@ import (
 // recorder stands in for the notification domain: it only remembers what it was
 // asked to say, which is what these tests are about.
 type recorder struct {
-	versions []string // "<chart>@<version>" per ChartVersionAvailable
+	versions   []string // "<chart>@<version>" per ChartVersionAvailable
+	submitted  []string // "<chart>@<version>" per VersionSubmitted
+	discovered []string // "<project>/<chart>" per ChartDiscovered
 }
 
 func (r *recorder) VersionApproved(context.Context, store.Store, *models.ChartPublication, string, *models.User) {
@@ -21,6 +23,12 @@ func (r *recorder) VersionRejected(context.Context, store.Store, *models.ChartPu
 }
 func (r *recorder) ChartVersionAvailable(_ context.Context, _ store.Store, p *models.ChartPublication, v string) {
 	r.versions = append(r.versions, p.ChartName+"@"+v)
+}
+func (r *recorder) VersionSubmitted(_ context.Context, _ store.Store, p *models.ChartPublication, v string, _ *models.User) {
+	r.submitted = append(r.submitted, p.ChartName+"@"+v)
+}
+func (r *recorder) ChartDiscovered(_ context.Context, _ store.Store, p *models.ChartPublication) {
+	r.discovered = append(r.discovered, p.ChartProject+"/"+p.ChartName)
 }
 
 // publish puts a service in the catalog: one approved, orderable version with a
@@ -95,5 +103,36 @@ func TestNotifyNewVersionsIgnoresOlderReleases(t *testing.T) {
 	}
 	if len(rec.versions) != 0 {
 		t.Fatalf("want silence, got %v", rec.versions)
+	}
+}
+
+// The approval queue is work for the platform team, and until now they learned
+// of it only by opening the page. Same for a chart the portal finds itself: an
+// unadopted draft is invisible in the catalog, so a find nobody hears about is
+// a find that changes nothing.
+func TestAdminsHearAboutTheirQueue(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	rec := &recorder{}
+	svc.SetNotifier(rec)
+	svc.SetDiscoveryOwner("platform-admins")
+
+	if err := svc.EnsureDiscovered(ctx,
+		[]publications.DiscoveredChart{{Project: "platform", Name: "waypoint", Author: "core"}},
+		"platform-admins", "network"); err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if len(rec.discovered) != 1 || rec.discovered[0] != "platform/waypoint" {
+		t.Fatalf("discovered = %v", rec.discovered)
+	}
+
+	// A chart already registered is not a find: the sweep runs every tick.
+	if err := svc.EnsureDiscovered(ctx,
+		[]publications.DiscoveredChart{{Project: "platform", Name: "waypoint"}},
+		"platform-admins", "network"); err != nil {
+		t.Fatalf("discover again: %v", err)
+	}
+	if len(rec.discovered) != 1 {
+		t.Fatalf("a second sweep said it again: %v", rec.discovered)
 	}
 }
