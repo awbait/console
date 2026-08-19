@@ -1,0 +1,44 @@
+# Live reload for the portal (https://github.com/air-verse/air).
+#
+# Air watches the Go sources, rebuilds and restarts the binary. The runner
+# scripts set the environment first and then hand over to air, so the portal it
+# starts is the same portal `go run` would start - with the same upstreams and
+# the same version stamped in.
+#
+# The build goes through a script rather than a plain `go build` line: the
+# version, commit and build date are injected with -ldflags, and the "About"
+# page and the update notification read them. Two scripts, one per shell, so the
+# quoting rules of each stay where they belong.
+#
+# Not used by CI or the image build: the Dockerfile builds the binary itself,
+# and air never leaves the developer's machine.
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Windows is the stand's own platform; the Makefile target overrides both of
+  # these for Linux and macOS (see `make watch`).
+  cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File deployments/scripts/build-portal.ps1"
+  bin = "tmp/portal.exe"
+  include_ext = ["go"]
+  # The SPA has its own watcher (`make web`), migrations are embedded and read at
+  # startup, and the rest is not Go.
+  exclude_dir = ["web", "tmp", "deployments", "docs", "charts", "collector", ".git", ".claude"]
+  exclude_regex = ["_test\\.go"]
+  # A save often lands as several write events; wait for them to settle rather
+  # than rebuilding three times.
+  delay = 800
+  stop_on_error = true
+  # Ctrl+C should stop the portal, not leave it holding :8080.
+  send_interrupt = true
+  kill_delay = "2s"
+
+[log]
+  # Air's own lines carry a timestamp; the portal's structured log carries its
+  # own, and two of them per line reads as noise.
+  time = false
+
+[misc]
+  # The rebuilt binary is a build artifact: it goes when air does.
+  clean_on_exit = true

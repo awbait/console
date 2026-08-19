@@ -1,4 +1,4 @@
-.PHONY: build run-oidc web infra obs test vet lint tidy cover hooks down docker env-example \
+.PHONY: build run-oidc watch web infra obs test vet lint tidy cover hooks down docker env-example \
 	up-upstreams-infra down-upstreams gitlab-seed \
 	stand-up stand-down stand-charts stand-appset stand-token stand-reset \
 	stand-gitlab-webhooks seed-import
@@ -64,7 +64,22 @@ run-oidc:
 	RBAC_ADMIN_GROUPS=platform-admins \
 	RBAC_SUPPORT_GROUPS=support \
 	RBAC_SECURITY_GROUPS=security \
-	go run -ldflags "$(GO_LDFLAGS)" ./cmd/portal
+	$(PORTAL_RUN)
+
+# How run-oidc starts the portal. Once by default; `make watch` overrides it with
+# air, which rebuilds and restarts on every saved .go file. Both stamp the
+# version into the binary, so the About page and the update notification say the
+# same thing either way.
+PORTAL_RUN ?= go run -ldflags "$(GO_LDFLAGS)" ./cmd/portal
+
+# Same stand, restarted on every change. Needs air:
+#   go install github.com/air-verse/air@latest
+# The build line is passed here rather than kept in .air.toml, whose default is
+# the Windows one (the stand's own platform).
+watch:
+	@command -v air >/dev/null || { \
+		echo "air is not installed: go install github.com/air-verse/air@latest"; exit 1; }
+	$(MAKE) run-oidc PORTAL_RUN='air --build.cmd "go build -ldflags \"$(GO_LDFLAGS)\" -o tmp/portal ./cmd/portal" --build.bin tmp/portal'
 
 # Frontend dev server (Vite) on :5173 with live reload; proxies /api -> :8080.
 # --host binds all interfaces (incl. IPv4); without it Vite is IPv6-only, which

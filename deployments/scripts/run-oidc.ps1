@@ -14,11 +14,15 @@
 # when opening the SPA via that address. The same host must be allowed in the
 # realm's redirectUris/webOrigins (see deployments/keycloak/realm-internal.json).
 #
+# The portal restarts itself on every saved .go file when air is installed
+# (go install github.com/air-verse/air@latest). -NoWatch runs it once instead.
+#
 # Usage:  .\deployments\scripts\run-oidc.ps1
 #         .\deployments\scripts\run-oidc.ps1 -BindHost 10.10.100.33
+#         .\deployments\scripts\run-oidc.ps1 -BindHost 10.10.100.33 -NoWatch
 # If script execution is blocked:
 #   powershell -ExecutionPolicy Bypass -File .\deployments\scripts\run-oidc.ps1 -BindHost 10.10.100.33
-param([string]$BindHost = "localhost")
+param([string]$BindHost = "localhost", [switch]$NoWatch)
 $ErrorActionPreference = "Stop"
 # Repo root = two levels up (deployments/scripts/ -> deployments/ -> repo).
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -143,7 +147,22 @@ $ldflags = "-X $pkg.Version=$version -X $pkg.Commit=$commit -X $pkg.Date=$date"
 
 Push-Location $root
 try {
-  go run -ldflags $ldflags ./cmd/portal
+  # Live reload by default: air rebuilds and restarts the portal on every saved
+  # .go file, so a backend change costs a save instead of a Ctrl+C and a scroll
+  # back through this script's output. -NoWatch runs it once, the way it always
+  # ran; air is also skipped, with a note, when it is not installed - a missing
+  # dev tool must not stop the stand from coming up.
+  $air = if ($NoWatch) { $null } else { Get-Command air -ErrorAction SilentlyContinue }
+  if ($air) {
+    Write-Host "Live reload: air watches *.go and restarts the portal (Ctrl+C to stop)" -ForegroundColor Green
+    & $air.Source
+  } else {
+    if (-not $NoWatch) {
+      Write-Host "air is not installed, running once. Install it for live reload:" -ForegroundColor DarkYellow
+      Write-Host "  go install github.com/air-verse/air@latest" -ForegroundColor DarkYellow
+    }
+    go run -ldflags $ldflags ./cmd/portal
+  }
 } finally {
   Pop-Location
 }
