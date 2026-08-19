@@ -9,7 +9,8 @@ All notable changes to this project are documented in this file.
   people open are now fetched when they are opened: the admin, security and
   support sections, the documentation, the version constructor.
 - The menu on the left folds itself once the window is narrower than 1024
-  pixels, and the page gets the 200 pixels it needs more than the menu does. It
+  pixels, and the page gets the 200 pixels it needs more than the menu does. The
+  folded menu is a little narrower than it was, too. It
   can still be unfolded there, by the button at its lower end. On a wide screen
   the portal remembers your choice as before.
 

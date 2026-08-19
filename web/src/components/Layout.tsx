@@ -126,20 +126,20 @@ function SideTip({
 }
 
 // One geometry for every sidebar row, collapsed or not, so switching states
-// never nudges an icon: it always starts 26px from the card's left edge, which
-// is the centre line of the 72px collapsed column. Plain rows reach it with
-// 1px of card border + 12px of nav wrapper + 13px of their own padding; the
-// framed ones with 1px of card border + 12px of wrapper + 1px of their own
-// border + 12px of padding. The collapsed column is sized from that padding,
+// never nudges an icon: it always starts 18px from the card's left edge, which
+// is the centre line of the 56px collapsed column. Plain rows reach it with
+// 1px of card border + 8px of nav wrapper + 9px of their own padding; the
+// framed ones with 1px of card border + 8px of wrapper + 1px of their own
+// border + 8px of padding. The collapsed column is sized from that padding,
 // not the other way round: widening the menu's inner padding widens it too.
 // Padding rather than justify-center: a centred icon would slide across the row
 // while the width animates, and a scrollbar on the right would shift it too.
-const ROW = "py-2 pl-[13px] pr-3.5";
-const SELECT_ROW = "px-3 py-2";
+const ROW = "py-2 pl-[9px] pr-3.5";
+const SELECT_ROW = "px-2 py-2";
 // Rows inside a section share the horizontal geometry of a plain row - so a
 // child lines up with the header above it - but stay 32px tall instead of 36:
 // a shorter row keeps a long list compact and the section header taller.
-const SUB_ROW = "py-1.5 pl-[13px] pr-3.5";
+const SUB_ROW = "py-1.5 pl-[9px] pr-3.5";
 
 // Labels fade with the width instead of popping in and out. Leaving is quicker
 // than arriving so the text is gone before the column gets narrow enough to
@@ -424,7 +424,7 @@ export function Layout() {
             navigation below. Width animates (px->px) for a smooth collapse. */}
         <div
           className={`flex shrink-0 flex-col transition-[width] duration-300 ease-in-out ${
-            collapsed ? "w-[72px]" : "w-[260px]"
+            collapsed ? "w-[56px]" : "w-[260px]"
           }`}
         >
           {/* The project selector is a platform concept: the admin, support and
@@ -450,7 +450,7 @@ export function Layout() {
                       shown ? "opacity-100 duration-200 delay-150" : "opacity-0 duration-100"
                     }`}
                   >
-                    <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+                    <div className="rounded-xl border border-slate-200 bg-surface px-2 py-2 shadow-sm">
                       <OrgSelector collapsed={collapsed} />
                     </div>
                   </div>
@@ -473,7 +473,7 @@ export function Layout() {
                   trigger shows the active section's icon and the menu carries
                   the labels. */}
               {availableSections.length > 1 && (
-                <div className="px-3 pt-2">
+                <div className="px-2 pt-2">
                   <MenuTrigger>
                     <SideTip label={currentSection.label} enabled={collapsed}>
                       <Button
@@ -529,7 +529,7 @@ export function Layout() {
 
               {sectionNav ? (
                 /* security/admin section: its own flat nav, no product categories */
-                <nav className="px-3 py-2">
+                <nav className="px-2 py-2">
                   <ul className="flex flex-col gap-0.5">
                     {sectionNav.map((n) => {
                       const Icon = n.Icon;
@@ -554,7 +554,7 @@ export function Layout() {
               ) : (
                 <>
                   {/* flat group: Resources / Charts (active via navActive aria-current) */}
-                  <nav className="px-3 py-2">
+                  <nav className="px-2 py-2">
                     <ul className="flex flex-col gap-0.5">
                       {navItems.map((n) => {
                         const Icon = n.Icon;
@@ -583,7 +583,7 @@ export function Layout() {
                       it used to be a plain link to the first chart, which left
                       every other service in the category unreachable. */}
                   {collapsed ? (
-                    <nav className="flex flex-col gap-0.5 px-3 py-2">
+                    <nav className="flex flex-col gap-0.5 px-2 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
                         return (
@@ -619,7 +619,7 @@ export function Layout() {
                       })}
                     </nav>
                   ) : (
-                    <nav className="px-3 py-2">
+                    <nav className="px-2 py-2">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id);
                         return (
@@ -655,7 +655,7 @@ export function Layout() {
             {/* Docs closes the navigation: a destination like the items above,
                 just a secondary one, so it stays inside the menu block with no
                 divider of its own. */}
-            <div className="shrink-0 px-3 pb-2">
+            <div className="shrink-0 px-2 pb-2">
               <SideTip label="Документация" enabled={collapsed}>
                 <Link
                   to="/docs"
@@ -670,7 +670,7 @@ export function Layout() {
 
             {/* Collapsing is shell chrome, not a place to go: it sits below the
                 divider, on its own, and never looks active. */}
-            <div className="shrink-0 border-t border-slate-100 px-3 py-2">
+            <div className="shrink-0 border-t border-slate-100 px-2 py-2">
               <SideTip label="Развернуть меню" enabled={collapsed}>
                 <Button
                   onPress={() => setCollapsed(!collapsed)}
@@ -755,12 +755,12 @@ function ShellSkeleton({ width, collapsed }: { width: string; collapsed: boolean
             and both halves of the answer are already known here: the stored
             preference and how much room the window has. */}
         <div
-          className={`hidden shrink-0 flex-col gap-4 sm:flex ${collapsed ? "w-[72px]" : "w-[260px]"}`}
+          className={`hidden shrink-0 flex-col gap-4 sm:flex ${collapsed ? "w-[56px]" : "w-[260px]"}`}
         >
-          <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-surface px-2 py-2 shadow-sm">
             <Skeleton className="h-9 w-full rounded-lg" />
           </div>
-          <div className="flex flex-1 flex-col gap-2 rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
+          <div className="flex flex-1 flex-col gap-2 rounded-xl border border-slate-200 bg-surface px-2 py-2 shadow-sm">
             {Array.from({ length: 6 }, (_, i) => (
               <Skeleton
                 // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
