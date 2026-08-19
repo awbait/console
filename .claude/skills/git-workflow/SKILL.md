@@ -84,9 +84,40 @@ After finishing work on a branch:
    git push -u origin feat/my-feature
    ```
 2. Create a PR to main using `gh pr create`
-3. The **user reviews and merges** - Claude never merges PRs
+3. If the work came from an issue, write the analysis and the result there too -
+   see **Issues** below
+4. The **user reviews and merges** - Claude never merges PRs
 
 PR title must be in **English**, Conventional Commits format, concise (<70 chars): on squash-merge it becomes the commit message, so Cyrillic is not allowed there. The PR body may be in Russian and should summarize what changed and why.
+
+## Issues
+
+Work that came from an issue ends with a comment in that issue, not only with a
+pull request. The two are read by different people at different times: the pull
+request is read once, next to the diff, by whoever merges it. The issue is what
+stays searchable afterwards, and it is where the next person lands when the same
+thing happens again - with the pull request long merged and its branch gone.
+
+Write the comment when the pull request is opened, before the work leaves your
+hands. It says, in the issue's own language:
+
+- **Причина.** What was actually going on, in the code, and why it behaved that
+  way. This is the part that has no other home: a diff shows the fix, never the
+  reasoning that led to it.
+- **Что сделал.** The decision taken and its boundaries: what deliberately
+  stayed as it was, and why. A rejected option is worth a line when somebody is
+  likely to propose it again.
+- **Как проверил.** What was run or clicked, and what came out. Say plainly what
+  was left unchecked.
+- **Ссылка на PR.** One line at the end.
+
+Do not restate the issue back to its author, and do not paste the diff. If the
+investigation ended somewhere other than where the issue pointed, say so: that
+is the most useful thing in the whole comment.
+
+Analysis that ends without a change is a comment too. An issue closed as "not
+reproducible" or "works as intended" needs its reasoning written down more than
+a fixed one does, because nothing else records it.
 
 ## Releases
 
@@ -138,6 +169,6 @@ Never delete branches, tags, or releases - only the user can do that. Specifical
 |-----------|--------|
 | Start new feature | `git checkout main && git pull && git checkout -b feat/...` |
 | Switch to another task | WIP commit → checkout main → new branch |
-| Work is done | CHANGELOG под `[Unreleased]` → push (lefthook проверит) → create PR → checkout main |
+| Work is done | CHANGELOG под `[Unreleased]` → push (lefthook проверит) → create PR → комментарий в issue → checkout main |
 | User says "release" | Determine version → release branch → CHANGELOG → PR |
 | Merge conflict | Resolve, `git add`, continue rebase/merge |
