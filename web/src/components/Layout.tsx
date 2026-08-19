@@ -43,6 +43,7 @@ import { useTeam } from "../app/TeamContext";
 import { useUser } from "../auth/UserContext";
 import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { useAsync } from "../hooks/useAsync";
+import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
 import { LoginScreen } from "./LoginScreen";
@@ -225,11 +226,35 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "Администратор платформы",
 };
 
+// From this width on there is room for the menu to stand open beside the page,
+// so the choice is the person's. Below it the page is what matters and the menu
+// folds down to its icons. 1024px is the same line the rest of the shell already
+// uses (the `lg:` classes in the top bar and on the sign-in screen).
+const ROOMY = "(min-width: 1024px)";
+
+// useSidebarState decides whether the menu is folded, and remembers the part of
+// that decision worth remembering.
+//
+// Two states, not one. On a roomy screen it is a preference: someone who works
+// with the menu folded should not have to fold it on every visit, so it lives in
+// storage. On a narrow one it is a consequence of the width, so it is folded by
+// default and nothing is written down - otherwise a window resized for a minute
+// would silently overwrite a choice made deliberately, and the menu would come
+// back folded on the big screen with no way to tell why.
+//
+// Unfolding on a narrow screen still works. That decision lasts until the width
+// changes, which is what puts the person back in a state the width explains.
+function useSidebarState(): [boolean, (v: boolean) => void] {
+  const roomy = useMatchMedia(ROOMY);
+  const [stored, setStored] = useStored("sidebar.collapsed", false);
+  const [narrow, setNarrow] = useState(true);
+  useEffect(() => setNarrow(true), [roomy]);
+  return roomy ? [stored, setStored] : [narrow, setNarrow];
+}
+
 export function Layout() {
   const { user, loading, unauthenticated } = useUser();
-  // Whether the menu is folded is a preference too: a user who works with it
-  // collapsed should not have to collapse it on every visit.
-  const [collapsed, setCollapsed] = useStored("sidebar.collapsed", false);
+  const [collapsed, setCollapsed] = useSidebarState();
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
@@ -316,7 +341,7 @@ export function Layout() {
     isWide ? "max-w-full" : "max-w-[1440px]"
   }`;
 
-  if (loading) return <ShellSkeleton width={shellWidth} />;
+  if (loading) return <ShellSkeleton width={shellWidth} collapsed={collapsed} />;
   if (unauthenticated || !user) return <LoginScreen />;
 
   // Sections by role: security sees only its own section, admin sees all three,
@@ -648,7 +673,7 @@ export function Layout() {
             <div className="shrink-0 border-t border-slate-100 px-3 py-2">
               <SideTip label="Развернуть меню" enabled={collapsed}>
                 <Button
-                  onPress={() => setCollapsed((c) => !c)}
+                  onPress={() => setCollapsed(!collapsed)}
                   aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
                   aria-pressed={collapsed}
                   className={`flex w-full items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-400 outline-none hover:bg-slate-50 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500`}
@@ -714,7 +739,7 @@ export function Layout() {
 // bar, the menu card, the content column do not depend on who is signed in.
 // Drawing it right away means one continuous page instead of a bare word on
 // white that is then replaced by the whole portal.
-function ShellSkeleton({ width }: { width: string }) {
+function ShellSkeleton({ width, collapsed }: { width: string; collapsed: boolean }) {
   return (
     <div className="flex h-screen flex-col bg-app">
       <header className="shrink-0 border-b border-slate-200 bg-surface">
@@ -725,7 +750,13 @@ function ShellSkeleton({ width }: { width: string }) {
         </div>
       </header>
       <div className={`mx-auto flex min-h-0 w-full flex-1 gap-10 px-4 py-8 lg:px-6 ${width}`}>
-        <div className="hidden w-[260px] shrink-0 flex-col gap-4 sm:flex">
+        {/* The width the menu will have once the session resolves. Guessing it
+            wrong shifts the whole page sideways the moment the portal appears,
+            and both halves of the answer are already known here: the stored
+            preference and how much room the window has. */}
+        <div
+          className={`hidden shrink-0 flex-col gap-4 sm:flex ${collapsed ? "w-[72px]" : "w-[260px]"}`}
+        >
           <div className="rounded-xl border border-slate-200 bg-surface px-3 py-2 shadow-sm">
             <Skeleton className="h-9 w-full rounded-lg" />
           </div>

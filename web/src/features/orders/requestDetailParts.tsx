@@ -58,6 +58,7 @@ import {
 import { productTabs } from "@/components/products/genericView";
 import { statusMeta, statusTitle } from "@/components/StatusBadge";
 import { buttonClass, Card, Checkbox } from "@/components/ui";
+import { useMatchMedia } from "@/hooks/useMatchMedia";
 import { safeHref } from "@/lib/href";
 import { dayLabel, fmtDateTime, fmtRelative } from "@/lib/time";
 import { OrderGraphDialog } from "./OrderGraphDialog";
@@ -954,22 +955,6 @@ function useBodyMetrics({
     return () => ro.disconnect();
   }, [slot, body, bar, paged]);
   return m;
-}
-
-// useMatchMedia follows a media query the way CSS does, so a layout rule can be
-// stated once in the classes and once in the arithmetic without the two drifting
-// apart as the window changes.
-function useMatchMedia(query: string): boolean {
-  const [matches, setMatches] = useState(() => window.matchMedia?.(query).matches ?? false);
-  useEffect(() => {
-    const mq = window.matchMedia?.(query);
-    if (!mq) return;
-    const sync = () => setMatches(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, [query]);
-  return matches;
 }
 
 // The history is grouped by day. Which day something happened is the one
