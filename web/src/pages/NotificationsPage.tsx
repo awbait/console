@@ -84,8 +84,11 @@ export function NotificationsPage() {
   const days = groupByDay(shown);
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
-      <div className="flex min-h-9 items-center justify-between gap-3">
+    // Same shape as the platform status page: the header and the filters keep
+    // their place, and only the feed below them scrolls. A history is read by
+    // scrolling, and the way to mark it all read should not scroll away with it.
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-slate-900">Уведомления</h1>
         {unread > 0 && (
           <button
@@ -102,7 +105,7 @@ export function NotificationsPage() {
       {/* Two chips rather than a dropdown: there are two answers, and the one in
           force has to be readable without opening anything. Same shape as the
           filters over the order list. */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
           Все
         </FilterChip>
@@ -112,46 +115,51 @@ export function NotificationsPage() {
         </FilterChip>
       </div>
 
-      {loading ? (
-        <SkeletonRows rows={6} />
-      ) : error ? (
-        <ErrorBox error={error} />
-      ) : shown.length === 0 ? (
-        <EmptyFeed filter={filter} onShowAll={() => setFilter("all")} />
-      ) : (
-        <div className="flex flex-col gap-5">
-          {days.map(([day, rows]) => (
-            <section key={day}>
-              {/* The day names the group and keeps its place while the list
-                  scrolls, so a long history never loses which day you are in. */}
-              <h2 className="sticky top-0 z-10 -mx-1 mb-1.5 bg-app/95 px-1 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur">
-                {day}
-              </h2>
-              <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
-                <ul className="flex flex-col">
-                  {rows.map((n) => (
-                    <li key={n.id} className="border-b border-slate-100 last:border-0">
-                      <NotificationRow n={n} onRead={() => readOne(n)} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          ))}
+      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
+          room the clipping edge would otherwise cut off. */}
+      <div className="scroll-slim -mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+        {loading ? (
+          <SkeletonRows rows={6} />
+        ) : error ? (
+          <ErrorBox error={error} />
+        ) : shown.length === 0 ? (
+          <EmptyFeed filter={filter} onShowAll={() => setFilter("all")} />
+        ) : (
+          <>
+            {days.map(([day, rows]) => (
+              <section key={day}>
+                {/* The day names the group and scrolls away with it. It used to
+                    stick to the top, and a translucent strip followed it down
+                    the page - the blur behind it never matched what it covered. */}
+                <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {day}
+                </h2>
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+                  <ul className="flex flex-col">
+                    {rows.map((n) => (
+                      <li key={n.id} className="border-b border-slate-100 last:border-0">
+                        <NotificationRow n={n} onRead={() => readOne(n)} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            ))}
 
-          {!done && (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={loadMore}
-                className="cursor-pointer rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                Показать ещё
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            {!done && (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  className="cursor-pointer rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
+                >
+                  Показать ещё
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
