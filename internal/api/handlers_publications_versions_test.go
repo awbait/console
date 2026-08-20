@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"console/internal/publications"
+	"console/internal/views"
 	"console/pkg/models"
 )
 
@@ -186,5 +187,20 @@ func TestCatalogAndViewExposeVersions(t *testing.T) {
 	h.ServeHTTP(rec, devReq("GET", "/api/v1/charts/platform/postgres/view?version=9.9.9", "core", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("view unknown version: want 404, got %d", rec.Code)
+	}
+}
+
+// The constructor's editor gets its hints from this endpoint, so an author with
+// no rights over any chart still has to be able to read it - and what comes back
+// has to be the same document the portal validates with.
+func TestViewSchemaEndpoint(t *testing.T) {
+	srv, _, _ := newServer(t)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, devReq("GET", "/api/v1/view-schema", "payments", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("view-schema: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != string(views.DocumentSchema()) {
+		t.Fatal("view-schema body is not the embedded document schema")
 	}
 }

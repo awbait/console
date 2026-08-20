@@ -5,13 +5,18 @@
 // truth; a view only projects its fields. The "defaults" block additionally
 // lets a chart declare order-time values the portal stamps in (see Defaults /
 // ApplyDefaults in defaults.go).
+//
+// The format itself is described once, in document.schema.json, and checked by
+// checkShape (schema.go). What is left here is what a static schema cannot say:
+// whether a pointer finds a field in THIS chart's values.schema.json, whether a
+// tab id is free, whether a form a tab names exists, and the graph directive,
+// whose allowed keys come from a profile the portal implements.
 package views
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 )
 
@@ -21,9 +26,6 @@ type Issue struct {
 	Path    string `json:"path"`
 	Message string `json:"message"`
 }
-
-// Known ui:widget widgets (see web/src/form/SchemaForm.tsx).
-var knownWidgets = map[string]bool{"single": true, "edit": true, "hidden": true}
 
 // ValidateStructure checks only the document format (without the chart schema).
 func ValidateStructure(viewJSON []byte) []Issue {
@@ -35,7 +37,6 @@ func ValidateStructure(viewJSON []byte) []Issue {
 // fields (an unknown schema structure is skipped silently, we check only what
 // we can prove).
 func Validate(viewJSON, schemaJSON []byte) []Issue {
-	var issues []Issue
 	var doc map[string]any
 	if err := json.Unmarshal(viewJSON, &doc); err != nil {
 		return []Issue{{Path: "", Message: "Невалидный JSON: " + err.Error()}}
@@ -43,49 +44,21 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	// json.Unmarshal silently collapses duplicate keys (a second "order"
 	// would overwrite the first), so we catch them with a token scan before
 	// the substantive checks.
-	issues = append(issues, duplicateKeys(viewJSON)...)
-	for k := range doc {
-		switch k {
-		case "views", "tabs", "actions", "defaults", "graph", "approval", "version", "$comment":
-		default:
-			issues = append(issues, Issue{"/" + k,
-				fmt.Sprintf("Лишнее поле %q: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\"", k)})
-		}
-	}
-	viewsRaw, ok := doc["views"]
-	if !ok {
-		return append(issues, Issue{"", `В документе нет блока "views". Добавьте {"views": {"order": { ... }}}`})
-	}
-	viewsMap, ok := viewsRaw.(map[string]any)
-	if !ok {
-		return append(issues, Issue{"/views", `Блок "views" должен быть объектом: {"views": {"order": { ... }}}`})
-	}
-	if len(viewsMap) == 0 {
-		issues = append(issues, Issue{"/views", `Блок "views" пуст. Опишите хотя бы view "order" (форму заказа)`})
-	}
-	// The "order" view is required and exactly one: it builds the order form and
-	// the menu item (a duplicate key would be caught by duplicateKeys above).
-	if _, ok := viewsMap["order"]; !ok && len(viewsMap) > 0 {
-		issues = append(issues, Issue{"",
-			`Не хватает view "order": это форма заказа, она обязательна и должна быть ровно одна`})
-	}
-	// "identity" in the order view is optional: it names the values field that
-	// identifies a deployed instance (e.g. /gateways/0/name) and keys the
-	// per-namespace resource uniqueness check. Without it the portal falls back
-	// to service_name (see provisioning.resourceIdentity), which covers charts
-	// that simply have no identifying field (e.g. cluster-scoped operators).
-	// When present it must be a valid pointer - checked in validateView.
+	issues := duplicateKeys(viewJSON)
+	issues = append(issues, checkShape(doc)...)
 
 	var schema map[string]any
 	if len(schemaJSON) > 0 {
 		// A broken chart schema is not blamed on the view document, just no cross-checks.
 		_ = json.Unmarshal(schemaJSON, &schema)
 	}
+	viewsMap, _ := doc["views"].(map[string]any)
+	tabsArr, _ := doc["tabs"].([]any)
 
 	// Forms used by a tab as its form project the ELEMENT of the items array, not
 	// the schema root, so their include/exclude are checked against element fields.
 	formNode := map[string]map[string]any{}
-	if tabsArr, ok := doc["tabs"].([]any); ok && schema != nil {
+	if schema != nil {
 		for _, it := range tabsArr {
 			m, _ := it.(map[string]any)
 			form, _ := m["form"].(string)
@@ -100,135 +73,72 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	}
 
 	for name, v := range viewsMap {
-		path := "/views/" + name
 		vm, ok := v.(map[string]any)
 		if !ok {
-			issues = append(issues, Issue{path,
-				fmt.Sprintf("View %q должна быть объектом с полями include/exclude/overrides", name)})
 			continue
 		}
 		node := schema
 		if n, ok := formNode[name]; ok {
 			node = n // tab element form: check against array element fields
 		}
-		issues = append(issues, validateView(path, vm, node, schema, true)...)
+		issues = append(issues, checkView("/views/"+name, vm, node, schema)...)
 	}
 
 	// tabs: product tabs (list tables). Returns the set of tab ids that
 	// actions can reference via "tab:<id>".
-	tabIDs := map[string]bool{}
-	if tabsRaw, ok := doc["tabs"]; ok {
-		var tabIssues []Issue
-		tabIssues, tabIDs = validateTabs(tabsRaw, viewsMap, schema)
-		issues = append(issues, tabIssues...)
-	}
+	tabIssues, tabIDs := checkTabs(tabsArr, viewsMap, schema)
+	issues = append(issues, tabIssues...)
 
 	// actions: placement of a view form in the "Actions" menu (info or tab:<id>).
-	if actionsRaw, ok := doc["actions"]; ok {
-		issues = append(issues, validateActions(actionsRaw, viewsMap, tabIDs)...)
+	if actions, ok := doc["actions"].([]any); ok {
+		issues = append(issues, checkActions(actions, viewsMap, tabIDs)...)
 	}
 
 	// defaults: values the portal stamps into an order at create/update time.
-	if defaultsRaw, ok := doc["defaults"]; ok {
-		issues = append(issues, validateDefaults(defaultsRaw, schema)...)
+	if defaults, ok := doc["defaults"].(map[string]any); ok && schema != nil {
+		issues = append(issues, checkDefaults(defaults, schema)...)
 	}
 
 	// graph: the visual values editor this version turns on, and where its
 	// fields live in the values.
-	if graphRaw, ok := doc["graph"]; ok {
-		issues = append(issues, validateGraph(graphRaw, schema)...)
-	}
-
-	// approval: how this version's changes are allowed to reach the cluster
-	// (see ReadAutoMergeRule in approval.go).
-	if approvalRaw, ok := doc["approval"]; ok {
-		issues = append(issues, validateApproval(approvalRaw)...)
+	if graph, ok := doc["graph"].(map[string]any); ok {
+		issues = append(issues, checkGraph(graph, schema)...)
 	}
 	return issues
 }
 
-// validateApproval checks the "approval" block. Today it holds one rule,
-// autoMerge, and an unknown key is reported rather than ignored: a misspelled
-// rule would silently leave the version on the installation's default, which is
-// exactly the outcome the author wrote the block to avoid.
-func validateApproval(raw any) []Issue {
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return []Issue{{"/approval",
-			`Блок "approval" должен быть объектом: {"autoMerge": false}`}}
-	}
+// checkDefaults cross-checks the pointers the "defaults" block writes to: each
+// key must find a field in values.schema.json.
+func checkDefaults(m map[string]any, schema map[string]any) []Issue {
 	var issues []Issue
-	for k, v := range m {
-		switch k {
-		case "$comment":
-		case "autoMerge":
-			if _, ok := v.(bool); !ok {
-				issues = append(issues, Issue{"/approval/autoMerge",
-					`Поле "autoMerge" должно быть true или false`})
-			}
-		default:
-			issues = append(issues, Issue{"/approval/" + k,
-				fmt.Sprintf("Лишнее поле %q: в \"approval\" допустимо только \"autoMerge\"", k)})
-		}
-	}
-	return issues
-}
-
-// validateDefaults checks the "defaults" block: a map from a JSON pointer over
-// values to a scalar the portal stamps into an order (overwriting any submitted
-// value). Each key must be a JSON pointer that resolves in values.schema.json
-// (when the schema is known); each value must be a scalar.
-func validateDefaults(raw any, schema map[string]any) []Issue {
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return []Issue{{"/defaults",
-			`Блок "defaults" должен быть объектом: {"/namespace/creator": "console"}`}}
-	}
-	var issues []Issue
-	for ptr, val := range m {
+	for ptr := range m {
 		if !strings.HasPrefix(ptr, "/") {
-			issues = append(issues, Issue{"/defaults",
-				fmt.Sprintf("Ключ %q должен быть JSON pointer'ом, строкой вида \"/namespace/creator\"", ptr)})
-			continue
+			continue // the schema already said the key is not a pointer
 		}
-		p := "/defaults" + ptr
-		switch val.(type) {
-		case map[string]any, []any:
-			issues = append(issues, Issue{p,
-				`Значение по умолчанию должно быть скаляром (строка/число/булево)`})
-			continue
-		}
-		if schema != nil && !pointerResolves(ptr, schema, schema) {
-			issues = append(issues, Issue{p,
+		if !pointerResolves(ptr, schema, schema) {
+			issues = append(issues, Issue{"/defaults" + ptr,
 				fmt.Sprintf("Путь %q не находит поле в values.schema.json", ptr)})
 		}
 	}
 	return issues
 }
 
-// validateTabs checks product tabs. Each tab is a list table:
-// items (JSON pointer to an array in values), form (id of a form from views to
-// add/edit an element) and an optional ui:table (columns).
-// Returns issues and the set of tab ids (for references from actions).
-func validateTabs(raw any, viewsMap, schema map[string]any) ([]Issue, map[string]bool) {
+// checkTabs cross-checks product tabs: that ids are free and unique, that the
+// form each tab names exists in "views", and that its pointers find something in
+// the chart. Returns the set of tab ids, which actions reference as "tab:<id>".
+func checkTabs(arr []any, viewsMap, schema map[string]any) ([]Issue, map[string]bool) {
 	ids := map[string]bool{}
-	arr, ok := raw.([]any)
-	if !ok {
-		return []Issue{{"/tabs", `Блок "tabs" должен быть массивом: [{"id": "...", "items": "...", "form": "..."}]`}}, ids
-	}
 	reserved := map[string]bool{"info": true, "history": true, "order": true}
 	var issues []Issue
 	for i, it := range arr {
 		p := fmt.Sprintf("/tabs/%d", i)
 		m, ok := it.(map[string]any)
 		if !ok {
-			issues = append(issues, Issue{p, `Вкладка должна быть объектом {"id": "...", "items": "...", "form": "..."}`})
 			continue
 		}
 		id, _ := m["id"].(string)
 		switch {
 		case id == "":
-			issues = append(issues, Issue{p + "/id", `Укажите "id" вкладки (строка)`})
 		case reserved[id]:
 			issues = append(issues, Issue{p + "/id", fmt.Sprintf("Id %q зарезервирован (info/history/order)", id)})
 		case ids[id]:
@@ -236,26 +146,12 @@ func validateTabs(raw any, viewsMap, schema map[string]any) ([]Issue, map[string
 		default:
 			ids[id] = true
 		}
-		if t, ok := m["title"]; ok {
-			if _, ok := t.(string); !ok {
-				issues = append(issues, Issue{p + "/title", `Поле "title" должно быть строкой (заголовок вкладки)`})
-			}
-		}
-		if a, ok := m["addLabel"]; ok {
-			if _, ok := a.(string); !ok {
-				issues = append(issues, Issue{p + "/addLabel", `Поле "addLabel" должно быть строкой (текст пункта «Добавить ...»)`})
-			}
-		}
 		items, _ := m["items"].(string)
-		if items == "" || !strings.HasPrefix(items, "/") {
-			issues = append(issues, Issue{p + "/items", `Укажите "items": JSON pointer на массив в values, например "/gateways/0/listeners"`})
-		} else if schema != nil && !pointerResolves(items, schema, schema) {
+		if strings.HasPrefix(items, "/") && schema != nil && !pointerResolves(items, schema, schema) {
 			issues = append(issues, Issue{p + "/items", fmt.Sprintf("Путь %q не находит массив в values.schema.json", items)})
 		}
-		form, _ := m["form"].(string)
-		switch form {
+		switch form, _ := m["form"].(string); form {
 		case "":
-			issues = append(issues, Issue{p + "/form", `Укажите "form": id формы элемента из блока "views"`})
 		case "order":
 			issues = append(issues, Issue{p + "/form", `View "order" это форма заказа, она не подходит как форма элемента`})
 		default:
@@ -263,7 +159,7 @@ func validateTabs(raw any, viewsMap, schema map[string]any) ([]Issue, map[string
 				issues = append(issues, Issue{p + "/form", fmt.Sprintf("View %q нет в блоке \"views\"", form)})
 			}
 		}
-		if t, ok := m["ui:table"]; ok {
+		if t, ok := m["ui:table"].([]any); ok {
 			// Resolve the list element schema so column paths can be cross-checked
 			// against it (items points at the array; a column path is relative to
 			// one element). nil when the schema is absent or items is unresolved -
@@ -274,116 +170,44 @@ func validateTabs(raw any, viewsMap, schema map[string]any) ([]Issue, map[string
 					elem = itemNode(arr, schema)
 				}
 			}
-			issues = append(issues, validateUITable(p+"/ui:table", t, elem, schema)...)
+			issues = append(issues, checkColumns(p+"/ui:table", t, elem, schema)...)
 		}
-		if e, ok := m["enums"]; ok {
-			issues = append(issues, validateEnums(p+"/enums", e, schema)...)
+		if e, ok := m["enums"].([]any); ok && schema != nil {
+			issues = append(issues, checkEnums(p+"/enums", e, schema)...)
 		}
 	}
 	return issues, ids
 }
 
-// validateEnums checks a tab's dynamic enums: an array of rules
-// {at, from, value}. at - JSON pointer to a field inside the element; from - JSON
-// pointer to the source array in values; value - name of the source row field
-// that yields the option value.
-func validateEnums(path string, raw any, schema map[string]any) []Issue {
-	arr, ok := raw.([]any)
-	if !ok {
-		return []Issue{{path, `Блок "enums" должен быть массивом правил: [{"at": "...", "from": "...", "value": "..."}]`}}
-	}
+// checkEnums cross-checks the source array of every dynamic enum rule.
+func checkEnums(path string, arr []any, schema map[string]any) []Issue {
 	var issues []Issue
 	for i, it := range arr {
-		p := fmt.Sprintf("%s/%d", path, i)
 		m, ok := it.(map[string]any)
 		if !ok {
-			issues = append(issues, Issue{p, `Правило enum должно быть объектом {"at": "...", "from": "...", "value": "..."}`})
 			continue
 		}
-		for k := range m {
-			switch k {
-			case "at", "from", "value":
-			default:
-				issues = append(issues, Issue{p + "/" + k,
-					fmt.Sprintf("Лишнее поле %q: в правиле enum допустимы \"at\", \"from\", \"value\"", k)})
-			}
-		}
-		if s, _ := m["at"].(string); s == "" || !strings.HasPrefix(s, "/") {
-			issues = append(issues, Issue{p + "/at",
-				`Укажите "at": JSON pointer на поле внутри элемента, например "/parentRefs/0/sectionName"`})
-		}
 		from, _ := m["from"].(string)
-		if from == "" || !strings.HasPrefix(from, "/") {
-			issues = append(issues, Issue{p + "/from",
-				`Укажите "from": JSON pointer на массив-источник в values, например "/gateways/0/listeners"`})
-		} else if schema != nil && !pointerResolves(from, schema, schema) {
-			issues = append(issues, Issue{p + "/from",
+		if strings.HasPrefix(from, "/") && !pointerResolves(from, schema, schema) {
+			issues = append(issues, Issue{fmt.Sprintf("%s/%d/from", path, i),
 				fmt.Sprintf("Путь %q не находит массив в values.schema.json", from)})
 		}
-		if s, _ := m["value"].(string); s == "" {
-			issues = append(issues, Issue{p + "/value",
-				`Укажите "value": имя поля строки источника, дающее значение опции`})
-		}
 	}
 	return issues
 }
 
-// validateColumnLookup checks a computed column: an object {keys, in, match,
-// get}. keys - pointer inside the element (may contain "*"); in - pointer
-// to an array in values; match/get - names of the array row fields.
-func validateColumnLookup(path string, raw any) []Issue {
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return []Issue{{path, `Поле "lookup" должно быть объектом {"keys": "...", "in": "...", "match": "...", "get": "..."}`}}
-	}
-	var issues []Issue
-	for k := range m {
-		switch k {
-		case "keys", "in", "match", "get":
-		default:
-			issues = append(issues, Issue{path + "/" + k,
-				fmt.Sprintf("Лишнее поле %q: в \"lookup\" допустимы \"keys\", \"in\", \"match\", \"get\"", k)})
-		}
-	}
-	if s, _ := m["keys"].(string); s == "" || !strings.HasPrefix(s, "/") {
-		issues = append(issues, Issue{path + "/keys",
-			`Укажите "keys": JSON pointer внутри элемента, может содержать "*", например "/parentRefs/*/sectionName"`})
-	}
-	if s, _ := m["in"].(string); s == "" || !strings.HasPrefix(s, "/") {
-		issues = append(issues, Issue{path + "/in",
-			`Укажите "in": JSON pointer на массив в values, например "/gateways/0/listeners"`})
-	}
-	if s, _ := m["match"].(string); s == "" {
-		issues = append(issues, Issue{path + "/match",
-			`Укажите "match": имя поля строки массива для сравнения с ключом`})
-	}
-	if s, _ := m["get"].(string); s == "" {
-		issues = append(issues, Issue{path + "/get",
-			`Укажите "get": имя поля строки массива, чьё значение берём`})
-	}
-	return issues
-}
-
-// validateActions checks the actions section. Each entry places a view form
-// (except order, which lives in views) in the "Actions" menu: in "info" (the
-// "General info" tab) or in "tab:<id>", where <id> is a tab from the "tabs" block.
-func validateActions(raw any, viewsMap map[string]any, tabIDs map[string]bool) []Issue {
-	arr, ok := raw.([]any)
-	if !ok {
-		return []Issue{{"/actions", `Блок "actions" должен быть массивом: [{"view": "...", "in": "info"}]`}}
-	}
+// checkActions cross-checks that every action names a form that exists and a
+// place that exists: "info" (the "General info" tab) or a tab from "tabs".
+func checkActions(arr []any, viewsMap map[string]any, tabIDs map[string]bool) []Issue {
 	var issues []Issue
 	for i, it := range arr {
 		p := fmt.Sprintf("/actions/%d", i)
 		m, ok := it.(map[string]any)
 		if !ok {
-			issues = append(issues, Issue{p, `Элемент actions должен быть объектом {"view": "...", "in": "info" | "tab:<id>"}`})
 			continue
 		}
-		view, _ := m["view"].(string)
-		switch view {
+		switch view, _ := m["view"].(string); view {
 		case "":
-			issues = append(issues, Issue{p + "/view", `Укажите "view": имя view из блока "views"`})
 		case "order":
 			issues = append(issues, Issue{p + "/view", `View "order" это форма заказа, её нельзя класть в «Действия»`})
 		default:
@@ -391,219 +215,101 @@ func validateActions(raw any, viewsMap map[string]any, tabIDs map[string]bool) [
 				issues = append(issues, Issue{p + "/view", fmt.Sprintf("View %q нет в блоке \"views\"", view)})
 			}
 		}
-		if l, ok := m["label"]; ok {
-			if _, ok := l.(string); !ok {
-				issues = append(issues, Issue{p + "/label", `Поле "label" должно быть строкой (текст пункта в меню «Действия»)`})
-			}
-		}
-		in, _ := m["in"].(string)
-		switch {
-		case in == "":
-			issues = append(issues, Issue{p + "/in", `Укажите "in": "info" или "tab:<id>"`})
-		case in == "info":
-			// the "General info" tab always exists
-		case strings.HasPrefix(in, "tab:"):
-			tab := strings.TrimPrefix(in, "tab:")
-			if tab == "" {
-				issues = append(issues, Issue{p + "/in", `Укажите вкладку: "tab:<id>"`})
-			} else if !tabIDs[tab] {
+		if in, _ := m["in"].(string); strings.HasPrefix(in, "tab:") {
+			if tab := strings.TrimPrefix(in, "tab:"); tab != "" && !tabIDs[tab] {
 				issues = append(issues, Issue{p + "/in", fmt.Sprintf("Вкладки %q нет в блоке \"tabs\"", tab)})
 			}
-		default:
-			issues = append(issues, Issue{p + "/in", fmt.Sprintf("Неизвестное размещение %q: допустимо \"info\" или \"tab:<id>\"", in)})
 		}
 	}
 	return issues
 }
 
-// validateView checks one view (or a nested ui:view) against a schema node.
-// node is the schema node whose fields the view references (nil = cannot check).
-func validateView(path string, vm map[string]any, node, root map[string]any, top bool) []Issue {
+// checkView cross-checks one view (or a nested ui:view) against a schema node:
+// every field it names has to exist there. node is the schema node whose fields
+// the view references (nil = cannot check).
+func checkView(path string, vm map[string]any, node, root map[string]any) []Issue {
 	var issues []Issue
 	props := collectProperties(node, root)
 
-	checkFieldList := func(key string) {
-		raw, ok := vm[key]
-		if !ok {
-			return
-		}
-		list, ok := raw.([]any)
-		if !ok {
-			issues = append(issues, Issue{path + "/" + key,
-				fmt.Sprintf("Поле %q должно быть массивом имён полей схемы, например [\"naming\", \"gateways\"]", key)})
-			return
-		}
+	for _, key := range []string{"include", "exclude", "required"} {
+		list, _ := vm[key].([]any)
 		for i, item := range list {
 			s, ok := item.(string)
-			if !ok {
-				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-					fmt.Sprintf("Элементы %q должны быть строками, именами полей из values.schema.json", key)})
+			if !ok || props == nil || props[s] != nil {
 				continue
 			}
-			if props != nil && props[s] == nil {
-				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-					fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", s)})
-			}
+			issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
+				fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", s)})
 		}
 	}
 
-	for k, v := range vm {
-		switch k {
-		case "$comment":
-		case "identity":
-			s, ok := v.(string)
-			if !ok || !strings.HasPrefix(s, "/") {
-				issues = append(issues, Issue{path + "/identity",
-					`Поле "identity" должно быть JSON pointer'ом, строкой вида "/gateways/0/name"`})
-				continue
-			}
-			if !top {
-				issues = append(issues, Issue{path + "/identity",
-					`Поле "identity" допустимо только на верхнем уровне view. Уберите его из ui:view`})
-				continue
-			}
-			if node != nil && !pointerResolves(s, node, root) {
-				issues = append(issues, Issue{path + "/identity",
-					fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", s)})
-			}
-		case "namespace":
-			// Declares where the order's ArgoCD destination namespace comes from.
-			// Two forms:
-			//   - string "/ptr": legacy mirror - the order namespace is copied into
-			//     that values field (a chart that provisions its own namespace, e.g.
-			//     managed-namespace, is rendered into the namespace it creates).
-			//   - object {source, pointer, value, hideOrderField}: source=field (the
-			//     form input), values (a values field the chart names itself by), or
-			//     fixed (a constant). source=values/fixed hides the form field.
-			if !top {
-				issues = append(issues, Issue{path + "/namespace",
-					`Поле "namespace" допустимо только на верхнем уровне view. Уберите его из ui:view`})
-				continue
-			}
-			switch nv := v.(type) {
-			case string:
-				if !strings.HasPrefix(nv, "/") {
-					issues = append(issues, Issue{path + "/namespace",
-						`Поле "namespace" должно быть JSON pointer'ом, строкой вида "/namespace/namespaceName"`})
-					continue
-				}
-				if node != nil && !pointerResolves(nv, node, root) {
-					issues = append(issues, Issue{path + "/namespace",
-						fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", nv)})
-				}
-			case map[string]any:
-				issues = append(issues, validateNamespaceRule(path, nv, node, root)...)
-			default:
-				issues = append(issues, Issue{path + "/namespace",
-					`Поле "namespace" должно быть JSON pointer'ом или объектом {"source": "field|values|fixed", ...}`})
-			}
-		case "include", "exclude", "required":
-			checkFieldList(k)
-		case "overrides":
-			om, ok := v.(map[string]any)
-			if !ok {
-				issues = append(issues, Issue{path + "/overrides",
-					`Поле "overrides" должно быть объектом: {"<имя поля>": { настройки }}`})
-				continue
-			}
-			for field, ov := range om {
-				fp := path + "/overrides/" + field
-				var fieldNode map[string]any
-				if props != nil {
-					if props[field] == nil {
-						issues = append(issues, Issue{fp,
-							fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", field)})
-					} else {
-						fieldNode, _ = props[field].(map[string]any)
-					}
-				}
-				ovm, ok := ov.(map[string]any)
-				if !ok {
-					issues = append(issues, Issue{fp,
-						"Настройка поля должна быть объектом (title, ui:widget, ui:view, …)"})
-					continue
-				}
-				issues = append(issues, validateOverride(fp, ovm, fieldNode, root)...)
-			}
-		default:
-			issues = append(issues, Issue{path + "/" + k,
-				fmt.Sprintf("Неизвестное поле %q: во view допустимы identity, namespace, include, exclude, required, overrides", k)})
+	if s, ok := vm["identity"].(string); ok && strings.HasPrefix(s, "/") && node != nil && !pointerResolves(s, node, root) {
+		issues = append(issues, Issue{path + "/identity",
+			fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", s)})
+	}
+
+	// "namespace" declares where the order's ArgoCD destination namespace comes
+	// from. Two forms: a plain pointer (the order namespace is mirrored into that
+	// values field) and {source, pointer, value, hideOrderField}, where
+	// source=values names the field the chart itself is named by. Both point into
+	// the chart, which is the half a static schema cannot check.
+	switch nv := vm["namespace"].(type) {
+	case string:
+		if strings.HasPrefix(nv, "/") && node != nil && !pointerResolves(nv, node, root) {
+			issues = append(issues, Issue{path + "/namespace",
+				fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", nv)})
+		}
+	case map[string]any:
+		ptr, _ := nv["pointer"].(string)
+		if strings.HasPrefix(ptr, "/") && node != nil && !pointerResolves(ptr, node, root) {
+			issues = append(issues, Issue{path + "/namespace/pointer",
+				fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", ptr)})
 		}
 	}
-	return issues
-}
 
-// validateUITable checks the columns of a list tab: an array of objects. A column
-// sets either "path" (a slash path into the element; a "*" segment iterates the
-// array at that point, e.g. "from/*/namespace") or "lookup" (a value computed
-// through a join by reference). label is optional for a path column (defaults to
-// path) and required for a lookup column.
-func validateUITable(path string, raw any, elem, root map[string]any) []Issue {
-	arr, ok := raw.([]any)
-	if !ok {
-		return []Issue{{path, `Поле "ui:table" должно быть массивом колонок: [{"path": "name", "label": "Имя"}]`}}
-	}
-	var issues []Issue
-	for i, it := range arr {
-		p := fmt.Sprintf("%s/%d", path, i)
-		m, ok := it.(map[string]any)
+	overrides, _ := vm["overrides"].(map[string]any)
+	for field, ov := range overrides {
+		fp := path + "/overrides/" + field
+		var fieldNode map[string]any
+		if props != nil {
+			if props[field] == nil {
+				issues = append(issues, Issue{fp,
+					fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", field)})
+			} else {
+				fieldNode, _ = props[field].(map[string]any)
+			}
+		}
+		ovm, ok := ov.(map[string]any)
 		if !ok {
-			issues = append(issues, Issue{p, `Колонка должна быть объектом {"path": "...", "label": "..."}`})
 			continue
 		}
-		if lk, ok := m["lookup"]; ok {
-			issues = append(issues, validateColumnLookup(p+"/lookup", lk)...)
-			if s, ok := m["label"].(string); !ok || s == "" {
-				issues = append(issues, Issue{p + "/label", `Для вычисляемой колонки укажите "label" (заголовок)`})
-			}
-		} else if s, ok := m["path"].(string); !ok || s == "" {
-			issues = append(issues, Issue{p + "/path", `Укажите "path": имя поля элемента, например "name", либо задайте "lookup"`})
-		} else if elem != nil && !tablePathResolves(s, elem, root) {
-			issues = append(issues, Issue{p + "/path",
-				fmt.Sprintf("Путь %q не находит поле в элементе списка (values.schema.json). Сверьтесь со вкладкой схемы", s)})
-		}
-		if l, ok := m["label"]; ok {
-			if _, ok := l.(string); !ok {
-				issues = append(issues, Issue{p + "/label", `Поле "label" должно быть строкой`})
-			}
+		if nested, ok := ovm["ui:view"].(map[string]any); ok {
+			// A nested ui:view applies to object fields; for an array,
+			// to the element (an array renders as a list of cards or as single).
+			issues = append(issues, checkView(fp+"/ui:view", nested, itemNode(fieldNode, root), root)...)
 		}
 	}
 	return issues
 }
 
-// validateOverride checks the known override keys; other keys are
-// schema hints (title/description/enum/...), which we skip.
-func validateOverride(path string, ovm, fieldNode, root map[string]any) []Issue {
+// checkColumns cross-checks the column paths of a list tab against the schema of
+// one element. A column sets either "path" (a slash path into the element; a "*"
+// segment iterates the array at that point, e.g. "from/*/namespace") or "lookup"
+// (a value computed through a join by reference).
+func checkColumns(path string, arr []any, elem, root map[string]any) []Issue {
 	var issues []Issue
-	for k, v := range ovm {
-		switch k {
-		case "ui:widget":
-			s, ok := v.(string)
-			if !ok || !knownWidgets[s] {
-				issues = append(issues, Issue{path + "/ui:widget",
-					fmt.Sprintf("Неизвестный виджет %v: доступны \"single\", \"edit\", \"hidden\"", v)})
-			}
-		case "ui:view":
-			vm, ok := v.(map[string]any)
-			if !ok {
-				issues = append(issues, Issue{path + "/ui:view",
-					`Поле "ui:view" должно быть объектом вложенной view (include/exclude/overrides)`})
-				continue
-			}
-			// A nested ui:view applies to object fields; for an array,
-			// to the element (an array renders as a list of cards or as single).
-			child := itemNode(fieldNode, root)
-			issues = append(issues, validateView(path+"/ui:view", vm, child, root, false)...)
-		case "title":
-			if _, ok := v.(string); !ok {
-				issues = append(issues, Issue{path + "/title", `Поле "title" должно быть строкой`})
-			}
-		case "include", "exclude", "required", "overrides", "identity", "namespace":
-			// These are view keys, not schema hints. Placed directly in a field
-			// override (instead of inside "ui:view") they are silently ignored at
-			// render time, so flag the misplacement rather than skip it as a hint.
-			issues = append(issues, Issue{path + "/" + k,
-				fmt.Sprintf("Ключ %q задаёт вложенную view: положите его внутрь \"ui:view\", а не прямо в настройку поля", k)})
+	for i, it := range arr {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := m["lookup"]; ok {
+			continue // a computed column names arrays elsewhere in the values, not fields of this element
+		}
+		s, _ := m["path"].(string)
+		if s != "" && elem != nil && !tablePathResolves(s, elem, root) {
+			issues = append(issues, Issue{fmt.Sprintf("%s/%d/path", path, i),
+				fmt.Sprintf("Путь %q не находит поле в элементе списка (values.schema.json). Сверьтесь со вкладкой схемы", s)})
 		}
 	}
 	return issues
@@ -865,53 +571,4 @@ func isIndex(s string) bool {
 		}
 	}
 	return true
-}
-
-// dns1123 is a permissive DNS-1123 label check for a fixed namespace value in a
-// view. The provisioning layer re-validates at order time (validNamespace); this
-// only catches typos in the view document early.
-var dns1123 = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-
-// validateNamespaceRule checks the object form of order.namespace:
-// {source, pointer, value, hideOrderField}. node/root are the chart schema, used
-// to confirm a source=values pointer resolves to a real field.
-func validateNamespaceRule(path string, m, node, root map[string]any) []Issue {
-	var issues []Issue
-	np := path + "/namespace"
-	source, _ := m["source"].(string)
-	if source == "" {
-		source = NamespaceSourceField
-	}
-	switch source {
-	case NamespaceSourceField:
-		// The form input; nothing else to validate.
-	case NamespaceSourceValues:
-		ptr, ok := m["pointer"].(string)
-		if !ok || !strings.HasPrefix(ptr, "/") {
-			issues = append(issues, Issue{np + "/pointer",
-				`Для source "values" нужен "pointer" - JSON pointer вида "/namespace/namespaceName"`})
-		} else if node != nil && !pointerResolves(ptr, node, root) {
-			issues = append(issues, Issue{np + "/pointer",
-				fmt.Sprintf("Указатель %q не находит поле в values.schema.json. Проверьте путь", ptr)})
-		}
-	case NamespaceSourceFixed:
-		val, ok := m["value"].(string)
-		if !ok || val == "" {
-			issues = append(issues, Issue{np + "/value",
-				`Для source "fixed" нужен непустой "value" - имя namespace`})
-		} else if len(val) > 63 || !dns1123.MatchString(val) {
-			issues = append(issues, Issue{np + "/value",
-				fmt.Sprintf("%q не является валидным именем namespace (a-z, 0-9, дефис)", val)})
-		}
-	default:
-		issues = append(issues, Issue{np + "/source",
-			`"source" должен быть "field", "values" или "fixed"`})
-	}
-	if hof, ok := m["hideOrderField"]; ok {
-		if _, isBool := hof.(bool); !isBool {
-			issues = append(issues, Issue{np + "/hideOrderField",
-				`"hideOrderField" должно быть булевым (true/false)`})
-		}
-	}
-	return issues
 }

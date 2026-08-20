@@ -46,6 +46,11 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
 import {
+  chartModelPath,
+  useViewDocumentHints,
+  viewModelPath,
+} from "../features/publications/monacoHints";
+import {
   EditorTab,
   PreviewBoundary,
   PreviewPane,
@@ -159,6 +164,12 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
     [project, name, version],
     qk.schema(project, name, version),
   );
+
+  // The document is written by hand, so the editor is taught what it is: the
+  // format comes from the portal, the fields to point at from the chart above.
+  // Both are hints, so a failure here costs the hints and nothing else.
+  const { data: viewFormat } = useAsync(() => api.getViewSchema(), [], qk.viewSchema());
+  useViewDocumentHints(viewFormat, schema);
 
   const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);
@@ -475,6 +486,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                 <Editor
                   height="100%"
                   defaultLanguage="json"
+                  path={viewModelPath(pub.id, version)}
                   theme={monacoTheme}
                   value={text}
                   onChange={(v) => setText(v ?? "")}
@@ -484,6 +496,12 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                     automaticLayout: true,
                     wordWrap: "on",
                     readOnly: !editable,
+                    // A description and a suggestion list are both wider than
+                    // this panel, and the panel clips what sticks out of it (it
+                    // has to, to keep the editor inside its rounded border).
+                    // This lets them hang over the page instead of being cut in
+                    // half, which is the whole point of showing them.
+                    fixedOverflowWidgets: true,
                   }}
                 />
               </div>
@@ -536,6 +554,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                     <Editor
                       height="100%"
                       defaultLanguage="json"
+                      path={chartModelPath(project, name, version)}
                       theme={monacoTheme}
                       value={JSON.stringify(schema, null, 2)}
                       options={{
@@ -704,6 +723,11 @@ function FormatHelp() {
                   <p className="mb-1.5">
                     Документ из разделов: <b>views</b> (формы), <b>tabs</b> (вкладки-таблицы), <b>actions</b>{" "}
                     (пункты меню «Действия»), <b>graph</b> (визуальный редактор values).
+                  </p>
+                  <p className="mb-1.5">
+                    Редактор подсказывает по ходу: Ctrl+Space открывает список - ключи документа и поля этого
+                    чарта с описаниями. Там, где остаётся один вариант, он показывается серым текстом после
+                    курсора и принимается по Tab.
                   </p>
                   <ul className="flex list-disc flex-col gap-1.5 pl-4">
                     <li>

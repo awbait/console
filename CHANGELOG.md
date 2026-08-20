@@ -19,6 +19,13 @@ All notable changes to this project are documented in this file.
   you stop typing, and again when you leave the page. Next to the "Сохранить
   черновик" button it says where the work stands: saved, saving, or not saved.
   Closing a tab with unsaved edits no longer happens without a word.
+- The version constructor prompts as you write. Ctrl+Space opens a list of what
+  belongs where the cursor is: the keys of the document, and the fields of this
+  chart version with the names the chart gives them. Where what you typed leaves
+  a single field, the rest of it is shown in grey and taken with Tab.
+- Hovering over a key in the version constructor explains what it is for, and a
+  mistake is underlined on the line it is on instead of only appearing in the
+  list under the editor.
 
 ### Fixed
 - A field explains a refusal by the rule that was actually broken. The value

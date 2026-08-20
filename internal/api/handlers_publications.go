@@ -269,6 +269,17 @@ func (s *Server) handleSaveVersionView(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
+// handleViewSchema serves the JSON Schema of the view document. The constructor
+// hands it to its editor, which turns it into completion, hovers and squiggles,
+// so the author sees the same rules the portal checks on save. It ships with the
+// portal binary and changes only with it, so it is cheap to fetch and safe to
+// keep for the session.
+func (s *Server) handleViewSchema(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(views.DocumentSchema())
+}
+
 // handleValidateVersion is a live builder check of a draft view against a
 // specific version's schema; always 200 with a list of issues (empty = valid).
 func (s *Server) handleValidateVersion(w http.ResponseWriter, r *http.Request) {

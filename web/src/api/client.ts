@@ -219,6 +219,12 @@ export const api = {
   rejectPublication: (id: string, comment: string) =>
     req<ChartPublication>("POST", `/publications/${enc(id)}/reject`, { comment }),
 
+  // Format of the view document: the rules the portal checks on save, in the
+  // form the editor in the version constructor reads (completion, hovers,
+  // squiggles). Ships with the portal, so it changes only with a release.
+  getViewSchema: (signal?: AbortSignal) =>
+    req<JSONSchema>("GET", "/view-schema", undefined, signal),
+
   // publication versions (per-version view builder + approval FSM)
   pendingVersions: (signal?: AbortSignal) =>
     req<PendingVersion[] | null>("GET", "/publications/pending-versions", undefined, signal).then(
