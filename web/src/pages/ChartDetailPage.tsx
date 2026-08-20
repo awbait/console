@@ -12,7 +12,7 @@ import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Changelog } from "../components/Changelog";
+import { Changelog, withContent } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
 import { Button, Card, Chip, LinkButton, OutageState, Skeleton, SkeletonText } from "../components/ui";
@@ -244,6 +244,10 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   );
 }
 
+// How many versions of a chart the Changes tab draws before it asks. Enough to
+// cover "what happened lately" without rendering a chart's whole life.
+const CHANGELOG_PAGE = 5;
+
 function ChartChangelog({ project, name }: { project: string; name: string }) {
   const { data, error, loading } = useAsync(
     () => api.getAggregatedChangelog(project, name),
@@ -251,12 +255,19 @@ function ChartChangelog({ project, name }: { project: string; name: string }) {
     qk.changelog(project, name),
   );
   if (loading) return <SkeletonText lines={6} />;
-  if (error || !data?.length)
+  const notes = data ? withContent(data) : [];
+  if (error || notes.length === 0)
     return <p className="text-sm text-gray-500">История изменений недоступна.</p>;
+  // This is every version of the chart at once, so a mature one arrives with
+  // dozens of releases. The newest few are drawn and the rest waits for someone
+  // who asks for it.
   return (
     <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
-        <Changelog entries={data} />
+      {/* No padding at the top: the header of the open version sticks to the
+          edge of this box, and a gap above it is a strip the notes would scroll
+          through in the open. */}
+      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        <Changelog entries={notes} pageSize={CHANGELOG_PAGE} stickyHeaders />
       </div>
     </Card>
   );

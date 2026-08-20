@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The changelog on the About page opens one version at a time. The newest one is
+  open, the rest are folded, and a folded header says how many entries the
+  release has in each category and how it starts. The version running in
+  production is marked "Сейчас в проде".
+- A chart's Changes tab draws the five newest versions and offers the rest by a
+  button. While an open release is being read, its version stays visible at the
+  top of the list.
+
+### Fixed
+- A version with nothing under it is no longer shown. After a release the
+  changelog used to open with an empty "Ещё не выпущено" block.
+
 ## [0.6.0] - 2026-08-20
 
 A release about the version constructor. The document is no longer written into

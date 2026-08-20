@@ -9,7 +9,7 @@ import { type ReactNode, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { useUser } from "../auth/UserContext";
-import { Changelog } from "../components/Changelog";
+import { Changelog, withContent } from "../components/Changelog";
 import { Card, ErrorBox, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isRelease, releaseAnchor } from "../lib/release";
@@ -24,14 +24,19 @@ export function AboutPage() {
   // link, and so is anything else that wants to point at what changed.
   //
   // The scroll waits for the changelog: the section does not exist until it has
-  // loaded, and scrolling into a skeleton lands nowhere.
+  // loaded, and scrolling into a skeleton lands nowhere. It also waits a frame
+  // after that, because the version it is aimed at opens as it renders and the
+  // notes unfold under the header - a scroll measured before that lands on a
+  // section that is still growing.
   const { hash } = useLocation();
   const target = hash.replace(/^#/, "");
   const loaded = !!changelog.data;
   useEffect(() => {
     if (!target || !loaded) return;
-    const el = document.getElementById(target);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const id = requestAnimationFrame(() => {
+      document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
   }, [target, loaded]);
 
   // User-facing portal links (not infra consoles - those live on the status page).
@@ -49,6 +54,11 @@ export function AboutPage() {
 
   const info = about.data;
   const hasBuild = info && (info.commit || info.build_date);
+
+  // A release leaves an empty [Unreleased] behind, and until something lands
+  // under it there is nothing to read there. Asked here rather than inside the
+  // list, because the answer decides between a card and "пока нет записей".
+  const notes = changelog.data ? withContent(changelog.data) : [];
 
   // Side by side (lg), the page takes the height of its column and the changelog
   // scrolls inside its card, so the build info and the links stay in sight.
@@ -103,10 +113,10 @@ export function AboutPage() {
                   <SkeletonText lines={6} />
                 ) : changelog.error ? (
                   <ErrorBox error={changelog.error} />
-                ) : changelog.data && changelog.data.length > 0 ? (
+                ) : notes.length > 0 ? (
                   <Card padded={false} className="flex flex-col lg:min-h-0 lg:flex-1">
                     <div className="scroll-slim p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-                      <Changelog entries={changelog.data} highlight={target} />
+                      <Changelog entries={notes} highlight={target} current={info.version} />
                     </div>
                   </Card>
                 ) : (
