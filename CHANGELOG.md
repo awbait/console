@@ -4,15 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-### Changed
-- The portal opens faster: its first load is a quarter lighter. The screens few
-  people open are now fetched when they are opened: the admin, security and
-  support sections, the documentation, the version constructor.
-- The menu on the left folds itself once the window is narrower than 1024
-  pixels, and the page gets the 200 pixels it needs more than the menu does. The
-  folded menu is a little narrower than it was, too. It
-  can still be unfolded there, by the button at its lower end. On a wide screen
-  the portal remembers your choice as before.
+## [0.6.0] - 2026-08-20
+
+A release about the version constructor. The document is no longer written into
+a blank field: the editor prompts with the chart's fields, explains the keys and
+saves the draft on its own.
 
 ### Added
 - The version constructor saves its draft on its own, a couple of seconds after
@@ -26,6 +22,16 @@ All notable changes to this project are documented in this file.
 - Hovering over a key in the version constructor explains what it is for, and a
   mistake is underlined on the line it is on instead of only appearing in the
   list under the editor.
+
+### Changed
+- The portal opens faster: its first load is a quarter lighter. The screens few
+  people open are now fetched when they are opened: the admin, security and
+  support sections, the documentation, the version constructor.
+- The menu on the left folds itself once the window is narrower than 1024
+  pixels, and the page gets the 200 pixels it needs more than the menu does. The
+  folded menu is a little narrower than it was, too. It can still be unfolded
+  there, by the button at its lower end. On a wide screen the portal remembers
+  your choice as before.
 
 ### Fixed
 - A field explains a refusal by the rule that was actually broken. The value
@@ -305,7 +311,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/awbait/console/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awbait/console/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/awbait/console/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/awbait/console/compare/v0.2.0...v0.3.0
