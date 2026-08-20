@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChangelogEntry } from "@/api/types";
-import { plain, withContent } from "./Changelog";
+import { withContent } from "./Changelog";
 
 function entry(e: Partial<ChangelogEntry>): ChangelogEntry {
   return { version: "1.0.0", sections: [], ...e };
@@ -28,17 +28,5 @@ describe("withContent", () => {
       sections: [{ title: "Добавлено", items: ["Конструктор версии."] }],
     });
     expect(withContent([unreleased, released])).toEqual([released]);
-  });
-});
-
-describe("plain", () => {
-  test("the teaser keeps the words of a link, not its markup", () => {
-    expect(plain("Смотрите [каталог](/catalog) целиком")).toBe("Смотрите каталог целиком");
-  });
-
-  test("emphasis and code marks do not reach the header", () => {
-    expect(plain("**Важно**: поле `values` теперь _обязательное_")).toBe(
-      "Важно: поле values теперь обязательное",
-    );
   });
 });

@@ -5,16 +5,35 @@ import type { ChangelogEntry } from "../api/types";
 import { isRelease, releaseAnchor } from "../lib/release";
 import { Markdown } from "./Markdown";
 
-// Colour here is spent on one thing only: the version in use. The categories
-// are the release's own table of contents, and a changelog is read, not
-// operated - painting every one of them turns a page of text into a control
-// panel, which is what a coloured plaque per category made of it.
+// A Keep-a-Changelog category to its colour. Colour is what tells one category
+// from the next inside an open release: added is not fixed, and a page of grey
+// headings makes the reader check every one of them. It is spent there and
+// nowhere else - the folded list above stays plain, so the eye lands on the
+// release it opened rather than on the six it did not.
 //
-// summary lists what a folded release contains: "Добавлено 3 · Изменено 2".
-// The category names are the file's own, in whatever language the chart wrote
-// them, so nothing has to be recognised for the line to be right.
-function summary(sections: ChangelogEntry["sections"]): string {
-  return sections.map((s) => `${s.title} ${s.items.length}`).join(" · ");
+// The 800 step carries the name (dark on a light card, light on a dark one, so
+// it reads in both themes), the 600 step the bullets. A chart writes its
+// changelog in whatever language it likes, so both spellings are known here,
+// and only theme-aware families are used - see tailwind.config.js.
+const SECTION_TINT: Record<string, { name: string; marker: string }> = {
+  added: { name: "text-emerald-800", marker: "marker:text-emerald-600" },
+  добавлено: { name: "text-emerald-800", marker: "marker:text-emerald-600" },
+  changed: { name: "text-blue-800", marker: "marker:text-blue-600" },
+  изменено: { name: "text-blue-800", marker: "marker:text-blue-600" },
+  fixed: { name: "text-indigo-800", marker: "marker:text-indigo-600" },
+  исправлено: { name: "text-indigo-800", marker: "marker:text-indigo-600" },
+  removed: { name: "text-red-800", marker: "marker:text-red-600" },
+  удалено: { name: "text-red-800", marker: "marker:text-red-600" },
+  deprecated: { name: "text-amber-800", marker: "marker:text-amber-600" },
+  устарело: { name: "text-amber-800", marker: "marker:text-amber-600" },
+  security: { name: "text-orange-800", marker: "marker:text-orange-600" },
+  безопасность: { name: "text-orange-800", marker: "marker:text-orange-600" },
+};
+
+const PLAIN_TINT = { name: "text-slate-500", marker: "marker:text-slate-300" };
+
+function sectionTint(title: string) {
+  return SECTION_TINT[title.toLowerCase()] ?? PLAIN_TINT;
 }
 
 // The changelog vocabulary for a version that has no number yet: everything
@@ -37,29 +56,15 @@ export function withContent(entries: ChangelogEntry[]): ChangelogEntry[] {
   return entries.filter(filled);
 }
 
-// The teaser under a folded version is plain text: the intro is markdown, and a
-// link inside the header button would be an interactive element inside another
-// one. Only the inline marks the changelog actually uses are undone, which is
-// enough to keep asterisks and brackets out of a one-line summary.
-export function plain(md: string): string {
-  return md
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_`]/g, "")
-    .trim();
-}
-
 // Changelog renders parsed release notes: the portal's own on the About page
 // and a product's on its Changes tab, so both read the same way.
 //
 // The list is an accordion. Read top to bottom it is a wall of text: a release
 // is long, and everything under the newest one is history. So a version opens
-// on demand, and its folded header carries enough to decide whether to open it:
-// what the release touched, how much of it, how it starts, and whether it is
-// the version in use.
-//
-// All of that on one line. A folded version is an item in a list, and a list
-// scans only while its items are the same height: a two-line header turns six
-// releases into a page of its own, which is what the accordion was for.
+// on demand, and folded it is one line and three things: which version, when,
+// and whether it is the one running. A folded release is an item in a list, and
+// a list scans only while its items are one line the same height - anything
+// else the header could carry is a summary of a text that is one click away.
 //
 // `highlight` is a link arriving at a version (see releaseAnchor): the section
 // it names opens and stays lit until the reader looks away, because a page that
@@ -68,24 +73,23 @@ export function plain(md: string): string {
 // rendered, and a folded panel would leave the anchor short of the notes the
 // reader was sent to.
 //
-// `current` is the version in use - the build the portal runs, the version of
-// the chart the catalog offers - and it is the one entry that gets a mark of
-// its own, worded by `currentLabel`. `pageSize` cuts a long history down to the
-// newest N with the rest behind a button, and `stickyHeaders` pins the open
-// version's header inside a scroll box, so a long release still says whose it
-// is halfway down.
+// `current` is the build the portal is running: the one version that gets a
+// mark of its own. It is the About page's question - which of these am I on -
+// and a chart's history has no equivalent, since the catalog offers versions
+// rather than runs one. `pageSize` cuts a long history down to the newest N
+// with the rest behind a button, and `stickyHeaders` pins the open version's
+// header inside a scroll box, so a long release still says whose it is halfway
+// down.
 export function Changelog({
   entries,
   highlight,
   current,
-  currentLabel = "Сейчас в проде",
   pageSize,
   stickyHeaders = false,
 }: {
   entries: ChangelogEntry[];
   highlight?: string;
   current?: string;
-  currentLabel?: string;
   pageSize?: number;
   stickyHeaders?: boolean;
 }) {
@@ -167,28 +171,11 @@ export function Changelog({
                 )}
                 {inProd && (
                   <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                    {currentLabel}
-                  </span>
-                )}
-
-                {/* Folded, this line is all the reader gets, so it says what the
-                    release contains and how it starts. Unfolded, both sit right
-                    below, and repeating them only pushes the notes down. */}
-                {!open && sections.length > 0 && (
-                  <span className="hidden shrink-0 text-xs text-slate-400 sm:block">
-                    {summary(sections)}
-                  </span>
-                )}
-                {!open && e.intro && (
-                  // Whatever is left of the line after the summary. On a narrow
-                  // screen there is nothing left, so the teaser steps aside
-                  // rather than pushing the date off the row.
-                  <span className="hidden min-w-0 flex-1 truncate text-sm text-slate-500 lg:block">
-                    {plain(e.intro)}
+                    Сейчас в проде
                   </span>
                 )}
                 {e.date && (
-                  <span className="ml-auto shrink-0 pl-1 text-xs text-slate-400">{e.date}</span>
+                  <span className="ml-auto shrink-0 pl-2 text-xs text-slate-400">{e.date}</span>
                 )}
               </button>
             </h3>
@@ -213,25 +200,32 @@ export function Changelog({
                       <Markdown inline>{e.intro}</Markdown>
                     </p>
                   )}
-                  {/* A release reads as an article: the category is a small
-                      heading over its own list, everything on one left edge.
-                      The line stays inside a readable measure instead of
+                  {/* A release reads as an article: the category is a heading
+                      in its own colour over its own list, everything on one
+                      left edge, the line inside a readable measure instead of
                       running the whole width of the card. */}
-                  <div className="mt-4 flex max-w-prose flex-col gap-4">
-                    {sections.map((s) => (
-                      <div key={s.title}>
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                          {s.title}
+                  <div className="mt-4 flex max-w-prose flex-col gap-5">
+                    {sections.map((s) => {
+                      const tint = sectionTint(s.title);
+                      return (
+                        <div key={s.title}>
+                          <div
+                            className={`text-[11px] font-semibold uppercase tracking-wider ${tint.name}`}
+                          >
+                            {s.title}
+                          </div>
+                          <ul
+                            className={`ml-4 mt-2 list-disc space-y-2 text-sm text-slate-700 ${tint.marker}`}
+                          >
+                            {s.items.map((it) => (
+                              <li key={it} className="pl-1 leading-relaxed">
+                                <Markdown inline>{it}</Markdown>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                        <ul className="ml-4 mt-1.5 list-disc space-y-1.5 text-sm text-slate-700 marker:text-slate-300">
-                          {s.items.map((it) => (
-                            <li key={it} className="leading-relaxed">
-                              <Markdown inline>{it}</Markdown>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>

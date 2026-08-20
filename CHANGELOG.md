@@ -6,12 +6,13 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - The changelog on the About page opens one version at a time. The newest one is
-  open, the rest are folded, and a folded header says how many entries the
-  release has in each category and how it starts. The version running in
-  production is marked "Сейчас в проде".
+  open, the rest are folded into a line each: the number and the date. The
+  version running in production is marked "Сейчас в проде".
+- Inside an open version "Добавлено", "Изменено" and "Исправлено" are told apart
+  by colour, one per category.
 - A chart's Changes tab draws the five newest versions and offers the rest by a
-  button. The version the page is about is marked "Установлена". While an open
-  release is being read, its version stays visible at the top of the list.
+  button. While an open release is being read, its version stays visible at the
+  top of the list.
 
 ### Fixed
 - A version with nothing under it is no longer shown. After a release the
