@@ -496,6 +496,12 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                     automaticLayout: true,
                     wordWrap: "on",
                     readOnly: !editable,
+                    // A description and a suggestion list are both wider than
+                    // this panel, and the panel clips what sticks out of it (it
+                    // has to, to keep the editor inside its rounded border).
+                    // This lets them hang over the page instead of being cut in
+                    // half, which is the whole point of showing them.
+                    fixedOverflowWidgets: true,
                   }}
                 />
               </div>
