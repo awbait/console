@@ -5,33 +5,17 @@ import type { ChangelogEntry } from "../api/types";
 import { isRelease, releaseAnchor } from "../lib/release";
 import { Markdown } from "./Markdown";
 
-// A Keep-a-Changelog section title to a chip style. Each category gets its own
-// soft tint so the list is scannable, but the palette stays low-saturation
-// rather than a loud semantic green-vs-red. A chart writes its changelog in
-// whatever language it likes, so both spellings are known here.
+// Colour here is spent on one thing only: the version in use. The categories
+// are the release's own table of contents, and a changelog is read, not
+// operated - painting every one of them turns a page of text into a control
+// panel, which is what a coloured plaque per category made of it.
 //
-// Only theme-aware families are used (see tailwind.config.js): a raw Tailwind
-// hue would keep its light fill on a black card.
-const SECTION_CLASS: Record<string, string> = {
-  added: "bg-emerald-50 text-emerald-700",
-  добавлено: "bg-emerald-50 text-emerald-700",
-  changed: "bg-blue-50 text-blue-700",
-  изменено: "bg-blue-50 text-blue-700",
-  fixed: "bg-indigo-100 text-indigo-600",
-  исправлено: "bg-indigo-100 text-indigo-600",
-  removed: "bg-red-50 text-red-700",
-  удалено: "bg-red-50 text-red-700",
-  deprecated: "bg-amber-50 text-amber-700",
-  устарело: "bg-amber-50 text-amber-700",
-  security: "bg-orange-100 text-orange-600",
-  безопасность: "bg-orange-100 text-orange-600",
-};
-
-function sectionClass(title: string): string {
-  return SECTION_CLASS[title.toLowerCase()] ?? "bg-slate-100 text-slate-600";
+// summary lists what a folded release contains: "Добавлено 3 · Изменено 2".
+// The category names are the file's own, in whatever language the chart wrote
+// them, so nothing has to be recognised for the line to be right.
+function summary(sections: ChangelogEntry["sections"]): string {
+  return sections.map((s) => `${s.title} ${s.items.length}`).join(" · ");
 }
-
-const CHIP = "rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide";
 
 // The changelog vocabulary for a version that has no number yet: everything
 // merged since the last release. Shown as words, not as the file's marker.
@@ -70,8 +54,12 @@ export function plain(md: string): string {
 // The list is an accordion. Read top to bottom it is a wall of text: a release
 // is long, and everything under the newest one is history. So a version opens
 // on demand, and its folded header carries enough to decide whether to open it:
-// what the release touched, how much of it, and whether it is the build running
-// right now.
+// what the release touched, how much of it, how it starts, and whether it is
+// the version in use.
+//
+// All of that on one line. A folded version is an item in a list, and a list
+// scans only while its items are the same height: a two-line header turns six
+// releases into a page of its own, which is what the accordion was for.
 //
 // `highlight` is a link arriving at a version (see releaseAnchor): the section
 // it names opens and stays lit until the reader looks away, because a page that
@@ -80,20 +68,24 @@ export function plain(md: string): string {
 // rendered, and a folded panel would leave the anchor short of the notes the
 // reader was sent to.
 //
-// `current` is the version in production: the one entry that gets a mark of its
-// own. `pageSize` cuts a long history down to the newest N with the rest behind
-// a button, and `stickyHeaders` pins the open version's header inside a scroll
-// box, so a long release still says whose it is halfway down.
+// `current` is the version in use - the build the portal runs, the version of
+// the chart the catalog offers - and it is the one entry that gets a mark of
+// its own, worded by `currentLabel`. `pageSize` cuts a long history down to the
+// newest N with the rest behind a button, and `stickyHeaders` pins the open
+// version's header inside a scroll box, so a long release still says whose it
+// is halfway down.
 export function Changelog({
   entries,
   highlight,
   current,
+  currentLabel = "Сейчас в проде",
   pageSize,
   stickyHeaders = false,
 }: {
   entries: ChangelogEntry[];
   highlight?: string;
   current?: string;
+  currentLabel?: string;
   pageSize?: number;
   stickyHeaders?: boolean;
 }) {
@@ -155,61 +147,49 @@ export function Changelog({
                 aria-expanded={open}
                 aria-controls={`${anchor}-notes`}
                 onClick={() => setToggled((t) => ({ ...t, [e.version]: !open }))}
-                className="flex w-full cursor-pointer gap-2.5 rounded-lg px-2 py-3 text-left outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+                className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2.5 text-left outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
               >
                 <IconChevronRight
                   size={16}
                   stroke={2}
-                  className={`mt-1 shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none ${
+                  className={`shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none ${
                     open ? "rotate-90" : ""
                   }`}
                 />
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                    {UNRELEASED.test(e.version) ? (
-                      <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700">
-                        Ещё не выпущено
-                      </span>
-                    ) : (
-                      <span className="font-mono text-lg font-bold leading-none text-slate-900">
-                        {e.version}
-                      </span>
-                    )}
-                    {inProd && (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                        Сейчас в проде
-                      </span>
-                    )}
-                    {e.date && <span className="ml-auto text-xs text-slate-400">{e.date}</span>}
+                {UNRELEASED.test(e.version) ? (
+                  <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700">
+                    Ещё не выпущено
                   </span>
+                ) : (
+                  <span className="shrink-0 font-mono text-base font-bold text-slate-900">
+                    {e.version}
+                  </span>
+                )}
+                {inProd && (
+                  <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                    {currentLabel}
+                  </span>
+                )}
 
-                  {/* Folded, the header is all the reader gets, so it says what
-                      the release touched and how much of it - the same chips
-                      that head the categories inside, with their counts - and
-                      the opening lines of the intro. Unfolded, all of that sits
-                      right below, and repeating it only pushes the notes down. */}
-                  {!open && (sections.length > 0 || e.intro) && (
-                    <span className="mt-2 block">
-                      {sections.length > 0 && (
-                        <span className="flex flex-wrap gap-1.5">
-                          {sections.map((s) => (
-                            <span key={s.title} className={`${CHIP} ${sectionClass(s.title)}`}>
-                              {s.title} {s.items.length}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                      {/* No `block` next to the clamp: line-clamp brings its own
-                          display (-webkit-box), and a display utility beside it
-                          wins and quietly unclamps the line. */}
-                      {e.intro && (
-                        <span className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-slate-500">
-                          {plain(e.intro)}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </span>
+                {/* Folded, this line is all the reader gets, so it says what the
+                    release contains and how it starts. Unfolded, both sit right
+                    below, and repeating them only pushes the notes down. */}
+                {!open && sections.length > 0 && (
+                  <span className="hidden shrink-0 text-xs text-slate-400 sm:block">
+                    {summary(sections)}
+                  </span>
+                )}
+                {!open && e.intro && (
+                  // Whatever is left of the line after the summary. On a narrow
+                  // screen there is nothing left, so the teaser steps aside
+                  // rather than pushing the date off the row.
+                  <span className="hidden min-w-0 flex-1 truncate text-sm text-slate-500 lg:block">
+                    {plain(e.intro)}
+                  </span>
+                )}
+                {e.date && (
+                  <span className="ml-auto shrink-0 pl-1 text-xs text-slate-400">{e.date}</span>
+                )}
               </button>
             </h3>
 
@@ -233,23 +213,17 @@ export function Changelog({
                       <Markdown inline>{e.intro}</Markdown>
                     </p>
                   )}
-                  {/* Wide enough, the category name steps out into a caption
-                      column and the items line up in one edge to the right of
-                      it: the eye stops zig-zagging between chip and list, and
-                      a line stays inside a readable measure instead of running
-                      the whole width of the card. */}
-                  <div className="mt-3 flex flex-col gap-3.5">
+                  {/* A release reads as an article: the category is a small
+                      heading over its own list, everything on one left edge.
+                      The line stays inside a readable measure instead of
+                      running the whole width of the card. */}
+                  <div className="mt-4 flex max-w-prose flex-col gap-4">
                     {sections.map((s) => (
-                      <div
-                        key={s.title}
-                        className="md:grid md:grid-cols-[6.5rem_minmax(0,1fr)] md:gap-4"
-                      >
-                        <div className="md:pt-px md:text-right">
-                          <span className={`inline-block ${CHIP} ${sectionClass(s.title)}`}>
-                            {s.title}
-                          </span>
+                      <div key={s.title}>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                          {s.title}
                         </div>
-                        <ul className="ml-4 mt-1.5 max-w-prose list-disc space-y-1.5 text-sm text-slate-700 marker:text-slate-300 md:mt-0">
+                        <ul className="ml-4 mt-1.5 list-disc space-y-1.5 text-sm text-slate-700 marker:text-slate-300">
                           {s.items.map((it) => (
                             <li key={it} className="leading-relaxed">
                               <Markdown inline>{it}</Markdown>

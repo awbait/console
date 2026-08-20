@@ -180,7 +180,7 @@ export function ChartDetailPage() {
           <Readme project={project} name={name} version={version} />
         </TabPanel>
         <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
-          <ChartChangelog project={project} name={name} />
+          <ChartChangelog project={project} name={name} current={version} />
         </TabPanel>
       </Tabs>
     </div>
@@ -248,7 +248,18 @@ function Readme({ project, name, version }: { project: string; name: string; ver
 // cover "what happened lately" without rendering a chart's whole life.
 const CHANGELOG_PAGE = 5;
 
-function ChartChangelog({ project, name }: { project: string; name: string }) {
+// current: the version this page is about - the approved one from the catalog,
+// the same number the header shows. In a list of a dozen releases it is the one
+// the reader is standing on, so it is marked.
+function ChartChangelog({
+  project,
+  name,
+  current,
+}: {
+  project: string;
+  name: string;
+  current: string;
+}) {
   const { data, error, loading } = useAsync(
     () => api.getAggregatedChangelog(project, name),
     [project, name],
@@ -267,7 +278,13 @@ function ChartChangelog({ project, name }: { project: string; name: string }) {
           edge of this box, and a gap above it is a strip the notes would scroll
           through in the open. */}
       <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <Changelog entries={notes} pageSize={CHANGELOG_PAGE} stickyHeaders />
+        <Changelog
+          entries={notes}
+          current={current}
+          currentLabel="Установлена"
+          pageSize={CHANGELOG_PAGE}
+          stickyHeaders
+        />
       </div>
     </Card>
   );
