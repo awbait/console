@@ -664,6 +664,11 @@ TRACING_ENABLED=false
 | Валидация values против schema | 422 | `validation_failed` |
 | Сервис с таким именем уже существует у команды | 409 | `conflict` |
 | Harbor/GitLab/ArgoCD недоступен | 502 | `upstream_unavailable` |
+| Upstream ответил и отказал: платформа не донастроена (нет группы, у токена нет прав, ветка защищена) | 409 | `not_configured` |
+
+Причина 5xx и `not_configured` пишется в лог строкой `request failed` с полями
+`err` и `request_id`: тело ответа читает браузер, лог остаётся. Ожидаемые ответы
+(404, валидация, конфликт) не логируются.
 
 ## Безопасность
 

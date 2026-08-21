@@ -776,7 +776,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	// delete every file in the instance folder
 	files, terr := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r.Cluster, r.ServiceName))
 	if terr != nil {
-		return nil, fmt.Errorf("%w: gitlab list tree: %v", ErrUpstream, terr)
+		return nil, gitopsErr("list tree", terr)
 	}
 	if len(files) == 0 {
 		// Nothing committed in Git for this instance - the manifests were removed
@@ -1010,14 +1010,14 @@ func (s *Service) ensureRepo(ctx context.Context, team, chart string) (*gitlab.P
 		if errors.Is(err, models.ErrNotFound) {
 			return nil, fmt.Errorf("%w: team subgroup %q not found (must be created manually)", ErrUpstream, subgroup)
 		}
-		return nil, fmt.Errorf("%w: gitlab: %v", ErrUpstream, err)
+		return nil, gitopsErr("group", err)
 	}
 	repoPath := s.gitops.RepoPath(team, chart)
 	proj, err := s.gl.GetProject(ctx, repoPath)
 	if errors.Is(err, models.ErrNotFound) {
 		proj, err = s.gl.CreateProject(ctx, grp.ID, chart)
 		if err != nil {
-			return nil, fmt.Errorf("%w: gitlab create repo: %v", ErrUpstream, err)
+			return nil, gitopsErr("create repo", err)
 		}
 		// A group or system hook already covers the new repo; a per-repo one does
 		// not exist yet. Never fail the order over it: a missing webhook only
@@ -1027,7 +1027,7 @@ func (s *Service) ensureRepo(ctx context.Context, team, chart string) (*gitlab.P
 				"chart", chart, "gitlab_project_id", proj.ID, "err", herr)
 		}
 	} else if err != nil {
-		return nil, fmt.Errorf("%w: gitlab: %v", ErrUpstream, err)
+		return nil, gitopsErr("repo", err)
 	}
 	// A freshly created repo is empty (no default branch). The MR-based flow needs
 	// a branch to open MRs against, so seed a single .gitkeep to establish it -
@@ -1036,7 +1036,7 @@ func (s *Service) ensureRepo(ctx context.Context, team, chart string) (*gitlab.P
 	if proj.DefaultBranch == "" {
 		seed := []gitlab.FileAction{{Action: "create", FilePath: ".gitkeep", Content: ""}}
 		if cerr := s.gl.CommitFiles(ctx, proj.ID, s.defaultBranch, "chore: initialize repository", seed); cerr != nil {
-			return nil, fmt.Errorf("%w: gitlab init repo: %v", ErrUpstream, cerr)
+			return nil, gitopsErr("init repo", cerr)
 		}
 		proj.DefaultBranch = s.defaultBranch
 	}
@@ -1082,14 +1082,14 @@ func (s *Service) openChange(ctx context.Context, r *models.Request, proj *gitla
 	commitMsg := commitTitle(action, r.ChartName, r.ServiceName)
 	branch := fmt.Sprintf("portal/%s-%s-%s", action, r.ServiceName, shortID())
 	if err := s.gl.CreateBranch(ctx, proj.ID, branch, s.defaultBranch); err != nil {
-		return nil, fmt.Errorf("%w: gitlab branch: %v", ErrUpstream, err)
+		return nil, gitopsErr("branch", err)
 	}
 	if err := s.gl.CommitFiles(ctx, proj.ID, branch, commitMsg, actions); err != nil {
-		return nil, fmt.Errorf("%w: gitlab commit: %v", ErrUpstream, err)
+		return nil, gitopsErr("commit", err)
 	}
 	mr, err := s.gl.CreateMR(ctx, proj.ID, branch, s.defaultBranch, mrTitle(action, r))
 	if err != nil {
-		return nil, fmt.Errorf("%w: gitlab mr: %v", ErrUpstream, err)
+		return nil, gitopsErr("mr", err)
 	}
 	rec := &models.RequestMR{
 		ID: newID(), RequestID: r.ID, GitLabProjectID: proj.ID,

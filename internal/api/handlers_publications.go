@@ -21,7 +21,7 @@ import (
 func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 	cats, err := s.Pubs.ListCategories(r.Context())
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, cats)
@@ -35,7 +35,7 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Pubs.CreateCategory(r.Context(), u, &c); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, c)
@@ -50,7 +50,7 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	c.ID = chi.URLParam(r, "id")
 	if err := s.Pubs.UpdateCategory(r.Context(), u, &c); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
@@ -59,7 +59,7 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	if err := s.Pubs.DeleteCategory(r.Context(), u, chi.URLParam(r, "id")); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)
@@ -90,7 +90,7 @@ func (s *Server) handleListPublications(w http.ResponseWriter, r *http.Request) 
 		Chart:  q.Get("chart"),
 	})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pubs)
@@ -113,7 +113,7 @@ func (s *Server) handleCreatePublication(w http.ResponseWriter, r *http.Request)
 		CategoryID: body.CategoryID, OwnerTeam: body.OwnerTeam,
 	})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, pub)
@@ -136,7 +136,7 @@ func (s *Server) handleAdoptPublication(w http.ResponseWriter, r *http.Request) 
 		CategoryID: body.CategoryID, OwnerTeam: body.OwnerTeam,
 	})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
@@ -146,7 +146,7 @@ func (s *Server) handleGetPublication(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	pub, err := s.Pubs.Get(r.Context(), id)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	evs, _ := s.Pubs.ListEvents(r.Context(), id)
@@ -167,7 +167,7 @@ func (s *Server) handlePatchPublication(w http.ResponseWriter, r *http.Request) 
 		CategoryID: body.CategoryID, OwnerTeam: body.OwnerTeam,
 	})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
@@ -177,7 +177,7 @@ func (s *Server) handleSubmitPublication(w http.ResponseWriter, r *http.Request)
 	u := auth.UserFrom(r.Context())
 	pub, err := s.Pubs.Submit(r.Context(), u, chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
@@ -187,7 +187,7 @@ func (s *Server) handleWithdrawPublication(w http.ResponseWriter, r *http.Reques
 	u := auth.UserFrom(r.Context())
 	pub, err := s.Pubs.Withdraw(r.Context(), u, chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
@@ -197,7 +197,7 @@ func (s *Server) handleApprovePublication(w http.ResponseWriter, r *http.Request
 	u := auth.UserFrom(r.Context())
 	pub, err := s.Pubs.Approve(r.Context(), u, chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
@@ -212,7 +212,7 @@ func (s *Server) handleRejectPublication(w http.ResponseWriter, r *http.Request)
 	}
 	pub, err := s.Pubs.Reject(r.Context(), u, chi.URLParam(r, "id"), strings.TrimSpace(body.Comment))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pub)
@@ -229,7 +229,7 @@ func (s *Server) handlePendingVersions(w http.ResponseWriter, r *http.Request) {
 	}
 	pending, err := s.Pubs.PendingVersions(r.Context())
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	if pending == nil {
@@ -241,7 +241,7 @@ func (s *Server) handlePendingVersions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 	versions, err := s.Pubs.ListVersions(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	if versions == nil {
@@ -263,7 +263,7 @@ func (s *Server) handleSaveVersionView(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.Pubs.SaveVersionView(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"), body.View)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -290,7 +290,7 @@ func (s *Server) handleValidateVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	issues, err := s.Pubs.ValidateVersionView(r.Context(), chi.URLParam(r, "id"), chi.URLParam(r, "version"), body.View)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	if issues == nil {
@@ -303,7 +303,7 @@ func (s *Server) handleSubmitVersion(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	v, err := s.Pubs.SubmitVersion(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -313,7 +313,7 @@ func (s *Server) handleWithdrawVersion(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	v, err := s.Pubs.WithdrawVersion(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -323,7 +323,7 @@ func (s *Server) handleApproveVersion(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	v, err := s.Pubs.ApproveVersion(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -338,7 +338,7 @@ func (s *Server) handleRejectVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.Pubs.RejectVersion(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"), strings.TrimSpace(body.Comment))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -357,7 +357,7 @@ func (s *Server) handleSetVersionOrderable(w http.ResponseWriter, r *http.Reques
 	}
 	v, err := s.Pubs.SetVersionOrderable(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"), body.Orderable)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -375,7 +375,7 @@ func (s *Server) handleSetRecommendedVersion(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := s.Pubs.SetRecommendedVersion(r.Context(), u, chi.URLParam(r, "id"), strings.TrimSpace(body.Version)); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)
@@ -472,17 +472,17 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(ctx)
 	charts, err := s.Catalog.ListCharts(ctx, u)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	cats, err := s.Pubs.ListCategories(ctx)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	pubs, err := s.Pubs.List(ctx, store.PublicationFilter{})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	// What the registry holds right now, from the listing above: the allowlist is
@@ -600,7 +600,7 @@ func (s *Server) handleGetChartView(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "not_found", "no approved view for chart")
 			return
 		}
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -45,6 +45,11 @@ func NewClient(baseURL, token, gitopsGroup string, timeout time.Duration) *Clien
 	}
 }
 
+// ErrForbidden is a 403 from GitLab: the instance is up and answered, and the
+// portal's token may not do what was asked. Callers separate it from a transient
+// failure because no amount of retrying grants a permission.
+var ErrForbidden = errors.New("gitlab: forbidden")
+
 // apiError carries a non-2xx GitLab response for diagnostics.
 type apiError struct {
 	status int
@@ -55,8 +60,18 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("gitlab: status %d: %s", e.status, e.body)
 }
 
+// Unwrap exposes ErrForbidden for a 403 so errors.Is sees it while the status
+// and body stay in the message for the log.
+func (e *apiError) Unwrap() error {
+	if e.status == http.StatusForbidden {
+		return ErrForbidden
+	}
+	return nil
+}
+
 // do performs an API request, decoding a 2xx body into out when non-nil.
-// A 404 maps to models.ErrNotFound; other non-2xx become *apiError.
+// A 404 maps to models.ErrNotFound, a 403 wraps ErrForbidden; other non-2xx
+// become a bare *apiError.
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any) error {
 	endpoint := c.base + path
 	if len(query) > 0 {

@@ -18,7 +18,7 @@ func (s *Server) handleRequestEvents(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	id := chi.URLParam(r, "id")
 	if _, err := s.Prov.Get(r.Context(), u, id); err != nil { // authz
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	s.stream(w, r, "request:"+id)

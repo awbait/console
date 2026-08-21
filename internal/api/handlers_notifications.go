@@ -49,7 +49,7 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 	}
 	list, err := s.Store.ListNotifications(r.Context(), f)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	if list == nil {
@@ -61,7 +61,7 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleUnreadNotifications(w http.ResponseWriter, r *http.Request) {
 	count, err := s.Store.CountUnread(r.Context(), notificationFilter(r))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"unread": count})
@@ -70,7 +70,7 @@ func (s *Server) handleUnreadNotifications(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleReadNotification(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	if err := s.Store.MarkRead(r.Context(), chi.URLParam(r, "id"), u.Subject); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)
@@ -79,7 +79,7 @@ func (s *Server) handleReadNotification(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleReadAllNotifications(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	if err := s.Store.MarkAllRead(r.Context(), u.Subject); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)

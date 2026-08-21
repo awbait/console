@@ -63,6 +63,22 @@ func TestClientNotFound(t *testing.T) {
 	}
 }
 
+func TestClientForbidden(t *testing.T) {
+	// A 403 is the instance answering that the token may not do this. Callers
+	// tell it apart from an outage because retrying never grants a permission,
+	// and the status has to stay readable in the message for the log.
+	c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"403 Forbidden"}`, http.StatusForbidden)
+	})
+	err := c.CreateBranch(context.Background(), 11, "portal/x", "main")
+	if !errors.Is(err, gitlab.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "403") {
+		t.Fatalf("status lost from the message: %v", err)
+	}
+}
+
 func TestClientCreateProjectConflict(t *testing.T) {
 	c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		// GitLab returns 400 with this message when the path is taken.

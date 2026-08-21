@@ -49,7 +49,7 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	reqs, err := s.Prov.List(r.Context(), u, f)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, reqs)
@@ -74,7 +74,7 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 		Values: body.Values, EditorState: body.EditorState, Draft: body.Draft,
 	})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, req)
@@ -85,7 +85,7 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	req, err := s.Prov.Get(r.Context(), u, id)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	mrs, _ := s.Prov.ListMRs(r.Context(), id)
@@ -120,7 +120,7 @@ func (s *Server) handlePatchRequest(w http.ResponseWriter, r *http.Request) {
 		EditorState: body.EditorState,
 	})
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, req)
@@ -140,7 +140,7 @@ func (s *Server) handleRenameRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	req, err := s.Prov.Rename(r.Context(), u, chi.URLParam(r, "id"), strings.TrimSpace(body.DisplayName))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, req)
@@ -150,7 +150,7 @@ func (s *Server) handleSubmitRequest(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	req, err := s.Prov.Submit(r.Context(), u, chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, req)
@@ -160,7 +160,7 @@ func (s *Server) handleDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	req, err := s.Prov.Delete(r.Context(), u, chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, req)
@@ -169,7 +169,7 @@ func (s *Server) handleDeleteRequest(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSyncRequest(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	if err := s.Prov.ForceSync(r.Context(), u, chi.URLParam(r, "id")); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "sync_requested"})
@@ -181,7 +181,7 @@ func (s *Server) handlePullRequest(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	req, err := s.Prov.PullFromGit(r.Context(), u, chi.URLParam(r, "id"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, req)

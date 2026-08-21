@@ -26,4 +26,16 @@ describe("apiErrorText", () => {
   test("field validation keeps the server message: it is about the field", () => {
     expect(apiErrorText("validation_failed", 422, "port: must be >= 1")).toBe("port: must be >= 1");
   });
+
+  test("a platform that is not set up is not an outage, and retrying it is not advice", () => {
+    // The server message is the internal chain and names GitLab, a group path
+    // and an HTTP status. None of that belongs on the screen, and neither does
+    // "try again": nothing changes until a person finishes the setup.
+    const server = 'platform not configured: gitlab group: gitlab: status 403: {"message":"403 Forbidden"}';
+    const text = apiErrorText("not_configured", 409, server);
+    expect(text).not.toContain("403");
+    expect(text).not.toMatch(/gitlab/i);
+    expect(text).not.toMatch(/не отвечает|недоступ/i);
+    expect(text).toMatch(/поддержк/i);
+  });
 });
