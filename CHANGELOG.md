@@ -31,6 +31,9 @@ All notable changes to this project are documented in this file.
   its own, leaving half the screen empty once the menu was folded away.
 
 ### Fixed
+- An order no longer stops silently where Argo CD runs outside the `argocd`
+  namespace. Name the namespace it runs in with `ARGOCD_NAMESPACE`. The order
+  used to reach Git and the service never came up.
 - An order refused because the platform is not set up for the team no longer
   reads as an outage. The portal says a person has to finish the setup, and does
   not suggest trying again.

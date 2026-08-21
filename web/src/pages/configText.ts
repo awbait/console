@@ -125,6 +125,8 @@ export const CONFIG_TEXT: Record<string, string> = {
   ARGOCD_URL: "Адрес Argo CD.",
   ARGOCD_TOKEN: "Токен, от имени которого портал читает состояние приложений.",
   ARGOCD_PROJECT: "Проект Argo CD, в который попадают заказы портала.",
+  ARGOCD_NAMESPACE:
+    "Namespace, в котором работает Argo CD. Портал пишет его в каждый заказ: приложения из чужого namespace Argo CD не видит.",
   ARGOCD_DEFAULT_CLUSTER: "Кластер, в который выкатываются заказы по умолчанию.",
   ARGOCD_APP_NAME_TEMPLATE: "Как строится имя приложения Argo CD для заказа.",
 

@@ -44,7 +44,18 @@ type GitOps struct {
 	// generated application.yaml (set from config after construction). The chart
 	// repoURL is "{ChartRegistry}/{chart_project}".
 	ChartRegistry string
+	// AppNamespace is where the generated Application CR is placed (set from
+	// config after construction, like ChartRegistry). It must be the namespace
+	// Argo CD runs in: an Application committed anywhere else is applied by the
+	// app-of-apps and then read by nobody, so the order lands in Git and the
+	// service never comes up. Empty means "argocd", the upstream default.
+	AppNamespace string
 }
+
+// defaultAppNamespace is where Argo CD installs itself unless told otherwise,
+// and what the portal writes when nothing set AppNamespace - a GitOps built by
+// hand (a test, a tool) must still render a manifest that applies somewhere.
+const defaultAppNamespace = "argocd"
 
 type tmplData struct {
 	Team        string
@@ -136,14 +147,15 @@ func (g *GitOps) AppPath(cluster, service string) string {
 // {service}/values.yaml is mixed in via helm.valueFiles ($values). A bootstrap
 // app-of-apps (ApplicationSet, scripts/stand) applies these committed files as
 // CRs, so this manifest fully describes the deployment - no per-repo wiring.
-// metadata.namespace is argocd so the app-of-apps materialises it there.
+// metadata.namespace is the namespace Argo CD runs in (ARGOCD_NAMESPACE), so the
+// app-of-apps materialises the CR where Argo CD will read it.
 // (The fake ArgoCD parses only metadata.name, labels, spec.project and
 // spec.destination.name, all of which remain present here.)
 var applicationYAML = template.Must(template.New("app").Parse(`apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: {{.AppName}}
-  namespace: argocd
+  namespace: {{.AppNamespace}}
   labels:
     managed-by: portal
     idp.team: {{.Team}}
@@ -187,6 +199,10 @@ func (g *GitOps) RenderApplication(r *models.Request, repoURL string) (string, e
 	if namespace == "" {
 		namespace = r.ServiceName // back-compat: pre-namespace records
 	}
+	appNamespace := g.AppNamespace
+	if appNamespace == "" {
+		appNamespace = defaultAppNamespace
+	}
 	var b bytes.Buffer
 	// Quote every standalone scalar (yamlScalar) so a field with YAML-significant
 	// characters cannot break or inject structure. Path is exempt: it is embedded
@@ -194,6 +210,7 @@ func (g *GitOps) RenderApplication(r *models.Request, repoURL string) (string, e
 	// nameRe-validated.
 	err := applicationYAML.Execute(&b, map[string]string{
 		"AppName":      yamlScalar(r.ArgoCDAppName),
+		"AppNamespace": yamlScalar(appNamespace),
 		"Team":         yamlScalar(r.Team),
 		"Chart":        yamlScalar(r.ChartName),
 		"Service":      yamlScalar(r.ServiceName),

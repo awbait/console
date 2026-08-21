@@ -45,6 +45,54 @@ func TestInstancePathsIncludeCluster(t *testing.T) {
 	}
 }
 
+// The Application lands in the namespace Argo CD runs in. Argo CD reads
+// Applications from its own namespace only, so a manifest committed anywhere
+// else is applied by the app-of-apps and then read by nobody: the order reaches
+// Git and the service never comes up, with nothing to see anywhere.
+func TestRenderApplicationNamespace(t *testing.T) {
+	r := &models.Request{
+		Team: "core", ChartName: "postgres", ServiceName: "pg1", ChartVersion: "3.1.0",
+		Cluster: "in-cluster", Namespace: "apps", ArgoCDAppName: "core-postgres-pg1",
+	}
+
+	// Unset: the upstream default, which is what every install had before the
+	// namespace was configurable.
+	g := newGitOps(t)
+	out, err := g.RenderApplication(r, "https://gitlab/x.git")
+	if err != nil {
+		t.Fatalf("RenderApplication: %v", err)
+	}
+	if ns := metadataNamespace(t, out); ns != "argocd" {
+		t.Fatalf("metadata.namespace = %q, want argocd", ns)
+	}
+
+	g.AppNamespace = "tech-argocd"
+	out, err = g.RenderApplication(r, "https://gitlab/x.git")
+	if err != nil {
+		t.Fatalf("RenderApplication: %v", err)
+	}
+	if ns := metadataNamespace(t, out); ns != "tech-argocd" {
+		t.Fatalf("metadata.namespace = %q, want tech-argocd", ns)
+	}
+	// The service's own namespace is a different thing and must not follow it.
+	if !strings.Contains(out, "namespace: apps") {
+		t.Fatalf("destination namespace lost:\n%s", out)
+	}
+}
+
+func metadataNamespace(t *testing.T, manifest string) string {
+	t.Helper()
+	var doc struct {
+		Metadata struct {
+			Namespace string `yaml:"namespace"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal([]byte(manifest), &doc); err != nil {
+		t.Fatalf("rendered manifest is not valid YAML: %v\n%s", err, manifest)
+	}
+	return doc.Metadata.Namespace
+}
+
 // TestRenderApplicationEscapesScalars: a field carrying a YAML-injection payload
 // must not break the manifest structure (L12). Normal values stay bare.
 func TestRenderApplicationEscapesScalars(t *testing.T) {

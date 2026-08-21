@@ -124,6 +124,10 @@ type Config struct {
 	ArgoCDURL     string `env:"ARGOCD_URL,required,notEmpty" desc:"Address of Argo CD." example:"http://localhost:8083"`
 	ArgoCDToken   string `env:"ARGOCD_TOKEN,required,notEmpty" desc:"Token the portal reads application state with. On the stand, mint one with make stand-token."`
 	ArgoCDProject string `env:"ARGOCD_PROJECT" envDefault:"portal-managed" desc:"Argo CD project the portal's applications belong to."`
+	// ArgoCDNamespace is where the generated application.yaml puts the
+	// Application CR. Argo CD reads Applications from its own namespace only, so
+	// this has to be the namespace Argo CD itself runs in, whatever it is called.
+	ArgoCDNamespace string `env:"ARGOCD_NAMESPACE" envDefault:"argocd" desc:"Namespace Argo CD runs in. The portal writes it into every application.yaml it commits, because Argo CD only picks up applications from its own namespace."`
 	ArgoCDCluster string `env:"ARGOCD_DEFAULT_CLUSTER" envDefault:"in-cluster" desc:"Cluster orders are deployed to unless they say otherwise."`
 	// Includes the chart so two different charts ordered under the same service
 	// name into one namespace do not collide on a single Application.
