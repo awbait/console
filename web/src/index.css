@@ -237,32 +237,61 @@ body {
   background-color: rgb(0 0 0 / 0.7);
 }
 
-/* Scrollable panes (content column, sidebar nav, doc tabs). The default OS
-   scrollbar draws a wide opaque strip right against the content and cuts the
-   page in two; this keeps a slim, low-contrast thumb over a transparent track. */
-.scroll-slim {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(var(--c-neutral-300)) transparent;
+/* Scrollbars, everywhere something scrolls. The default OS scrollbar draws a
+   wide opaque strip right against the content and cuts the page in two; this
+   keeps a slim, low-contrast thumb over a transparent track.
+
+   Two ways of saying the same thing, and exactly one of them may be live per
+   browser. Since Chromium 121 an element whose scrollbar-width or
+   scrollbar-color is anything other than auto loses its ::-webkit-scrollbar
+   rules entirely - so a Chromium fork that reads the standard pair but paints
+   it its own way falls back to the system bar, which is what Yandex Browser
+   did. So @supports asks about the pseudo-element rather than about the
+   standard pair: whoever can draw the pseudo-element gets it, and the standard
+   pair is left to Firefox, where it is the only thing that works. It asks about
+   the thumb and not about ::-webkit-scrollbar itself, which is not a detail -
+   Firefox parses the bare ::-webkit-scrollbar for web-compat and reports it as
+   supported while drawing nothing. The thumb it does not pretend to know.
+
+   Both paths cover the whole page rather than a class on a pane, so every pane
+   looks the same without anyone remembering to opt in - menus, tables, code
+   blocks and the page itself included. Both take the universal selector for it:
+   scrollbar-color inherits, but scrollbar-width does not, and putting the pair
+   on the root alone leaves Firefox with a coloured system-width bar on
+   everything except the page itself. */
+@supports not selector(::-webkit-scrollbar-thumb) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--c-neutral-300)) transparent;
+  }
 }
 
-.scroll-slim::-webkit-scrollbar {
+*::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.scroll-slim::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.scroll-slim::-webkit-scrollbar-thumb {
+/* The thumb is inset by its own transparent border, so a 10px lane carries a
+   4px pill: slim, and not pressed against the text it scrolls. */
+*::-webkit-scrollbar-thumb {
   background-color: rgb(var(--c-neutral-300));
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 9999px;
 }
 
-.scroll-slim::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background-color: rgb(var(--c-neutral-400));
+}
+
+/* Where a horizontal and a vertical bar meet. Left alone it is an opaque grey
+   square in the corner of a wide table. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Уведомление ждёт: колокольчик коротко качается раз в несколько секунд.

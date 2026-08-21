@@ -117,7 +117,7 @@ export function NotificationsPage() {
 
       {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
           room the clipping edge would otherwise cut off. */}
-      <div className="scroll-slim -mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
         {loading ? (
           <SkeletonRows rows={6} />
         ) : error ? (

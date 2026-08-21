@@ -106,7 +106,7 @@ export function NotificationsBell() {
             )}
           </div>
 
-          <div className="scroll-slim max-h-[min(28rem,60vh)] overflow-y-auto">
+          <div className="max-h-[min(28rem,60vh)] overflow-y-auto">
             {items === null ? (
               <p className="px-3 py-6 text-center text-sm text-slate-400">Загружаем...</p>
             ) : items.length === 0 ? (
