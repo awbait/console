@@ -63,6 +63,48 @@ function sectionTint(title: string) {
 // nobody starts reading the tint as a meaning of its own.
 const FLASH_MS = 2000;
 
+// Opening a version moves the page under the reader: the release that was open
+// folds away, and everything below it climbs by however tall it was. The header
+// just pressed can end up above the top edge, leaving the middle of a text
+// nobody has started reading.
+//
+// So the list is brought back to that header - once the movement is over. The
+// height it has to scroll to is not known while two panels are still animating,
+// and a scroll started into a moving layout lands wherever the layout happened
+// to be. Waiting for a fixed time would be guessing at a fold that is timed by
+// its own text, so the element is watched instead: a few frames in the same
+// place mean it has settled.
+//
+// The wait has a floor, because at the moment of the click nothing has moved
+// yet - the styles have only just changed, and a header that is about to travel
+// half a screen still reads as standing still. Without it the scroll aims at
+// the layout as it was and overshoots by the height of the release that was
+// closing. SETTLE_CAP is the way out if something on the page never stops.
+const SETTLE_STILL = 3;
+const SETTLE_FLOOR = 6;
+const SETTLE_CAP = 60;
+
+function scrollToRelease(anchor: string) {
+  const el = document.getElementById(anchor);
+  if (!el) return;
+  const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  let last = Number.NaN;
+  let still = 0;
+  let frames = 0;
+  const settle = () => {
+    const top = el.getBoundingClientRect().top;
+    still = top === last ? still + 1 : 0;
+    last = top;
+    frames += 1;
+    if ((still >= SETTLE_STILL && frames >= SETTLE_FLOOR) || frames >= SETTLE_CAP) {
+      el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+      return;
+    }
+    requestAnimationFrame(settle);
+  };
+  requestAnimationFrame(settle);
+}
+
 // The version that has no number yet: everything merged since the last release,
 // waiting for one. Shown as words, not as the file's marker.
 const UNRELEASED = /^unreleased$/i;
@@ -136,7 +178,12 @@ export function Changelog({
   const opened = shown.find((e) => releaseAnchor(e.version) === highlight)?.version ?? newest;
   const [chosen, setChosen] = useState<{ of?: string; version: string | null } | null>(null);
   const open = chosen && chosen.of === newest ? chosen.version : (opened ?? null);
-  const choose = (version: string | null) => setChosen({ of: newest, version });
+  const choose = (version: string | null) => {
+    setChosen({ of: newest, version });
+    // Only on opening: folding the one being read is a place the reader is
+    // already looking at.
+    if (version) scrollToRelease(releaseAnchor(version));
+  };
 
   const [limit, setLimit] = useState(pageSize ?? 0);
   const paged = pageSize ? shown.slice(0, limit) : shown;

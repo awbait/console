@@ -7,7 +7,9 @@ All notable changes to this project are documented in this file.
 ### Changed
 - The changelog on the About page opens one version at a time. The newest one is
   open, the rest are folded into a line each: the number and the date. The
-  version running in production is marked "Сейчас в проде".
+  version running in production is marked "Сейчас в проде". Opening a version
+  brings its header to the top of the list, so the notes start where the
+  reading does.
 - Inside an open version "Добавлено", "Изменено" and "Исправлено" are told apart
   by colour, one per category.
 - A chart's Changes tab draws the five newest versions and offers the rest by a
