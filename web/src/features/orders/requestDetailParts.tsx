@@ -533,7 +533,7 @@ export function ProductView({
         <DetailTab id="history">История действий</DetailTab>
       </TabList>
 
-      <TabPanel id="info" className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none">
+      <TabPanel id="info" className="min-h-0 flex-1 overflow-y-auto pt-5 outline-none">
         <InfoTab
           request={r}
           argocdUrl={argocdUrl}
@@ -549,7 +549,7 @@ export function ProductView({
         <TabPanel
           key={t.id}
           id={t.id}
-          className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none"
+          className="min-h-0 flex-1 overflow-y-auto pt-5 outline-none"
         >
           <Card>
             <GenericListTab
@@ -570,7 +570,7 @@ export function ProductView({
           like any other tab. */}
       <TabPanel
         id="history"
-        className="scroll-slim min-h-0 flex-1 overflow-y-auto pt-5 outline-none lg:overflow-hidden"
+        className="min-h-0 flex-1 overflow-y-auto pt-5 outline-none lg:overflow-hidden"
       >
         <HistoryTab events={events} mrs={mrs} request={r} />
       </TabPanel>

@@ -51,6 +51,9 @@ All notable changes to this project are documented in this file.
 - The text in the changelog no longer narrows when a version unfolds: the
   scrollbar keeps a column of its own instead of taking the width off the notes
   as it appears.
+- Scrollbars in the portal are slim in every browser. Yandex Browser used to
+  draw the wide system ones instead. Menus, wide tables and code blocks are slim
+  now too.
 
 ## [0.6.0] - 2026-08-20
 

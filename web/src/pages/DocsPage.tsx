@@ -294,7 +294,7 @@ function DocToc({ toc, scrollRef }: { toc: Heading[]; scrollRef: React.RefObject
 
   if (toc.length === 0) return <div />;
   return (
-    <nav className="scroll-slim sticky top-0 hidden max-h-[calc(100vh-8.5rem)] w-56 shrink-0 self-start overflow-y-auto pl-4 xl:block">
+    <nav className="sticky top-0 hidden max-h-[calc(100vh-8.5rem)] w-56 shrink-0 self-start overflow-y-auto pl-4 xl:block">
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">На этой странице</div>
       <ul className="border-l border-slate-200">
         {toc.map((h) => (
@@ -452,7 +452,7 @@ function DocsNav({ activeId, index }: { activeId: string; index: NavItem[] }) {
         </div>
       </div>
 
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         {results ? (
           <ul className="flex flex-col gap-0.5">
             {results.length === 0 && (
@@ -589,7 +589,7 @@ export function DocsPage() {
       <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 gap-10 px-4 py-8 lg:px-6">
         <DocsNav activeId={activeId} index={searchIndex} />
 
-        <div ref={scrollRef} className="scroll-slim min-w-0 flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
               <div className="flex w-full gap-8">
                 <article className="min-w-0 flex-1">
                   <Breadcrumbs

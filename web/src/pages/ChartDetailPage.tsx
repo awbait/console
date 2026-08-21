@@ -312,7 +312,7 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   return (
     // A readable measure rather than the full width of a wide screen: a README
     // is prose, and prose across 1500 pixels is read by nobody.
-    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto py-5 pl-5 pr-3 [scrollbar-gutter:stable]">
+    <div className="min-h-0 flex-1 overflow-y-auto py-5 pl-5 pr-3 [scrollbar-gutter:stable]">
       <div className="max-w-3xl">
         {loading ? (
           <SkeletonText lines={8} />
@@ -351,7 +351,7 @@ function ChartChangelog({
     // version numbers stand on the same left edge as the tab above them. The
     // list scrolls in a box of a height of its own, so the releases at the end
     // of it get the run-up they need to reach the top edge.
-    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto py-4 pl-3 pr-2 [scrollbar-gutter:stable]">
+    <div className="min-h-0 flex-1 overflow-y-auto py-4 pl-3 pr-2 [scrollbar-gutter:stable]">
       <Changelog entries={notes} highlight={highlight} roomBelow />
     </div>
   );

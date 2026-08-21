@@ -465,7 +465,7 @@ export function Layout() {
                 overflow-x-hidden is not redundant: with overflow-y set, the other
                 axis computes to auto, so while the width animates the nowrap
                 labels overflow sideways and flash a horizontal scrollbar. */}
-            <div className="scroll-slim flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
               {/* Section switcher (only when a role can see more than one).
                   A dropdown in both states: the labels don't fit as a pill row
                   once there are three of them, and collapsing must not turn one
@@ -703,7 +703,7 @@ export function Layout() {
             rings and shadows of controls sitting flush against it (the buttons in
             a page header). The inset padding gives them 4px of room and the
             negative margin takes it back off the layout, so nothing moves. */}
-        <main className="scroll-slim relative -m-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1">
+        <main className="relative -m-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1">
           {/* The page fills the column edge to edge - width is capped by the
               shell above, not here. flex-1 + min-h-0 gives full-height pages
               (e.g. the view builder, which uses flex-1 at its root) a real
