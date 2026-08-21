@@ -97,8 +97,11 @@ type DiscoveredApp struct {
 // and the in-memory fake implement it.
 type Port interface {
 	// GetGroup resolves a (sub)group by full path; ErrNotFound if absent.
-	// The portal never creates team subgroups - they are provisioned manually.
 	GetGroup(ctx context.Context, fullPath string) (*Group, error)
+	// CreateGroup creates a subgroup under parentID. path is the last segment of
+	// the full path, not the whole thing. ErrConflict if the path is taken,
+	// which is how a race between two orders of the same team resolves.
+	CreateGroup(ctx context.Context, parentID int, path, name string) (*Group, error)
 	// GetProject resolves a repo by full path; ErrNotFound if absent.
 	GetProject(ctx context.Context, fullPath string) (*Project, error)
 	// CreateProject creates a repo inside a namespace (the team subgroup).

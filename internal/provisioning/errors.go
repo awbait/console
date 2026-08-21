@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"console/internal/gitlab"
 	"console/pkg/models"
 )
 
@@ -15,7 +16,24 @@ var (
 	// that talks to an upstream, so a caller wrapping either name produces the
 	// same 502.
 	ErrUpstream = models.ErrUpstream
+	// ErrNotConfigured is an alias, shared for the same reason as ErrUpstream.
+	// Use it when an upstream answered and refused: what is missing is a piece
+	// of platform setup, not the upstream itself.
+	ErrNotConfigured = models.ErrNotConfigured
 )
+
+// gitopsErr classifies a GitLab failure for one step of the GitOps flow. A 403
+// means the instance is fine and the portal's token is not allowed to do this,
+// which a retry never fixes, so it becomes ErrNotConfigured; everything else
+// (a timeout, a 5xx, a broken connection) stays ErrUpstream. op names the step
+// in the same words the log and the support ticket will use.
+func gitopsErr(op string, err error) error {
+	sentinel := ErrUpstream
+	if errors.Is(err, gitlab.ErrForbidden) {
+		sentinel = ErrNotConfigured
+	}
+	return fmt.Errorf("%w: gitlab %s: %v", sentinel, op, err)
+}
 
 // FieldError is one schema-validation failure pinned to a values field.
 // Path is a JSON Pointer into the submitted values (e.g. "/gateways/0/listeners/0").

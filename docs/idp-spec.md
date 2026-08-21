@@ -124,7 +124,8 @@ Webhook от Harbor (`POST /webhooks/harbor`) на `PUSH_ARTIFACT` - инвал�
 
 | Эндпоинт | Назначение |
 |---|---|
-| `GET /groups/{group%2Fsubgroup}` | Проверить, что подгруппа команды существует (если нет → ошибка, портал её НЕ создаёт) |
+| `GET /groups/{group%2Fsubgroup}` | Резолв подгруппы команды (404 → создаём) |
+| `POST /groups` | Создать подгруппу команды в `GITLAB_GITOPS_GROUP` (идемпотентно, если 404 выше) |
 | `GET /projects/{group%2Fsubgroup%2Frepo}` | Резолв репо managed-сервиса по пути → project_id (404 → создаём) |
 | `POST /projects` | Создать репо managed-сервиса в подгруппе команды (идемпотентно, если 404 выше) |
 | `GET /groups/{id}/projects` | Список репо команды |
@@ -217,7 +218,8 @@ managed-services/              ← top-level GitLab group (GITLAB_GITOPS_GROUP)
   - `team-subgroup` - по шаблону `GITLAB_TEAM_SUBGROUP_TEMPLATE` (дефолт `team-{{.Team}}`, совпадает с Keycloak-группой).
   - Репо называется по managed-сервису (имя чарта), внутри - папка на каждый заказанный инстанс (`service_name`), т.к. команда может заказать несколько инстансов одного сервиса.
 - **Создание:**
-  - **Подгруппу команды портал НЕ создаёт** - она должна быть заведена заранее. Если её нет → заказ падает с понятной ошибкой (`502/конфиг`), а не молча.
+  - **Подгруппу команды портал создаёт сам** при первом заказе, если её нет (`GITLAB_CREATE_TEAM_SUBGROUP=true`, по умолчанию включено). Нужна роль Owner на `GITLAB_GITOPS_GROUP`. Права команды на её подгруппу настраиваются в GitLab отдельно, портал их не трогает.
+  - Если создание выключено или прав не хватает → заказ падает с `409/not_configured` и понятным текстом, а не молча.
   - **Репо managed-сервиса портал создаёт идемпотентно:** проверяет существование по пути, есть - использует, нет - `POST /projects` в подгруппе команды.
 - **Изоляция:** портал ходит **group access token**'ом с правами на всю `managed-services`; права отдельных команд на свои подгруппы настраиваются в GitLab отдельно (вне портала).
 - **MR создаётся в репо конкретного сервиса**, меняет файлы в папке инстанса. Поэтому `mr_iid` сам по себе не идентифицирует MR - нужен ещё `gitlab_project_id` репо (см. таблицу `request_mrs`).
@@ -606,9 +608,10 @@ HARBOR_WEBHOOK_SECRET=...
 
 # GitLab
 GITLAB_URL=https://gitlab.example.com
-GITLAB_TOKEN=...                                   # group access token группы managed-services, scope api
+GITLAB_TOKEN=...                                   # group access token группы managed-services, scope api, роль Owner
 GITLAB_GITOPS_GROUP=managed-services               # top-level группа (путь или id)
 GITLAB_TEAM_SUBGROUP_TEMPLATE=team-{{.Team}}       # подгруппа команды = Keycloak-группа
+GITLAB_CREATE_TEAM_SUBGROUP=true                   # заводить подгруппу команды при первом заказе
 GITLAB_DEFAULT_BRANCH=main
 GITLAB_WEBHOOK_TOKEN=...
 
@@ -664,6 +667,11 @@ TRACING_ENABLED=false
 | Валидация values против schema | 422 | `validation_failed` |
 | Сервис с таким именем уже существует у команды | 409 | `conflict` |
 | Harbor/GitLab/ArgoCD недоступен | 502 | `upstream_unavailable` |
+| Upstream ответил и отказал: платформа не донастроена (нет группы, у токена нет прав, ветка защищена) | 409 | `not_configured` |
+
+Причина 5xx и `not_configured` пишется в лог строкой `request failed` с полями
+`err` и `request_id`: тело ответа читает браузер, лог остаётся. Ожидаемые ответы
+(404, валидация, конфликт) не логируются.
 
 ## Безопасность
 

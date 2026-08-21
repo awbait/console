@@ -131,6 +131,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
 	provSvc.Log = observability.Component(log, "provisioning")
+	provSvc.CreateTeamSubgroup = cfg.GitLabCreateGroup
 	// Self-registration of the inbound GitLab webhook. Both halves are needed: the
 	// secret proves the delivery, the URL is where GitLab sends it. Registered
 	// below, once; under the per-repository scope provSvc adds one to every repo

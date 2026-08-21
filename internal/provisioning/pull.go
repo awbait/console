@@ -3,7 +3,6 @@ package provisioning
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"console/pkg/models"
 )
@@ -27,7 +26,7 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 
 	proj, err := s.gl.GetProject(ctx, s.gitops.RepoPath(r.Team, r.ChartName))
 	if err != nil {
-		return nil, fmt.Errorf("%w: resolve repo: %v", ErrUpstream, err)
+		return nil, gitopsErr("resolve repo", err)
 	}
 	branch := proj.DefaultBranch
 	if branch == "" {
@@ -39,14 +38,14 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 		return nil, &ValidationError{Message: "в Git нет манифестов этого сервиса, он удалён вне портала. Нечего подтягивать, используйте «Удалить»"}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: read values.yaml from git: %v", ErrUpstream, err)
+		return nil, gitopsErr("read values.yaml", err)
 	}
 	ab, err := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r.Cluster, r.ServiceName), branch)
 	if errors.Is(err, models.ErrNotFound) {
 		return nil, &ValidationError{Message: "в Git нет манифестов этого сервиса, он удалён вне портала. Нечего подтягивать, используйте «Удалить»"}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: read application.yaml from git: %v", ErrUpstream, err)
+		return nil, gitopsErr("read application.yaml", err)
 	}
 
 	changed := false

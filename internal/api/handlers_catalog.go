@@ -15,7 +15,7 @@ import (
 func (s *Server) authorizeChart(w http.ResponseWriter, r *http.Request) bool {
 	u := auth.UserFrom(r.Context())
 	if _, err := s.Catalog.Authorize(r.Context(), u, chi.URLParam(r, "project"), chi.URLParam(r, "name")); err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return false
 	}
 	return true
@@ -25,7 +25,7 @@ func (s *Server) handleListCharts(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	charts, err := s.Catalog.ListCharts(r.Context(), u)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, charts)
@@ -35,7 +35,7 @@ func (s *Server) handleGetChart(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	chart, err := s.Catalog.Authorize(r.Context(), u, chi.URLParam(r, "project"), chi.URLParam(r, "name"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, chart)
@@ -47,7 +47,7 @@ func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.Catalog.GetVersion(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "name"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -59,7 +59,7 @@ func (s *Server) handleGetValues(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := s.Catalog.GetValues(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "name"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/yaml; charset=utf-8")
@@ -72,7 +72,7 @@ func (s *Server) handleGetReadme(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := s.Catalog.GetReadme(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "name"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
@@ -85,7 +85,7 @@ func (s *Server) handleGetSchema(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := s.Catalog.GetSchema(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "name"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -98,7 +98,7 @@ func (s *Server) handleGetChangelog(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := s.Catalog.GetChangelog(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "name"), chi.URLParam(r, "version"))
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, e)
@@ -116,7 +116,7 @@ func (s *Server) handleAggregatedChangelog(w http.ResponseWriter, r *http.Reques
 	}
 	entries, err := s.Catalog.GetAggregatedChangelog(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "name"), limit)
 	if err != nil {
-		writeDomainErr(w, err)
+		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)

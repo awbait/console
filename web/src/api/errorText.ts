@@ -21,6 +21,12 @@ const BY_CODE: Record<string, string> = {
   // What that outage costs is told by the platform banner and the topbar
   // indicator (see app/capabilities.ts); this line only says the request failed.
   upstream_unavailable: "Не удалось выполнить запрос: часть платформы сейчас не отвечает.",
+  // The upstream answered and refused: something in the platform's own setup is
+  // missing for this team. It looks like an outage from here and is not one, so
+  // this is the one failure the portal tells the user not to retry - waiting
+  // changes nothing until a person finishes the setup.
+  not_configured:
+    "Платформа ещё не настроена для вашей команды, поэтому запрос не прошёл. Повторная попытка не поможет, напишите в поддержку платформы.",
   internal: "Что-то пошло не так на нашей стороне. Попробуйте обновить страницу.",
   not_found: "Мы не нашли то, что вы открыли. Возможно, это уже удалили.",
   forbidden: "У вас нет доступа к этому разделу.",
