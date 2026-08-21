@@ -152,32 +152,59 @@ function scrollToRelease(
   const room = spacer && box !== page ? spacer : null;
 
   const edge = () => (box === page ? 0 : box.getBoundingClientRect().top);
+  // The run-up is only for a list that already runs past its box. A history
+  // that fits has nothing to scroll, and inventing the height to scroll it with
+  // is a scrollbar over empty space - the list would be dragged off the top of
+  // its own box for no reason.
   const missing = () => {
     if (!room) return 0;
-    const end = list.getBoundingClientRect().bottom - room.offsetHeight;
-    const below = end - el.getBoundingClientRect().top;
+    const tail = room.offsetHeight;
+    if (box.scrollHeight - tail <= box.clientHeight + 4) return 0;
+    const below = list.getBoundingClientRect().bottom - tail - el.getBoundingClientRect().top;
     // Rounded up: a run-up a pixel short of what the header needs is a header
     // that stops a pixel short of the top.
     return Math.max(0, Math.ceil(box.clientHeight - SCROLL_GAP - below));
   };
 
+  // The reader wins. A hand on the wheel while the list is still moving means
+  // they are reading somewhere else now, and a scroll that keeps pulling
+  // against them is the worst kind of lag - the page fights back.
+  const stop = () => {
+    if (job === scrollJob) scrollJob++;
+  };
+  const watched = box === page ? window : box;
+  for (const event of ["wheel", "touchstart", "keydown"] as const) {
+    watched.addEventListener(event, stop, { passive: true, once: true });
+  }
+  const release = () => {
+    for (const event of ["wheel", "touchstart", "keydown"] as const) {
+      watched.removeEventListener(event, stop);
+    }
+  };
+
   let frames = 0;
   const step = () => {
-    if (job !== scrollJob) return;
+    if (job !== scrollJob) return release();
     // The run-up grows while the fold is still running and is trimmed to the
     // height actually needed once it is over: more than that is empty page.
     const need = missing();
     if (room && need > room.offsetHeight) room.style.height = `${need}px`;
     const away = el.getBoundingClientRect().top - edge() - SCROLL_GAP;
-    if ((!moving([anchor, closing]) && Math.abs(away) < 0.5) || frames++ > SCROLL_CAP) {
+    // Nothing left to give: the box is at one of its ends and the distance
+    // cannot close. Without this the loop would spend a couple of seconds
+    // writing a scroll position the box already has.
+    const limit = box.scrollHeight - box.clientHeight;
+    const stuck = (away > 0 && box.scrollTop >= limit - 0.5) || (away < 0 && box.scrollTop <= 0.5);
+    const settled = !moving([anchor, closing]) && (Math.abs(away) < 0.5 || stuck);
+    if (settled || frames++ > SCROLL_CAP) {
       if (room) {
         room.style.height = `${missing()}px`;
         // Trimming the run-up can pull the list back by a pixel or two; the
         // header takes them back without an animation nobody would see.
         const rest = el.getBoundingClientRect().top - edge() - SCROLL_GAP;
-        if (Math.abs(rest) > 0.5) box.scrollTop += rest;
+        if (Math.abs(rest) > 0.5 && Math.abs(rest) < box.clientHeight) box.scrollTop += rest;
       }
-      return;
+      return release();
     }
     // A step under a pixel is a step the browser rounds away, and the list
     // would spend the rest of the animation two pixels short of the top. The
