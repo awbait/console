@@ -203,10 +203,19 @@ export function ChartDetailPage() {
             <DocTab id="readme">Описание</DocTab>
             <DocTab id="changelog">Изменения</DocTab>
           </TabList>
-          <TabPanel id="readme" className="flex min-h-0 flex-1 flex-col outline-none">
+          {/* The document arrives rather than replaces: switching tabs swaps
+              one wall of text for another, and without the fade the eye has to
+              find out from the text itself that anything happened. */}
+          <TabPanel
+            id="readme"
+            className="flex min-h-0 flex-1 flex-col outline-none animate-in fade-in duration-200 motion-reduce:animate-none"
+          >
             <Readme project={project} name={name} version={version} />
           </TabPanel>
-          <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col outline-none">
+          <TabPanel
+            id="changelog"
+            className="flex min-h-0 flex-1 flex-col outline-none animate-in fade-in duration-200 motion-reduce:animate-none"
+          >
             <ChartChangelog project={project} name={name} highlight={release} />
           </TabPanel>
         </Card>
