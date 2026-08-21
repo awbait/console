@@ -16,7 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - A version with nothing under it is no longer shown. After a release the
-  changelog used to open with an empty "Ещё не выпущено" block.
+  changelog used to open with an empty "Готовится к выпуску" block.
 
 ## [0.6.0] - 2026-08-20
 

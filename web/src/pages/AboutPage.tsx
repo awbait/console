@@ -85,23 +85,20 @@ export function AboutPage() {
               </div>
             </div>
             {/* The running version leads to what it changed. A build between
-                releases has no section of its own, so it points at "Ещё не
-                выпущено", which is precisely what such a build is. */}
+                releases has no section of its own, so it points at the one
+                being prepared, which is precisely what such a build carries.
+                What kind of build it is belongs in the hint, not in a second
+                line under the number. */}
             <a
               href={`#${releaseAnchor(info.version)}`}
               title={
                 isRelease(info.version)
                   ? "Что изменилось в этой версии"
-                  : "Сборка после последнего релиза, смотрите «Ещё не выпущено»"
+                  : "Сборка после последнего релиза, смотрите «Готовится к выпуску»"
               }
-              className="flex shrink-0 flex-col items-end gap-0.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="shrink-0 rounded-full bg-brand-50 px-3 py-1 font-mono text-sm font-medium text-brand-700 outline-none hover:bg-brand-100 focus-visible:ring-2 focus-visible:ring-brand-500"
             >
-              <span className="rounded-full bg-brand-50 px-3 py-1 font-mono text-sm font-medium text-brand-700 hover:bg-brand-100">
-                {info.version}
-              </span>
-              {!isRelease(info.version) && (
-                <span className="text-[11px] text-slate-400">Ещё не выпущено</span>
-              )}
+              {info.version}
             </a>
           </Card>
 

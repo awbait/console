@@ -36,9 +36,10 @@ function sectionTint(title: string) {
   return SECTION_TINT[title.toLowerCase()] ?? PLAIN_TINT;
 }
 
-// The changelog vocabulary for a version that has no number yet: everything
-// merged since the last release. Shown as words, not as the file's marker.
+// The version that has no number yet: everything merged since the last release,
+// waiting for one. Shown as words, not as the file's marker.
 const UNRELEASED = /^unreleased$/i;
+const UNRELEASED_LABEL = "Готовится к выпуску";
 
 // A version heading with nothing under it is not a release anybody can read
 // about: the parser keeps it because the file has it (a fresh [Unreleased] is
@@ -161,8 +162,8 @@ export function Changelog({
                   }`}
                 />
                 {UNRELEASED.test(e.version) ? (
-                  <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-brand-700">
-                    Ещё не выпущено
+                  <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-0.5 text-sm font-semibold text-brand-700">
+                    {UNRELEASED_LABEL}
                   </span>
                 ) : (
                   <span className="shrink-0 font-mono text-base font-bold text-slate-900">
