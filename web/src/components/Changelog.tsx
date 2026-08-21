@@ -11,26 +11,48 @@ import { Markdown } from "./Markdown";
 // nowhere else - the folded list above stays plain, so the eye lands on the
 // release it opened rather than on the six it did not.
 //
+// A small name in colour is not a heading yet: at eleven pixels it weighs the
+// same as the text under it and the eye walks past it. What makes it one is the
+// rule that runs from the name to the end of the measure - the category starts
+// on a line across the page, the way a section starts in print, and the colour
+// arrives as a band rather than as six letters.
+//
 // The 800 step carries the name (dark on a light card, light on a dark one, so
-// it reads in both themes), the 600 step the bullets. A chart writes its
-// changelog in whatever language it likes, so both spellings are known here,
-// and only theme-aware families are used - see tailwind.config.js.
-const SECTION_TINT: Record<string, { name: string; marker: string }> = {
-  added: { name: "text-emerald-800", marker: "marker:text-emerald-600" },
-  добавлено: { name: "text-emerald-800", marker: "marker:text-emerald-600" },
-  changed: { name: "text-blue-800", marker: "marker:text-blue-600" },
-  изменено: { name: "text-blue-800", marker: "marker:text-blue-600" },
-  fixed: { name: "text-indigo-800", marker: "marker:text-indigo-600" },
-  исправлено: { name: "text-indigo-800", marker: "marker:text-indigo-600" },
-  removed: { name: "text-red-800", marker: "marker:text-red-600" },
-  удалено: { name: "text-red-800", marker: "marker:text-red-600" },
-  deprecated: { name: "text-amber-800", marker: "marker:text-amber-600" },
-  устарело: { name: "text-amber-800", marker: "marker:text-amber-600" },
-  security: { name: "text-orange-800", marker: "marker:text-orange-600" },
-  безопасность: { name: "text-orange-800", marker: "marker:text-orange-600" },
+// it reads in both themes), the 600 step the bullets and, thinned out, the
+// rule: a band has to stay behind the words it belongs to, not compete. A
+// chart writes its changelog in whatever language it likes, so both spellings
+// are known here, and only theme-aware families are used - see
+// tailwind.config.js.
+type Tint = { name: string; marker: string; rule: string };
+
+const SECTION_TINT: Record<string, Tint> = {
+  added: { name: "text-emerald-800", marker: "marker:text-emerald-600", rule: "bg-emerald-600/40" },
+  добавлено: {
+    name: "text-emerald-800",
+    marker: "marker:text-emerald-600",
+    rule: "bg-emerald-600/40",
+  },
+  changed: { name: "text-blue-800", marker: "marker:text-blue-600", rule: "bg-blue-600/40" },
+  изменено: { name: "text-blue-800", marker: "marker:text-blue-600", rule: "bg-blue-600/40" },
+  fixed: { name: "text-indigo-800", marker: "marker:text-indigo-600", rule: "bg-indigo-600/40" },
+  исправлено: { name: "text-indigo-800", marker: "marker:text-indigo-600", rule: "bg-indigo-600/40" },
+  removed: { name: "text-red-800", marker: "marker:text-red-600", rule: "bg-red-600/40" },
+  удалено: { name: "text-red-800", marker: "marker:text-red-600", rule: "bg-red-600/40" },
+  deprecated: { name: "text-amber-800", marker: "marker:text-amber-600", rule: "bg-amber-600/40" },
+  устарело: { name: "text-amber-800", marker: "marker:text-amber-600", rule: "bg-amber-600/40" },
+  security: { name: "text-orange-800", marker: "marker:text-orange-600", rule: "bg-orange-600/40" },
+  безопасность: {
+    name: "text-orange-800",
+    marker: "marker:text-orange-600",
+    rule: "bg-orange-600/40",
+  },
 };
 
-const PLAIN_TINT = { name: "text-slate-500", marker: "marker:text-slate-300" };
+const PLAIN_TINT: Tint = {
+  name: "text-slate-500",
+  marker: "marker:text-slate-300",
+  rule: "bg-slate-200",
+};
 
 function sectionTint(title: string) {
   return SECTION_TINT[title.toLowerCase()] ?? PLAIN_TINT;
@@ -234,18 +256,22 @@ function Release({
   return (
     <div
       id={anchor}
-      // Scrolled-to sections stop below the top edge of the scroller
+      // The open release stands on a ground of its own, header included: with
+      // one version open at a time and the folded ones a plain line each, the
+      // reader should not have to work out where the notes they are reading
+      // began. Scrolled-to sections stop below the top edge of the scroller
       // rather than flush against it.
       className={`scroll-mt-4 rounded-xl transition-colors duration-500 ${
-        highlighted ? "bg-brand-50/60" : ""
+        highlighted ? "bg-brand-50/60" : isOpen ? "bg-slate-50" : ""
       }`}
     >
       {/* Pinned, the header needs an edge of its own: without it the line
-          sliding under it looks clipped rather than covered. */}
+          sliding under it looks clipped rather than covered. It also needs the
+          ground under it, or the notes would show through as they pass. */}
       <h3
         className={
           stickyHeader && isOpen
-            ? "sticky top-0 z-10 border-b border-slate-100 bg-surface"
+            ? "sticky top-0 z-10 rounded-t-xl border-b border-slate-200 bg-slate-50"
             : undefined
         }
       >
@@ -255,7 +281,9 @@ function Release({
           aria-expanded={isOpen}
           aria-controls={`${anchor}-notes`}
           onClick={() => onToggle(!isOpen)}
-          className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-3 text-left outline-none transition-colors hover:bg-slate-100/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+          className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${
+            isOpen ? "rounded-t-xl hover:bg-slate-100/60" : "rounded-lg hover:bg-slate-100/70"
+          }`}
         >
           <IconChevronRight
             size={16}
@@ -305,7 +333,7 @@ function Release({
           <div
             ref={notes}
             style={{ transitionDuration: `${Math.round(pace * 0.6)}ms` }}
-            className={`pb-6 pl-[2.4rem] pr-3 pt-1 transition-opacity ease-in-out motion-reduce:transition-none ${
+            className={`pb-5 pl-[2.4rem] pr-3 transition-opacity ease-in-out motion-reduce:transition-none ${
               isOpen ? "opacity-100 delay-100" : "opacity-0"
             }`}
           >
@@ -318,15 +346,20 @@ function Release({
                 own colour over its own list, everything on one left edge, the
                 line inside a readable measure instead of running the whole
                 width of the card. */}
-            <div className="mt-4 flex max-w-prose flex-col gap-5">
+            <div className="mt-5 flex max-w-prose flex-col gap-6">
               {sections.map((s) => {
                 const tint = sectionTint(s.title);
                 return (
                   <div key={s.title}>
-                    <div className={`text-[11px] font-semibold uppercase tracking-wider ${tint.name}`}>
+                    <h4
+                      className={`flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.12em] ${tint.name}`}
+                    >
                       {s.title}
-                    </div>
-                    <ul className={`ml-4 mt-2 list-disc space-y-2 text-sm text-slate-700 ${tint.marker}`}>
+                      <span className={`h-px flex-1 rounded-full ${tint.rule}`} />
+                    </h4>
+                    <ul
+                      className={`ml-4 mt-2.5 list-disc space-y-2 text-sm text-slate-700 ${tint.marker}`}
+                    >
                       {s.items.map((it) => (
                         <li key={it} className="pl-1 leading-relaxed">
                           <Markdown inline>{it}</Markdown>
