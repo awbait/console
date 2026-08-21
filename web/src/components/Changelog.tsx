@@ -36,6 +36,11 @@ function sectionTint(title: string) {
   return SECTION_TINT[title.toLowerCase()] ?? PLAIN_TINT;
 }
 
+// How long a version stays lit after a link brought the reader to it: long
+// enough to be seen once the smooth scroll has finished, short enough that
+// nobody starts reading the tint as a meaning of its own.
+const FLASH_MS = 2000;
+
 // The version that has no number yet: everything merged since the last release,
 // waiting for one. Shown as words, not as the file's marker.
 const UNRELEASED = /^unreleased$/i;
@@ -72,8 +77,8 @@ export function withContent(entries: ChangelogEntry[]): ChangelogEntry[] {
 // is the wall the folding was for.
 //
 // `highlight` is a link arriving at a version (see releaseAnchor): the section
-// it names opens and stays lit until the reader looks away, because a page that
-// silently jumped is a page that looks like it opened in the wrong place. The
+// it names opens and is lit for a moment, because a page that silently jumped
+// is a page that looks like it opened in the wrong place. The
 // opening comes before the scroll on purpose - the caller scrolls once this has
 // rendered, and a folded panel would leave the anchor short of the notes the
 // reader was sent to.
@@ -130,6 +135,18 @@ export function Changelog({
     setLimit((l) => (l > i ? l : i + 1));
   }, [highlight, shown]);
 
+  // The arrival mark: the page has just jumped somewhere, and the tint says
+  // where it landed. It is an event, not a state - left on, it reads as a
+  // version selected for good, and the reader keeps looking for what selected
+  // it. So it fades on its own once the jump is over.
+  const [landed, setLanded] = useState(highlight);
+  useEffect(() => {
+    if (!highlight) return;
+    setLanded(highlight);
+    const t = setTimeout(() => setLanded(undefined), FLASH_MS);
+    return () => clearTimeout(t);
+  }, [highlight]);
+
   return (
     // Rows are told apart by the space between them, not by a rule under each
     // one: a line every 40 pixels turns a short list into a grid, and the
@@ -144,7 +161,7 @@ export function Changelog({
             entry={e}
             isOpen={open === e.version}
             onToggle={(next) => choose(next ? e.version : null)}
-            highlighted={highlight === anchor}
+            highlighted={landed === anchor}
             inProd={!!current && isRelease(current) && releaseAnchor(current) === anchor}
             stickyHeader={stickyHeaders}
           />
