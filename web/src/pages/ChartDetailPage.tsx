@@ -111,13 +111,13 @@ export function ChartDetailPage() {
     !!pub?.approved_view_version && isNewer(liveVersion, pub.approved_view_version);
 
   return (
-    // The page scrolls as a page. Locking it to the viewport and scrolling the
-    // document inside left the document whatever height the header did not
-    // take - a release of forty lines read through a slot of four hundred
-    // pixels, on a laptop less than that. A chart's page is a text; it is read
-    // the way texts are read.
-    <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-6">
+    // Who the chart is stays on screen: the name, what it is for and the
+    // version are the frame the document is read in, and a page that scrolls
+    // them away makes the reader scroll back to check. So the page keeps the
+    // height of the window, the head keeps its size, and the open document
+    // takes every pixel left - which is what the gaps here are kept short for.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex shrink-0 items-start justify-between gap-6">
         <div className="min-w-0">
           <Breadcrumbs
             items={[
@@ -132,7 +132,7 @@ export function ChartDetailPage() {
           {/* Keep the summary at a readable measure instead of letting it run
               the full width of a wide screen. */}
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600">{description}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <Chip className="bg-slate-100 text-slate-600">
               <IconTag size={13} stroke={1.8} className="text-slate-400" />
               <span className="text-slate-400">Версия:</span>v{version}
@@ -193,9 +193,9 @@ export function ChartDetailPage() {
       <Tabs
         selectedKey={tab}
         onSelectionChange={(key) => openTab(String(key))}
-        className="flex flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <Card padded={false} className="flex flex-col overflow-hidden">
+        <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <TabList
             aria-label="Документация чарта"
             className="flex shrink-0 gap-1 border-b border-gray-200 px-2"
@@ -203,10 +203,10 @@ export function ChartDetailPage() {
             <DocTab id="readme">Описание</DocTab>
             <DocTab id="changelog">Изменения</DocTab>
           </TabList>
-          <TabPanel id="readme" className="outline-none">
+          <TabPanel id="readme" className="flex min-h-0 flex-1 flex-col outline-none">
             <Readme project={project} name={name} version={version} />
           </TabPanel>
-          <TabPanel id="changelog" className="outline-none">
+          <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col outline-none">
             <ChartChangelog project={project} name={name} highlight={release} />
           </TabPanel>
         </Card>
@@ -260,7 +260,7 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   return (
     // A readable measure rather than the full width of a wide screen: a README
     // is prose, and prose across 1500 pixels is read by nobody.
-    <div className="p-5">
+    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto py-5 pl-5 pr-3 [scrollbar-gutter:stable]">
       <div className="max-w-3xl">
         {loading ? (
           <SkeletonText lines={8} />
@@ -296,9 +296,11 @@ function ChartChangelog({
   // the portal's own history on the About page.
   return (
     // The rows carry their own inset, so the sides are short by it and the
-    // version numbers stand on the same left edge as the tab above them.
-    <div className="py-4 pl-3 pr-4">
-      <Changelog entries={notes} highlight={highlight} />
+    // version numbers stand on the same left edge as the tab above them. The
+    // list scrolls in a box of a height of its own, so the releases at the end
+    // of it get the run-up they need to reach the top edge.
+    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto py-4 pl-3 pr-2 [scrollbar-gutter:stable]">
+      <Changelog entries={notes} highlight={highlight} roomBelow />
     </div>
   );
 }
