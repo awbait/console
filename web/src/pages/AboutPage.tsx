@@ -5,7 +5,7 @@ import {
   IconInfoCircle,
   IconPackages,
 } from "@tabler/icons-react";
-import { type ReactNode, useEffect } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { useUser } from "../auth/UserContext";
@@ -21,23 +21,11 @@ export function AboutPage() {
 
   // A link can name a version: /about#release-0.4.0, or #release-unreleased for
   // a build between releases. The notification about a new portal is such a
-  // link, and so is anything else that wants to point at what changed.
-  //
-  // The scroll waits for the changelog: the section does not exist until it has
-  // loaded, and scrolling into a skeleton lands nowhere. It also waits a frame
-  // after that, because the version it is aimed at opens as it renders and the
-  // notes unfold under the header - a scroll measured before that lands on a
-  // section that is still growing.
+  // link, and so is anything else that wants to point at what changed. The list
+  // itself opens that version and scrolls to it - it is the one that knows when
+  // the notes have finished unfolding.
   const { hash } = useLocation();
   const target = hash.replace(/^#/, "");
-  const loaded = !!changelog.data;
-  useEffect(() => {
-    if (!target || !loaded) return;
-    const id = requestAnimationFrame(() => {
-      document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [target, loaded]);
 
   // User-facing portal links (not infra consoles - those live on the status page).
   // The security role has no catalog/orders, so it only gets documentation.

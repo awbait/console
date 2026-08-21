@@ -2,13 +2,13 @@ import { IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-r
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication } from "../api/types";
 import { AUTO_DISCOVERY_ACTOR, isUnclaimed, publisherLabel } from "../api/types";
-import { CAPABILITIES } from "../app/capabilities";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -62,6 +62,23 @@ export function ChartDetailPage() {
         });
       });
   }, [queryClient, manageable, project, name]);
+
+  // Which document is open lives in the address (?tab=changelog), and a version
+  // in the hash (#release-2.3.0), so a link can point at a release and not just
+  // at the chart. A link that names a version is about the changelog, whatever
+  // the query says. Switching by hand replaces the entry rather than stacking
+  // it: back should leave the chart, not walk the tabs.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const release = location.hash.startsWith("#release-") ? location.hash.slice(1) : undefined;
+  const tab = release || location.search.includes("tab=changelog") ? "changelog" : "readme";
+  const openTab = (key: string) => {
+    if (key === tab && !release) return;
+    navigate(
+      { pathname: location.pathname, search: key === "changelog" ? "?tab=changelog" : "", hash: "" },
+      { replace: true },
+    );
+  };
 
   if (loading) return <ChartSkeleton />;
   if (error)
@@ -167,21 +184,30 @@ export function ChartDetailPage() {
         </div>
       </div>
 
-      <Tabs className="flex min-h-0 flex-1 flex-col">
-        <TabList
-          aria-label="Документация чарта"
-          className="flex shrink-0 gap-2 border-b border-gray-200"
-        >
-          <DocTab id="readme">Описание</DocTab>
-          <DocTab id="changelog">Изменения</DocTab>
-        </TabList>
-        {/* The panel only sizes the card; the scrolling happens inside it. */}
-        <TabPanel id="readme" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
-          <Readme project={project} name={name} version={version} />
-        </TabPanel>
-        <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
-          <ChartChangelog project={project} name={name} />
-        </TabPanel>
+      {/* The tabs are the head of the document, not a strip floating above a
+          box of its own: one panel with its name on top, the way the document
+          would be filed. It takes the height it needs and no more - a page of
+          empty card under two lines of text is a frame around nothing. */}
+      <Tabs
+        selectedKey={tab}
+        onSelectionChange={(key) => openTab(String(key))}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <Card padded={false} className="flex max-h-full min-h-0 flex-col overflow-hidden">
+          <TabList
+            aria-label="Документация чарта"
+            className="flex shrink-0 gap-1 border-b border-gray-200 px-2"
+          >
+            <DocTab id="readme">Описание</DocTab>
+            <DocTab id="changelog">Изменения</DocTab>
+          </TabList>
+          <TabPanel id="readme" className="flex min-h-0 flex-col outline-none">
+            <Readme project={project} name={name} version={version} />
+          </TabPanel>
+          <TabPanel id="changelog" className="flex min-h-0 flex-col outline-none">
+            <ChartChangelog project={project} name={name} highlight={release} />
+          </TabPanel>
+        </Card>
       </Tabs>
     </div>
   );
@@ -230,17 +256,19 @@ function Readme({ project, name, version }: { project: string; name: string; ver
     qk.readme(project, name, version),
   );
   return (
-    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
+    // A readable measure rather than the full width of a wide screen: a README
+    // is prose, and prose across 1500 pixels is read by nobody.
+    <div className="scroll-slim min-h-0 overflow-y-auto py-5 pl-5 pr-2 [scrollbar-gutter:stable]">
+      <div className="max-w-3xl">
         {loading ? (
           <SkeletonText lines={8} />
         ) : error || !data?.trim() ? (
-          <p className="text-sm text-gray-500">Описание недоступно.</p>
+          <p className="text-sm text-gray-500">Чарт не приложил описание.</p>
         ) : (
           <Markdown>{data}</Markdown>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -248,27 +276,39 @@ function Readme({ project, name, version }: { project: string; name: string; ver
 // cover "what happened lately" without rendering a chart's whole life.
 const CHANGELOG_PAGE = 5;
 
-function ChartChangelog({ project, name }: { project: string; name: string }) {
+function ChartChangelog({
+  project,
+  name,
+  highlight,
+}: {
+  project: string;
+  name: string;
+  highlight?: string;
+}) {
   const { data, error, loading } = useAsync(
     () => api.getAggregatedChangelog(project, name),
     [project, name],
     qk.changelog(project, name),
   );
-  if (loading) return <SkeletonText lines={6} />;
+  if (loading) return <SkeletonText lines={6} className="p-5" />;
   const notes = data ? withContent(data) : [];
   if (error || notes.length === 0)
-    return <p className="text-sm text-gray-500">История изменений недоступна.</p>;
+    return <p className="p-5 text-sm text-gray-500">Чарт не ведёт историю изменений.</p>;
   // This is every version of the chart at once, so a mature one arrives with
   // dozens of releases. The newest few are drawn and the rest waits for someone
   // who asks for it.
   return (
-    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* No padding at the top: the header of the open version sticks to the
-          edge of this box, and a gap above it is a strip the notes would scroll
-          through in the open. */}
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto pb-4 pl-4 pr-1.5 [scrollbar-gutter:stable]">
-        <Changelog entries={notes} pageSize={CHANGELOG_PAGE} stickyHeaders />
-      </div>
-    </Card>
+    // No padding at the top: the header of the open version sticks to the edge
+    // of this box, and a gap above it is a strip the notes would scroll through
+    // in the open. The rows carry their own inset, so the list is pulled back
+    // by it and the version numbers stand on the left edge of the panel.
+    <div className="scroll-slim min-h-0 overflow-y-auto pb-5 pl-2 pr-2 [scrollbar-gutter:stable]">
+      <Changelog
+        entries={notes}
+        highlight={highlight}
+        pageSize={CHANGELOG_PAGE}
+        stickyHeaders
+      />
+    </div>
   );
 }

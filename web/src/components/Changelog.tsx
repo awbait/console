@@ -299,6 +299,18 @@ export function Changelog({
     return () => clearTimeout(t);
   }, [highlight]);
 
+  // A link that names a version is followed here rather than by the page around
+  // the list: whatever scrolls - the card on the About page, the card on a
+  // chart's Changes tab, the window on a narrow screen - is the same thing the
+  // list scrolls when a version is opened by hand, and the arrival looks the
+  // same either way. It waits for the notes: until they have rendered there is
+  // nothing at that anchor to arrive at.
+  const ready = shown.length > 0;
+  useEffect(() => {
+    if (!highlight || !ready) return;
+    scrollToRelease(highlight, list.current, spacer.current);
+  }, [highlight, ready]);
+
   return (
     // Rows are told apart by the space between them, not by a rule under each
     // one: a line every 40 pixels turns a short list into a grid, and the

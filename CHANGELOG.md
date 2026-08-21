@@ -15,6 +15,13 @@ All notable changes to this project are documented in this file.
 - A chart's Changes tab draws the five newest versions and offers the rest by a
   button. While an open release is being read, its version stays visible at the
   top of the list.
+- "Описание" and "Изменения" are tabs of one panel on the chart page. It used
+  to be a strip of tabs above a separate full-screen frame, empty for
+  three quarters of it. The panel takes the height its text needs, and the
+  description is read in a column rather than across the whole monitor.
+- A link to a chart page remembers what was being read: `?tab=changelog` opens
+  the Changes tab, and `#release-2.3.0` opens that version and brings the list
+  to it.
 - The About page takes the full width of the window. It used to keep a width of
   its own, leaving half the screen empty once the menu was folded away.
 
