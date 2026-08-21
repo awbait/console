@@ -13,6 +13,8 @@ All notable changes to this project are documented in this file.
 - A chart's Changes tab draws the five newest versions and offers the rest by a
   button. While an open release is being read, its version stays visible at the
   top of the list.
+- The About page takes the full width of the window. It used to keep a width of
+  its own, leaving half the screen empty once the menu was folded away.
 
 ### Fixed
 - A version with nothing under it is no longer shown. After a release the

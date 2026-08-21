@@ -64,7 +64,11 @@ export function AboutPage() {
   // scrolls inside its card, so the build info and the links stay in sight.
   // Stacked, the height lock would crush the card, so the page scrolls instead.
   return (
-    <div className="flex max-w-5xl flex-col gap-6 lg:min-h-0 lg:flex-1">
+    // The page takes the width it is given, like every other screen: with the
+    // menu folded away there is more of it, and a fixed measure here would
+    // leave the freed half of the window empty. What has to stay readable says
+    // so itself - the notes are capped at a line length inside the list.
+    <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1">
       <h1 className="shrink-0 text-xl font-semibold text-slate-900">О портале</h1>
 
       {about.loading && !info ? (

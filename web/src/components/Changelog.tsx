@@ -1,5 +1,5 @@
 import { IconChevronRight } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ruPlural } from "@/form/fieldErrors";
 import type { ChangelogEntry } from "../api/types";
 import { isRelease, releaseAnchor } from "../lib/release";
@@ -67,6 +67,10 @@ export function withContent(entries: ChangelogEntry[]): ChangelogEntry[] {
 // a list scans only while its items are one line the same height - anything
 // else the header could carry is a summary of a text that is one click away.
 //
+// One version is open at a time. Two open releases push the rest of the list
+// off the screen and read as one long text with a number in the middle, which
+// is the wall the folding was for.
+//
 // `highlight` is a link arriving at a version (see releaseAnchor): the section
 // it names opens and stays lit until the reader looks away, because a page that
 // silently jumped is a page that looks like it opened in the wrong place. The
@@ -97,12 +101,15 @@ export function Changelog({
   const shown = useMemo(() => withContent(entries), [entries]);
   const newest = shown[0]?.version;
 
-  // What the reader has folded or unfolded by hand. A version nobody has
-  // touched falls back to the default, so the newest release is open on arrival
-  // without that having to be written into state first.
-  const [toggled, setToggled] = useState<Record<string, boolean>>({});
-  const isOpen = (e: ChangelogEntry) =>
-    toggled[e.version] ?? (e.version === newest || releaseAnchor(e.version) === highlight);
+  // The version the reader opened, remembered together with the list it was
+  // opened in: a component that stays mounted while its entries change (another
+  // chart's history) would otherwise hold a version that is no longer there and
+  // show everything folded. Until they touch anything, the choice is made here:
+  // the version a link points at, the newest one otherwise.
+  const opened = shown.find((e) => releaseAnchor(e.version) === highlight)?.version ?? newest;
+  const [chosen, setChosen] = useState<{ of?: string; version: string | null } | null>(null);
+  const open = chosen && chosen.of === newest ? chosen.version : (opened ?? null);
+  const choose = (version: string | null) => setChosen({ of: newest, version });
 
   const [limit, setLimit] = useState(pageSize ?? 0);
   const paged = pageSize ? shown.slice(0, limit) : shown;
@@ -110,128 +117,37 @@ export function Changelog({
 
   // A link that names a version wins over a fold: without this, a version the
   // reader closed earlier would swallow the next link pointing at it, and one
-  // still behind "показать ещё" would have nothing to scroll to.
+  // still behind "показать ещё" would have nothing to scroll to. The state is
+  // only rewritten when it actually differs - `shown` is a fresh array on every
+  // render, and an unconditional write here would loop.
   useEffect(() => {
     if (!highlight) return;
     const i = shown.findIndex((e) => releaseAnchor(e.version) === highlight);
     if (i < 0) return;
     const v = shown[i].version;
-    setToggled((t) => (t[v] ? t : { ...t, [v]: true }));
+    const top = shown[0]?.version;
+    setChosen((c) => (c && c.of === top && c.version === v ? c : { of: top, version: v }));
     setLimit((l) => (l > i ? l : i + 1));
   }, [highlight, shown]);
 
   return (
-    <div className="flex flex-col">
+    // Rows are told apart by the space between them, not by a rule under each
+    // one: a line every 40 pixels turns a short list into a grid, and the
+    // rounded hover behind a row would end short of a full-width rule anyway,
+    // as if the row had been cut.
+    <div className="flex flex-col gap-1">
       {paged.map((e) => {
         const anchor = releaseAnchor(e.version);
-        const open = isOpen(e);
-        const sections = (e.sections ?? []).filter((s) => s.items.length > 0);
-        const inProd = !!current && isRelease(current) && releaseAnchor(current) === anchor;
         return (
-          <div
+          <Release
             key={e.version}
-            id={anchor}
-            // Scrolled-to sections stop below the top edge of the scroller
-            // rather than flush against it.
-            className={`scroll-mt-4 border-b border-slate-100 transition-colors duration-500 last:border-b-0 ${
-              highlight === anchor ? "rounded-lg bg-brand-50/60" : ""
-            }`}
-          >
-            {/* Pinned, the header needs an edge of its own: without it the line
-                sliding under it looks clipped rather than covered. */}
-            <h3
-              className={
-                stickyHeaders && open
-                  ? "sticky top-0 z-10 border-b border-slate-100 bg-surface"
-                  : undefined
-              }
-            >
-              <button
-                type="button"
-                id={`${anchor}-title`}
-                aria-expanded={open}
-                aria-controls={`${anchor}-notes`}
-                onClick={() => setToggled((t) => ({ ...t, [e.version]: !open }))}
-                className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2.5 text-left outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
-              >
-                <IconChevronRight
-                  size={16}
-                  stroke={2}
-                  className={`shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none ${
-                    open ? "rotate-90" : ""
-                  }`}
-                />
-                {UNRELEASED.test(e.version) ? (
-                  <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-0.5 text-sm font-semibold text-brand-700">
-                    {UNRELEASED_LABEL}
-                  </span>
-                ) : (
-                  <span className="shrink-0 font-mono text-base font-bold text-slate-900">
-                    {e.version}
-                  </span>
-                )}
-                {inProd && (
-                  <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                    Сейчас в проде
-                  </span>
-                )}
-                {e.date && (
-                  <span className="ml-auto shrink-0 pl-2 text-xs text-slate-400">{e.date}</span>
-                )}
-              </button>
-            </h3>
-
-            {/* The panel opens on a grid row going 0fr -> 1fr: a height nobody
-                has to measure in advance. react-aria's DisclosurePanel is out
-                for this one - it hides the panel with the `hidden` attribute,
-                and display: none is not something a transition can touch.
-                visibility rides the same transition, so a folded release is out
-                of the tab order without cutting the closing short. */}
-            <section
-              id={`${anchor}-notes`}
-              aria-labelledby={`${anchor}-title`}
-              className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none ${
-                open ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"
-              }`}
-            >
-              <div className="overflow-hidden">
-                <div className="px-2 pb-6 pt-1">
-                  {e.intro && (
-                    <p className="max-w-prose text-sm leading-relaxed text-slate-600">
-                      <Markdown inline>{e.intro}</Markdown>
-                    </p>
-                  )}
-                  {/* A release reads as an article: the category is a heading
-                      in its own colour over its own list, everything on one
-                      left edge, the line inside a readable measure instead of
-                      running the whole width of the card. */}
-                  <div className="mt-4 flex max-w-prose flex-col gap-5">
-                    {sections.map((s) => {
-                      const tint = sectionTint(s.title);
-                      return (
-                        <div key={s.title}>
-                          <div
-                            className={`text-[11px] font-semibold uppercase tracking-wider ${tint.name}`}
-                          >
-                            {s.title}
-                          </div>
-                          <ul
-                            className={`ml-4 mt-2 list-disc space-y-2 text-sm text-slate-700 ${tint.marker}`}
-                          >
-                            {s.items.map((it) => (
-                              <li key={it} className="pl-1 leading-relaxed">
-                                <Markdown inline>{it}</Markdown>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </section>
-          </div>
+            entry={e}
+            isOpen={open === e.version}
+            onToggle={(next) => choose(next ? e.version : null)}
+            highlighted={highlight === anchor}
+            inProd={!!current && isRelease(current) && releaseAnchor(current) === anchor}
+            stickyHeader={stickyHeaders}
+          />
         );
       })}
 
@@ -244,6 +160,169 @@ export function Changelog({
           Показать ещё {rest} {ruPlural(rest, "версию", "версии", "версий")}
         </button>
       )}
+    </div>
+  );
+}
+
+// How long the fold takes, from the height of the notes inside it. A fixed
+// duration cannot serve both: what is calm for five lines is a jump for a
+// release of a thousand pixels, because the same time buys ten times the speed.
+// So the time grows with the text and stops growing at PACE_MAX, past which
+// nobody is watching an animation any more, they are waiting for one.
+const PACE_BASE = 240;
+const PACE_PER_PX = 0.28;
+const PACE_MAX = 700;
+
+function paceOf(height: number): number {
+  return Math.round(Math.min(PACE_BASE + height * PACE_PER_PX, PACE_MAX));
+}
+
+// Release is one version in the list: the header that folds it and the notes
+// under it. It is a component of its own because it measures itself - the notes
+// keep their natural height inside the folded row, so the panel can be timed by
+// what it is about to show.
+function Release({
+  entry: e,
+  isOpen,
+  onToggle,
+  highlighted,
+  inProd,
+  stickyHeader,
+}: {
+  entry: ChangelogEntry;
+  isOpen: boolean;
+  onToggle: (open: boolean) => void;
+  highlighted: boolean;
+  inProd: boolean;
+  stickyHeader: boolean;
+}) {
+  const anchor = releaseAnchor(e.version);
+  const sections = (e.sections ?? []).filter((s) => s.items.length > 0);
+
+  // Measured once the notes are laid out, and again if they reflow (a window
+  // resize rewraps every line, and a release can lose or gain a screenful).
+  const notes = useRef<HTMLDivElement>(null);
+  const [pace, setPace] = useState(PACE_BASE);
+  useEffect(() => {
+    const el = notes.current;
+    if (!el) return;
+    const measure = () => setPace(paceOf(el.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      id={anchor}
+      // Scrolled-to sections stop below the top edge of the scroller
+      // rather than flush against it.
+      className={`scroll-mt-4 rounded-xl transition-colors duration-500 ${
+        highlighted ? "bg-brand-50/60" : ""
+      }`}
+    >
+      {/* Pinned, the header needs an edge of its own: without it the line
+          sliding under it looks clipped rather than covered. */}
+      <h3
+        className={
+          stickyHeader && isOpen
+            ? "sticky top-0 z-10 border-b border-slate-100 bg-surface"
+            : undefined
+        }
+      >
+        <button
+          type="button"
+          id={`${anchor}-title`}
+          aria-expanded={isOpen}
+          aria-controls={`${anchor}-notes`}
+          onClick={() => onToggle(!isOpen)}
+          className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-3 text-left outline-none transition-colors hover:bg-slate-100/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+        >
+          <IconChevronRight
+            size={16}
+            stroke={2}
+            style={{ transitionDuration: `${Math.min(pace, 300)}ms` }}
+            className={`shrink-0 text-slate-400 transition-transform ease-in-out motion-reduce:transition-none ${
+              isOpen ? "rotate-90" : ""
+            }`}
+          />
+          {UNRELEASED.test(e.version) ? (
+            <span className="shrink-0 rounded-full bg-brand-50 px-2.5 py-0.5 text-sm font-semibold text-brand-700">
+              {UNRELEASED_LABEL}
+            </span>
+          ) : (
+            <span className="shrink-0 font-mono text-base font-bold text-slate-900">{e.version}</span>
+          )}
+          {inProd && (
+            <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+              Сейчас в проде
+            </span>
+          )}
+          {e.date && <span className="ml-auto shrink-0 pl-2 text-xs text-slate-400">{e.date}</span>}
+        </button>
+      </h3>
+
+      {/* The panel opens on a grid row going 0fr -> 1fr: a height nobody has to
+          measure in advance. react-aria's DisclosurePanel is out for this one -
+          it hides the panel with the `hidden` attribute, and display: none is
+          not something a transition can touch. visibility rides the same
+          transition, so a folded release is out of the tab order without
+          cutting the closing short. */}
+      <section
+        id={`${anchor}-notes`}
+        aria-labelledby={`${anchor}-title`}
+        style={{ transitionDuration: `${pace}ms` }}
+        className={`grid transition-[grid-template-rows,visibility] ease-in-out motion-reduce:transition-none ${
+          isOpen ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          {/* The notes start where the version number starts: past the chevron,
+              on the same left edge as the header they belong to. They fade with
+              the fold: a release that only changes height is a text being
+              sheared, and the same text arriving as the room for it opens is
+              one movement. The fade trails the opening and leads the closing,
+              so the notes are never left standing in a row half their size. */}
+          <div
+            ref={notes}
+            style={{ transitionDuration: `${Math.round(pace * 0.6)}ms` }}
+            className={`pb-6 pl-[2.4rem] pr-3 pt-1 transition-opacity ease-in-out motion-reduce:transition-none ${
+              isOpen ? "opacity-100 delay-100" : "opacity-0"
+            }`}
+          >
+            {e.intro && (
+              <p className="max-w-prose text-sm leading-relaxed text-slate-600">
+                <Markdown inline>{e.intro}</Markdown>
+              </p>
+            )}
+            {/* A release reads as an article: the category is a heading in its
+                own colour over its own list, everything on one left edge, the
+                line inside a readable measure instead of running the whole
+                width of the card. */}
+            <div className="mt-4 flex max-w-prose flex-col gap-5">
+              {sections.map((s) => {
+                const tint = sectionTint(s.title);
+                return (
+                  <div key={s.title}>
+                    <div className={`text-[11px] font-semibold uppercase tracking-wider ${tint.name}`}>
+                      {s.title}
+                    </div>
+                    <ul className={`ml-4 mt-2 list-disc space-y-2 text-sm text-slate-700 ${tint.marker}`}>
+                      {s.items.map((it) => (
+                        <li key={it} className="pl-1 leading-relaxed">
+                          <Markdown inline>{it}</Markdown>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
