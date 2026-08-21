@@ -68,41 +68,115 @@ const FLASH_MS = 2000;
 // just pressed can end up above the top edge, leaving the middle of a text
 // nobody has started reading.
 //
-// So the list is brought back to that header - once the movement is over. The
-// height it has to scroll to is not known while two panels are still animating,
-// and a scroll started into a moving layout lands wherever the layout happened
-// to be. Waiting for a fixed time would be guessing at a fold that is timed by
-// its own text, so the element is watched instead: a few frames in the same
-// place mean it has settled.
+// So the list is brought back to that header - but only once whatever moves it
+// has stopped, because a scroll aimed into a moving layout lands where the
+// layout happened to be. Two things had to be got right here.
 //
-// The wait has a floor, because at the moment of the click nothing has moved
-// yet - the styles have only just changed, and a header that is about to travel
-// half a screen still reads as standing still. Without it the scroll aims at
-// the layout as it was and overshoots by the height of the release that was
-// closing. SETTLE_CAP is the way out if something on the page never stops.
-const SETTLE_STILL = 3;
-const SETTLE_FLOOR = 6;
-const SETTLE_CAP = 60;
+// A release above the header folding away is what drags it up, and the release
+// being opened is what makes room to scroll into: while its notes are still
+// unfolding there is not enough page under the header for it to reach the top,
+// and the scroll stops short. So the wait is for every panel in the list to be
+// where its header says it should be - shut at nothing, open at the full height
+// of its notes. Asked this way, a second press while the first fold is still
+// running waits for both, which listening to one panel's transitionend does not
+// (that event also arrives from the notes fading inside it, in less time than
+// the fold takes).
+//
+// And only the last press counts: a reader who opens one release and another
+// straight after would otherwise be carried to the version they moved on from.
+//
+// The last releases in a list have nowhere to scroll to: the list ends before
+// the header can reach the top, the scroll stops against the bottom, and the
+// version lands at a different height every time depending on how long it is.
+// So the list is given exactly the run-up it lacks, and no more - the room is
+// measured for the release being opened and goes back to nothing for one that
+// has the page under it anyway. Only inside a scrolling card: on a page that
+// scrolls as a whole, empty height below the card is worse than a header that
+// stops short of the top.
+//
+// The scroll runs with the fold rather than after it. Waiting for the fold to
+// finish and then scrolling is two movements with a pause between them, and the
+// pause is the part that reads as broken. Instead the list is pulled towards the
+// header a share of the remaining distance every frame - as the fold moves the
+// header, the distance is simply recomputed, and the two motions arrive
+// together. SCROLL_CAP ends it if the distance never closes.
+const SCROLL_GAP = 16;
+const SCROLL_EASE = 0.22;
+const SCROLL_CAP = 150;
+let scrollJob = 0;
 
-function scrollToRelease(anchor: string) {
+// scrollBox is the thing that scrolls around a release: the card on the Changes
+// tab, the card on the About page, or the page itself.
+function scrollBox(el: HTMLElement): HTMLElement | null {
+  let p = el.parentElement;
+  while (p) {
+    const overflow = getComputedStyle(p).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return p;
+    p = p.parentElement;
+  }
+  return null;
+}
+
+// moving reports whether any release in the list is still folding or unfolding.
+function moving(): boolean {
+  for (const panel of document.querySelectorAll<HTMLElement>('[id$="-notes"]')) {
+    const header = document.getElementById(panel.id.replace(/-notes$/, "-title"));
+    const open = header?.getAttribute("aria-expanded") === "true";
+    const notes = panel.firstElementChild?.firstElementChild;
+    const target = open && notes ? notes.getBoundingClientRect().height : 0;
+    const now = Number.parseFloat(getComputedStyle(panel).gridTemplateRows);
+    if (Math.abs((Number.isFinite(now) ? now : 0) - target) > 0.5) return true;
+  }
+  return false;
+}
+
+function scrollToRelease(anchor: string, list: HTMLElement | null, spacer: HTMLElement | null) {
   const el = document.getElementById(anchor);
-  if (!el) return;
-  const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  let last = Number.NaN;
-  let still = 0;
+  const page = document.scrollingElement as HTMLElement | null;
+  const box = (el && scrollBox(el)) ?? page;
+  if (!el || !box || !list) return;
+  const job = ++scrollJob;
+  const quick = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  // Room is only ever made inside a card: on a page that scrolls as a whole it
+  // would be empty height under everything, not a run-up for a list.
+  const room = spacer && box !== page ? spacer : null;
+
+  const edge = () => (box === page ? 0 : box.getBoundingClientRect().top);
+  const missing = () => {
+    if (!room) return 0;
+    const end = list.getBoundingClientRect().bottom - room.offsetHeight;
+    const below = end - el.getBoundingClientRect().top;
+    // Rounded up: a run-up a pixel short of what the header needs is a header
+    // that stops a pixel short of the top.
+    return Math.max(0, Math.ceil(box.clientHeight - SCROLL_GAP - below));
+  };
+
   let frames = 0;
-  const settle = () => {
-    const top = el.getBoundingClientRect().top;
-    still = top === last ? still + 1 : 0;
-    last = top;
-    frames += 1;
-    if ((still >= SETTLE_STILL && frames >= SETTLE_FLOOR) || frames >= SETTLE_CAP) {
-      el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  const step = () => {
+    if (job !== scrollJob) return;
+    // The run-up grows while the fold is still running and is trimmed to the
+    // height actually needed once it is over: more than that is empty page.
+    const need = missing();
+    if (room && need > room.offsetHeight) room.style.height = `${need}px`;
+    const away = el.getBoundingClientRect().top - edge() - SCROLL_GAP;
+    if ((!moving() && Math.abs(away) < 0.5) || frames++ > SCROLL_CAP) {
+      if (room) {
+        room.style.height = `${missing()}px`;
+        // Trimming the run-up can pull the list back by a pixel or two; the
+        // header takes them back without an animation nobody would see.
+        const rest = el.getBoundingClientRect().top - edge() - SCROLL_GAP;
+        if (Math.abs(rest) > 0.5) box.scrollTop += rest;
+      }
       return;
     }
-    requestAnimationFrame(settle);
+    // A step under a pixel is a step the browser rounds away, and the list
+    // would spend the rest of the animation two pixels short of the top. The
+    // last stretch is taken whole.
+    const pull = away * SCROLL_EASE;
+    box.scrollTop += quick || Math.abs(pull) < 1 ? away : pull;
+    requestAnimationFrame(step);
   };
-  requestAnimationFrame(settle);
+  requestAnimationFrame(step);
 }
 
 // The version that has no number yet: everything merged since the last release,
@@ -178,11 +252,20 @@ export function Changelog({
   const opened = shown.find((e) => releaseAnchor(e.version) === highlight)?.version ?? newest;
   const [chosen, setChosen] = useState<{ of?: string; version: string | null } | null>(null);
   const open = chosen && chosen.of === newest ? chosen.version : (opened ?? null);
+  // The list and the empty height under its last release, both written to
+  // directly: the run-up is measured frame by frame while a version unfolds,
+  // and a state update per frame would re-render the whole history for a number
+  // that is only ever a height.
+  const list = useRef<HTMLDivElement>(null);
+  const spacer = useRef<HTMLDivElement>(null);
+
   const choose = (version: string | null) => {
     setChosen({ of: newest, version });
     // Only on opening: folding the one being read is a place the reader is
-    // already looking at.
-    if (version) scrollToRelease(releaseAnchor(version));
+    // already looking at. Closing gives the run-up back, so the list does not
+    // end in empty page.
+    if (version) scrollToRelease(releaseAnchor(version), list.current, spacer.current);
+    else if (spacer.current) spacer.current.style.height = "0px";
   };
 
   const [limit, setLimit] = useState(pageSize ?? 0);
@@ -221,7 +304,7 @@ export function Changelog({
     // one: a line every 40 pixels turns a short list into a grid, and the
     // rounded hover behind a row would end short of a full-width rule anyway,
     // as if the row had been cut.
-    <div className="flex flex-col gap-1">
+    <div ref={list} className="flex flex-col gap-1">
       {paged.map((e) => {
         const anchor = releaseAnchor(e.version);
         return (
@@ -246,6 +329,10 @@ export function Changelog({
           Показать ещё {rest} {ruPlural(rest, "версию", "версии", "версий")}
         </button>
       )}
+
+      {/* The run-up under the last release: nothing until a version that ends
+          the list needs page under it to reach the top edge. */}
+      <div ref={spacer} aria-hidden />
     </div>
   );
 }

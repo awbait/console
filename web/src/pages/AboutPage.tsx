@@ -116,7 +116,12 @@ export function AboutPage() {
                   <ErrorBox error={changelog.error} />
                 ) : notes.length > 0 ? (
                   <Card padded={false} className="flex flex-col lg:min-h-0 lg:flex-1">
-                    <div className="scroll-slim p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                    {/* The scrollbar keeps a column of its own (10px), so a
+                        version unfolding past the bottom does not take the
+                        width off the text as it appears. The right padding is
+                        short by that column, or the notes would sit further
+                        from their edge than from the left one. */}
+                    <div className="scroll-slim py-4 pl-4 pr-1.5 [scrollbar-gutter:stable] lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                       <Changelog entries={notes} highlight={target} current={info.version} />
                     </div>
                   </Card>

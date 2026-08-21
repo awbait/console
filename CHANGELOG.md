@@ -21,6 +21,9 @@ All notable changes to this project are documented in this file.
 ### Fixed
 - A version with nothing under it is no longer shown. After a release the
   changelog used to open with an empty "Готовится к выпуску" block.
+- The text in the changelog no longer narrows when a version unfolds: the
+  scrollbar keeps a column of its own instead of taking the width off the notes
+  as it appears.
 
 ## [0.6.0] - 2026-08-20
 

@@ -266,7 +266,7 @@ function ChartChangelog({ project, name }: { project: string; name: string }) {
       {/* No padding at the top: the header of the open version sticks to the
           edge of this box, and a gap above it is a strip the notes would scroll
           through in the open. */}
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto pb-4 pl-4 pr-1.5 [scrollbar-gutter:stable]">
         <Changelog entries={notes} pageSize={CHANGELOG_PAGE} stickyHeaders />
       </div>
     </Card>
