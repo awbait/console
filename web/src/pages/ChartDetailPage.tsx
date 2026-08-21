@@ -244,7 +244,11 @@ function DocTab({ id, children }: { id: string; children: React.ReactNode }) {
   return (
     <Tab
       id={id}
-      className="-mb-px cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-medium text-gray-500 outline-none transition-colors hover:bg-gray-50 hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+      // The hover draws the same underline in grey, so the pointer shows where
+      // the mark would move. Not on the open tab: there the mark is already
+      // where it belongs, and a grey line over the blue one would read as
+      // losing the place rather than as pointing at it.
+      className="-mb-px cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-medium text-gray-500 outline-none transition-colors hover:bg-gray-50 hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 [&:not([data-selected])]:hover:border-gray-300"
     >
       {children}
     </Tab>
