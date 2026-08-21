@@ -619,6 +619,7 @@ GITLAB_WEBHOOK_TOKEN=...
 ARGOCD_URL=https://argocd.example.com
 ARGOCD_TOKEN=...
 ARGOCD_PROJECT=portal-managed
+ARGOCD_NAMESPACE=argocd                                # namespace, в котором работает Argo CD
 ARGOCD_DEFAULT_CLUSTER=in-cluster
 ARGOCD_APP_NAME_TEMPLATE={{.Team}}-{{.ServiceName}}    # TBD конкретный формат
 STATUS_UPDATE_MODE=polling                              # polling|webhook|stream

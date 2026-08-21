@@ -120,7 +120,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	gitops.ChartRegistry = cfg.ChartRegistry // OCI base for the chart source in application.yaml
+	gitops.ChartRegistry = cfg.ChartRegistry  // OCI base for the chart source in application.yaml
+	gitops.AppNamespace = cfg.ArgoCDNamespace // where Argo CD reads Applications from
 	bus := events.New()
 	catalogSvc := catalog.New(hb, c)
 	if cfg.GitLabAutoMerge {
