@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-21
+
+Релиз про чтение изменений: журнал портала и история версий чарта раскрываются
+по одной версии. Заказ сервиса стал требовать меньше ручной работы: место
+команды в GitLab портал готовит сам.
+
 ### Добавлено
 - Портал сам заводит подгруппу команды в GitLab, когда команда заказывает
   сервис впервые. Раньше её создавали руками, и до этого заказ не проходил.
@@ -362,7 +368,8 @@ GitOps-провижининг, согласование публикаций и 
 - Сборка и релизы на GitHub Actions: проверки PR, тег и GitHub Release, сборка
   образов портала и коллектора.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/awbait/console/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awbait/console/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awbait/console/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/awbait/console/compare/v0.3.0...v0.4.0
