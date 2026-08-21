@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-21
+
+A release about reading what changed: the portal's own changelog and a chart's
+version history now open one version at a time. Ordering a service also got less
+manual, with the portal preparing the team's place in GitLab itself.
+
 ### Added
 - The portal creates a team's subgroup in GitLab itself, the first time that
   team orders a service. It used to be created by hand, and an order refused to
@@ -362,7 +368,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/awbait/console/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awbait/console/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awbait/console/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/awbait/console/compare/v0.3.0...v0.4.0
