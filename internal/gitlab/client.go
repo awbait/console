@@ -139,6 +139,26 @@ func (c *Client) GetProject(ctx context.Context, fullPath string) (*Project, err
 	return &p, nil
 }
 
+// CreateGroup creates a subgroup under parentID. The subgroup inherits the
+// parent's visibility, so a private GitOps group does not sprout a public team
+// group; membership is not touched, because who may see a team's repositories
+// is decided in GitLab, not here.
+func (c *Client) CreateGroup(ctx context.Context, parentID int, path, name string) (*Group, error) {
+	body := map[string]any{
+		"name":      name,
+		"path":      path,
+		"parent_id": parentID,
+	}
+	var g Group
+	if err := c.do(ctx, http.MethodPost, "/groups", nil, body, &g); err != nil {
+		if isTakenErr(err) {
+			return nil, models.ErrConflict
+		}
+		return nil, err
+	}
+	return &g, nil
+}
+
 func (c *Client) CreateProject(ctx context.Context, namespaceID int, name string) (*Project, error) {
 	// Create an EMPTY repo (no auto-generated README): the caller (ensureRepo)
 	// seeds a single .gitkeep to establish the default branch. An empty repo has

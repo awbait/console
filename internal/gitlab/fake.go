@@ -100,6 +100,22 @@ func (f *Fake) GetGroup(ctx context.Context, fullPath string) (*Group, error) {
 	return &cp, nil
 }
 
+func (f *Fake) CreateGroup(ctx context.Context, parentID int, path, _ string) (*Group, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	parent, ok := f.groupByID[parentID]
+	if !ok {
+		return nil, models.ErrNotFound
+	}
+	full := parent.FullPath + "/" + path
+	if _, exists := f.groups[full]; exists {
+		return nil, models.ErrConflict
+	}
+	g := f.addGroup(full)
+	cp := *g
+	return &cp, nil
+}
+
 func (f *Fake) GetProject(ctx context.Context, fullPath string) (*Project, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

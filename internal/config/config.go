@@ -110,11 +110,12 @@ type Config struct {
 	HarborTimeout     time.Duration `env:"HARBOR_TIMEOUT" envDefault:"30s" desc:"How long to wait for a Harbor response."`
 
 	GitLabURL           string        `env:"GITLAB_URL,required,notEmpty" desc:"Address of GitLab." example:"http://localhost:8929"`
-	GitLabToken         string        `env:"GITLAB_TOKEN,required,notEmpty" desc:"Token the portal creates repositories and merge requests with. Needs the api scope." example:"glpat-localdev0123456789abcd"`
+	GitLabToken         string        `env:"GITLAB_TOKEN,required,notEmpty" desc:"Token the portal creates repositories and merge requests with. Needs the api scope, and the Owner role on the GitOps group if it is to create team subgroups too." example:"glpat-localdev0123456789abcd"`
 	GitLabTimeout       time.Duration `env:"GITLAB_TIMEOUT" envDefault:"30s" desc:"How long to wait for a GitLab response."`
 	GitLabAutoMerge     bool          `env:"GITLAB_AUTO_MERGE" envDefault:"false" desc:"Merge the portal's own merge requests without waiting for a human. A service whose version asks for a review is merged by a person even so, and no service can merge itself where this is off."`
 	GitLabGitopsGroup   string        `env:"GITLAB_GITOPS_GROUP" envDefault:"managed-services" desc:"Top-level group the GitOps repositories live in."`
 	GitLabSubgroupTmpl  string        `env:"GITLAB_TEAM_SUBGROUP_TEMPLATE" envDefault:"team-{{.Team}}" desc:"Template for a team's subgroup path inside that group."`
+	GitLabCreateGroup   bool          `env:"GITLAB_CREATE_TEAM_SUBGROUP" envDefault:"true" desc:"Create a team's subgroup on the first order when it is missing. Turn it off where subgroups are provisioned elsewhere: then a team without one cannot order until somebody creates it. Creating a subgroup needs the token to own the top-level group."`
 	GitLabDefaultBranch string        `env:"GITLAB_DEFAULT_BRANCH" envDefault:"main" desc:"Branch order changes are merged into and Argo CD tracks."`
 	GitLabWebhookToken  string        `env:"GITLAB_WEBHOOK_TOKEN" desc:"Secret verifying notifications from GitLab. Set the same value as the webhook secret token there; empty leaves the portal to find merges by polling."`
 	GitLabWebhookURL    string        `env:"GITLAB_WEBHOOK_URL" desc:"Address GitLab delivers notifications to, as seen from GitLab itself. Setting it lets the portal register the webhook on its own, including on repositories it creates later; empty means somebody registers it by hand." example:"http://host.docker.internal:8080/api/v1/webhooks/gitlab"`

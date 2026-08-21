@@ -66,6 +66,11 @@ type Service struct {
 	// by main only when the webhook is configured; nil (and nil-safe) otherwise,
 	// which is the local/fakes case.
 	Hooks *gitlab.HookManager
+	// CreateTeamSubgroup lets the portal create a team's subgroup in GitLab when
+	// the first order needs it (GITLAB_CREATE_TEAM_SUBGROUP). Wired by main. Off
+	// where subgroups come from somewhere else, and off by default here so a
+	// service assembled by hand never invents groups in GitLab on its own.
+	CreateTeamSubgroup bool
 	// notify tells the person who ordered a service what became of it. Optional:
 	// nil in tests, where nobody is listening.
 	notify Notifier
@@ -1001,16 +1006,74 @@ func escapePointerToken(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "~", "~0"), "/", "~1")
 }
 
-// ensureRepo verifies the (manually-created) team subgroup and idempotently
-// creates the chart repo.
+// createSubgroup creates a team's subgroup, the one step of the GitOps layout
+// the portal used to leave to a person. It did not survive contact with a real
+// instance: the subgroup is a step of onboarding nobody remembers, and the cost
+// of forgetting it landed on whoever pressed "order" - a refusal with a group
+// path in it, for something they cannot do anything about. The repository inside
+// the subgroup was always created here, and creating the subgroup carries no
+// risk the repository did not: the team name is not free text, it comes from the
+// caller's own groups in the IdP.
+//
+// What stays manual is membership. Who from the team may see and review what is
+// in the subgroup is decided in GitLab, and the portal does not touch it.
+func (s *Service) createSubgroup(ctx context.Context, subgroup string) (*gitlab.Group, error) {
+	if !s.CreateTeamSubgroup {
+		return nil, fmt.Errorf("%w: team subgroup %q does not exist, and creating it is turned off",
+			ErrNotConfigured, subgroup)
+	}
+	// The parent is everything above the last segment, so a template that renders
+	// a nested path creates only its last group and expects the rest to exist.
+	i := strings.LastIndex(subgroup, "/")
+	if i <= 0 || i == len(subgroup)-1 {
+		// No parent, or an empty last segment: the template rendered to nothing
+		// under the top group. A configuration bug, not something to create.
+		return nil, fmt.Errorf("%w: %q is not a subgroup path", ErrNotConfigured, subgroup)
+	}
+	parentPath, leaf := subgroup[:i], subgroup[i+1:]
+	parent, err := s.gl.GetGroup(ctx, parentPath)
+	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			// The GitOps group itself is missing. That is the portal's own
+			// configuration (GITLAB_GITOPS_GROUP), and it is not for the portal
+			// to invent a top-level group in somebody's GitLab.
+			return nil, fmt.Errorf("%w: GitOps group %q not found", ErrNotConfigured, parentPath)
+		}
+		return nil, gitopsErr("group", err)
+	}
+
+	grp, err := s.gl.CreateGroup(ctx, parent.ID, leaf, leaf)
+	switch {
+	case errors.Is(err, models.ErrConflict):
+		// Two first orders of the same team at once: the loser reads back what
+		// the winner made instead of failing an order over a race.
+		if grp, err = s.gl.GetGroup(ctx, subgroup); err != nil {
+			return nil, gitopsErr("group", err)
+		}
+	case errors.Is(err, gitlab.ErrForbidden):
+		// Creating a subgroup needs the Owner role on the parent; a token with
+		// less can do everything else the portal asks of it, so say which right
+		// is missing rather than leaving it to be guessed from a 403.
+		return nil, fmt.Errorf("%w: not allowed to create the subgroup %q (the token needs the Owner role on %q): %v",
+			ErrNotConfigured, subgroup, parentPath, err)
+	case err != nil:
+		return nil, gitopsErr("create group", err)
+	}
+	s.logger().Info("team subgroup created", "group", subgroup, "gitlab_group_id", grp.ID)
+	return grp, nil
+}
+
+// ensureRepo resolves the team subgroup and idempotently creates the chart repo.
 func (s *Service) ensureRepo(ctx context.Context, team, chart string) (*gitlab.Project, error) {
 	subgroup := s.gitops.SubgroupPath(team)
 	grp, err := s.gl.GetGroup(ctx, subgroup)
 	if err != nil {
-		if errors.Is(err, models.ErrNotFound) {
-			return nil, fmt.Errorf("%w: team subgroup %q not found (must be created manually)", ErrUpstream, subgroup)
+		if !errors.Is(err, models.ErrNotFound) {
+			return nil, gitopsErr("group", err)
 		}
-		return nil, gitopsErr("group", err)
+		if grp, err = s.createSubgroup(ctx, subgroup); err != nil {
+			return nil, err // already classified
+		}
 	}
 	repoPath := s.gitops.RepoPath(team, chart)
 	proj, err := s.gl.GetProject(ctx, repoPath)

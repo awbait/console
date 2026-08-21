@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- The portal creates a team's subgroup in GitLab itself, the first time that
+  team orders a service. It used to be created by hand, and an order refused to
+  go through until it was. Set `GITLAB_CREATE_TEAM_SUBGROUP=false` where
+  subgroups come from somewhere else.
+
 ### Changed
 - The changelog on the About page opens one version at a time. The newest one is
   open, the rest are folded into a line each: the number and the date. The
@@ -25,6 +31,12 @@ All notable changes to this project are documented in this file.
   its own, leaving half the screen empty once the menu was folded away.
 
 ### Fixed
+- An order refused because the platform is not set up for the team no longer
+  reads as an outage. The portal says a person has to finish the setup, and does
+  not suggest trying again.
+- Why a request failed now goes into the portal's log. It used to be shown only
+  to the browser, so finding out took reproducing the failure with the developer
+  console open.
 - A version with nothing under it is no longer shown. After a release the
   changelog used to open with an empty "Готовится к выпуску" block.
 - The text in the changelog no longer narrows when a version unfolds: the

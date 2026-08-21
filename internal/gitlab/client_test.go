@@ -63,6 +63,39 @@ func TestClientNotFound(t *testing.T) {
 	}
 }
 
+func TestClientCreateGroup(t *testing.T) {
+	var body map[string]any
+	c, _ := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v4/groups" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &body)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 9, "full_path": "managed-services/team-core"})
+	})
+
+	g, err := c.CreateGroup(context.Background(), 7, "team-core", "team-core")
+	if err != nil || g.ID != 9 {
+		t.Fatalf("CreateGroup: %+v err=%v", g, err)
+	}
+	// parent_id and the bare last segment, not the full path: GitLab builds the
+	// path from the parent itself and rejects a slash in it.
+	if body["parent_id"] != float64(7) || body["path"] != "team-core" {
+		t.Fatalf("payload = %v", body)
+	}
+}
+
+func TestClientCreateGroupTaken(t *testing.T) {
+	// Two first orders of the same team at once: the loser must see a conflict
+	// it can resolve by reading the group back, not an opaque 400.
+	c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":{"path":["has already been taken"]}}`, http.StatusBadRequest)
+	})
+	if _, err := c.CreateGroup(context.Background(), 7, "team-core", "team-core"); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("want ErrConflict, got %v", err)
+	}
+}
+
 func TestClientForbidden(t *testing.T) {
 	// A 403 is the instance answering that the token may not do this. Callers
 	// tell it apart from an outage because retrying never grants a permission,
