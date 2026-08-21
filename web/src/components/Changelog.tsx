@@ -239,14 +239,23 @@ export function withContent(entries: ChangelogEntry[]): ChangelogEntry[] {
 // The whole history is drawn. A folded release is one line, so a long list
 // costs a screen of lines and a scrollbar, and a button that offers "one more
 // version" is a control that asks for a press to do nothing worth pressing for.
+//
+// `roomBelow` is for a list that lives in a box of its own height - a card that
+// scrolls inside a page that does not. Such a box ends where the list ends, and
+// the releases at the bottom have nothing to scroll into, so they are given the
+// run-up (see the scroll notes above). A list that scrolls with the page must
+// not: there the run-up is empty page under everything, and the last release
+// stopping short of the top edge is how the end of a page has always read.
 export function Changelog({
   entries,
   highlight,
   current,
+  roomBelow = false,
 }: {
   entries: ChangelogEntry[];
   highlight?: string;
   current?: string;
+  roomBelow?: boolean;
 }) {
   const shown = useMemo(() => withContent(entries), [entries]);
   const newest = shown[0]?.version;
@@ -284,11 +293,11 @@ export function Changelog({
           releaseAnchor(version),
           closing ? releaseAnchor(closing) : undefined,
           list.current,
-          spacer.current,
+          roomBelow ? spacer.current : null,
         );
       else if (spacer.current) spacer.current.style.height = "0px";
     },
-    [newest],
+    [newest, roomBelow],
   );
 
   // A link that names a version wins over a fold: without this, a version the
@@ -325,8 +334,8 @@ export function Changelog({
   const ready = shown.length > 0;
   useEffect(() => {
     if (!highlight || !ready) return;
-    scrollToRelease(highlight, undefined, list.current, spacer.current);
-  }, [highlight, ready]);
+    scrollToRelease(highlight, undefined, list.current, roomBelow ? spacer.current : null);
+  }, [highlight, ready, roomBelow]);
 
   return (
     // Rows are told apart by the space between them, not by a rule under each

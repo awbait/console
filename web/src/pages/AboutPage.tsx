@@ -110,7 +110,12 @@ export function AboutPage() {
                         short by that column, or the notes would sit further
                         from their edge than from the left one. */}
                     <div className="scroll-slim py-4 pl-3 pr-2 [scrollbar-gutter:stable] lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-                      <Changelog entries={notes} highlight={target} current={info.version} />
+                      <Changelog
+                        entries={notes}
+                        highlight={target}
+                        current={info.version}
+                        roomBelow
+                      />
                     </div>
                   </Card>
                 ) : (

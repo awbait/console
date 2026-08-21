@@ -111,11 +111,13 @@ export function ChartDetailPage() {
     !!pub?.approved_view_version && isNewer(liveVersion, pub.approved_view_version);
 
   return (
-    // The page itself stays within the viewport: the header keeps its size and
-    // only the open doc tab scrolls, so the shell never grows a scrollbar of its
-    // own.
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
-      <div className="flex shrink-0 items-start justify-between gap-6">
+    // The page scrolls as a page. Locking it to the viewport and scrolling the
+    // document inside left the document whatever height the header did not
+    // take - a release of forty lines read through a slot of four hundred
+    // pixels, on a laptop less than that. A chart's page is a text; it is read
+    // the way texts are read.
+    <div className="flex flex-col gap-6">
+      <div className="flex items-start justify-between gap-6">
         <div className="min-w-0">
           <Breadcrumbs
             items={[
@@ -191,9 +193,9 @@ export function ChartDetailPage() {
       <Tabs
         selectedKey={tab}
         onSelectionChange={(key) => openTab(String(key))}
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex flex-col"
       >
-        <Card padded={false} className="flex max-h-full min-h-0 flex-col overflow-hidden">
+        <Card padded={false} className="flex flex-col overflow-hidden">
           <TabList
             aria-label="Документация чарта"
             className="flex shrink-0 gap-1 border-b border-gray-200 px-2"
@@ -201,10 +203,10 @@ export function ChartDetailPage() {
             <DocTab id="readme">Описание</DocTab>
             <DocTab id="changelog">Изменения</DocTab>
           </TabList>
-          <TabPanel id="readme" className="flex min-h-0 flex-col outline-none">
+          <TabPanel id="readme" className="outline-none">
             <Readme project={project} name={name} version={version} />
           </TabPanel>
-          <TabPanel id="changelog" className="flex min-h-0 flex-col outline-none">
+          <TabPanel id="changelog" className="outline-none">
             <ChartChangelog project={project} name={name} highlight={release} />
           </TabPanel>
         </Card>
@@ -258,7 +260,7 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   return (
     // A readable measure rather than the full width of a wide screen: a README
     // is prose, and prose across 1500 pixels is read by nobody.
-    <div className="scroll-slim min-h-0 overflow-y-auto py-5 pl-5 pr-2 [scrollbar-gutter:stable]">
+    <div className="p-5">
       <div className="max-w-3xl">
         {loading ? (
           <SkeletonText lines={8} />
@@ -295,7 +297,7 @@ function ChartChangelog({
   return (
     // The rows carry their own inset, so the sides are short by it and the
     // version numbers stand on the same left edge as the tab above them.
-    <div className="scroll-slim min-h-0 overflow-y-auto py-4 pl-3 pr-2 [scrollbar-gutter:stable]">
+    <div className="py-4 pl-3 pr-4">
       <Changelog entries={notes} highlight={highlight} />
     </div>
   );

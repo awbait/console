@@ -14,6 +14,9 @@ All notable changes to this project are documented in this file.
   by colour, one per category.
 - A chart's Changes tab reads like the portal's own changelog: every version a
   line of its own, one of them open.
+- The chart page scrolls as a page. The description and the history used to live
+  in a window as tall as whatever the header left over, which on a laptop meant
+  reading a long release through a slot.
 - "Описание" and "Изменения" are tabs of one panel on the chart page. It used
   to be a strip of tabs above a separate full-screen frame, empty for
   three quarters of it. The panel takes the height its text needs, and the
