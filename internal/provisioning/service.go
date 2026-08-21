@@ -470,6 +470,11 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		Status:        models.StatusDraft,
 	}
 	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.ServiceName) // computed once
+	// Same idea as the application name: rendered from a template once, at
+	// creation, and carried on the row. Re-rendering it later would follow a
+	// changed GITLAB_INSTANCE_DIR_TEMPLATE and point the portal at a folder its
+	// files are not in.
+	r.InstancePath = s.gitops.NewInstancePath(r)
 	r.ResourceIdentity = s.resourceIdentity(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.ServiceName, in.Values)
 	if err := s.checkServiceName(ctx, r); err != nil {
 		return nil, err
@@ -498,8 +503,8 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	}
 	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
 	actions := []gitlab.FileAction{
-		{Action: "create", FilePath: s.gitops.AppPath(r.Cluster, r.ServiceName), Content: appYAML},
-		{Action: "create", FilePath: s.gitops.ValuesPath(r.Cluster, r.ServiceName), Content: valuesYAML},
+		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
+		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
 	}
 	if _, err := s.openChange(ctx, r, proj, models.ActionCreate, actions); err != nil {
 		return r, err
@@ -547,8 +552,8 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	}
 	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
 	actions := []gitlab.FileAction{
-		{Action: "create", FilePath: s.gitops.AppPath(r.Cluster, r.ServiceName), Content: appYAML},
-		{Action: "create", FilePath: s.gitops.ValuesPath(r.Cluster, r.ServiceName), Content: valuesYAML},
+		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
+		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
 	}
 	if _, err := s.openChange(ctx, r, proj, models.ActionCreate, actions); err != nil {
 		return r, err
@@ -636,8 +641,8 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	r.EditorState = in.EditorState // nil keeps what the store already holds
 	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
 	actions := []gitlab.FileAction{
-		{Action: "update", FilePath: s.gitops.AppPath(r.Cluster, r.ServiceName), Content: appYAML},
-		{Action: "update", FilePath: s.gitops.ValuesPath(r.Cluster, r.ServiceName), Content: valuesYAML},
+		{Action: "update", FilePath: s.gitops.AppPath(r), Content: appYAML},
+		{Action: "update", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
 	}
 	if _, err := s.openChange(ctx, r, proj, models.ActionUpdate, actions); err != nil {
 		return nil, err
@@ -779,7 +784,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		return nil, err
 	}
 	// delete every file in the instance folder
-	files, terr := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r.Cluster, r.ServiceName))
+	files, terr := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r))
 	if terr != nil {
 		return nil, gitopsErr("list tree", terr)
 	}

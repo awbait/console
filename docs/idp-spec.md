@@ -200,23 +200,27 @@ Webhook от Harbor (`POST /webhooks/harbor`) на `PUSH_ARTIFACT` - инвал�
 managed-services/              ← top-level GitLab group (GITLAB_GITOPS_GROUP)
   team-core/                   ← подгруппа команды - ЗАВОДИТСЯ ВРУЧНУЮ (портал не создаёт)
     gateway/                   ← репо = managed service (chart) - портал создаёт 1 раз, если нет
-      payments-gateway/        ← папка = заказанный инстанс (service_name)
-        application.yaml       ← ArgoCD Application манифест
-        values.yaml
-      public-gateway/          ← второй инстанс того же сервиса той же команды
-        application.yaml
-        values.yaml
+      in-cluster/              ← кластер назначения
+        payments-gateway/      ← папка = заказанный инстанс (GITLAB_INSTANCE_DIR_TEMPLATE)
+          application.yaml     ← ArgoCD Application манифест
+          values.yaml
+        public-gateway/        ← второй инстанс того же сервиса той же команды
+          application.yaml
+          values.yaml
     postgres/                  ← другой managed service
-      payments-db/
-        application.yaml
-        values.yaml
+      in-cluster/
+        payments-db/
+          application.yaml
+          values.yaml
   team-dbaas/                  ← другая команда, изолирована правами GitLab
     ...
 ```
 
-- **Путь к манифестам:** `{GITLAB_GITOPS_GROUP}/{team-subgroup}/{chart}/{service_name}/`.
+- **Путь к манифестам:** `{GITLAB_GITOPS_GROUP}/{team-subgroup}/{chart}/{cluster}/{instance}/`.
   - `team-subgroup` - по шаблону `GITLAB_TEAM_SUBGROUP_TEMPLATE` (дефолт `team-{{.Team}}`, совпадает с Keycloak-группой).
-  - Репо называется по managed-сервису (имя чарта), внутри - папка на каждый заказанный инстанс (`service_name`), т.к. команда может заказать несколько инстансов одного сервиса.
+  - Репо называется по managed-сервису (имя чарта), внутри - папка на каждый заказанный инстанс, т.к. команда может заказать несколько инстансов одного сервиса.
+  - `instance` - по шаблону `GITLAB_INSTANCE_DIR_TEMPLATE`. Пусто - `service_name`. Доступны `.Team`, `.Chart`, `.ServiceName`, `.Namespace`, `.Cluster`. Шаблон обязан давать разным сервисам одной команды и одного чарта разные папки, иначе они пишут одни и те же файлы.
+  - Путь фиксируется в заказе при создании (`requests.instance_path`) и дальше читается оттуда. Смена шаблона действует только на новые заказы: иначе портал начал бы писать, сверять дрейф и удалять не ту папку, в которой лежат файлы заказа.
 - **Создание:**
   - **Подгруппу команды портал создаёт сам** при первом заказе, если её нет (`GITLAB_CREATE_TEAM_SUBGROUP=true`, по умолчанию включено). Нужна роль Owner на `GITLAB_GITOPS_GROUP`. Права команды на её подгруппу настраиваются в GitLab отдельно, портал их не трогает.
   - Если создание выключено или прав не хватает → заказ падает с `409/not_configured` и понятным текстом, а не молча.
@@ -611,6 +615,7 @@ GITLAB_URL=https://gitlab.example.com
 GITLAB_TOKEN=...                                   # group access token группы managed-services, scope api, роль Owner
 GITLAB_GITOPS_GROUP=managed-services               # top-level группа (путь или id)
 GITLAB_TEAM_SUBGROUP_TEMPLATE=team-{{.Team}}       # подгруппа команды = Keycloak-группа
+GITLAB_INSTANCE_DIR_TEMPLATE=                      # папка инстанса; пусто = service_name
 GITLAB_CREATE_TEAM_SUBGROUP=true                   # заводить подгруппу команды при первом заказе
 GITLAB_DEFAULT_BRANCH=main
 GITLAB_WEBHOOK_TOKEN=...

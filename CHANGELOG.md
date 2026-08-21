@@ -9,6 +9,12 @@ All notable changes to this project are documented in this file.
   team orders a service. It used to be created by hand, and an order refused to
   go through until it was. Set `GITLAB_CREATE_TEAM_SUBGROUP=false` where
   subgroups come from somewhere else.
+- The folder an ordered service gets in its repository can be named by a
+  template: `GITLAB_INSTANCE_DIR_TEMPLATE`, for example
+  `{{.Namespace}}-{{.ServiceName}}`. It knows the team, the chart, the service
+  name, the namespace and the cluster, and empty keeps the service name alone.
+  An order stays in the folder it was created in, so a new template only names
+  the folders of new orders.
 
 ### Changed
 - The changelog on the About page opens one version at a time. The newest one is

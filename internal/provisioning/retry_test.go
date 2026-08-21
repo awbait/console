@@ -34,7 +34,7 @@ func editOnBranch(ctx context.Context, t *testing.T, s *stack, r *models.Request
 		t.Fatalf("get project: %v", err)
 	}
 	err = s.gl.CommitFiles(ctx, proj.ID, "main", "chore: edit outside the portal", []gitlab.FileAction{
-		{Action: "update", FilePath: s.gitops.ValuesPath(r.Cluster, r.ServiceName), Content: valuesYAML},
+		{Action: "update", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
 	})
 	if err != nil {
 		t.Fatalf("commit on main: %v", err)
@@ -60,7 +60,7 @@ func valuesOnRef(ctx context.Context, t *testing.T, s *stack, r *models.Request,
 	if err != nil {
 		t.Fatalf("get project: %v", err)
 	}
-	b, err := s.gl.GetFile(ctx, proj.ID, s.gitops.ValuesPath(r.Cluster, r.ServiceName), ref)
+	b, err := s.gl.GetFile(ctx, proj.ID, s.gitops.ValuesPath(r), ref)
 	if err != nil {
 		t.Fatalf("read values at %s: %v", ref, err)
 	}
