@@ -1,5 +1,5 @@
 import { IconChevronRight } from "@tabler/icons-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangelogEntry } from "../api/types";
 import { isRelease, releaseAnchor } from "../lib/release";
 import { Markdown } from "./Markdown";
@@ -116,10 +116,16 @@ function scrollBox(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
-// moving reports whether any release in the list is still folding or unfolding.
-function moving(): boolean {
-  for (const panel of document.querySelectorAll<HTMLElement>('[id$="-notes"]')) {
-    const header = document.getElementById(panel.id.replace(/-notes$/, "-title"));
+// moving reports whether either of the two releases a press sets in motion -
+// the one opening and the one folding away - is still on its way. Only those
+// two: reading the height of every release in the list forces the browser to
+// recompute the layout of the whole history on every frame of the animation,
+// and a chart with forty versions is a chart that stutters.
+function moving(anchors: (string | undefined)[]): boolean {
+  for (const anchor of anchors) {
+    const panel = anchor && document.getElementById(`${anchor}-notes`);
+    if (!panel) continue;
+    const header = document.getElementById(`${anchor}-title`);
     const open = header?.getAttribute("aria-expanded") === "true";
     const notes = panel.firstElementChild?.firstElementChild;
     const target = open && notes ? notes.getBoundingClientRect().height : 0;
@@ -129,7 +135,12 @@ function moving(): boolean {
   return false;
 }
 
-function scrollToRelease(anchor: string, list: HTMLElement | null, spacer: HTMLElement | null) {
+function scrollToRelease(
+  anchor: string,
+  closing: string | undefined,
+  list: HTMLElement | null,
+  spacer: HTMLElement | null,
+) {
   const el = document.getElementById(anchor);
   const page = document.scrollingElement as HTMLElement | null;
   const box = (el && scrollBox(el)) ?? page;
@@ -158,7 +169,7 @@ function scrollToRelease(anchor: string, list: HTMLElement | null, spacer: HTMLE
     const need = missing();
     if (room && need > room.offsetHeight) room.style.height = `${need}px`;
     const away = el.getBoundingClientRect().top - edge() - SCROLL_GAP;
-    if ((!moving() && Math.abs(away) < 0.5) || frames++ > SCROLL_CAP) {
+    if ((!moving([anchor, closing]) && Math.abs(away) < 0.5) || frames++ > SCROLL_CAP) {
       if (room) {
         room.style.height = `${missing()}px`;
         // Trimming the run-up can pull the list back by a pixel or two; the
@@ -255,14 +266,30 @@ export function Changelog({
   const list = useRef<HTMLDivElement>(null);
   const spacer = useRef<HTMLDivElement>(null);
 
-  const choose = (version: string | null) => {
-    setChosen({ of: newest, version });
-    // Only on opening: folding the one being read is a place the reader is
-    // already looking at. Closing gives the run-up back, so the list does not
-    // end in empty page.
-    if (version) scrollToRelease(releaseAnchor(version), list.current, spacer.current);
-    else if (spacer.current) spacer.current.style.height = "0px";
-  };
+  // Held still between renders, because a release only re-renders when its own
+  // props change and a fresh callback on every render would change all of them
+  // (see the memo on Release). The open version is read from a ref rather than
+  // captured, so the handler does not have to be rebuilt when it changes.
+  const openNow = useRef<string | null>(null);
+  openNow.current = open;
+  const toggle = useCallback(
+    (version: string, next: boolean) => {
+      const closing = openNow.current;
+      setChosen({ of: newest, version: next ? version : null });
+      // Only on opening: folding the one being read is a place the reader is
+      // already looking at. Closing gives the run-up back, so the list does not
+      // end in empty page.
+      if (next)
+        scrollToRelease(
+          releaseAnchor(version),
+          closing ? releaseAnchor(closing) : undefined,
+          list.current,
+          spacer.current,
+        );
+      else if (spacer.current) spacer.current.style.height = "0px";
+    },
+    [newest],
+  );
 
   // A link that names a version wins over a fold: without this, a version the
   // reader closed earlier would swallow the next link pointing at it. The state
@@ -298,7 +325,7 @@ export function Changelog({
   const ready = shown.length > 0;
   useEffect(() => {
     if (!highlight || !ready) return;
-    scrollToRelease(highlight, list.current, spacer.current);
+    scrollToRelease(highlight, undefined, list.current, spacer.current);
   }, [highlight, ready]);
 
   return (
@@ -314,7 +341,7 @@ export function Changelog({
             key={e.version}
             entry={e}
             isOpen={open === e.version}
-            onToggle={(next) => choose(next ? e.version : null)}
+            onToggle={toggle}
             highlighted={landed === anchor}
             inProd={!!current && isRelease(current) && releaseAnchor(current) === anchor}
           />
@@ -345,7 +372,7 @@ function paceOf(height: number): number {
 // under it. It is a component of its own because it measures itself - the notes
 // keep their natural height inside the folded row, so the panel can be timed by
 // what it is about to show.
-function Release({
+const Release = memo(function Release({
   entry: e,
   isOpen,
   onToggle,
@@ -354,7 +381,7 @@ function Release({
 }: {
   entry: ChangelogEntry;
   isOpen: boolean;
-  onToggle: (open: boolean) => void;
+  onToggle: (version: string, open: boolean) => void;
   highlighted: boolean;
   inProd: boolean;
 }) {
@@ -362,13 +389,18 @@ function Release({
   const sections = (e.sections ?? []).filter((s) => s.items.length > 0);
 
   // Measured once the notes are laid out, and again if they reflow (a window
-  // resize rewraps every line, and a release can lose or gain a screenful).
+  // resize rewraps every line, and a release can lose or gain a screenful). The
+  // height is written back only when it differs: an observer that fires on
+  // every reflow would otherwise re-render this release for the same number.
   const notes = useRef<HTMLDivElement>(null);
   const [pace, setPace] = useState(PACE_BASE);
   useEffect(() => {
     const el = notes.current;
     if (!el) return;
-    const measure = () => setPace(paceOf(el.getBoundingClientRect().height));
+    const measure = () => {
+      const next = paceOf(el.getBoundingClientRect().height);
+      setPace((p) => (p === next ? p : next));
+    };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(measure);
@@ -394,7 +426,7 @@ function Release({
           id={`${anchor}-title`}
           aria-expanded={isOpen}
           aria-controls={`${anchor}-notes`}
-          onClick={() => onToggle(!isOpen)}
+          onClick={() => onToggle(e.version, !isOpen)}
           className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-3.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${
             isOpen ? "rounded-t-xl hover:bg-slate-100/60" : "rounded-lg hover:bg-slate-100/70"
           }`}
@@ -489,4 +521,4 @@ function Release({
       </section>
     </div>
   );
-}
+});
