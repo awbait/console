@@ -1,6 +1,5 @@
 import { IconChevronRight } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ruPlural } from "@/form/fieldErrors";
 import type { ChangelogEntry } from "../api/types";
 import { isRelease, releaseAnchor } from "../lib/release";
 import { Markdown } from "./Markdown";
@@ -224,22 +223,19 @@ export function withContent(entries: ChangelogEntry[]): ChangelogEntry[] {
 // `current` is the build the portal is running: the one version that gets a
 // mark of its own. It is the About page's question - which of these am I on -
 // and a chart's history has no equivalent, since the catalog offers versions
-// rather than runs one. `pageSize` cuts a long history down to the newest N
-// with the rest behind a button, and `stickyHeaders` pins the open version's
-// header inside a scroll box, so a long release still says whose it is halfway
-// down.
+// rather than runs one.
+//
+// The whole history is drawn. A folded release is one line, so a long list
+// costs a screen of lines and a scrollbar, and a button that offers "one more
+// version" is a control that asks for a press to do nothing worth pressing for.
 export function Changelog({
   entries,
   highlight,
   current,
-  pageSize,
-  stickyHeaders = false,
 }: {
   entries: ChangelogEntry[];
   highlight?: string;
   current?: string;
-  pageSize?: number;
-  stickyHeaders?: boolean;
 }) {
   const shown = useMemo(() => withContent(entries), [entries]);
   const newest = shown[0]?.version;
@@ -268,15 +264,10 @@ export function Changelog({
     else if (spacer.current) spacer.current.style.height = "0px";
   };
 
-  const [limit, setLimit] = useState(pageSize ?? 0);
-  const paged = pageSize ? shown.slice(0, limit) : shown;
-  const rest = shown.length - paged.length;
-
   // A link that names a version wins over a fold: without this, a version the
-  // reader closed earlier would swallow the next link pointing at it, and one
-  // still behind "показать ещё" would have nothing to scroll to. The state is
-  // only rewritten when it actually differs - `shown` is a fresh array on every
-  // render, and an unconditional write here would loop.
+  // reader closed earlier would swallow the next link pointing at it. The state
+  // is only rewritten when it actually differs - `shown` is a fresh array on
+  // every render, and an unconditional write here would loop.
   useEffect(() => {
     if (!highlight) return;
     const i = shown.findIndex((e) => releaseAnchor(e.version) === highlight);
@@ -284,7 +275,6 @@ export function Changelog({
     const v = shown[i].version;
     const top = shown[0]?.version;
     setChosen((c) => (c && c.of === top && c.version === v ? c : { of: top, version: v }));
-    setLimit((l) => (l > i ? l : i + 1));
   }, [highlight, shown]);
 
   // The arrival mark: the page has just jumped somewhere, and the tint says
@@ -317,7 +307,7 @@ export function Changelog({
     // rounded hover behind a row would end short of a full-width rule anyway,
     // as if the row had been cut.
     <div ref={list} className="flex flex-col gap-1">
-      {paged.map((e) => {
+      {shown.map((e) => {
         const anchor = releaseAnchor(e.version);
         return (
           <Release
@@ -327,20 +317,9 @@ export function Changelog({
             onToggle={(next) => choose(next ? e.version : null)}
             highlighted={landed === anchor}
             inProd={!!current && isRelease(current) && releaseAnchor(current) === anchor}
-            stickyHeader={stickyHeaders}
           />
         );
       })}
-
-      {rest > 0 && (
-        <button
-          type="button"
-          onClick={() => setLimit(shown.length)}
-          className="mt-3 self-start cursor-pointer rounded-md px-2 py-1.5 text-sm font-medium text-brand-700 outline-none transition-colors hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-        >
-          Показать ещё {rest} {ruPlural(rest, "версию", "версии", "версий")}
-        </button>
-      )}
 
       {/* The run-up under the last release: nothing until a version that ends
           the list needs page under it to reach the top edge. */}
@@ -372,14 +351,12 @@ function Release({
   onToggle,
   highlighted,
   inProd,
-  stickyHeader,
 }: {
   entry: ChangelogEntry;
   isOpen: boolean;
   onToggle: (open: boolean) => void;
   highlighted: boolean;
   inProd: boolean;
-  stickyHeader: boolean;
 }) {
   const anchor = releaseAnchor(e.version);
   const sections = (e.sections ?? []).filter((s) => s.items.length > 0);
@@ -411,23 +388,14 @@ function Release({
         highlighted ? "bg-brand-50/60" : isOpen ? "bg-slate-50" : ""
       }`}
     >
-      {/* Pinned, the header needs an edge of its own: without it the line
-          sliding under it looks clipped rather than covered. It also needs the
-          ground under it, or the notes would show through as they pass. */}
-      <h3
-        className={
-          stickyHeader && isOpen
-            ? "sticky top-0 z-10 rounded-t-xl border-b border-slate-200 bg-slate-50"
-            : undefined
-        }
-      >
+      <h3>
         <button
           type="button"
           id={`${anchor}-title`}
           aria-expanded={isOpen}
           aria-controls={`${anchor}-notes`}
           onClick={() => onToggle(!isOpen)}
-          className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${
+          className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-3.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${
             isOpen ? "rounded-t-xl hover:bg-slate-100/60" : "rounded-lg hover:bg-slate-100/70"
           }`}
         >

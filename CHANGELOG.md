@@ -12,9 +12,8 @@ All notable changes to this project are documented in this file.
   reading does.
 - Inside an open version "Добавлено", "Изменено" and "Исправлено" are told apart
   by colour, one per category.
-- A chart's Changes tab draws the five newest versions and offers the rest by a
-  button. While an open release is being read, its version stays visible at the
-  top of the list.
+- A chart's Changes tab reads like the portal's own changelog: every version a
+  line of its own, one of them open.
 - "Описание" and "Изменения" are tabs of one panel on the chart page. It used
   to be a strip of tabs above a separate full-screen frame, empty for
   three quarters of it. The panel takes the height its text needs, and the

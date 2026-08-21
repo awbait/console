@@ -272,10 +272,6 @@ function Readme({ project, name, version }: { project: string; name: string; ver
   );
 }
 
-// How many versions of a chart the Changes tab draws before it asks. Enough to
-// cover "what happened lately" without rendering a chart's whole life.
-const CHANGELOG_PAGE = 5;
-
 function ChartChangelog({
   project,
   name,
@@ -294,21 +290,13 @@ function ChartChangelog({
   const notes = data ? withContent(data) : [];
   if (error || notes.length === 0)
     return <p className="p-5 text-sm text-gray-500">Чарт не ведёт историю изменений.</p>;
-  // This is every version of the chart at once, so a mature one arrives with
-  // dozens of releases. The newest few are drawn and the rest waits for someone
-  // who asks for it.
+  // Every version of the chart, folded to a line each and read the same way as
+  // the portal's own history on the About page.
   return (
-    // No padding at the top: the header of the open version sticks to the edge
-    // of this box, and a gap above it is a strip the notes would scroll through
-    // in the open. The rows carry their own inset, so the list is pulled back
-    // by it and the version numbers stand on the left edge of the panel.
-    <div className="scroll-slim min-h-0 overflow-y-auto pb-5 pl-2 pr-2 [scrollbar-gutter:stable]">
-      <Changelog
-        entries={notes}
-        highlight={highlight}
-        pageSize={CHANGELOG_PAGE}
-        stickyHeaders
-      />
+    // The rows carry their own inset, so the sides are short by it and the
+    // version numbers stand on the same left edge as the tab above them.
+    <div className="scroll-slim min-h-0 overflow-y-auto py-4 pl-3 pr-2 [scrollbar-gutter:stable]">
+      <Changelog entries={notes} highlight={highlight} />
     </div>
   );
 }
