@@ -1,6 +1,6 @@
 import { IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -72,8 +72,33 @@ export function ChartDetailPage() {
   const navigate = useNavigate();
   const release = location.hash.startsWith("#release-") ? location.hash.slice(1) : undefined;
   const tab = release || location.search.includes("tab=changelog") ? "changelog" : "readme";
+  // Where the travelling mark stands: the open tab's place in the strip,
+  // measured after every switch and again if the strip itself changes size (a
+  // window resize, a font that lands late).
+  const strip = useRef<HTMLDivElement>(null);
+  const [mark, setMark] = useState<{ left: number; width: number } | null>(null);
+  useLayoutEffect(() => {
+    const box = strip.current;
+    if (!box) return;
+    const measure = () => {
+      const active = box.querySelector<HTMLElement>('[role="tab"][data-selected]');
+      if (active) setMark({ left: active.offsetLeft, width: active.offsetWidth });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+    // `chart` because the strip does not exist while the page is still loading.
+  }, [tab, chart]);
+
   const openTab = (key: string) => {
     if (key === tab && !release) return;
+    // The mark leaves with the press, not after the address has changed and the
+    // page has re-rendered: a slide that starts a tenth of a second late is a
+    // slide that looks like it is catching up.
+    const target = strip.current?.querySelector<HTMLElement>(`[role="tab"][data-key="${key}"]`);
+    if (target) setMark({ left: target.offsetLeft, width: target.offsetWidth });
     navigate(
       { pathname: location.pathname, search: key === "changelog" ? "?tab=changelog" : "", hash: "" },
       { replace: true },
@@ -196,13 +221,27 @@ export function ChartDetailPage() {
         className="flex min-h-0 flex-1 flex-col"
       >
         <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <TabList
-            aria-label="Документация чарта"
-            className="flex shrink-0 gap-1 border-b border-gray-200 px-3 pt-1"
-          >
-            <DocTab id="readme">Описание</DocTab>
-            <DocTab id="changelog">Изменения</DocTab>
-          </TabList>
+          {/* The mark under the open tab is one line that travels, not two that
+              take turns being painted: the eye follows it across and knows
+              where it went. It is drawn outside the tabs so it can slide past
+              them; the tabs keep a transparent border of the same weight for
+              the grey the pointer draws. */}
+          <div ref={strip} className="relative shrink-0">
+            <TabList
+              aria-label="Документация чарта"
+              className="flex gap-1 border-b border-gray-200 px-3 pt-1"
+            >
+              <DocTab id="readme">Описание</DocTab>
+              <DocTab id="changelog">Изменения</DocTab>
+            </TabList>
+            {mark && (
+              <span
+                aria-hidden
+                style={{ left: mark.left, width: mark.width }}
+                className="pointer-events-none absolute -bottom-px h-0.5 rounded-full bg-brand-600 transition-[left,width] duration-300 ease-out motion-reduce:transition-none"
+              />
+            )}
+          </div>
           {/* The document arrives rather than replaces: switching tabs swaps
               one wall of text for another, and without the fade the eye has to
               find out from the text itself that anything happened. */}
@@ -257,7 +296,7 @@ function DocTab({ id, children }: { id: string; children: React.ReactNode }) {
       // the mark would move. Not on the open tab: there the mark is already
       // where it belongs, and a grey line over the blue one would read as
       // losing the place rather than as pointing at it.
-      className="-mb-px cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-medium text-gray-500 outline-none transition-colors hover:bg-gray-50 hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 [&:not([data-selected])]:hover:border-gray-300"
+      className="-mb-px cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-medium text-gray-500 outline-none transition-colors hover:bg-gray-50 hover:text-gray-700 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 [&:not([data-selected])]:hover:border-gray-300"
     >
       {children}
     </Tab>
