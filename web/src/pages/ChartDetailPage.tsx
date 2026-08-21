@@ -198,7 +198,7 @@ export function ChartDetailPage() {
         <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <TabList
             aria-label="Документация чарта"
-            className="flex shrink-0 gap-1 border-b border-gray-200 px-2"
+            className="flex shrink-0 gap-1 border-b border-gray-200 px-3 pt-1"
           >
             <DocTab id="readme">Описание</DocTab>
             <DocTab id="changelog">Изменения</DocTab>
@@ -244,7 +244,7 @@ function DocTab({ id, children }: { id: string; children: React.ReactNode }) {
   return (
     <Tab
       id={id}
-      className="-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-sm font-medium text-gray-500 outline-none transition-colors hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+      className="-mb-px cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-medium text-gray-500 outline-none transition-colors hover:bg-gray-50 hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
     >
       {children}
     </Tab>
