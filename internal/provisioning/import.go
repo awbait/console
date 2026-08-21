@@ -192,6 +192,10 @@ func (s *Service) parseDiscovered(d gitlab.DiscoveredApp) *models.Request {
 		Cluster:       cluster,
 		Namespace:     m.Spec.Destination.Namespace,
 		ArgoCDAppName: appName,
+		// The folder the manifest was found in, whatever it is called. An imported
+		// order is adopted where it already lives: rendering the path from the
+		// template instead would point the portal at a folder that does not exist.
+		InstancePath: path.Dir(d.FilePath),
 		// Imported orders adopt existing Git state rather than rendering values, so
 		// fall back to service_name (unique per Git folder) for the namespace key.
 		ResourceIdentity: service,

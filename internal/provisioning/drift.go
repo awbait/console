@@ -61,7 +61,7 @@ func (s *Service) checkDriftOne(ctx context.Context, r *models.Request) {
 
 	// values.yaml: compare semantically (YAML-equal) so formatting/key-order
 	// differences from re-marshaling don't show up as false drift.
-	switch git, verr := s.gl.GetFile(ctx, proj.ID, s.gitops.ValuesPath(r.Cluster, r.ServiceName), branch); {
+	switch git, verr := s.gl.GetFile(ctx, proj.ID, s.gitops.ValuesPath(r), branch); {
 	case errors.Is(verr, models.ErrNotFound):
 		reasons = append(reasons, "values.yaml отсутствует в Git")
 	case verr == nil:
@@ -72,7 +72,7 @@ func (s *Service) checkDriftOne(ctx context.Context, r *models.Request) {
 	}
 
 	// application.yaml: compare the chart version (targetRevision).
-	switch git, aerr := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r.Cluster, r.ServiceName), branch); {
+	switch git, aerr := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r), branch); {
 	case errors.Is(aerr, models.ErrNotFound):
 		reasons = append(reasons, "application.yaml отсутствует в Git")
 	case aerr == nil:

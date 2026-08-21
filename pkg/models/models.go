@@ -118,6 +118,15 @@ type Request struct {
 	EditorState   json.RawMessage `json:"editor_state,omitempty"`
 	Status        RequestStatus   `json:"status"`
 	ArgoCDAppName string          `json:"argocd_app_name"`
+	// InstancePath is the folder this order owns inside its chart repo, relative
+	// to the repo root (e.g. "in-cluster/pg1"). Computed once at creation from
+	// GITLAB_INSTANCE_DIR_TEMPLATE and never recomputed: the template is a
+	// setting, and a setting that changed would otherwise move every existing
+	// order's folder out from under it - the portal would then write, read drift
+	// from, and delete a folder that is not the one holding its files.
+	// Empty on rows written before this was stored; callers fall back to the
+	// layout those rows were created with ({cluster}/{service}).
+	InstancePath string `json:"instance_path,omitempty"`
 	Version       int             `json:"version"` // optimistic lock
 	CreatedAt     time.Time       `json:"created_at"`
 	UpdatedAt     time.Time       `json:"updated_at"`

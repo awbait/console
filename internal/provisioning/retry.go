@@ -74,7 +74,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 		branch = s.defaultBranch
 	}
 
-	valuesPath := s.gitops.ValuesPath(r.Cluster, r.ServiceName)
+	valuesPath := s.gitops.ValuesPath(r)
 	base, err := s.readValues(ctx, proj.ID, valuesPath, mr.DiffRefs.BaseSHA)
 	if err != nil {
 		s.logger().Debug("merge retry skipped: base values unreadable", "order_id", r.ID, "err", err)
@@ -132,7 +132,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 		return retryNotDone
 	}
 	actions := []gitlab.FileAction{
-		{Action: "update", FilePath: s.gitops.AppPath(r.Cluster, r.ServiceName), Content: appYAML},
+		{Action: "update", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "update", FilePath: valuesPath, Content: valuesYAML},
 	}
 	// Opened before the old one is closed: an order momentarily carrying two open
@@ -225,7 +225,7 @@ func (s *Service) readValues(ctx context.Context, projectID int, path, ref strin
 // chartVersionAt reads the chart version an order's application.yaml declares at
 // a ref, or "" when it cannot be read.
 func (s *Service) chartVersionAt(ctx context.Context, projectID int, r *models.Request, ref string) string {
-	raw, err := s.gl.GetFile(ctx, projectID, s.gitops.AppPath(r.Cluster, r.ServiceName), ref)
+	raw, err := s.gl.GetFile(ctx, projectID, s.gitops.AppPath(r), ref)
 	if err != nil {
 		return ""
 	}

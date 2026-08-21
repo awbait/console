@@ -20,28 +20,74 @@ func newGitOps(t *testing.T) *provisioning.GitOps {
 	return g
 }
 
+// instanceOf is an order carrying just what the repo layout is built from.
+func instanceOf(cluster, service string) *models.Request {
+	return &models.Request{Team: "core", ChartName: "postgres", ServiceName: service,
+		Cluster: cluster, Namespace: "apps"}
+}
+
 // TestInstancePathsIncludeCluster locks in the repo layout: {cluster}/{service}/...
 func TestInstancePathsIncludeCluster(t *testing.T) {
 	g := newGitOps(t)
+	prod := instanceOf("prod", "pg1")
 
-	if got, want := g.InstanceDir("prod", "pg1"), "prod/pg1"; got != want {
-		t.Errorf("InstanceDir = %q, want %q", got, want)
+	if got, want := g.NewInstancePath(prod), "prod/pg1"; got != want {
+		t.Errorf("NewInstancePath = %q, want %q", got, want)
 	}
-	if got, want := g.AppPath("prod", "pg1"), "prod/pg1/application.yaml"; got != want {
+	if got, want := g.AppPath(prod), "prod/pg1/application.yaml"; got != want {
 		t.Errorf("AppPath = %q, want %q", got, want)
 	}
-	if got, want := g.ValuesPath("prod", "pg1"), "prod/pg1/values.yaml"; got != want {
+	if got, want := g.ValuesPath(prod), "prod/pg1/values.yaml"; got != want {
 		t.Errorf("ValuesPath = %q, want %q", got, want)
 	}
 
 	// Same service in different clusters lives in separate folders.
-	if g.InstanceDir("dev", "pg1") == g.InstanceDir("prod", "pg1") {
+	if g.NewInstancePath(instanceOf("dev", "pg1")) == g.NewInstancePath(prod) {
 		t.Error("instances in different clusters must not collide")
 	}
 
 	// Empty cluster falls back to the flat legacy layout.
-	if got, want := g.AppPath("", "pg1"), "pg1/application.yaml"; got != want {
+	if got, want := g.AppPath(instanceOf("", "pg1")), "pg1/application.yaml"; got != want {
 		t.Errorf("AppPath(empty cluster) = %q, want %q", got, want)
+	}
+}
+
+// The folder is rendered once and then carried. A template is a setting, and a
+// setting that moved every existing order's folder would leave the portal
+// writing to, reading drift from and deleting a folder its files are not in.
+func TestInstanceTemplate(t *testing.T) {
+	g := newGitOps(t)
+	r := instanceOf("in-cluster", "pg1")
+
+	if err := g.SetInstanceTemplate("{{.Namespace}}-{{.ServiceName}}"); err != nil {
+		t.Fatalf("SetInstanceTemplate: %v", err)
+	}
+	if got, want := g.NewInstancePath(r), "in-cluster/apps-pg1"; got != want {
+		t.Fatalf("NewInstancePath = %q, want %q", got, want)
+	}
+
+	// An order created earlier keeps its own folder, whatever the template says.
+	r.InstancePath = "in-cluster/pg1"
+	if got, want := g.ValuesPath(r), "in-cluster/pg1/values.yaml"; got != want {
+		t.Fatalf("ValuesPath = %q, want %q", got, want)
+	}
+
+	// A template that renders to nothing would drop the manifests straight into
+	// the cluster folder, where the next order of this chart overwrites them.
+	if err := g.SetInstanceTemplate("{{.Team}}"); err != nil {
+		t.Fatalf("SetInstanceTemplate: %v", err)
+	}
+	empty := instanceOf("in-cluster", "pg1")
+	empty.Team = ""
+	if got, want := g.NewInstancePath(empty), "in-cluster/pg1"; got != want {
+		t.Fatalf("empty render = %q, want the service name %q", got, want)
+	}
+
+	if err := g.SetInstanceTemplate("{{.Namespace"); err == nil {
+		t.Fatal("a broken template must be refused at startup, not at the first order")
+	}
+	if err := g.SetInstanceTemplate(""); err != nil || g.InstanceTmpl != nil {
+		t.Fatalf("empty template must restore the default: err=%v", err)
 	}
 }
 

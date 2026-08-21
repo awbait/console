@@ -90,11 +90,11 @@ func (p *Postgres) CreateRequest(ctx context.Context, r *models.Request) error {
 		INSERT INTO requests
 		(id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
 		 service_name, display_name, cluster, namespace, values_yaml, status, argocd_app_name, version, imported, resource_identity,
-		 editor_state)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+		 editor_state, instance_path)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 		r.ID, r.CreatedBy, r.CreatedByName, r.Team, r.ChartProject, r.ChartName, r.ChartVersion,
 		r.ServiceName, r.DisplayName, r.Cluster, r.Namespace, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.Version, r.Imported, r.ResourceIdentity,
-		nullJSON(r.EditorState))
+		nullJSON(r.EditorState), nullStr(r.InstancePath))
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -103,7 +103,8 @@ func (p *Postgres) CreateRequest(ctx context.Context, r *models.Request) error {
 
 const reqBase = `id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
 	service_name, COALESCE(display_name,''), cluster, COALESCE(namespace,''), values_yaml, status, COALESCE(argocd_app_name,''), version,
-	created_at, updated_at, deleted_at, COALESCE(drifted,false), COALESCE(drift_detail,''), COALESCE(imported,false), COALESCE(resource_identity,'')`
+	created_at, updated_at, deleted_at, COALESCE(drifted,false), COALESCE(drift_detail,''), COALESCE(imported,false), COALESCE(resource_identity,''),
+	COALESCE(instance_path,'')`
 
 // reqCols reads the whole row; reqColsLight keeps the same shape but skips the
 // editor state, which only the order page needs and which is large enough to
@@ -117,7 +118,7 @@ func scanRequest(row pgx.Row) (*models.Request, error) {
 	err := row.Scan(&r.ID, &r.CreatedBy, &r.CreatedByName, &r.Team, &r.ChartProject, &r.ChartName,
 		&r.ChartVersion, &r.ServiceName, &r.DisplayName, &r.Cluster, &r.Namespace, &r.ValuesYAML, &r.Status, &r.ArgoCDAppName,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &r.DeletedAt, &r.Drifted, &r.DriftDetail, &r.Imported, &r.ResourceIdentity,
-		&editorState)
+		&r.InstancePath, &editorState)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}

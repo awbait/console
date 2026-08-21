@@ -1,0 +1,13 @@
+-- The folder an order owns inside its chart repo, relative to the repo root
+-- (e.g. "in-cluster/pg1"). It used to be derived on every use from the cluster
+-- and the service name, which was fine only while the layout was a constant.
+-- The last segment is now rendered from GITLAB_INSTANCE_DIR_TEMPLATE, and a
+-- template is a setting: changing it would silently move every existing order's
+-- folder, so the portal would write to, read drift from and delete a folder
+-- other than the one holding its files. Storing the path at creation pins each
+-- order to the layout it was created with; a new template only affects new
+-- orders.
+--
+-- NULL on rows created before this column: those orders keep the derived
+-- {cluster}/{service} layout, which is exactly what they were written with.
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS instance_path TEXT;

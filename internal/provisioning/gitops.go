@@ -50,6 +50,32 @@ type GitOps struct {
 	// app-of-apps and then read by nobody, so the order lands in Git and the
 	// service never comes up. Empty means "argocd", the upstream default.
 	AppNamespace string
+	// InstanceTmpl renders the folder one ordered instance owns inside the chart
+	// repo - the last segment of {cluster}/{instance}. Nil means the plain
+	// service name, the layout every order had before this was configurable.
+	// Set with SetInstanceTemplate.
+	InstanceTmpl *template.Template
+}
+
+// SetInstanceTemplate compiles the instance-folder template
+// (GITLAB_INSTANCE_DIR_TEMPLATE). It knows the team, the chart, the service
+// name, the destination namespace and the cluster. An empty string restores the
+// default, the bare service name.
+//
+// The template names the folder for orders made from now on. An existing order
+// keeps the folder it was created with (models.Request.InstancePath), so
+// changing this never moves anybody's files.
+func (g *GitOps) SetInstanceTemplate(s string) error {
+	if strings.TrimSpace(s) == "" {
+		g.InstanceTmpl = nil
+		return nil
+	}
+	t, err := template.New("instance").Parse(s)
+	if err != nil {
+		return fmt.Errorf("instance dir template: %w", err)
+	}
+	g.InstanceTmpl = t
+	return nil
 }
 
 // defaultAppNamespace is where Argo CD installs itself unless told otherwise,
@@ -61,6 +87,11 @@ type tmplData struct {
 	Team        string
 	ServiceName string
 	Chart       string
+	// Namespace and Cluster are the order's destination. They are only ever
+	// asked for by the instance-folder template, so the subgroup and app-name
+	// templates simply never reference them.
+	Namespace string
+	Cluster   string
 }
 
 // NewGitOps compiles the subgroup and app-name templates.
@@ -122,23 +153,58 @@ func (g *GitOps) TeamFromSubgroup(subgroup string) string {
 	}
 }
 
-// InstanceDir is the folder inside the chart repo for an instance:
-// {cluster}/{service}. Grouping by cluster keeps instances of the same service
-// in different clusters apart (cluster is part of the active-service identity).
-// Empty cluster falls back to the flat {service} layout (legacy records).
-func (g *GitOps) InstanceDir(cluster, service string) string {
-	if cluster == "" {
-		return service
+// InstanceName renders the folder name for one instance: the last segment of its
+// path inside the chart repo.
+func (g *GitOps) InstanceName(r *models.Request) string {
+	if g.InstanceTmpl == nil {
+		return r.ServiceName
 	}
-	return cluster + "/" + service
+	name := strings.Trim(strings.TrimSpace(render(g.InstanceTmpl, tmplData{
+		Team: r.Team, Chart: r.ChartName, ServiceName: r.ServiceName,
+		Namespace: r.Namespace, Cluster: r.Cluster,
+	})), "/")
+	if name == "" {
+		// A template rendering to nothing would put the manifests in the cluster
+		// folder itself, where the next order of this chart overwrites them.
+		return r.ServiceName
+	}
+	return name
+}
+
+// NewInstancePath is the folder an order is given at creation, relative to the
+// chart repo root: {cluster}/{instance}. Grouping by cluster keeps instances of
+// the same service in different clusters apart (cluster is part of the
+// active-service identity). It is stored on the order and read from there
+// afterwards - see InstanceDir.
+func (g *GitOps) NewInstancePath(r *models.Request) string {
+	name := g.InstanceName(r)
+	if r.Cluster == "" {
+		return name
+	}
+	return r.Cluster + "/" + name
+}
+
+// InstanceDir is the folder an order owns inside its chart repo. It is whatever
+// the order was created with, not what the current template would render:
+// the template is a setting, and a changed setting must not move the folder an
+// order's files already sit in. Orders written before the path was stored fall
+// back to the layout they were created with.
+func (g *GitOps) InstanceDir(r *models.Request) string {
+	if r.InstancePath != "" {
+		return r.InstancePath
+	}
+	if r.Cluster == "" {
+		return r.ServiceName
+	}
+	return r.Cluster + "/" + r.ServiceName
 }
 
 // ValuesPath / AppPath are file paths within the chart repo.
-func (g *GitOps) ValuesPath(cluster, service string) string {
-	return g.InstanceDir(cluster, service) + "/values.yaml"
+func (g *GitOps) ValuesPath(r *models.Request) string {
+	return g.InstanceDir(r) + "/values.yaml"
 }
-func (g *GitOps) AppPath(cluster, service string) string {
-	return g.InstanceDir(cluster, service) + "/application.yaml"
+func (g *GitOps) AppPath(r *models.Request) string {
+	return g.InstanceDir(r) + "/application.yaml"
 }
 
 // applicationYAML is rendered into application.yaml. It is a self-contained,
@@ -218,7 +284,7 @@ func (g *GitOps) RenderApplication(r *models.Request, repoURL string) (string, e
 		"Project":      yamlScalar(g.ArgoProject),
 		"Cluster":      yamlScalar(r.Cluster),
 		"RepoURL":      yamlScalar(gitRepo),
-		"Path":         g.InstanceDir(r.Cluster, r.ServiceName),
+		"Path":         g.InstanceDir(r),
 		"Branch":       yamlScalar(g.DefaultBranch),
 		"ChartRepo":    yamlScalar(chartRepo),
 		"ChartVersion": yamlScalar(r.ChartVersion),
