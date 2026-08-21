@@ -1,18 +1,18 @@
 import { IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication } from "../api/types";
 import { AUTO_DISCOVERY_ACTOR, isUnclaimed, publisherLabel } from "../api/types";
-import { CAPABILITIES } from "../app/capabilities";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Changelog } from "../components/Changelog";
+import { Changelog, withContent } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
 import { Button, Card, Chip, LinkButton, OutageState, Skeleton, SkeletonText } from "../components/ui";
@@ -63,6 +63,48 @@ export function ChartDetailPage() {
       });
   }, [queryClient, manageable, project, name]);
 
+  // Which document is open lives in the address (?tab=changelog), and a version
+  // in the hash (#release-2.3.0), so a link can point at a release and not just
+  // at the chart. A link that names a version is about the changelog, whatever
+  // the query says. Switching by hand replaces the entry rather than stacking
+  // it: back should leave the chart, not walk the tabs.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const release = location.hash.startsWith("#release-") ? location.hash.slice(1) : undefined;
+  const tab = release || location.search.includes("tab=changelog") ? "changelog" : "readme";
+  // Where the travelling mark stands: the open tab's place in the strip,
+  // measured after every switch and again if the strip itself changes size (a
+  // window resize, a font that lands late).
+  const strip = useRef<HTMLDivElement>(null);
+  const [mark, setMark] = useState<{ left: number; width: number } | null>(null);
+  useLayoutEffect(() => {
+    const box = strip.current;
+    if (!box) return;
+    const measure = () => {
+      const active = box.querySelector<HTMLElement>('[role="tab"][data-selected]');
+      if (active) setMark({ left: active.offsetLeft, width: active.offsetWidth });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+    // `chart` because the strip does not exist while the page is still loading.
+  }, [tab, chart]);
+
+  const openTab = (key: string) => {
+    if (key === tab && !release) return;
+    // The mark leaves with the press, not after the address has changed and the
+    // page has re-rendered: a slide that starts a tenth of a second late is a
+    // slide that looks like it is catching up.
+    const target = strip.current?.querySelector<HTMLElement>(`[role="tab"][data-key="${key}"]`);
+    if (target) setMark({ left: target.offsetLeft, width: target.offsetWidth });
+    navigate(
+      { pathname: location.pathname, search: key === "changelog" ? "?tab=changelog" : "", hash: "" },
+      { replace: true },
+    );
+  };
+
   if (loading) return <ChartSkeleton />;
   if (error)
     return (
@@ -94,10 +136,12 @@ export function ChartDetailPage() {
     !!pub?.approved_view_version && isNewer(liveVersion, pub.approved_view_version);
 
   return (
-    // The page itself stays within the viewport: the header keeps its size and
-    // only the open doc tab scrolls, so the shell never grows a scrollbar of its
-    // own.
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
+    // Who the chart is stays on screen: the name, what it is for and the
+    // version are the frame the document is read in, and a page that scrolls
+    // them away makes the reader scroll back to check. So the page keeps the
+    // height of the window, the head keeps its size, and the open document
+    // takes every pixel left - which is what the gaps here are kept short for.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="flex shrink-0 items-start justify-between gap-6">
         <div className="min-w-0">
           <Breadcrumbs
@@ -113,7 +157,7 @@ export function ChartDetailPage() {
           {/* Keep the summary at a readable measure instead of letting it run
               the full width of a wide screen. */}
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600">{description}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <Chip className="bg-slate-100 text-slate-600">
               <IconTag size={13} stroke={1.8} className="text-slate-400" />
               <span className="text-slate-400">Версия:</span>v{version}
@@ -167,21 +211,53 @@ export function ChartDetailPage() {
         </div>
       </div>
 
-      <Tabs className="flex min-h-0 flex-1 flex-col">
-        <TabList
-          aria-label="Документация чарта"
-          className="flex shrink-0 gap-2 border-b border-gray-200"
-        >
-          <DocTab id="readme">Описание</DocTab>
-          <DocTab id="changelog">Изменения</DocTab>
-        </TabList>
-        {/* The panel only sizes the card; the scrolling happens inside it. */}
-        <TabPanel id="readme" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
-          <Readme project={project} name={name} version={version} />
-        </TabPanel>
-        <TabPanel id="changelog" className="flex min-h-0 flex-1 flex-col pt-5 outline-none">
-          <ChartChangelog project={project} name={name} />
-        </TabPanel>
+      {/* The tabs are the head of the document, not a strip floating above a
+          box of its own: one panel with its name on top, the way the document
+          would be filed. It takes the height it needs and no more - a page of
+          empty card under two lines of text is a frame around nothing. */}
+      <Tabs
+        selectedKey={tab}
+        onSelectionChange={(key) => openTab(String(key))}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* The mark under the open tab is one line that travels, not two that
+              take turns being painted: the eye follows it across and knows
+              where it went. It is drawn outside the tabs so it can slide past
+              them; the tabs keep a transparent border of the same weight for
+              the grey the pointer draws. */}
+          <div ref={strip} className="relative shrink-0">
+            <TabList
+              aria-label="Документация чарта"
+              className="flex gap-1 border-b border-gray-200 px-3 pt-1"
+            >
+              <DocTab id="readme">Описание</DocTab>
+              <DocTab id="changelog">Изменения</DocTab>
+            </TabList>
+            {mark && (
+              <span
+                aria-hidden
+                style={{ left: mark.left, width: mark.width }}
+                className="pointer-events-none absolute -bottom-px h-0.5 rounded-full bg-brand-600 transition-[left,width] duration-300 ease-out motion-reduce:transition-none"
+              />
+            )}
+          </div>
+          {/* The document arrives rather than replaces: switching tabs swaps
+              one wall of text for another, and without the fade the eye has to
+              find out from the text itself that anything happened. */}
+          <TabPanel
+            id="readme"
+            className="flex min-h-0 flex-1 flex-col outline-none animate-in fade-in duration-200 motion-reduce:animate-none"
+          >
+            <Readme project={project} name={name} version={version} />
+          </TabPanel>
+          <TabPanel
+            id="changelog"
+            className="flex min-h-0 flex-1 flex-col outline-none animate-in fade-in duration-200 motion-reduce:animate-none"
+          >
+            <ChartChangelog project={project} name={name} highlight={release} />
+          </TabPanel>
+        </Card>
       </Tabs>
     </div>
   );
@@ -216,7 +292,11 @@ function DocTab({ id, children }: { id: string; children: React.ReactNode }) {
   return (
     <Tab
       id={id}
-      className="-mb-px cursor-pointer border-b-2 border-transparent px-3 py-2 text-sm font-medium text-gray-500 outline-none transition-colors hover:text-gray-700 selected:border-brand-600 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+      // The hover draws the same underline in grey, so the pointer shows where
+      // the mark would move. Not on the open tab: there the mark is already
+      // where it belongs, and a grey line over the blue one would read as
+      // losing the place rather than as pointing at it.
+      className="-mb-px cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-medium text-gray-500 outline-none transition-colors hover:bg-gray-50 hover:text-gray-700 selected:text-brand-700 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 [&:not([data-selected])]:hover:border-gray-300"
     >
       {children}
     </Tab>
@@ -230,34 +310,49 @@ function Readme({ project, name, version }: { project: string; name: string; ver
     qk.readme(project, name, version),
   );
   return (
-    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
+    // A readable measure rather than the full width of a wide screen: a README
+    // is prose, and prose across 1500 pixels is read by nobody.
+    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto py-5 pl-5 pr-3 [scrollbar-gutter:stable]">
+      <div className="max-w-3xl">
         {loading ? (
           <SkeletonText lines={8} />
         ) : error || !data?.trim() ? (
-          <p className="text-sm text-gray-500">Описание недоступно.</p>
+          <p className="text-sm text-gray-500">Чарт не приложил описание.</p>
         ) : (
           <Markdown>{data}</Markdown>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
 
-function ChartChangelog({ project, name }: { project: string; name: string }) {
+function ChartChangelog({
+  project,
+  name,
+  highlight,
+}: {
+  project: string;
+  name: string;
+  highlight?: string;
+}) {
   const { data, error, loading } = useAsync(
     () => api.getAggregatedChangelog(project, name),
     [project, name],
     qk.changelog(project, name),
   );
-  if (loading) return <SkeletonText lines={6} />;
-  if (error || !data?.length)
-    return <p className="text-sm text-gray-500">История изменений недоступна.</p>;
+  if (loading) return <SkeletonText lines={6} className="p-5" />;
+  const notes = data ? withContent(data) : [];
+  if (error || notes.length === 0)
+    return <p className="p-5 text-sm text-gray-500">Чарт не ведёт историю изменений.</p>;
+  // Every version of the chart, folded to a line each and read the same way as
+  // the portal's own history on the About page.
   return (
-    <Card padded={false} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="scroll-slim min-h-0 flex-1 overflow-y-auto p-4">
-        <Changelog entries={data} />
-      </div>
-    </Card>
+    // The rows carry their own inset, so the sides are short by it and the
+    // version numbers stand on the same left edge as the tab above them. The
+    // list scrolls in a box of a height of its own, so the releases at the end
+    // of it get the run-up they need to reach the top edge.
+    <div className="scroll-slim min-h-0 flex-1 overflow-y-auto py-4 pl-3 pr-2 [scrollbar-gutter:stable]">
+      <Changelog entries={notes} highlight={highlight} roomBelow />
+    </div>
   );
 }

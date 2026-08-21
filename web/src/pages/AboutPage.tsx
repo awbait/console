@@ -5,11 +5,11 @@ import {
   IconInfoCircle,
   IconPackages,
 } from "@tabler/icons-react";
-import { type ReactNode, useEffect } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { useUser } from "../auth/UserContext";
-import { Changelog } from "../components/Changelog";
+import { Changelog, withContent } from "../components/Changelog";
 import { Card, ErrorBox, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isRelease, releaseAnchor } from "../lib/release";
@@ -21,18 +21,11 @@ export function AboutPage() {
 
   // A link can name a version: /about#release-0.4.0, or #release-unreleased for
   // a build between releases. The notification about a new portal is such a
-  // link, and so is anything else that wants to point at what changed.
-  //
-  // The scroll waits for the changelog: the section does not exist until it has
-  // loaded, and scrolling into a skeleton lands nowhere.
+  // link, and so is anything else that wants to point at what changed. The list
+  // itself opens that version and scrolls to it - it is the one that knows when
+  // the notes have finished unfolding.
   const { hash } = useLocation();
   const target = hash.replace(/^#/, "");
-  const loaded = !!changelog.data;
-  useEffect(() => {
-    if (!target || !loaded) return;
-    const el = document.getElementById(target);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [target, loaded]);
 
   // User-facing portal links (not infra consoles - those live on the status page).
   // The security role has no catalog/orders, so it only gets documentation.
@@ -50,11 +43,20 @@ export function AboutPage() {
   const info = about.data;
   const hasBuild = info && (info.commit || info.build_date);
 
+  // A release leaves an empty [Unreleased] behind, and until something lands
+  // under it there is nothing to read there. Asked here rather than inside the
+  // list, because the answer decides between a card and "пока нет записей".
+  const notes = changelog.data ? withContent(changelog.data) : [];
+
   // Side by side (lg), the page takes the height of its column and the changelog
   // scrolls inside its card, so the build info and the links stay in sight.
   // Stacked, the height lock would crush the card, so the page scrolls instead.
   return (
-    <div className="flex max-w-5xl flex-col gap-6 lg:min-h-0 lg:flex-1">
+    // The page takes the width it is given, like every other screen: with the
+    // menu folded away there is more of it, and a fixed measure here would
+    // leave the freed half of the window empty. What has to stay readable says
+    // so itself - the notes are capped at a line length inside the list.
+    <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1">
       <h1 className="shrink-0 text-xl font-semibold text-slate-900">О портале</h1>
 
       {about.loading && !info ? (
@@ -75,23 +77,20 @@ export function AboutPage() {
               </div>
             </div>
             {/* The running version leads to what it changed. A build between
-                releases has no section of its own, so it points at "Ещё не
-                выпущено", which is precisely what such a build is. */}
+                releases has no section of its own, so it points at the one
+                being prepared, which is precisely what such a build carries.
+                What kind of build it is belongs in the hint, not in a second
+                line under the number. */}
             <a
               href={`#${releaseAnchor(info.version)}`}
               title={
                 isRelease(info.version)
                   ? "Что изменилось в этой версии"
-                  : "Сборка после последнего релиза, смотрите «Ещё не выпущено»"
+                  : "Сборка после последнего релиза, смотрите «Готовится к выпуску»"
               }
-              className="flex shrink-0 flex-col items-end gap-0.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="shrink-0 rounded-full bg-brand-50 px-3 py-1 font-mono text-sm font-medium text-brand-700 outline-none hover:bg-brand-100 focus-visible:ring-2 focus-visible:ring-brand-500"
             >
-              <span className="rounded-full bg-brand-50 px-3 py-1 font-mono text-sm font-medium text-brand-700 hover:bg-brand-100">
-                {info.version}
-              </span>
-              {!isRelease(info.version) && (
-                <span className="text-[11px] text-slate-400">Ещё не выпущено</span>
-              )}
+              {info.version}
             </a>
           </Card>
 
@@ -103,10 +102,20 @@ export function AboutPage() {
                   <SkeletonText lines={6} />
                 ) : changelog.error ? (
                   <ErrorBox error={changelog.error} />
-                ) : changelog.data && changelog.data.length > 0 ? (
+                ) : notes.length > 0 ? (
                   <Card padded={false} className="flex flex-col lg:min-h-0 lg:flex-1">
-                    <div className="scroll-slim p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-                      <Changelog entries={changelog.data} highlight={target} />
+                    {/* The scrollbar keeps a column of its own (10px), so a
+                        version unfolding past the bottom does not take the
+                        width off the text as it appears. The right padding is
+                        short by that column, or the notes would sit further
+                        from their edge than from the left one. */}
+                    <div className="scroll-slim py-4 pl-3 pr-2 [scrollbar-gutter:stable] lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                      <Changelog
+                        entries={notes}
+                        highlight={target}
+                        current={info.version}
+                        roomBelow
+                      />
                     </div>
                   </Card>
                 ) : (

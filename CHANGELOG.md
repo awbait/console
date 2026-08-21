@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The changelog on the About page opens one version at a time. The newest one is
+  open, the rest are folded into a line each: the number and the date. The
+  version running in production is marked "Сейчас в проде". Opening a version
+  brings its header to the top of the list, so the notes start where the
+  reading does.
+- Inside an open version "Добавлено", "Изменено" and "Исправлено" are told apart
+  by colour, one per category.
+- A chart's Changes tab reads like the portal's own changelog: every version a
+  line of its own, one of them open.
+- "Описание" and "Изменения" are tabs of one panel on the chart page. It used
+  to be a strip of tabs above a separate full-screen frame, empty for
+  three quarters of it. The panel takes the height its text needs, and the
+  description is read in a column rather than across the whole monitor.
+- A link to a chart page remembers what was being read: `?tab=changelog` opens
+  the Changes tab, and `#release-2.3.0` opens that version and brings the list
+  to it.
+- The About page takes the full width of the window. It used to keep a width of
+  its own, leaving half the screen empty once the menu was folded away.
+
+### Fixed
+- A version with nothing under it is no longer shown. After a release the
+  changelog used to open with an empty "Готовится к выпуску" block.
+- The text in the changelog no longer narrows when a version unfolds: the
+  scrollbar keeps a column of its own instead of taking the width off the notes
+  as it appears.
+
 ## [0.6.0] - 2026-08-20
 
 A release about the version constructor. The document is no longer written into
