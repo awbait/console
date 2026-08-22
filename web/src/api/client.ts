@@ -10,8 +10,10 @@ import type {
   ChartCheckResult,
   ChartPublication,
   ChartVersion,
+  ChecksResponse,
   ConfigResponse,
   CreateOrderBody,
+  DeliveryTest,
   FieldError,
   JSONSchema,
   OrderRequest,
@@ -284,6 +286,15 @@ export const api = {
 
   // system status (integrations + storage health)
   getSystemStatus: () => req<SystemStatus>("GET", "/status"),
+  // configuration checks: what is actually wired up, as opposed to what answers
+  // a ping. Its own endpoint on its own rhythm - a round costs the upstreams a
+  // handful of API calls, so it is not carried by every status refresh.
+  getStatusChecks: (signal?: AbortSignal) =>
+    req<ChecksResponse>("GET", "/status/checks", undefined, signal),
+  runStatusChecks: () => req<{ queued: boolean }>("POST", "/status/checks/run"),
+  // The one active check: asks GitLab to send a sample delivery and waits for it.
+  // Takes up to ten seconds to answer.
+  testWebhookDelivery: () => req<DeliveryTest>("POST", "/status/checks/webhook-delivery"),
   // runtime configuration, read-only (admin)
   getConfig: () => req<ConfigResponse>("GET", "/config"),
   // What the portal can do right now. Answers without a session, so the sign-in

@@ -6,13 +6,28 @@ import {
   IconPlugConnected,
   IconRefresh,
   IconRepeat,
+  IconSend,
   IconUsers,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
-import { api } from "../api/client";
-import type { CapabilityStatus, ComponentStatus, ReconcilerStatus } from "../api/types";
+import { useEffect, useState } from "react";
+import { api, errorMessage } from "../api/client";
+import type {
+  CapabilityStatus,
+  ComponentStatus,
+  ConfigCheck,
+  DeliveryTest,
+  ReconcilerStatus,
+} from "../api/types";
 import { capabilityText } from "../app/capabilities";
+import {
+  checkReason,
+  checkText,
+  deliveryOutcomeText,
+  factLabel,
+  factValue,
+  verdictLabel,
+} from "../app/configChecks";
 import { useUser } from "../auth/UserContext";
 import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
@@ -20,6 +35,36 @@ import { safeHref } from "../lib/href";
 
 // Status auto-refresh interval, seconds.
 const REFRESH_SECONDS = 30;
+
+// The configuration checks refresh on their own far more slowly: a round costs
+// the upstreams a handful of API calls and answers a question that only changes
+// when somebody deploys. The backend runs them on its own schedule; this is just
+// how often the page re-reads the answer.
+const CHECKS_REFRESH_MS = 60_000;
+
+// While a round is in flight the page keeps asking, so pressing "проверить
+// сейчас" shows the new answer rather than the previous one.
+const CHECKS_POLL_MS = 2_000;
+
+// Components the checks are grouped under, in reading order: the portal's own
+// settings first, then the systems it talks to.
+const CHECK_GROUPS: { id: string; title: string }[] = [
+  { id: "portal", title: "Портал" },
+  { id: "gitlab", title: "GitLab" },
+  { id: "harbor", title: "Harbor" },
+  { id: "argocd", title: "Argo CD" },
+  { id: "keycloak", title: "Keycloak" },
+];
+
+// Colours per verdict. Ok and problems read like the rest of the page; "не
+// проверено" and "не используется" are deliberately quiet - they are not news.
+const VERDICT_TONE: Record<string, { dot: string; text: string }> = {
+  ok: { dot: "bg-emerald-500", text: "text-emerald-600" },
+  warn: { dot: "bg-amber-500", text: "text-amber-600" },
+  fail: { dot: "bg-red-500", text: "text-red-600" },
+  skip: { dot: "bg-slate-300", text: "text-slate-400" },
+  unknown: { dot: "bg-slate-300", text: "text-slate-400" },
+};
 
 // Integration names as their vendors write them.
 const COMPONENT_LABELS: Record<string, string> = {
@@ -225,6 +270,8 @@ export function StatusPage() {
               </Grid>
             </Section>
 
+            <ChecksSection />
+
             <Section title="Хранилища" hint="База данных портала и кеш.">
               <Grid cols={2}>
                 {storage.map((c) => (
@@ -262,11 +309,30 @@ function Grid({ cols, children }: { cols: 2 | 3; children: ReactNode }) {
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+function Section({
+  title,
+  hint,
+  actions,
+  children,
+}: {
+  title: string;
+  hint: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
-      <p className="mb-3 mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">{hint}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* flex-1 with min-w-0 lets the hint shrink instead of pushing the
+            buttons onto a line of their own on a wide screen. On a narrow one
+            the hint takes the whole line and the buttons wrap under it, which
+            is the only way both of them fit. */}
+        <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
+          <p className="mb-3 mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">{hint}</p>
+        </div>
+        {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
+      </div>
       {children}
     </section>
   );
@@ -383,6 +449,224 @@ function ReconcilerCard({ r }: { r: ReconcilerStatus }) {
       </p>
       {!ok && r.last_error && <Detail text={r.last_error} />}
     </Card>
+  );
+}
+
+// ChecksSection is the answer to "is this portal actually wired to those
+// systems", as opposed to "do they answer a ping" - which the section above
+// already covers. It keeps its own state: the check set refreshes far more
+// slowly than the health probes and has buttons of its own.
+function ChecksSection() {
+  const { data, error, reload } = useAsync(() => api.getStatusChecks(), [], undefined, {
+    refetchInterval: CHECKS_REFRESH_MS,
+  });
+  // The button queues a round and answers at once, so the page has to notice
+  // when the round has actually finished. It remembers which answer was on
+  // screen at the time: a different one means the new round has landed. A flag
+  // would not do - the snapshot still says "not running" for the moment between
+  // the click and the round starting.
+  const [awaitedFrom, setAwaitedFrom] = useState<string | null>(null);
+  const [delivery, setDelivery] = useState<DeliveryTest | null>(null);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [testing, setTesting] = useState(false);
+
+  const answer = data?.checked_at ?? "";
+  const running = Boolean(data?.running) || (awaitedFrom !== null && awaitedFrom === answer);
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(reload, CHECKS_POLL_MS);
+    return () => clearInterval(t);
+  }, [running, reload]);
+
+  async function runNow() {
+    setAwaitedFrom(answer);
+    try {
+      await api.runStatusChecks();
+    } catch {
+      setAwaitedFrom(null);
+    }
+    reload();
+  }
+
+  async function testDelivery() {
+    setTesting(true);
+    setDelivery(null);
+    setDeliveryError("");
+    try {
+      setDelivery(await api.testWebhookDelivery());
+    } catch (e) {
+      setDeliveryError(errorMessage(e));
+    } finally {
+      setTesting(false);
+      reload();
+    }
+  }
+
+  // Before the first round the portal reports every check as "не проверено": it
+  // must not claim a configuration is fine, nor that it is broken, before it has
+  // looked. On screen that is one empty state, not twenty grey cards.
+  const results = data?.checked_at ? data.results : [];
+  const problems = results.filter((r) => r.verdict === "fail" || r.verdict === "warn").length;
+
+  return (
+    <Section
+      title="Проверки настройки"
+      hint="Отвечает система - ещё не значит, что портал к ней подключён. Здесь портал сам проверяет то, что иначе выясняется на первом настоящем заказе: права токенов, зарегистрированные вебхуки, проекты и кластеры. Все проверки только читают."
+      actions={
+        <>
+          <Button variant="secondary" onPress={testDelivery} isDisabled={testing} className="gap-1.5">
+            <IconSend size={16} stroke={1.8} className="text-slate-400" />
+            {testing ? "Ждём доставку…" : "Проверить доставку"}
+          </Button>
+          <Button variant="secondary" onPress={runNow} isDisabled={running} className="gap-1.5">
+            <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+            {running ? "Проверяем…" : "Проверить сейчас"}
+          </Button>
+        </>
+      }
+    >
+      {results.length > 0 && (
+        <p className="-mt-1 mb-3 text-xs text-slate-400">
+          {running ? "Проверяем прямо сейчас" : `Проверено ${ago(data?.checked_at)}`}
+          {problems === 0
+            ? " · всё в порядке"
+            : ` · требуют внимания: ${problems} из ${results.length}`}
+        </p>
+      )}
+
+      {(delivery || deliveryError) && (
+        <DeliveryResult
+          result={delivery}
+          error={deliveryError}
+          onClose={() => {
+            setDelivery(null);
+            setDeliveryError("");
+          }}
+        />
+      )}
+
+      {error ? (
+        <ErrorBox error={error} onRetry={reload} />
+      ) : results.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-surface p-4 text-sm text-slate-500">
+          {running
+            ? "Проверяем настройку, это займёт несколько секунд."
+            : "Портал ещё не проверял настройку. Нажмите «Проверить сейчас», чтобы не ждать очередного круга."}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {CHECK_GROUPS.map((group) => {
+            const own = results.filter((r) => r.component === group.id);
+            if (own.length === 0) return null;
+            return (
+              <div key={group.id}>
+                <h3 className="mb-2 text-xs font-semibold text-slate-500">{group.title}</h3>
+                <Grid cols={2}>
+                  {own.map((c) => (
+                    <CheckCard key={c.id} check={c} />
+                  ))}
+                </Grid>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function CheckCard({ check }: { check: ConfigCheck }) {
+  const text = checkText(check.id);
+  const tone = VERDICT_TONE[check.verdict] ?? VERDICT_TONE.unknown;
+  const reason = checkReason(check.id, check.reason);
+  const facts = Object.entries(check.facts ?? {});
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
+          <span className="truncate font-medium text-slate-800">{text.label}</span>
+        </div>
+        <div className="min-w-0 pl-4">
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">{text.what}</p>
+          {reason && (
+            <p
+              className={`mt-1.5 text-xs leading-relaxed ${
+                check.verdict === "fail" || check.verdict === "warn"
+                  ? "text-slate-700"
+                  : "text-slate-400"
+              }`}
+            >
+              {reason}
+            </p>
+          )}
+          {/* Facts in two columns where there is room for them. On a narrow
+              card the label would squeeze the value down to one character per
+              line, so there the value simply goes under its label. */}
+          {facts.length > 0 && (
+            <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs sm:grid-cols-[auto_1fr]">
+              {facts.map(([key, value]) => (
+                <div key={key} className="contents">
+                  <dt className="text-slate-400">{factLabel(key)}</dt>
+                  <dd className="min-w-0 break-words font-mono text-[11px] text-slate-600">
+                    {factValue(value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {check.vars && check.vars.length > 0 && (
+            <p className="mt-2 flex flex-wrap gap-1">
+              {check.vars.map((v) => (
+                <span
+                  key={v}
+                  className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-500"
+                >
+                  {v}
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+      </div>
+      <span className={`shrink-0 text-sm font-medium ${tone.text}`}>
+        {verdictLabel(check.verdict)}
+      </span>
+    </div>
+  );
+}
+
+// DeliveryResult reports the one check that makes something happen outside the
+// portal. It stays on screen until dismissed: the answer took ten seconds to
+// arrive and is the whole reason the button was pressed.
+function DeliveryResult({
+  result,
+  error,
+  onClose,
+}: {
+  result: DeliveryTest | null;
+  error: string;
+  onClose: () => void;
+}) {
+  const bad = Boolean(error) || (result != null && result.outcome !== "delivered");
+  return (
+    <div
+      className={`mb-3 flex items-start justify-between gap-4 rounded-lg border p-3 text-sm ${
+        bad ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"
+      }`}
+    >
+      <div className="min-w-0">
+        <p>{error || deliveryOutcomeText(result?.outcome ?? "")}</p>
+        {result?.detail && <Detail text={result.detail} />}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="shrink-0 cursor-pointer text-xs font-medium underline-offset-2 hover:underline"
+      >
+        Скрыть
+      </button>
+    </div>
   );
 }
 
