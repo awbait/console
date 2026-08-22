@@ -36,6 +36,7 @@ type Handler struct {
 	log          *slog.Logger
 	gitlabToken  string
 	harborSecret string
+	deliveries   *Deliveries
 }
 
 // New builds a Handler. gitlabToken is the shared secret expected in GitLab's
@@ -44,7 +45,20 @@ type Handler struct {
 // An empty secret disables that source (every delivery is rejected) - callers
 // should avoid registering the route at all in that case.
 func New(trigger Triggerer, log *slog.Logger, gitlabToken, harborSecret string) *Handler {
-	return &Handler{trigger: trigger, log: log, gitlabToken: gitlabToken, harborSecret: harborSecret}
+	return &Handler{
+		trigger: trigger, log: log,
+		gitlabToken: gitlabToken, harborSecret: harborSecret,
+		deliveries: newDeliveries(),
+	}
+}
+
+// Deliveries exposes what has actually arrived from each source, for the
+// configuration checks on the status page (internal/checks). Read-only.
+func (h *Handler) Deliveries() *Deliveries {
+	if h == nil {
+		return nil
+	}
+	return h.deliveries
 }
 
 // GitLabEnabled reports whether the GitLab webhook secret is configured.
@@ -146,7 +160,8 @@ func (h *Handler) Harbor(w http.ResponseWriter, r *http.Request) {
 // caller just needs to know the event was taken.
 func (h *Handler) accept(w http.ResponseWriter, source, reason string, attrs ...slog.Attr) {
 	h.trigger.Trigger(reason)
-	observability.ObserveWebhook(source, "accepted")
+	observability.ObserveWebhook(source, OutcomeAccepted)
+	h.deliveries.record(source, OutcomeAccepted)
 	h.logger().LogAttrs(context.Background(), slog.LevelInfo, "webhook accepted",
 		append([]slog.Attr{slog.String("source", source)}, attrs...)...)
 	w.WriteHeader(http.StatusAccepted)
@@ -155,19 +170,22 @@ func (h *Handler) accept(w http.ResponseWriter, source, reason string, attrs ...
 // ignore acknowledges a delivery we do not act on, so the sender does not retry
 // or disable the hook. 200 with no side effect.
 func (h *Handler) ignore(w http.ResponseWriter, source, field, value string) {
-	observability.ObserveWebhook(source, "ignored")
+	observability.ObserveWebhook(source, OutcomeIgnored)
+	h.deliveries.record(source, OutcomeIgnored)
 	h.logger().Debug("webhook ignored", "source", source, field, value)
 	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) reject(w http.ResponseWriter, source string) {
-	observability.ObserveWebhook(source, "unauthorized")
+	observability.ObserveWebhook(source, OutcomeRejected)
+	h.deliveries.record(source, OutcomeRejected)
 	h.logger().Warn("webhook rejected", "source", source, "reason", "bad secret")
 	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 
 func (h *Handler) badRequest(w http.ResponseWriter, source, stage string, err error) {
-	observability.ObserveWebhook(source, "bad_request")
+	observability.ObserveWebhook(source, OutcomeBadRequest)
+	h.deliveries.record(source, OutcomeBadRequest)
 	h.logger().Warn("webhook bad request", "source", source, "stage", stage, "err", err)
 	http.Error(w, "bad request", http.StatusBadRequest)
 }
