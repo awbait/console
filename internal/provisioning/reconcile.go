@@ -294,7 +294,9 @@ func (s *Service) takeMergeBlock(ctx context.Context, r *models.Request,
 	if mr.BlockedReason == key {
 		return false
 	}
-	if time.Since(mr.CreatedAt) < after {
+	// after == 0 means say it now, with no clock reading at all: the caller has
+	// something to report that no amount of waiting changes.
+	if after > 0 && time.Since(mr.CreatedAt) < after {
 		s.logger().Debug("mr not mergeable yet",
 			"order_id", r.ID, "mr_iid", mr.MRIID, "reason", key)
 		return false
