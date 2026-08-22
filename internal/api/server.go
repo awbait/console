@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 	"console/internal/auth"
 	"console/internal/cache"
 	"console/internal/catalog"
+	"console/internal/checks"
 	"console/internal/config"
 	"console/internal/events"
 	"console/internal/gitlab"
@@ -69,6 +71,17 @@ type Server struct {
 	// NewHealthMonitor once the ports above are set. Optional: nil reports
 	// everything as working, which is what tests want.
 	Health healthMonitor
+
+	// Checks is the background configuration-check runner behind
+	// GET /api/v1/status/checks: what is wired up, as opposed to what answers a
+	// ping. Optional: nil serves an empty set and changes nothing else.
+	Checks checksSnapshotter
+
+	// TestWebhookDelivery asks GitLab to deliver a sample event to the portal and
+	// reports whether it arrived (see internal/checks.TestGitLabDelivery). A
+	// function rather than a port: it is one call, wired in cmd/portal where the
+	// GitLab client and the hook manager both exist. Optional: nil answers 503.
+	TestWebhookDelivery func(context.Context) checks.DeliveryTest
 
 	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push). Routes
 	// register per-source only when that source's secret is set; nil omits them
@@ -138,6 +151,11 @@ func (s *Server) Router() http.Handler {
 
 			// system status (integrations + storage health)
 			r.Get("/status", s.handleSystemStatus)
+			// configuration checks: what is actually wired up (admin). Its own
+			// endpoint, on its own refresh rhythm - see internal/api/checks.go.
+			r.Get("/status/checks", s.handleStatusChecks)
+			r.Post("/status/checks/run", s.handleRunStatusChecks)
+			r.Post("/status/checks/webhook-delivery", s.handleTestWebhookDelivery)
 			// runtime configuration, read-only (admin)
 			r.Get("/config", s.handleConfig)
 

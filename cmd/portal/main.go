@@ -176,7 +176,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	notifySvc.PortalUpdated(ctx, buildinfo.Get().Version)
 
 	// --- auth ---
-	authn, err := buildAuth(ctx, cfg, c, observability.Component(log, "auth"))
+	// signIns remembers what the last successful login carried. Whether Keycloak
+	// really sends the group claim is not something it will tell us; the only
+	// evidence is a token it has issued (see internal/checks.KeycloakChecks).
+	signIns := auth.NewSignIns()
+	authn, err := buildAuth(ctx, cfg, c, observability.Component(log, "auth"), signIns)
 	if err != nil {
 		return err
 	}
@@ -284,6 +288,16 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	health := srv.NewHealthMonitor(cfg.StatusPollInterval, observability.Component(log, "health"))
 	srv.Health = health
 	go health.Run(ctx)
+
+	// Configuration checks: whether the portal is actually wired to the systems
+	// it can reach. Far rarer than the health probes (see checks.Interval) and
+	// read-only, so it can run against production; the one active check is
+	// behind the admin's button and never on this loop.
+	configChecks := buildChecks(cfg, hb, gl, argo, hooks, webhookHandler, signIns, health,
+		observability.Component(log, "checks"))
+	srv.Checks = configChecks
+	srv.TestWebhookDelivery = webhookDeliveryTest(cfg, gl, hooks, webhookHandler)
+	go configChecks.Run(ctx)
 
 	// Refresh order gauges in-process (single replica), reusing the poller
 	// interval. The metrics server below exposes the result.
@@ -423,7 +437,7 @@ func backendName(configured, match, fallback string) string {
 	return fallback
 }
 
-func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache, log *slog.Logger) (auth.Authenticator, error) {
+func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache, log *slog.Logger, signIns *auth.SignIns) (auth.Authenticator, error) {
 	// OIDC is the only runtime authenticator. The no-Keycloak Dev authenticator
 	// (internal/auth/dev.go) is a test stub and is never wired into the binary.
 	if cfg.AuthMode != "oidc" {
@@ -448,7 +462,7 @@ func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache, log *slog
 		}
 		rbac.TeamRegex = re
 	}
-	return auth.NewOIDC(ctx, auth.OIDCConfig{
+	o, err := auth.NewOIDC(ctx, auth.OIDCConfig{
 		Issuer:       cfg.OIDCIssuer,
 		ClientID:     cfg.OIDCClientID,
 		ClientSecret: cfg.OIDCSecret,
@@ -461,4 +475,9 @@ func buildAuth(ctx context.Context, cfg *config.Config, c cache.Cache, log *slog
 		PostLogout:   cfg.OIDCPostLogout,
 		Log:          log,
 	}, sessions, rbac)
+	if err != nil {
+		return nil, err
+	}
+	o.SignIns = signIns
+	return o, nil
 }
