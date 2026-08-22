@@ -7,6 +7,16 @@ All notable changes to this project are documented in this file.
 ### Added
 - The platform team is notified when a deletion does not finish within fifteen
   minutes. Until it does, the order keeps showing "Удаляется".
+- "Состояние платформы" has a new section, "Проверки настройки". It answers what
+  a green integration does not: whether the GitLab token may open merge
+  requests, whether the webhooks are really registered on both sides, whether
+  the Harbor projects and the Argo CD project and cluster are there. Each check
+  says what was seen and which variables it is about. The checks only read, and
+  they run by themselves every ten minutes.
+- "Проверить доставку" on that section asks GitLab to send the portal a sample
+  notification and reports whether it arrived. This is the only way to find out
+  that the two sides hold different secrets, which otherwise shows up as merged
+  orders that never move on.
 
 ### Fixed
 - Deleting a service now takes it out of the cluster. The portal used to report
