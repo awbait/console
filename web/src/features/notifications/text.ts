@@ -10,6 +10,7 @@
 // on the page it links to.
 
 import type { AppNotification } from "@/api/types";
+import { mergeBlockReason } from "@/features/orders/mergeBlock";
 import { releaseAnchor } from "@/lib/release";
 
 // str reads a payload field as text. The payload is JSON from the server, and a
@@ -24,13 +25,6 @@ function bool(n: AppNotification, key: string): boolean {
   return n.payload?.[key] === true;
 }
 
-// Why a change could not be applied on its own, in a few words. The reasons are
-// the portal's own vocabulary, not the upstream's message.
-const BLOCK_REASON: Record<string, string> = {
-  conflict: "его правки разошлись с чужими",
-  need_rebase: "его правки разошлись с чужими",
-};
-
 // A notification is a headline, and a headline carries no full stop. A comment
 // quoted inside one keeps its own punctuation - it is somebody's sentence, not
 // ours.
@@ -44,7 +38,7 @@ export function notificationText(n: AppNotification): string {
     case "order_degraded":
       return `Сервис ${service} не работает`;
     case "order_change_blocked": {
-      const why = BLOCK_REASON[str(n, "reason")];
+      const why = mergeBlockReason(str(n, "reason"));
       return why
         ? `Изменение сервиса ${service} не удалось применить: ${why}`
         : `Изменение сервиса ${service} не удалось применить`;

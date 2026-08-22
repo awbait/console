@@ -151,7 +151,12 @@ type RequestMR struct {
 	MRURL           string    `json:"mr_url"`
 	Status          MRStatus  `json:"mr_status"`
 	Action          MRAction  `json:"action"`
-	CreatedAt       time.Time `json:"created_at"`
+	// BlockedReason is why GitLab last refused to merge this change, in GitLab's
+	// own vocabulary (detailed_merge_status). Empty while nothing is refusing.
+	// Stored rather than only reported: the portal says this once, and a reason
+	// held in memory came back on every restart.
+	BlockedReason string    `json:"blocked_reason,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // RequestEvent is an audit-log / state-transition record.

@@ -60,18 +60,35 @@ const (
 )
 
 // ClassifyMerge maps GitLab's detailed_merge_status onto what auto-merge should
-// do. Unknown values count as blocked: a state we do not recognise is one we
-// cannot claim will clear, and reporting it is better than retrying forever.
-// An empty status means the instance does not report one (it was added in
+// do. An empty status means the instance does not report one (it was added in
 // GitLab 15.6) - fall back to attempting the merge, as the portal always did.
+//
+// Pending is every state GitLab is still working through by itself: computing
+// mergeability, running the pipeline, recounting approvals. Blocked is the
+// states it has settled on and will not leave without a person.
+//
+// A value this build does not recognise counts as pending. It used to count as
+// blocked, on the reasoning that a state we cannot name is one we cannot claim
+// will clear - but being wrong that way is paid for by the owner of the service,
+// who is shown a change that "could not be applied" while it is being applied.
+// Pending costs nothing here, because neither answer attempts the merge, and a
+// state that really never clears is still reported once the change has sat in it
+// long enough (see mergeStuck).
 func ClassifyMerge(detailed string) MergeReadiness {
 	switch detailed {
 	case "", "mergeable":
 		return MergeReady
-	case "checking", "unchecked", "preparing":
+	case "checking", "unchecked", "preparing", "approvals_syncing", "ci_still_running":
 		return MergePending
-	default:
+	case "conflict", "broken_status", "need_rebase",
+		"draft_status", "not_approved", "discussions_not_resolved",
+		"requested_changes", "blocked_status", "not_open",
+		"ci_must_pass", "external_status_checks", "jira_association_missing",
+		"policies_denied", "security_policy_violations",
+		"locked_paths", "locked_lfs_files":
 		return MergeBlocked
+	default:
+		return MergePending
 	}
 }
 

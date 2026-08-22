@@ -50,16 +50,12 @@ type Service struct {
 	// autoMerge makes the poller merge open portal MRs itself (no human gate).
 	// Convenient for local/demo against real GitLab; off in production.
 	autoMerge bool
-	// mergeBlocked remembers, per MR record, the reason auto-merge last gave up
-	// on it. The poller revisits every open MR each tick, so without this the
-	// same wedged order would log, count and journal itself every few seconds.
-	// Process-local on purpose: a restart re-reports once, which is cheaper than
-	// carrying the bookkeeping in the database.
-	mergeBlocked map[string]string
 	// mergeRetries counts, per order, how often the portal has rewritten its
-	// change onto a moved branch (see maxMergeRetries). Guarded by the same mutex.
-	mergeRetries   map[string]int
-	mergeBlockedMu sync.Mutex
+	// change onto a moved branch (see maxMergeRetries). Process-local on purpose,
+	// unlike the reason a change is blocked (models.RequestMR.BlockedReason): a
+	// restart is allowed to try again, but not to repeat itself.
+	mergeRetries map[string]int
+	mergeMu      sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
 	// Hooks keeps the portal's merge-request webhook registered in GitLab. Wired
@@ -103,7 +99,7 @@ func New(st store.Store, gl gitlab.Port, argo argocd.Port, cat *catalog.Service,
 	g *GitOps, bus *events.Bus, defaultCluster, defaultBranch string, autoMerge bool) *Service {
 	return &Service{store: st, gl: gl, argo: argo, catalog: cat, gitops: g,
 		bus: bus, defaultCluster: defaultCluster, defaultBranch: defaultBranch, autoMerge: autoMerge,
-		mergeBlocked: map[string]string{}, mergeRetries: map[string]int{}}
+		mergeRetries: map[string]int{}}
 }
 
 // CreateInput is the payload for a new order.

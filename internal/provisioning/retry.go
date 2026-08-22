@@ -16,8 +16,7 @@ import (
 // branch before the portal stops and lets a person look. Retrying is cheap and
 // safe (each attempt recomputes everything from Git), but a branch that moves
 // faster than the portal can follow is a situation to report, not to chase.
-// Process-local, like the blocked-reason bookkeeping next to it: a restart is
-// allowed to try again.
+// Counted in memory: a restart is allowed to try again.
 const maxMergeRetries = 3
 
 // retryOutcome is what came of one attempt to rewrite a conflicted change.
@@ -165,15 +164,15 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 // reportMergeConflicts records the fields two changes disagree on. Reported
 // through the same once-per-reason gate as any other blocked merge, so the
 // poller coming back every few seconds does not repeat itself.
+//
+// Said at once, with none of the waiting the other blocks get: this one is the
+// portal's own finding about two versions of a file, not a verdict GitLab is
+// still recomputing, so there is nothing to wait for it to change its mind about.
 func (s *Service) reportMergeConflicts(ctx context.Context, r *models.Request,
 	rec *models.RequestMR, conflicts []mergeConflict) {
 
 	paths := conflictPaths(conflicts)
-	s.mergeBlockedMu.Lock()
-	seen, ok := s.mergeBlocked[rec.ID]
-	s.mergeBlocked[rec.ID] = "conflict:" + paths
-	s.mergeBlockedMu.Unlock()
-	if ok && seen == "conflict:"+paths {
+	if !s.takeMergeBlock(ctx, r, rec, "conflict:"+paths, 0) {
 		return
 	}
 	observability.ObserveMRMergeRetried("conflict")
@@ -198,11 +197,11 @@ func (s *Service) supersedeMR(ctx context.Context, r *models.Request, rec *model
 		return
 	}
 	rec.Status = models.MRClosed
+	rec.BlockedReason = ""
 	if err := s.store.UpdateMR(ctx, rec); err != nil {
 		s.logger().Warn("superseded mr state not persisted",
 			"order_id", r.ID, "mr_iid", rec.MRIID, "err", err)
 	}
-	s.forgetMergeBlocked(rec.ID)
 }
 
 // readValues reads and parses values.yaml at a ref. A missing file reads as an
@@ -251,8 +250,8 @@ func mergeVersion(base, theirs, mine string) (string, bool) {
 // attempt. Bounded so a branch that keeps moving cannot keep the portal
 // rewriting the same change forever.
 func (s *Service) takeMergeRetry(requestID string) bool {
-	s.mergeBlockedMu.Lock()
-	defer s.mergeBlockedMu.Unlock()
+	s.mergeMu.Lock()
+	defer s.mergeMu.Unlock()
 	if s.mergeRetries[requestID] >= maxMergeRetries {
 		return false
 	}
@@ -266,7 +265,7 @@ func (s *Service) takeMergeRetry(requestID string) bool {
 // the fourth conflict in an order's life would be refused because of three
 // resolved months earlier.
 func (s *Service) clearMergeRetries(requestID string) {
-	s.mergeBlockedMu.Lock()
-	defer s.mergeBlockedMu.Unlock()
+	s.mergeMu.Lock()
+	defer s.mergeMu.Unlock()
 	delete(s.mergeRetries, requestID)
 }
