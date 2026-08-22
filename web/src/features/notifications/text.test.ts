@@ -55,6 +55,14 @@ describe("notificationText", () => {
     expect(text).toMatch(/согласовани/i);
   });
 
+  test("a deletion that did not finish says where to go and look", () => {
+    const text = notificationText(
+      notification({ kind: "order_delete_stalled", payload: { service_name: "payments" } }),
+    );
+    expect(text).toContain("payments");
+    expect(text).toMatch(/кластере/);
+  });
+
   test("a payload that lost a field still reads as a sentence", () => {
     expect(notificationText(notification({ kind: "order_degraded" }))).toBe("Сервис сервис не работает");
   });
@@ -70,6 +78,7 @@ describe("notificationText", () => {
       "order_healthy",
       "order_degraded",
       "order_change_blocked",
+      "order_delete_stalled",
       "version_approved",
       "version_rejected",
       "chart_version_available",

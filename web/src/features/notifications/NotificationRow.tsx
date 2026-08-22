@@ -10,6 +10,7 @@ import {
   IconRefreshAlert,
   IconRocket,
   IconSparkles,
+  IconTrashOff,
   IconUser,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
@@ -27,6 +28,7 @@ const ICONS: Record<string, IconType> = {
   order_healthy: IconCircleCheck,
   order_degraded: IconAlertTriangle,
   order_change_blocked: IconRefreshAlert,
+  order_delete_stalled: IconTrashOff,
   version_approved: IconCircleCheck,
   version_rejected: IconAlertTriangle,
   chart_version_available: IconArrowUpCircle,

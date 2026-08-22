@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -100,8 +101,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 // apiApp is the trimmed ArgoCD Application JSON the portal reads.
 type apiApp struct {
 	Metadata struct {
-		Name   string            `json:"name"`
-		Labels map[string]string `json:"labels"`
+		Name       string            `json:"name"`
+		Labels     map[string]string `json:"labels"`
+		Finalizers []string          `json:"finalizers"`
 	} `json:"metadata"`
 	Spec struct {
 		Project     string `json:"project"`
@@ -170,6 +172,44 @@ func (c *Client) getApplication(ctx context.Context, name, refresh string) (*App
 	}
 	a := app.toApp()
 	return &a, nil
+}
+
+// ResourcesFinalizer is what makes deleting an Application delete the service it
+// deployed. Without it Argo CD removes the Application alone and leaves every
+// resource behind it running, owned by nothing.
+const ResourcesFinalizer = "resources-finalizer.argocd.argoproj.io"
+
+// EnsureCascadingDelete stamps the resources finalizer on a live Application, so
+// that whatever removes it later takes the deployed resources with it.
+//
+// The portal writes the finalizer into every manifest it generates, so for an
+// order created by this portal this is a no-op that costs one read. It exists for
+// the ones where the manifest cannot be trusted: orders committed before the
+// portal wrote the finalizer, and orders imported from manifests somebody else
+// wrote by hand.
+//
+// Called before the change removing the manifest is opened, while the
+// Application is still what Git asks for: patching it then races with nothing.
+func (c *Client) EnsureCascadingDelete(ctx context.Context, name string) error {
+	var app apiApp
+	if err := c.do(ctx, http.MethodGet, "/applications/"+url.PathEscape(name), nil, nil, &app); err != nil {
+		return err
+	}
+	if slices.Contains(app.Metadata.Finalizers, ResourcesFinalizer) {
+		return nil
+	}
+	// A JSON merge patch replaces a list rather than adding to it, so send the
+	// finalizers this application already has plus ours. Dropping somebody else's
+	// finalizer would strand the resource it guards.
+	merged := append(slices.Clone(app.Metadata.Finalizers), ResourcesFinalizer)
+	patch, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{"finalizers": merged},
+	})
+	if err != nil {
+		return err
+	}
+	return c.do(ctx, http.MethodPatch, "/applications/"+url.PathEscape(name), nil,
+		map[string]string{"patch": string(patch), "patchType": "merge"}, nil)
 }
 
 func (c *Client) Sync(ctx context.Context, name string) error {
