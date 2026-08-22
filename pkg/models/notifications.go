@@ -50,10 +50,12 @@ const (
 	NotifyVersionRejected = "version_rejected"
 	// A release in the registry the owners have not published yet.
 	NotifyChartVersionAvailable = "chart_version_available"
-	// Work waiting for the platform team: a version sent for approval, and a
-	// chart the portal found in the registry that nobody has adopted.
-	NotifyVersionSubmitted = "version_submitted"
-	NotifyChartDiscovered  = "chart_discovered"
+	// Work waiting for the platform team: a version sent for approval, a chart
+	// the portal found in the registry that nobody has adopted, and a service
+	// whose deletion Argo CD has not finished.
+	NotifyVersionSubmitted   = "version_submitted"
+	NotifyChartDiscovered    = "chart_discovered"
+	NotifyOrderDeleteStalled = "order_delete_stalled"
 	// A published version the registry no longer has.
 	NotifyChartVersionMissing = "chart_version_missing"
 	// The portal itself.

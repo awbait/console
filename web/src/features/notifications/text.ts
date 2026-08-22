@@ -64,6 +64,8 @@ export function notificationText(n: AppNotification): string {
       return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} ждёт согласования`;
     case "chart_discovered":
       return `В реестре найден сервис ${str(n, "chart_name")}, задайте ему категорию и владельца`;
+    case "order_delete_stalled":
+      return `Сервис ${service} не удалился до конца, проверьте, что осталось в кластере`;
     case "portal_updated":
       return `Портал обновлён до версии ${str(n, "version")}`;
     default:

@@ -56,10 +56,23 @@ if (-not $ids) {
 # --- 2. Argo CD: drop the bootstrap ApplicationSet + every Application ----------
 # Deleting the ApplicationSet first stops it from regenerating directory-apps for
 # repos that (briefly) still appear in the SCM cache; then we delete all
-# Applications (their resources-finalizer cascade-prunes deployed workloads), and
-# finally re-apply the AppProject + ApplicationSet so future orders work again.
+# Applications, and finally re-apply the AppProject + ApplicationSet so future
+# orders work again.
+#
+# The delete has to cascade, or the Applications go while everything they
+# deployed keeps running in the cluster with nothing left that owns it - and the
+# reset then reads as clean while the previous stand is still up. Manifests the
+# portal writes now carry resources-finalizer.argocd.argoproj.io, but anything
+# committed before that does not, so stamp the finalizer on whatever is actually
+# there instead of trusting the manifest.
 Write-Host "[reset] Argo CD: removing ApplicationSet + Applications..." -ForegroundColor Cyan
 kubectl -n $ArgoNamespace delete applicationset portal-app-of-apps --ignore-not-found | Out-Host
+$apps = @()
+try { $apps = @(kubectl -n $ArgoNamespace get applications -o name) } catch {}
+foreach ($app in $apps) {
+    kubectl -n $ArgoNamespace patch $app --type merge `
+        -p '{"metadata":{"finalizers":["resources-finalizer.argocd.argoproj.io"]}}' | Out-Null
+}
 kubectl -n $ArgoNamespace delete applications --all --timeout=120s | Out-Host
 Write-Host "[reset] Argo CD: re-applying AppProject + ApplicationSet..."
 kubectl apply -f (Join-Path $root "deployments\kind\appproject.yaml") | Out-Host

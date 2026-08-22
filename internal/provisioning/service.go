@@ -84,6 +84,7 @@ type Notifier interface {
 	OrderHealthy(ctx context.Context, st store.Store, r *models.Request, from string)
 	OrderDegraded(ctx context.Context, st store.Store, r *models.Request, detail string)
 	OrderChangeBlocked(ctx context.Context, st store.Store, r *models.Request, reason string)
+	OrderDeleteStalled(ctx context.Context, st store.Store, r *models.Request)
 }
 
 // SetNotifier wires the notification domain in (main does it after both exist).
@@ -802,6 +803,20 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		s.event(ctx, r, byUser(u), "deleted", "", models.StatusDeleted)
 		s.publishStatus(r.ID, string(models.StatusDeleted))
 		return r, nil
+	}
+	// Make the deployed resources leave with the application, while the
+	// application is still what Git asks for. Removing an Argo CD Application that
+	// does not carry the resources finalizer takes the application alone and
+	// leaves everything it deployed running, owned by nothing and invisible to the
+	// portal. Manifests written by this portal carry it, so this is usually a
+	// no-op; it is here for the ones that cannot: orders committed before the
+	// portal wrote the finalizer, and orders imported from somebody else's
+	// manifest. Best effort - a service the portal cannot reach in Argo CD is not
+	// a reason to refuse to delete it from Git, and the delete then reports itself
+	// as unfinished (see tendDelete).
+	if err := s.argo.EnsureCascadingDelete(ctx, r.ArgoCDAppName); err != nil {
+		s.logger().Warn("delete may leave resources behind: application not prepared",
+			"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", err)
 	}
 	actions := make([]gitlab.FileAction, 0, len(files))
 	for _, f := range files {

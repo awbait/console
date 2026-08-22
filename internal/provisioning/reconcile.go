@@ -106,8 +106,43 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 			}
 		}
 	case models.StatusDeleteMRMerged:
-		if _, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); errors.Is(err, models.ErrNotFound) {
-			s.markDeleted(ctx, r)
+		s.tendDelete(ctx, r)
+	}
+}
+
+// deleteGrace is how long taking a service out of the cluster may take before the
+// portal says out loud that it is not finishing. Generous on purpose: the merged
+// change reaches Argo CD through its own Git poll (minutes, on an installation
+// with no webhook from GitLab), and Argo CD then removes the deployed resources
+// one by one. Past this it is not slowness - something in the cluster is refusing
+// to go, and only somebody with access there can find out what.
+const deleteGrace = 15 * time.Minute
+
+// tendDelete finishes, or explains, one order whose delete change is merged.
+//
+// The Application outliving its manifest is the normal middle of a deletion, not
+// a fault: the manifest carries Argo CD's resources finalizer (see gitops.go), so
+// Argo CD keeps the Application until everything it deployed is gone. That is
+// what makes its disappearance proof that the service is really gone, and why the
+// order is closed on it rather than on the merge.
+func (s *Service) tendDelete(ctx context.Context, r *models.Request) {
+	_, err := s.argo.GetApplication(ctx, r.ArgoCDAppName)
+	switch {
+	case errors.Is(err, models.ErrNotFound):
+		s.markDeleted(ctx, r)
+	case err != nil:
+		// Argo CD is not answering. Nothing follows from that about the service,
+		// and the status page is already saying the integration is down.
+		s.logger().Debug("delete: argocd state unavailable",
+			"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", err)
+	case time.Since(r.UpdatedAt) > deleteGrace:
+		// UpdatedAt is when the order entered this status: nothing else writes the
+		// row while a delete is in flight.
+		s.logger().Warn("delete not finishing",
+			"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName,
+			"waiting_for", time.Since(r.UpdatedAt).Round(time.Minute).String())
+		if s.notify != nil {
+			s.notify.OrderDeleteStalled(ctx, nil, r)
 		}
 	}
 }

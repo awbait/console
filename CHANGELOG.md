@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- The platform team is notified when a deletion does not finish within fifteen
+  minutes. Until it does, the order keeps showing "Удаляется".
+
+### Fixed
+- Deleting a service now takes it out of the cluster. The portal used to report
+  the service as deleted while everything it had deployed kept running, and
+  somebody had to remove it by hand. Services ordered before this fix are
+  deleted the same way.
+
 ## [0.7.0] - 2026-08-21
 
 A release about reading what changed: the portal's own changelog and a chart's

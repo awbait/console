@@ -215,6 +215,16 @@ func (g *GitOps) AppPath(r *models.Request) string {
 // CRs, so this manifest fully describes the deployment - no per-repo wiring.
 // metadata.namespace is the namespace Argo CD runs in (ARGOCD_NAMESPACE), so the
 // app-of-apps materialises the CR where Argo CD will read it.
+//
+// metadata.finalizers carries resources-finalizer.argocd.argoproj.io, and it is
+// what makes deleting an order actually delete the service. Removing the order
+// removes this file; the app-of-apps then prunes the Application CR. Deleting an
+// Application WITHOUT that finalizer is non-cascading in Argo CD: the CR goes and
+// everything it deployed keeps running in the cluster, unowned and invisible to
+// the portal. With it, Argo CD removes the deployed resources first and only then
+// lets the CR go, which is also what makes the portal's "the Application is gone"
+// a truthful answer to "is the service deleted".
+//
 // (The fake ArgoCD parses only metadata.name, labels, spec.project and
 // spec.destination.name, all of which remain present here.)
 var applicationYAML = template.Must(template.New("app").Parse(`apiVersion: argoproj.io/v1alpha1
@@ -222,6 +232,8 @@ kind: Application
 metadata:
   name: {{.AppName}}
   namespace: {{.AppNamespace}}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
   labels:
     managed-by: portal
     idp.team: {{.Team}}

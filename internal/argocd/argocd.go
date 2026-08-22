@@ -48,6 +48,10 @@ type Port interface {
 	GetApplication(ctx context.Context, name string) (*Application, error)
 	// Sync forces a sync (admin action).
 	Sync(ctx context.Context, name string) error
+	// EnsureCascadingDelete makes the application take its deployed resources
+	// with it when it is removed. Called before the change that removes its
+	// manifest; ErrNotFound if there is no such application.
+	EnsureCascadingDelete(ctx context.Context, name string) error
 
 	Healthz(ctx context.Context) error
 }

@@ -1,6 +1,7 @@
 package provisioning_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -123,6 +124,35 @@ func TestRenderApplicationNamespace(t *testing.T) {
 	// The service's own namespace is a different thing and must not follow it.
 	if !strings.Contains(out, "namespace: apps") {
 		t.Fatalf("destination namespace lost:\n%s", out)
+	}
+}
+
+// Deleting an order has to delete the service, not just the record of it. The
+// app-of-apps prunes the Application CR when this file disappears, and a prune
+// of an Application without the resources finalizer is non-cascading: Argo CD
+// drops the CR and leaves every deployed resource running in the cluster, with
+// nothing left that knows they exist.
+func TestRenderApplicationCascadesOnDelete(t *testing.T) {
+	r := &models.Request{
+		Team: "core", ChartName: "postgres", ServiceName: "pg1", ChartVersion: "3.1.0",
+		Cluster: "in-cluster", Namespace: "apps", ArgoCDAppName: "core-postgres-pg1",
+	}
+	g := newGitOps(t)
+	out, err := g.RenderApplication(r, "https://gitlab/x.git")
+	if err != nil {
+		t.Fatalf("RenderApplication: %v", err)
+	}
+	var doc struct {
+		Metadata struct {
+			Finalizers []string `yaml:"finalizers"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("rendered manifest is not valid YAML: %v\n%s", err, out)
+	}
+	if !slices.Contains(doc.Metadata.Finalizers, "resources-finalizer.argocd.argoproj.io") {
+		t.Fatalf("metadata.finalizers = %v, want the Argo CD resources finalizer:\n%s",
+			doc.Metadata.Finalizers, out)
 	}
 }
 

@@ -79,6 +79,26 @@ func (s *Service) OrderChangeBlocked(ctx context.Context, st store.Store, r *mod
 	})
 }
 
+// OrderDeleteStalled: the change removing a service is merged, but Argo CD has
+// not finished taking it out of the cluster. Addressed to the admin role, not to
+// the person who deleted: what is left to do happens in the cluster, and only
+// the platform team can get there.
+//
+// Said once per order. A deletion that stays stuck says nothing new on the next
+// tick, and the order keeps showing "deleting" for as long as it is true.
+func (s *Service) OrderDeleteStalled(ctx context.Context, st store.Store, r *models.Request) {
+	s.Send(ctx, st, Notification{
+		Kind:        models.NotifyOrderDeleteStalled,
+		SubjectType: models.SubjectOrder,
+		SubjectID:   r.ID,
+		Audience:    models.AudienceRole,
+		AudienceKey: string(models.RoleAdmin),
+		Payload:     orderPayload(r),
+		Level:       models.LevelAttention,
+		DedupKey:    "order:" + r.ID + ":delete_stalled",
+	})
+}
+
 // VersionApproved / VersionRejected: what became of a version its owner sent
 // for approval. Addressed to the owning team rather than to the person who
 // submitted it: publishing a service is the team's job, and the person who

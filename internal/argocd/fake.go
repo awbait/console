@@ -31,16 +31,18 @@ type appManifest struct {
 // Fake is an in-memory ArgoCD. New apps start Progressing and advance to
 // Healthy on the next Reconcile (deterministic one-tick progression).
 type Fake struct {
-	mu     sync.Mutex
-	apps   map[string]*Application
-	source ManifestSource
+	mu   sync.Mutex
+	apps map[string]*Application
+	// cascading records the apps EnsureCascadingDelete was called on.
+	cascading map[string]bool
+	source    ManifestSource
 }
 
 var _ Port = (*Fake)(nil)
 
 // NewFake builds a fake ArgoCD. source may be nil (then use Upsert in tests).
 func NewFake(source ManifestSource) *Fake {
-	return &Fake{apps: map[string]*Application{}, source: source}
+	return &Fake{apps: map[string]*Application{}, cascading: map[string]bool{}, source: source}
 }
 
 // Reconcile syncs the app set from the manifest source and advances health.
@@ -115,7 +117,35 @@ func (f *Fake) Sync(ctx context.Context, name string) error {
 	return nil
 }
 
+// EnsureCascadingDelete records that the app was made to take its resources with
+// it. The fake has no resources to leave behind, so what a test can check is that
+// the portal asked before removing the manifest - see CascadesOnDelete.
+func (f *Fake) EnsureCascadingDelete(ctx context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.apps[name]; !ok {
+		return models.ErrNotFound
+	}
+	f.cascading[name] = true
+	return nil
+}
+
+// CascadesOnDelete reports whether the app was stamped (test helper).
+func (f *Fake) CascadesOnDelete(name string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cascading[name]
+}
+
 func (f *Fake) Healthz(ctx context.Context) error { return nil }
+
+// Forget drops an app without going through Git (test helper): what an order
+// whose application Argo CD has never heard of looks like.
+func (f *Fake) Forget(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.apps, name)
+}
 
 // Upsert directly sets an app (test helper, bypasses reconcile).
 func (f *Fake) Upsert(a Application) {
