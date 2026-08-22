@@ -246,7 +246,9 @@ func (p *Postgres) AddMR(ctx context.Context, mr *models.RequestMR) error {
 }
 
 func (p *Postgres) UpdateMR(ctx context.Context, mr *models.RequestMR) error {
-	tag, err := p.db.Exec(ctx, `UPDATE request_mrs SET mr_status=$1 WHERE id=$2`, mr.Status, mr.ID)
+	tag, err := p.db.Exec(ctx,
+		`UPDATE request_mrs SET mr_status=$1, blocked_reason=$2 WHERE id=$3`,
+		mr.Status, mr.BlockedReason, mr.ID)
 	if err != nil {
 		return err
 	}
@@ -259,7 +261,7 @@ func (p *Postgres) UpdateMR(ctx context.Context, mr *models.RequestMR) error {
 func scanMR(row pgx.Row) (*models.RequestMR, error) {
 	var mr models.RequestMR
 	err := row.Scan(&mr.ID, &mr.RequestID, &mr.GitLabProjectID, &mr.MRIID, &mr.MRURL,
-		&mr.Status, &mr.Action, &mr.CreatedAt)
+		&mr.Status, &mr.Action, &mr.BlockedReason, &mr.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, models.ErrNotFound
 	}
@@ -269,7 +271,8 @@ func scanMR(row pgx.Row) (*models.RequestMR, error) {
 	return &mr, nil
 }
 
-const mrCols = `id, request_id, gitlab_project_id, mr_iid, mr_url, mr_status, action, created_at`
+const mrCols = `id, request_id, gitlab_project_id, mr_iid, mr_url, mr_status, action,
+	COALESCE(blocked_reason,''), created_at`
 
 func (p *Postgres) ListMRs(ctx context.Context, requestID string) ([]*models.RequestMR, error) {
 	rows, err := p.db.Query(ctx, `SELECT `+mrCols+` FROM request_mrs WHERE request_id=$1 ORDER BY created_at`, requestID)

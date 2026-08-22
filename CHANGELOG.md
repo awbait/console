@@ -13,6 +13,13 @@ All notable changes to this project are documented in this file.
   the service as deleted while everything it had deployed kept running, and
   somebody had to remove it by hand. Services ordered before this fix are
   deleted the same way.
+- "Изменение не удалось применить автоматически" no longer appears in an order's
+  history while the change is on its way through. The portal now waits for the
+  checks to finish before calling anything a problem, and a restart of the
+  portal does not repeat what it has already said.
+- That entry says what is actually in the way: a change waiting for approval, a
+  check that did not pass, an open discussion. It used to be a bare line with
+  nothing to act on.
 
 ## [0.7.0] - 2026-08-21
 

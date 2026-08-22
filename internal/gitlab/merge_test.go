@@ -22,13 +22,18 @@ func TestClassifyMerge(t *testing.T) {
 		{"checking", gitlab.MergePending},
 		{"unchecked", gitlab.MergePending},
 		{"preparing", gitlab.MergePending},
+		{"approvals_syncing", gitlab.MergePending},
+		{"ci_still_running", gitlab.MergePending},
 		{"conflict", gitlab.MergeBlocked},
 		{"need_rebase", gitlab.MergeBlocked},
 		{"ci_must_pass", gitlab.MergeBlocked},
 		{"not_approved", gitlab.MergeBlocked},
 		{"discussions_not_resolved", gitlab.MergeBlocked},
 		{"draft_status", gitlab.MergeBlocked},
-		{"something_gitlab_added_later", gitlab.MergeBlocked},
+		// A state this build has never heard of is one it cannot call a failure.
+		// The portal does not attempt the merge either way, and a change that
+		// never leaves the state is reported on time rather than on sight.
+		{"something_gitlab_added_later", gitlab.MergePending},
 	}
 	for _, c := range cases {
 		if got := gitlab.ClassifyMerge(c.detailed); got != c.want {

@@ -208,16 +208,19 @@ func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models
 	case gitlab.MergePending:
 		// Mergeability is computed asynchronously. A just-opened MR, or one whose
 		// target branch a sibling order has just advanced, reads as pending for a
-		// tick or two and then merges by itself - nothing to report.
+		// tick or two and then merges by itself - nothing to report. A change
+		// GitLab is still deciding on half an hour later is stuck whatever it
+		// says, so that much waiting is reported like any other block.
 		s.logger().Debug("mr merge pending",
 			"order_id", r.ID, "mr_iid", mr.MRIID, "reason", detailed)
+		s.reportMergeBlocked(ctx, r, mr, detailed, mergeStuck)
 		return
 	case gitlab.MergeBlocked:
 		// A gate the project requires, and no amount of retrying clears it (the
 		// one the portal can clear, a conflict, was handled before we got here).
 		// Report once and stop hammering the merge endpoint - the order sits here
 		// until a person resolves it.
-		s.reportMergeBlocked(ctx, r, mr, detailed)
+		s.reportMergeBlocked(ctx, r, mr, detailed, mergeGrace)
 		return
 	}
 
@@ -232,31 +235,43 @@ func (s *Service) autoMergeMR(ctx context.Context, r *models.Request, mr *models
 		return
 	}
 	s.logger().Info("mr auto-merged", "order_id", r.ID, "mr_iid", mr.MRIID)
-	s.forgetMergeBlocked(mr.ID)
 	s.clearMergeRetries(r.ID)
 	// Record the merge now rather than waiting for the next tick to observe it,
 	// so the order reaches ArgoCD on this sweep.
 	mr.Status = models.MRMerged
+	mr.BlockedReason = ""
 	if uerr := s.store.UpdateMR(ctx, mr); uerr != nil {
 		s.logger().Warn("mr state persist failed",
 			"order_id", r.ID, "mr_iid", mr.MRIID, "err", uerr)
 	}
 }
 
-// reportMergeBlocked announces, once per reason per MR, that auto-merge has
-// given up: a log line to read, a metric to alert on, and a timeline entry so
-// the person looking at the order sees why it stopped moving.
-func (s *Service) reportMergeBlocked(ctx context.Context, r *models.Request,
-	mr *models.RequestMR, reason string) {
+// How long a change may go unmerged before the portal says so out loud.
+//
+// mergeGrace covers a refusal GitLab has settled on: it is already an answer, so
+// the wait is only there because mergeability is recomputed constantly and a
+// change can read as refused for a moment right after it is opened.
+//
+// mergeStuck covers a change GitLab says it is still deciding on. That is not an
+// answer, and it is normally over in seconds, so the portal waits much longer
+// before calling it a problem - long enough that a slow pipeline finishes on its
+// own, short enough that nobody has to notice the order by themselves.
+const (
+	mergeGrace = 5 * time.Minute
+	mergeStuck = 30 * time.Minute
+)
 
-	s.mergeBlockedMu.Lock()
-	if seen, ok := s.mergeBlocked[mr.ID]; ok && seen == reason {
-		s.mergeBlockedMu.Unlock()
+// reportMergeBlocked announces, once per reason per change, that auto-merge has
+// given up: a log line to read, a metric to alert on, a timeline entry so the
+// person looking at the order sees why it stopped moving, and a notification so
+// they do not have to be looking. after is how long the change has to have been
+// in this state before any of that is worth saying.
+func (s *Service) reportMergeBlocked(ctx context.Context, r *models.Request,
+	mr *models.RequestMR, reason string, after time.Duration) {
+
+	if !s.takeMergeBlock(ctx, r, mr, reason, after) {
 		return
 	}
-	s.mergeBlocked[mr.ID] = reason
-	s.mergeBlockedMu.Unlock()
-
 	observability.ObserveMRMergeBlocked(reason)
 	s.logger().Warn("mr merge blocked",
 		"order_id", r.ID, "mr_iid", mr.MRIID, "reason", reason)
@@ -266,12 +281,34 @@ func (s *Service) reportMergeBlocked(ctx context.Context, r *models.Request,
 	}
 }
 
-// forgetMergeBlocked drops an MR from the reported set once it merges, so a
-// later block on the same order is reported again.
-func (s *Service) forgetMergeBlocked(mrID string) {
-	s.mergeBlockedMu.Lock()
-	delete(s.mergeBlocked, mrID)
-	s.mergeBlockedMu.Unlock()
+// takeMergeBlock reports whether this refusal is news, and records it if it is.
+// key is what makes one refusal the same as another: GitLab's status, or the
+// fields two changes disagree on.
+//
+// The record lives on the merge request row rather than in memory, because "we
+// already said this" has to survive a restart of the portal: it did not, and
+// every deploy re-announced the same block on every change waiting for a person.
+func (s *Service) takeMergeBlock(ctx context.Context, r *models.Request,
+	mr *models.RequestMR, key string, after time.Duration) bool {
+
+	if mr.BlockedReason == key {
+		return false
+	}
+	// after == 0 means say it now, with no clock reading at all: the caller has
+	// something to report that no amount of waiting changes.
+	if after > 0 && time.Since(mr.CreatedAt) < after {
+		s.logger().Debug("mr not mergeable yet",
+			"order_id", r.ID, "mr_iid", mr.MRIID, "reason", key)
+		return false
+	}
+	mr.BlockedReason = key
+	if err := s.store.UpdateMR(ctx, mr); err != nil {
+		// Say it anyway. Repeating ourselves after a restart is better than an
+		// order that stopped moving with nothing anywhere to say why.
+		s.logger().Warn("mr block reason not persisted",
+			"order_id", r.ID, "mr_iid", mr.MRIID, "err", err)
+	}
+	return true
 }
 
 // deploySettled reports whether ArgoCD has finished applying the desired state

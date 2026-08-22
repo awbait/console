@@ -61,6 +61,7 @@ import { buttonClass, Card, Checkbox } from "@/components/ui";
 import { useMatchMedia } from "@/hooks/useMatchMedia";
 import { safeHref } from "@/lib/href";
 import { dayLabel, fmtDateTime, fmtRelative } from "@/lib/time";
+import { mergeBlockReason } from "./mergeBlock";
 import { OrderGraphDialog } from "./OrderGraphDialog";
 import { graphFor } from "./orderGraph";
 import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
@@ -378,15 +379,6 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
   },
 };
 
-// Why the platform stopped applying a change. The cause is recorded in the
-// upstream's own vocabulary; the order page says what it means for the service.
-// Causes nobody has configured on these repositories fall through to the plain
-// label above, which already tells the person the change is waiting for them.
-const MERGE_BLOCK_REASON: Record<string, string> = {
-  conflict: "мешает другое изменение этого сервиса",
-  need_rebase: "мешает другое изменение этого сервиса",
-};
-
 // What a status change means, phrased as an event. StatusBadge keeps its own
 // wording on purpose: a badge answers "where is the order now", a timeline row
 // answers "what happened to it".
@@ -459,7 +451,7 @@ function eventLabel(e: TimelineEvent): string {
   }
   const label = EVENT_META[e.event_type]?.label ?? e.event_type;
   if (e.event_type === "merge_blocked") {
-    const why = MERGE_BLOCK_REASON[String(e.payload?.reason ?? "")];
+    const why = mergeBlockReason(String(e.payload?.reason ?? ""));
     return why ? `${label}: ${why}` : label;
   }
   return label;

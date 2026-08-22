@@ -3,6 +3,7 @@
 import (
 	"context"
 	"testing"
+	"time"
 
 	"console/internal/argocd"
 	"console/internal/cache"
@@ -53,6 +54,23 @@ func orderWithOpenMR(ctx context.Context, t *testing.T, s *stack) (*models.Reque
 	return req, mrs[len(mrs)-1]
 }
 
+// ageMR backdates an order's latest change, so the portal sees one that has been
+// refused for a while rather than one opened a moment ago. Announcing a block is
+// deliberately not immediate (see the grace periods in reconcile.go), and no test
+// is going to sit out the real thing.
+func ageMR(ctx context.Context, t *testing.T, s *stack, reqID string, by time.Duration) {
+	t.Helper()
+	mrs, err := s.st.ListMRs(ctx, reqID)
+	if err != nil || len(mrs) == 0 {
+		t.Fatalf("no MRs for %s: %v", reqID, err)
+	}
+	mr := mrs[len(mrs)-1]
+	mr.CreatedAt = mr.CreatedAt.Add(-by)
+	if err := s.st.UpdateMR(ctx, mr); err != nil {
+		t.Fatalf("age mr: %v", err)
+	}
+}
+
 func mrStatus(ctx context.Context, t *testing.T, s *stack, reqID string) models.MRStatus {
 	t.Helper()
 	mrs, err := s.st.ListMRs(ctx, reqID)
@@ -93,6 +111,7 @@ func TestAutoMergeBlockedReportsOnceAndStopsRetrying(t *testing.T) {
 	if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "ci_must_pass"); err != nil {
 		t.Fatalf("set merge status: %v", err)
 	}
+	ageMR(ctx, t, s, req.ID, time.Hour)
 	for range 3 {
 		s.tick(ctx)
 	}
