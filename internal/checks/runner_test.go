@@ -110,6 +110,50 @@ func TestRunnerDoesNotProbeAComponentThatIsDown(t *testing.T) {
 	}
 }
 
+func TestSilentChecksDoNotAppear(t *testing.T) {
+	r := NewRunner(quietLogger(), nil,
+		Check{ID: "loud", Component: ComponentPortal, Run: func(context.Context) Result { return ok(nil) }},
+		Check{ID: "quiet", Component: ComponentPortal, Run: func(context.Context) Result {
+			return silent("nothing_to_judge")
+		}},
+	)
+	r.round(context.Background())
+
+	snap := r.Snapshot()
+	// A configuration that is not in use yet cannot be wrong yet, and a grey row
+	// saying so is what turns a setup assistant back into a status report.
+	if len(snap.Results) != 1 || snap.Results[0].ID != "loud" {
+		t.Fatalf("got %d results %+v, want only the one with something to say", len(snap.Results), snap.Results)
+	}
+}
+
+// TestEveryCheckHasItsOwnAnchor holds the set to the rule the configuration page
+// depends on: the verdict is shown next to the first variable a check names, so
+// two checks sharing that variable would leave one of them nowhere to appear.
+func TestEveryCheckHasItsOwnAnchor(t *testing.T) {
+	cfg := &config.Config{
+		StatusUpdateMode:  config.StatusModeHybrid,
+		ArgoCDAppNameTmpl: "{{.Team}}-{{.Chart}}-{{.ServiceName}}",
+	}
+	seen := map[string]string{}
+	for _, c := range All(cfg, nil, nil, nil, nil, nil, nil) {
+		if c.ID == "" || c.Component == "" {
+			t.Fatalf("check %+v has no id or component", c)
+		}
+		if len(c.Vars) == 0 {
+			t.Fatalf("check %q names no variable, so the page cannot place it", c.ID)
+		}
+		anchor := c.Vars[0]
+		if other, dup := seen[anchor]; dup {
+			t.Fatalf("checks %q and %q both anchor on %s", other, c.ID, anchor)
+		}
+		seen[anchor] = c.ID
+	}
+	if len(seen) < 10 {
+		t.Fatalf("the set is down to %d checks, which is not the set anybody wired", len(seen))
+	}
+}
+
 func TestRunnerTriggerCoalesces(t *testing.T) {
 	r := NewRunner(quietLogger(), nil, Check{
 		ID: "a", Component: ComponentPortal,
@@ -138,7 +182,9 @@ func TestKeycloakGroupsClaim(t *testing.T) {
 		want   Verdict
 		reason string
 	}{
-		{"nobody has signed in yet", auth.SignIn{}, VerdictUnknown, reasonNoSignIn},
+		// Nothing has been issued to look at, and a row saying so gives
+		// nobody anything to do. The check disappears instead.
+		{"nobody has signed in yet", auth.SignIn{}, VerdictSilent, reasonNoSignIn},
 		{
 			// The quietest failure the portal has: everyone becomes an auditor
 			// and the portal looks entirely normal.
@@ -178,29 +224,24 @@ func TestKeycloakGroupsClaim(t *testing.T) {
 	})
 }
 
-// --- Harbor artifacts --------------------------------------------------------
+// --- Harbor artifacts, inside the projects check ------------------------------
 
-func TestHarborArtifacts(t *testing.T) {
+func TestHarborProjectsReadsArtifacts(t *testing.T) {
 	repos := map[string][]harbor.RepoRef{"platform": {{Project: "platform", Name: "postgres"}}}
 	t.Run("the robot can read them", func(t *testing.T) {
 		api := &fakeHarbor{repos: repos, artifacts: 3}
-		got := harborArtifacts(context.Background(), api, []string{"platform"})
+		got := harborProjects(context.Background(), api, []string{"platform"})
 		if got.Verdict != VerdictOK || got.Facts["artifacts"] != "3" {
 			t.Fatalf("got %s/%s facts=%v", got.Verdict, got.Reason, got.Facts)
 		}
 	})
 	t.Run("listing works and reading does not", func(t *testing.T) {
 		// Harbor grants "list repositories" and "read artifacts" separately, so
-		// this is a catalog where every chart has no versions.
-		api := &fakeHarbor{repos: repos, artErr: models.ErrNotFound}
-		got := harborArtifacts(context.Background(), api, []string{"platform"})
-		if got.Verdict != VerdictUnknown {
-			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
-		}
-	})
-	t.Run("nothing published yet", func(t *testing.T) {
-		got := harborArtifacts(context.Background(), &fakeHarbor{}, []string{"platform"})
-		if got.Verdict != VerdictSkip {
+		// this is a catalog where every chart has no versions. It has to be one
+		// verdict on one row: the fix is the same robot permission either way.
+		api := &fakeHarbor{repos: repos, artErr: harbor.ErrAccessDenied}
+		got := harborProjects(context.Background(), api, []string{"platform"})
+		if got.Verdict != VerdictFail || got.Reason != reasonNoArtifacts {
 			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})

@@ -20,60 +20,6 @@ func run(t *testing.T, set []Check, id string) Result {
 	return Result{}
 }
 
-func TestWebhookPairing(t *testing.T) {
-	cases := []struct {
-		name       string
-		url, token string
-		mode       string
-		want       Verdict
-		reason     string
-	}{
-		{"both set", "http://p/api/v1/webhooks/gitlab", "s", config.StatusModeHybrid, VerdictOK, ""},
-		{"url without token", "http://p/api/v1/webhooks/gitlab", "", config.StatusModeHybrid, VerdictWarn, reasonURLWithoutToken},
-		{"token without url", "", "s", config.StatusModeHybrid, VerdictWarn, reasonTokenWithoutURL},
-		{"neither, polling", "", "", config.StatusModeHybrid, VerdictSkip, ReasonNotConfigured},
-		// Startup refuses this combination outright, so it should never be seen
-		// on a running portal - but if it ever is, it is not a skip.
-		{"neither, webhook only", "", "", config.StatusModeWebhook, VerdictFail, ReasonNotConfigured},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := &config.Config{GitLabWebhookURL: tc.url, GitLabWebhookToken: tc.token, StatusUpdateMode: tc.mode}
-			got := webhookPairing(cfg)
-			if got.Verdict != tc.want || (tc.reason != "" && got.Reason != tc.reason) {
-				t.Fatalf("got %s/%s, want %s/%s", got.Verdict, got.Reason, tc.want, tc.reason)
-			}
-		})
-	}
-}
-
-func TestWebhookURL(t *testing.T) {
-	cases := []struct {
-		name         string
-		hook, public string
-		want         Verdict
-		reason       string
-	}{
-		{"same origin", "https://p.example.com" + GitLabWebhookPath, "https://p.example.com", VerdictOK, ""},
-		{"trailing slash on the hook", "https://p.example.com" + GitLabWebhookPath + "/", "https://p.example.com", VerdictOK, ""},
-		// GitLab in a container reaches the portal by another name. Legitimate,
-		// and worth showing both addresses next to each other.
-		{"another host", "http://host.docker.internal:8080" + GitLabWebhookPath, "http://localhost:8080", VerdictWarn, reasonHostMismatch},
-		{"another scheme", "https://localhost:8080" + GitLabWebhookPath, "http://localhost:8080", VerdictWarn, reasonSchemeMismatch},
-		{"wrong path", "https://p.example.com/hooks/gitlab", "https://p.example.com", VerdictFail, reasonPathMismatch},
-		{"not a url", "not a url", "https://p.example.com", VerdictFail, reasonPathMismatch},
-		{"unset", "", "https://p.example.com", VerdictSkip, ReasonNotConfigured},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := webhookURL(&config.Config{GitLabWebhookURL: tc.hook, PublicURL: tc.public})
-			if got.Verdict != tc.want || (tc.reason != "" && got.Reason != tc.reason) {
-				t.Fatalf("got %s/%s, want %s/%s", got.Verdict, got.Reason, tc.want, tc.reason)
-			}
-		})
-	}
-}
-
 func TestInstanceDirTemplate(t *testing.T) {
 	cases := []struct {
 		name string
@@ -124,7 +70,7 @@ func TestAppNameTemplate(t *testing.T) {
 func TestStaticSetIsComplete(t *testing.T) {
 	cfg := &config.Config{StatusUpdateMode: config.StatusModeHybrid, ArgoCDAppNameTmpl: "{{.Team}}-{{.Chart}}-{{.ServiceName}}"}
 	set := Static(cfg)
-	want := []string{IDWebhookPairing, IDWebhookURL, IDInstanceDirTmpl, IDAppNameTmpl, IDAutoMerge, IDHarborWebhookSetup}
+	want := []string{IDInstanceDirTmpl, IDAppNameTmpl, IDAutoMerge}
 	if len(set) != len(want) {
 		t.Fatalf("static set has %d checks, want %d", len(set), len(want))
 	}

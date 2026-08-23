@@ -15,9 +15,9 @@ const IDKeycloakGroups = "keycloak_groups_claim"
 
 // Reasons the Keycloak check returns.
 const (
-	reasonNoSignIn    = "no_sign_in"    // nobody has signed in since the portal started
-	reasonNoGroups    = "no_groups"     // the token carried no groups at all
-	reasonNoTeams     = "no_teams"      // it carried groups, and none of them mean anything here
+	reasonNoSignIn    = "no_sign_in"     // nobody has signed in since the portal started
+	reasonNoGroups    = "no_groups"      // the token carried no groups at all
+	reasonNoTeams     = "no_teams"       // it carried groups, and none of them mean anything here
 	reasonRolesUnused = "roles_unmapped" // no group grants a privileged role, so nobody can get one
 )
 
@@ -60,7 +60,11 @@ func keycloakGroups(cfg *config.Config, signIns SignInSource) Result {
 	}
 	last := signIns.Last()
 	if last.At.IsZero() {
-		return verdict(VerdictUnknown, reasonNoSignIn, nil)
+		// Nobody has signed in since the portal started, so no token has been
+		// issued for it to look at. A session survives a restart in its cookie,
+		// so the admin reading this page may well be one of those - and telling
+		// them "not checked" gives them nothing to do about it.
+		return silent(reasonNoSignIn)
 	}
 	f := factsOf(
 		"last_sign_in", last.At.UTC().Format(time.RFC3339),

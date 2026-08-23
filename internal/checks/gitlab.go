@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"errors"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,11 +16,9 @@ import (
 
 // Check ids of the GitLab set, mirrored in web/src/app/configChecks.ts.
 const (
-	IDGitLabToken       = "gitlab_token"
-	IDGitLabGroup       = "gitlab_gitops_group"
-	IDGitLabGroupAccess = "gitlab_group_access"
-	IDGitLabHook        = "gitlab_webhook"
-	IDGitLabDelivery    = "gitlab_webhook_delivery"
+	IDGitLabToken = "gitlab_token"
+	IDGitLabGroup = "gitlab_group"
+	IDGitLabHook  = "gitlab_webhook"
 )
 
 // Reasons the GitLab checks return.
@@ -40,7 +39,6 @@ const (
 	reasonPartialHooks   = "partial_coverage" // per-repository scope, and some repositories have none
 	reasonSecretMismatch = "secret_mismatch"  // every delivery is being rejected on its secret
 	reasonSomeRejected   = "some_rejected"    // some are
-	reasonNoDeliveries   = "no_deliveries"    // nothing has arrived since the portal started
 )
 
 // expiryWarning is how far ahead a token expiry is worth a warning. A month is
@@ -108,30 +106,16 @@ func GitLabChecks(cfg *config.Config, api GitLabAPI, hooks HookScoper, deliverie
 		{
 			ID:        IDGitLabGroup,
 			Component: ComponentGitLab,
-			Vars:      []string{"GITLAB_GITOPS_GROUP"},
-			Run:       func(ctx context.Context) Result { return gitlabGroup(ctx, api, cfg.GitLabGitopsGroup) },
-		},
-		{
-			ID:        IDGitLabGroupAccess,
-			Component: ComponentGitLab,
 			Vars:      []string{"GITLAB_GITOPS_GROUP", "GITLAB_CREATE_TEAM_SUBGROUP"},
 			Run: func(ctx context.Context) Result {
-				return gitlabGroupAccess(ctx, api, cfg.GitLabGitopsGroup, cfg.GitLabCreateGroup)
+				return gitlabGroup(ctx, api, cfg.GitLabGitopsGroup, cfg.GitLabCreateGroup)
 			},
 		},
 		{
 			ID:        IDGitLabHook,
 			Component: ComponentGitLab,
-			Vars:      []string{"GITLAB_WEBHOOK_URL", "GITLAB_WEBHOOK_SCOPE"},
-			Run:       func(ctx context.Context) Result { return gitlabHook(ctx, cfg, api, hooks) },
-		},
-		{
-			ID:        IDGitLabDelivery,
-			Component: ComponentGitLab,
-			Vars:      []string{"GITLAB_WEBHOOK_TOKEN"},
-			Run: func(context.Context) Result {
-				return deliveryCheck(deliveries, "gitlab", cfg.GitLabWebhookToken != "")
-			},
+			Vars:      []string{"GITLAB_WEBHOOK_URL", "GITLAB_WEBHOOK_TOKEN", "GITLAB_WEBHOOK_SCOPE"},
+			Run:       func(ctx context.Context) Result { return gitlabWebhook(ctx, cfg, api, hooks, deliveries) },
 		},
 	}
 }
@@ -179,13 +163,26 @@ func gitlabToken(ctx context.Context, api GitLabAPI) Result {
 	return ok(f)
 }
 
-// gitlabGroup checks that the group every GitOps repository lives under is there
-// and visible to the token.
-func gitlabGroup(ctx context.Context, api GitLabAPI, path string) Result {
+// gitlabGroup checks the group every GitOps repository lives under: that it is
+// there, and that the portal's token holds a role in it that is enough for what
+// the portal will do. Maintainer is the floor for creating repositories and
+// opening merge requests; Owner is needed on top of that to create a team's
+// subgroup, which is what the portal does on a team's first order when
+// GITLAB_CREATE_TEAM_SUBGROUP is on.
+//
+// One check rather than two: "the group is missing" and "the role is too low"
+// are the same sentence to whoever has to fix it, and they are fixed in the same
+// place.
+func gitlabGroup(ctx context.Context, api GitLabAPI, path string, createSubgroups bool) Result {
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
-	f := factsOf("group", path)
+	need, reason := gitlab.AccessMaintainer, reasonNeedsMaint
+	if createSubgroups {
+		need, reason = gitlab.AccessOwner, reasonNeedsOwner
+	}
+	f := factsOf("required", accessName(need))
+
 	g, err := api.GetGroup(ctx, path)
 	switch {
 	case errors.Is(err, models.ErrNotFound):
@@ -196,23 +193,7 @@ func gitlabGroup(ctx context.Context, api GitLabAPI, path string) Result {
 		return verdict(VerdictUnknown, ReasonUnavailable, f)
 	}
 	f["group_id"] = strconv.Itoa(g.ID)
-	return ok(f)
-}
 
-// gitlabGroupAccess checks the role the token holds in that group. Maintainer is
-// the floor for creating repositories and opening merge requests; Owner is
-// needed on top of that to create a team's subgroup, which is what the portal
-// does on a team's first order when GITLAB_CREATE_TEAM_SUBGROUP is on.
-func gitlabGroupAccess(ctx context.Context, api GitLabAPI, path string, createSubgroups bool) Result {
-	if api == nil {
-		return verdict(VerdictUnknown, ReasonUnavailable, nil)
-	}
-	need := gitlab.AccessMaintainer
-	reason := reasonNeedsMaint
-	if createSubgroups {
-		need, reason = gitlab.AccessOwner, reasonNeedsOwner
-	}
-	f := factsOf("group", path, "required", accessName(need))
 	me, err := api.CurrentUser(ctx)
 	if err != nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, f)
@@ -237,22 +218,82 @@ func gitlabGroupAccess(ctx context.Context, api GitLabAPI, path string, createSu
 	return ok(f)
 }
 
-// gitlabHook checks that the merge-request webhook the portal registered for
-// itself is really in GitLab, on merge-request events, and not switched off. The
-// resolved scope comes from the hook manager, which is the only place that knows
-// which of the three worked - until now it was said once in a startup log line.
-func gitlabHook(ctx context.Context, cfg *config.Config, api GitLabAPI, hooks HookScoper) Result {
-	if cfg.GitLabWebhookURL == "" || cfg.GitLabWebhookToken == "" {
-		return verdict(VerdictSkip, ReasonNotConfigured, nil)
+// gitlabWebhook is everything about the portal's own merge-request webhook in
+// one verdict: both halves configured, the address pointing back here, the hook
+// really registered and enabled in GitLab, every repository covered, and the two
+// sides agreeing on the secret.
+//
+// One check because it is one knob. Split into five, a webhook that works
+// perfectly produced five green rows and a webhook that was never set up
+// produced five grey ones, and neither told anybody anything.
+//
+// The order is what to fix first, and evidence outranks inference: if deliveries
+// are arriving and none are being refused, the webhook demonstrably works, and
+// the address looking odd next to PUBLIC_URL is not worth a word. GitLab reaching
+// the portal by another name is normal and the delivery counter already proved
+// it does.
+func gitlabWebhook(ctx context.Context, cfg *config.Config, api GitLabAPI, hooks HookScoper, deliveries Deliveries) Result {
+	hasURL, hasToken := cfg.GitLabWebhookURL != "", cfg.GitLabWebhookToken != ""
+	webhookOnly := cfg.StatusUpdateMode == config.StatusModeWebhook
+	switch {
+	case !hasURL && !hasToken && webhookOnly:
+		// Startup refuses this outright, so it cannot be seen on a running
+		// portal - but if it ever is, nothing advances an order at all.
+		return verdict(VerdictFail, ReasonNotConfigured, factsOf("mode", cfg.StatusUpdateMode))
+	case !hasURL && !hasToken:
+		return verdict(VerdictSkip, ReasonNotConfigured, factsOf("mode", cfg.StatusUpdateMode))
+	case hasURL && !hasToken:
+		// Nothing is registered at all: the portal only registers its hook when
+		// it also has the secret to prove the delivery with.
+		return verdict(VerdictWarn, reasonURLWithoutToken, nil)
+	case !hasURL && hasToken:
+		return verdict(VerdictWarn, reasonTokenWithoutURL, nil)
 	}
 	if api == nil || hooks == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
+
+	f := map[string]string{}
+	hook, err := parseURL(cfg.GitLabWebhookURL)
+	if err != nil || strings.TrimRight(hook.Path, "/") != GitLabWebhookPath {
+		f["expected_path"] = GitLabWebhookPath
+		return verdict(VerdictFail, reasonPathMismatch, f)
+	}
+
+	// Registration, in the order a person would fix it.
 	scope := hooks.Scope()
-	f := factsOf("scope", string(scope), "requested_scope", cfg.GitLabWebhookScope, "hook_url", cfg.GitLabWebhookURL)
+	f["scope"] = string(scope)
 	if scope == gitlab.HookScopeNone || scope == "" {
+		f["requested_scope"] = cfg.GitLabWebhookScope
 		return verdict(VerdictFail, reasonNotRegistered, f)
 	}
+	if res, done := gitlabHookRegistration(ctx, cfg, api, scope, f); done {
+		return res
+	}
+
+	// Delivery, which is the only thing that can see a secret mismatch.
+	if res, done := deliveryVerdict(deliveries, "gitlab", f); done {
+		return res
+	}
+
+	// Nothing has arrived yet, so the address is all there is to go on.
+	if public, perr := parseURL(cfg.PublicURL); perr == nil {
+		f["public_url"] = cfg.PublicURL
+		if hook.Scheme != public.Scheme {
+			return verdict(VerdictWarn, reasonSchemeMismatch, f)
+		}
+		if !strings.EqualFold(hook.Host, public.Host) {
+			return verdict(VerdictWarn, reasonHostMismatch, f)
+		}
+		delete(f, "public_url")
+	}
+	return ok(f)
+}
+
+// gitlabHookRegistration checks that the hook is in GitLab, on merge-request
+// events, enabled, and covering every repository. done reports that it reached a
+// verdict; false means registration is fine and the caller carries on.
+func gitlabHookRegistration(ctx context.Context, cfg *config.Config, api GitLabAPI, scope gitlab.HookScope, f map[string]string) (Result, bool) {
 	if scope == gitlab.HookScopeProject {
 		return gitlabProjectHooks(ctx, api, cfg.GitLabWebhookURL, f)
 	}
@@ -266,36 +307,36 @@ func gitlabHook(ctx context.Context, cfg *config.Config, api GitLabAPI, hooks Ho
 		list, err = api.ListSystemHooks(ctx)
 	}
 	if err != nil {
-		return verdict(VerdictUnknown, ReasonUnavailable, f)
+		return verdict(VerdictUnknown, ReasonUnavailable, f), true
 	}
 	hook := findHook(list, cfg.GitLabWebhookURL)
 	if hook == nil {
-		return verdict(VerdictFail, reasonHookMissing, f)
+		return verdict(VerdictFail, reasonHookMissing, f), true
 	}
 	f["hook_id"] = strconv.Itoa(hook.ID)
 	if !hook.MergeRequestsEvents {
-		return verdict(VerdictFail, reasonHookNotMR, f)
+		return verdict(VerdictFail, reasonHookNotMR, f), true
 	}
 	if disabled(*hook) {
 		f["alert_status"] = hook.AlertStatus
-		return verdict(VerdictFail, reasonHookDisabled, f)
+		return verdict(VerdictFail, reasonHookDisabled, f), true
 	}
-	return ok(f)
+	return Result{}, false
 }
 
 // gitlabProjectHooks counts how many repositories of the GitOps group carry the
 // hook. Under the per-repository scope a repository created outside the portal -
 // or created while the portal was down - has none, and merges in it are noticed
 // only by the poll.
-func gitlabProjectHooks(ctx context.Context, api GitLabAPI, hookURL string, f map[string]string) Result {
+func gitlabProjectHooks(ctx context.Context, api GitLabAPI, hookURL string, f map[string]string) (Result, bool) {
 	projects, err := api.ListGroupProjects(ctx)
 	if err != nil {
-		return verdict(VerdictUnknown, ReasonUnavailable, f)
+		return verdict(VerdictUnknown, ReasonUnavailable, f), true
 	}
 	f["repositories"] = strconv.Itoa(len(projects))
 	if len(projects) == 0 {
 		// Nothing to cover yet: the portal hooks each repository as it creates it.
-		return ok(f)
+		return Result{}, false
 	}
 	looked := projects
 	if len(looked) > hookSweepLimit {
@@ -306,7 +347,7 @@ func gitlabProjectHooks(ctx context.Context, api GitLabAPI, hookURL string, f ma
 	for _, p := range looked {
 		list, herr := api.ListProjectHooks(ctx, p.ID)
 		if herr != nil {
-			return verdict(VerdictUnknown, ReasonUnavailable, f)
+			return verdict(VerdictUnknown, ReasonUnavailable, f), true
 		}
 		hook := findHook(list, hookURL)
 		switch {
@@ -318,55 +359,50 @@ func gitlabProjectHooks(ctx context.Context, api GitLabAPI, hookURL string, f ma
 		}
 	}
 	f["covered"] = strconv.Itoa(covered)
-	f["uncovered"] = strconv.Itoa(len(looked) - covered)
 	if off > 0 {
 		f["disabled"] = strconv.Itoa(off)
-		return verdict(VerdictFail, reasonHookDisabled, f)
+		return verdict(VerdictFail, reasonHookDisabled, f), true
 	}
 	if covered < len(looked) {
-		return verdict(VerdictWarn, reasonPartialHooks, f)
+		f["uncovered"] = strconv.Itoa(len(looked) - covered)
+		return verdict(VerdictWarn, reasonPartialHooks, f), true
 	}
-	return ok(f)
+	return Result{}, false
 }
 
-// deliveryCheck turns the delivery counters into a verdict. It is the only check
-// that can see whether the two sides agree on a secret: GitLab and Harbor never
-// hand theirs back, but a delivery rejected on it is counted, and a source that
-// only ever gets rejected is a secret that has drifted apart.
-func deliveryCheck(d Deliveries, source string, configured bool) Result {
-	if !configured {
-		return verdict(VerdictSkip, ReasonNotConfigured, nil)
-	}
+// deliveryVerdict reads the delivery counters, the only place a secret mismatch
+// is visible: GitLab and Harbor never hand their copy back, but a delivery
+// refused on it is counted. done is false when nothing has arrived, which is not
+// a verdict - it is the absence of one, and the page offers a button instead of
+// guessing.
+func deliveryVerdict(d Deliveries, source string, f map[string]string) (Result, bool) {
 	if d == nil {
-		return verdict(VerdictUnknown, ReasonUnavailable, nil)
+		return Result{}, false
 	}
 	c := d.Get(source)
-	f := factsOf("since", d.Since().UTC().Format(time.RFC3339))
-	if c.Accepted > 0 {
-		f["accepted"] = strconv.Itoa(c.Accepted)
-		f["last_accepted"] = c.LastAccepted.UTC().Format(time.RFC3339)
-	}
-	if c.Rejected > 0 {
-		f["rejected"] = strconv.Itoa(c.Rejected)
-		f["last_rejected"] = c.LastRejected.UTC().Format(time.RFC3339)
-	}
 	switch {
 	case c.Rejected > 0 && c.Accepted == 0:
-		return verdict(VerdictFail, reasonSecretMismatch, f)
+		f["rejected"] = strconv.Itoa(c.Rejected)
+		f["last_rejected"] = c.LastRejected.UTC().Format(time.RFC3339)
+		return verdict(VerdictFail, reasonSecretMismatch, f), true
 	case c.Rejected > 0:
-		return verdict(VerdictWarn, reasonSomeRejected, f)
-	case c.Total == 0:
-		// Nothing has arrived, and that is what a quiet day looks like too. The
-		// page offers the button that settles it instead of guessing.
-		return verdict(VerdictUnknown, reasonNoDeliveries, f)
+		f["accepted"] = strconv.Itoa(c.Accepted)
+		f["rejected"] = strconv.Itoa(c.Rejected)
+		return verdict(VerdictWarn, reasonSomeRejected, f), true
+	case c.Accepted > 0:
+		// Deliveries arrive and none are refused. Whatever the address looks
+		// like next to PUBLIC_URL, it demonstrably works.
+		f["last_accepted"] = c.LastAccepted.UTC().Format(time.RFC3339)
+		return ok(f), true
 	}
-	return ok(f)
+	f["since"] = d.Since().UTC().Format(time.RFC3339)
+	return Result{}, false
 }
 
 // findHook returns the hook registered for this URL, or nil.
-func findHook(list []gitlab.HookInfo, url string) *gitlab.HookInfo {
+func findHook(list []gitlab.HookInfo, hookURL string) *gitlab.HookInfo {
 	for i := range list {
-		if list[i].URL == url {
+		if list[i].URL == hookURL {
 			return &list[i]
 		}
 	}
@@ -375,9 +411,22 @@ func findHook(list []gitlab.HookInfo, url string) *gitlab.HookInfo {
 
 // disabled reports a hook GitLab has switched off after failed deliveries. An
 // empty status is an older GitLab that does not report one, which counts as
-// working - the deliveries check would catch it either way.
+// working - the deliveries would catch it either way.
 func disabled(h gitlab.HookInfo) bool {
 	return h.AlertStatus == "disabled" || h.AlertStatus == "temporarily_disabled"
+}
+
+// parseURL parses an address and refuses one with no host, so a value that is
+// not an address at all cannot pass for one.
+func parseURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Host == "" {
+		return nil, errors.New("no host")
+	}
+	return u, nil
 }
 
 // accessName maps a GitLab access level onto the name its UI uses. An

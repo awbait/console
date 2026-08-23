@@ -93,15 +93,25 @@ type apiError struct {
 
 func (e *apiError) Error() string { return fmt.Sprintf("harbor: status %d: %s", e.status, e.body) }
 
-// IsAccessDenied reports whether the error is a Harbor 401/403: the project is
-// private and the portal's credentials (robot account, or anonymous) can't read
-// it. Callers can turn this into a friendly "no access" message instead of a
-// raw upstream error.
-func IsAccessDenied(err error) bool {
-	var ae *apiError
-	return errors.As(err, &ae) &&
-		(ae.status == http.StatusUnauthorized || ae.status == http.StatusForbidden)
+// ErrAccessDenied is a Harbor 401/403: the project is private and the portal's
+// credentials (robot account, or anonymous) cannot read it. Harbor answers the
+// same way for a project that is not there at all when it is read without
+// sufficient credentials, which is why it is a category of its own and not a
+// kind of "not found".
+var ErrAccessDenied = errors.New("harbor: access denied")
+
+// Unwrap exposes ErrAccessDenied for a 401/403 so errors.Is sees it while the
+// status and body stay in the message for the log. Mirrors the GitLab client.
+func (e *apiError) Unwrap() error {
+	if e.status == http.StatusUnauthorized || e.status == http.StatusForbidden {
+		return ErrAccessDenied
+	}
+	return nil
 }
+
+// IsAccessDenied reports whether the error is a Harbor 401/403. Callers can turn
+// this into a friendly "no access" message instead of a raw upstream error.
+func IsAccessDenied(err error) bool { return errors.Is(err, ErrAccessDenied) }
 
 // isProjectSkippable reports whether a per-project listing error means "this
 // project isn't here / not visible" (so the catalog should skip it) rather than

@@ -19,12 +19,12 @@ const (
 
 // Reasons the Argo CD checks return.
 const (
-	reasonProjectMissing = "project_missing"  // the project the portal commits into is not there
-	reasonClusterMissing = "cluster_missing"  // the destination cluster is not registered
-	reasonCannotRead     = "cannot_read"      // the token may not read the applications it reports on
-	reasonCannotSync     = "cannot_sync"      // it may read them but not sync them
-	reasonNamespaceDiff  = "namespace_diff"   // applications are committed where Argo CD does not look
-	reasonNoApplications = "no_applications"  // nothing deployed yet, so nothing to compare with
+	reasonProjectMissing = "project_missing" // the project the portal commits into is not there
+	reasonClusterMissing = "cluster_missing" // the destination cluster is not registered
+	reasonCannotRead     = "cannot_read"     // the token may not read the applications it reports on
+	reasonCannotSync     = "cannot_sync"     // it may read them but not sync them
+	reasonNamespaceDiff  = "namespace_diff"  // applications are committed where Argo CD does not look
+	reasonNoApplications = "no_applications" // nothing deployed yet, so nothing to compare with
 )
 
 // ArgoCDAPI is the slice of the Argo CD client the checks read through.
@@ -74,7 +74,7 @@ func argoProject(ctx context.Context, api ArgoCDAPI, project string) Result {
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
-	f := factsOf("project", project)
+	f := map[string]string{}
 	exists, err := api.ProjectExists(ctx, project)
 	switch {
 	case err != nil && argocd.Forbidden(err):
@@ -94,8 +94,10 @@ func argoPermissions(ctx context.Context, api ArgoCDAPI, project string) Result 
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
+	// Named apart from the webhook "scope": the two are unrelated and the page
+	// labels facts by their key.
 	scope := project + "/*"
-	f := factsOf("scope", scope)
+	f := factsOf("rbac_scope", scope)
 	canRead, err := api.CanI(ctx, "applications", "get", scope)
 	if err != nil {
 		// Older servers, and some proxies in front of them, do not route this
@@ -124,7 +126,7 @@ func argoCluster(ctx context.Context, api ArgoCDAPI, cluster string) Result {
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
-	f := factsOf("cluster", cluster)
+	f := map[string]string{}
 	list, err := api.ListClusters(ctx)
 	switch {
 	case err != nil && argocd.Forbidden(err):
@@ -152,7 +154,7 @@ func argoNamespace(ctx context.Context, api ArgoCDAPI, configured string) Result
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
-	f := factsOf("configured", configured)
+	f := map[string]string{}
 	actual, err := api.ApplicationNamespace(ctx)
 	switch {
 	case err != nil && argocd.Forbidden(err):
@@ -161,8 +163,10 @@ func argoNamespace(ctx context.Context, api ArgoCDAPI, configured string) Result
 		return verdict(VerdictUnknown, ReasonUnavailable, f)
 	case actual == "":
 		// Argo CD does not report its own namespace, so the only witness is an
-		// application it already holds. With none, there is nothing to compare.
-		return verdict(VerdictSkip, reasonNoApplications, f)
+		// application it already holds. With none, there is nothing to compare -
+		// and nothing to say. A portal that has not deployed anything yet cannot
+		// have got this wrong yet, and a row saying so is a row nobody can act on.
+		return silent(reasonNoApplications)
 	}
 	f["actual"] = actual
 	if actual != configured {

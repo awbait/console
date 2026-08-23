@@ -13,10 +13,8 @@ import (
 
 // Check ids of the Harbor set, mirrored in web/src/app/configChecks.ts.
 const (
-	IDHarborProjects  = "harbor_projects"
-	IDHarborArtifacts = "harbor_artifacts"
-	IDHarborHook      = "harbor_webhook"
-	IDHarborDelivery  = "harbor_webhook_delivery"
+	IDHarborProjects = "harbor_projects"
+	IDHarborHook     = "harbor_webhook"
 )
 
 // Reasons the Harbor checks return.
@@ -24,6 +22,7 @@ const (
 	reasonProjectsMissing = "projects_missing" // a configured project is not in Harbor
 	reasonProjectsHidden  = "projects_hidden"  // it may be, but these credentials cannot see it
 	reasonNoRepositories  = "no_repositories"  // the projects are readable and empty
+	reasonNoArtifacts     = "no_artifacts"     // repositories are readable and their contents are not
 	reasonNoPolicy        = "no_policy"        // Harbor has no webhook aimed at this portal
 	reasonPolicyDisabled  = "policy_disabled"  // it has one and it is switched off
 	reasonMissingEvent    = "missing_event"    // it is on, but not subscribed to a pushed chart
@@ -47,34 +46,29 @@ func HarborChecks(cfg *config.Config, api HarborAPI, deliveries Deliveries) []Ch
 		{
 			ID:        IDHarborProjects,
 			Component: ComponentHarbor,
-			Vars:      []string{"HARBOR_PROJECTS", "HARBOR_ROBOT_USER"},
+			Vars:      []string{"HARBOR_PROJECTS", "HARBOR_ROBOT_USER", "HARBOR_ROBOT_TOKEN"},
 			Run:       func(ctx context.Context) Result { return harborProjects(ctx, api, cfg.HarborProjects) },
-		},
-		{
-			ID:        IDHarborArtifacts,
-			Component: ComponentHarbor,
-			Vars:      []string{"HARBOR_ROBOT_USER", "HARBOR_ROBOT_TOKEN"},
-			Run:       func(ctx context.Context) Result { return harborArtifacts(ctx, api, cfg.HarborProjects) },
 		},
 		{
 			ID:        IDHarborHook,
 			Component: ComponentHarbor,
 			Vars:      []string{"HARBOR_WEBHOOK_SECRET", "PUBLIC_URL"},
-			Run:       func(ctx context.Context) Result { return harborHook(ctx, cfg, api) },
-		},
-		{
-			ID:        IDHarborDelivery,
-			Component: ComponentHarbor,
-			Vars:      []string{"HARBOR_WEBHOOK_SECRET"},
-			Run: func(context.Context) Result {
-				return deliveryCheck(deliveries, "harbor", cfg.HarborWebhookKey != "")
-			},
+			Run:       func(ctx context.Context) Result { return harborWebhook(ctx, cfg, api, deliveries) },
 		},
 	}
 }
 
-// harborProjects checks every project the catalog is built from. The catalog
-// skips a project it cannot read rather than failing (internal/harbor.ListCharts
+// harborProjects checks that the catalog can be built at all: every configured
+// project is there, visible to the robot, and its charts are readable.
+//
+// Listing repositories and reading their artifacts are separate permissions in
+// Harbor, so a robot that passes the first can still produce a catalog where
+// every chart has no versions. The check therefore does the read the catalog
+// does rather than asking Harbor to describe the account's permissions, which
+// also happens to be the only way that works for a robot: a robot is not a user,
+// and the permissions endpoint refuses it.
+//
+// The catalog itself skips a project it cannot read (internal/harbor.ListCharts
 // does that on purpose, so one bad project does not empty the shelf), which is
 // exactly why a project that quietly disappeared is invisible everywhere else.
 func harborProjects(ctx context.Context, api HarborAPI, projects []string) Result {
@@ -84,8 +78,9 @@ func harborProjects(ctx context.Context, api HarborAPI, projects []string) Resul
 	if len(projects) == 0 {
 		return verdict(VerdictFail, ReasonNotConfigured, nil)
 	}
-	f := factsOf("projects", strings.Join(projects, ", "))
+	f := map[string]string{}
 	var missing, hidden []string
+	var sample *harbor.RepoRef
 	repos := 0
 	for _, p := range projects {
 		list, err := api.ListRepositories(ctx, p)
@@ -98,6 +93,9 @@ func harborProjects(ctx context.Context, api HarborAPI, projects []string) Resul
 			return verdict(VerdictUnknown, ReasonUnavailable, f)
 		default:
 			repos += len(list)
+			if sample == nil && len(list) > 0 {
+				sample = &list[0]
+			}
 		}
 	}
 	f["repositories"] = strconv.Itoa(repos)
@@ -108,51 +106,35 @@ func harborProjects(ctx context.Context, api HarborAPI, projects []string) Resul
 	case len(hidden) > 0:
 		f["hidden"] = strings.Join(hidden, ", ")
 		return verdict(VerdictFail, reasonProjectsHidden, f)
-	case repos == 0:
+	case sample == nil:
+		// The projects read and hold nothing. Worth saying at setup time, when
+		// an empty catalog is the question being asked.
 		return verdict(VerdictWarn, reasonNoRepositories, f)
 	}
+
+	f["repository"] = sample.Project + "/" + sample.Name
+	n, err := api.CountArtifacts(ctx, sample.Project, sample.Name)
+	switch {
+	case err != nil && harbor.IsAccessDenied(err):
+		return verdict(VerdictFail, reasonNoArtifacts, f)
+	case err != nil:
+		return verdict(VerdictUnknown, ReasonUnavailable, f)
+	}
+	f["artifacts"] = strconv.Itoa(n)
 	return ok(f)
 }
 
-// harborArtifacts reads a repository's artifacts the way the catalog does. Harbor
-// grants "list repositories" and "read artifacts" separately, so a robot that
-// passes the check above can still produce a catalog where every chart has no
-// versions. Doing the real read answers that; asking Harbor to describe the
-// account's permissions does not, because a robot is not a user and the
-// permissions endpoint refuses it.
-func harborArtifacts(ctx context.Context, api HarborAPI, projects []string) Result {
-	if api == nil {
-		return verdict(VerdictUnknown, ReasonUnavailable, nil)
-	}
-	for _, p := range projects {
-		list, err := api.ListRepositories(ctx, p)
-		if err != nil || len(list) == 0 {
-			continue // already judged by harborProjects
-		}
-		repo := list[0]
-		f := factsOf("repository", repo.Project+"/"+repo.Name)
-		n, err := api.CountArtifacts(ctx, repo.Project, repo.Name)
-		switch {
-		case err != nil && harbor.IsAccessDenied(err):
-			return verdict(VerdictFail, ReasonForbidden, f)
-		case err != nil:
-			return verdict(VerdictUnknown, ReasonUnavailable, f)
-		}
-		f["artifacts"] = strconv.Itoa(n)
-		if n == 0 {
-			return verdict(VerdictWarn, reasonNoRepositories, f)
-		}
-		return ok(f)
-	}
-	return verdict(VerdictSkip, reasonNoRepositories, nil)
-}
-
-// harborHook looks for a webhook policy in Harbor that delivers to this portal.
-// This is the half of the Harbor webhook the portal cannot otherwise see: it
-// knows its own secret is set and assumes the other side exists, and until a
-// chart is pushed nothing contradicts that.
-func harborHook(ctx context.Context, cfg *config.Config, api HarborAPI) Result {
+// harborWebhook is the whole Harbor notification path in one verdict: the
+// portal's secret, Harbor's own policy pointing back here, and whether anything
+// has actually arrived.
+//
+// Evidence outranks inference, as with GitLab: deliveries that arrive and are
+// accepted prove the policy exists and the secrets match, whatever the policy
+// list says or refuses to say.
+func harborWebhook(ctx context.Context, cfg *config.Config, api HarborAPI, deliveries Deliveries) Result {
 	if cfg.HarborWebhookKey == "" {
+		// A delay rather than a failure: without it the portal finds new chart
+		// versions on the next poll instead of at once.
 		return verdict(VerdictSkip, ReasonNotConfigured, nil)
 	}
 	if api == nil {
@@ -160,6 +142,10 @@ func harborHook(ctx context.Context, cfg *config.Config, api HarborAPI) Result {
 	}
 	want := strings.TrimRight(cfg.PublicURL, "/") + HarborWebhookPath
 	f := factsOf("expected_url", want)
+	if res, done := deliveryVerdict(deliveries, "harbor", f); done {
+		return res
+	}
+
 	var withPolicy, disabledIn, withoutEvent, unreadable []string
 	for _, p := range cfg.HarborProjects {
 		policies, err := api.ListWebhookPolicies(ctx, p)

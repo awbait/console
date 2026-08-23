@@ -40,7 +40,13 @@ func (f *fakeGitLab) CurrentUser(context.Context) (*gitlab.Account, error) {
 func (f *fakeGitLab) TokenInfo(context.Context) (*gitlab.TokenInfo, error) {
 	return f.token, f.tokenErr
 }
+
+// GetGroup answers with a plausible group unless the test says otherwise, so a
+// case about access levels does not have to state one.
 func (f *fakeGitLab) GetGroup(context.Context, string) (*gitlab.Group, error) {
+	if f.group == nil && f.groupErr == nil {
+		return &gitlab.Group{ID: 12, FullPath: "managed-services"}, nil
+	}
 	return f.group, f.groupErr
 }
 func (f *fakeGitLab) GroupAccessLevel(context.Context, string, int) (int, error) {
@@ -130,7 +136,7 @@ func TestGitLabToken(t *testing.T) {
 	}
 }
 
-func TestGitLabGroupAccess(t *testing.T) {
+func TestGitLabGroup(t *testing.T) {
 	cases := []struct {
 		name      string
 		api       *fakeGitLab
@@ -172,10 +178,17 @@ func TestGitLabGroupAccess(t *testing.T) {
 			&fakeGitLab{account: &gitlab.Account{ID: 1, IsAdmin: true}, accessErr: models.ErrNotFound},
 			true, VerdictOK, "",
 		},
+		{
+			// Folded in from what used to be a check of its own: to whoever has
+			// to fix it, a missing group and a role too low are one sentence.
+			"the group is not there",
+			&fakeGitLab{account: &gitlab.Account{ID: 1}, groupErr: models.ErrNotFound},
+			false, VerdictFail, reasonGroupMissing,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := gitlabGroupAccess(context.Background(), tc.api, "managed-services", tc.subgroups)
+			got := gitlabGroup(context.Background(), tc.api, "managed-services", tc.subgroups)
 			if got.Verdict != tc.want || got.Reason != tc.reason {
 				t.Fatalf("got %s/%s, want %s/%s", got.Verdict, got.Reason, tc.want, tc.reason)
 			}
@@ -183,48 +196,87 @@ func TestGitLabGroupAccess(t *testing.T) {
 	}
 }
 
-func TestGitLabHook(t *testing.T) {
+func TestGitLabWebhook(t *testing.T) {
 	const hookURL = "https://portal.example.com/api/v1/webhooks/gitlab"
-	cfg := &config.Config{
-		GitLabWebhookURL: hookURL, GitLabWebhookToken: "s",
-		GitLabWebhookScope: "auto", GitLabGitopsGroup: "managed-services",
+	cfg := func(mut func(*config.Config)) *config.Config {
+		c := &config.Config{
+			GitLabWebhookURL: hookURL, GitLabWebhookToken: "s",
+			GitLabWebhookScope: "auto", GitLabGitopsGroup: "managed-services",
+			PublicURL: "https://portal.example.com",
+		}
+		if mut != nil {
+			mut(c)
+		}
+		return c
 	}
 	live := gitlab.HookInfo{ID: 7, URL: hookURL, MergeRequestsEvents: true, AlertStatus: "executable"}
+	quiet := fakeDeliveries{since: time.Now().Add(-time.Hour)}
+	delivered := func(c DeliveryCounts) fakeDeliveries {
+		return fakeDeliveries{counts: map[string]DeliveryCounts{"gitlab": c}}
+	}
+	group := func(hooks ...gitlab.HookInfo) *fakeGitLab { return &fakeGitLab{groupHooks: hooks} }
+	run := func(c *config.Config, api GitLabAPI, scope gitlab.HookScope, d Deliveries) Result {
+		return gitlabWebhook(context.Background(), c, api, scopeOf(scope), d)
+	}
 
-	t.Run("group hook registered", func(t *testing.T) {
-		api := &fakeGitLab{groupHooks: []gitlab.HookInfo{live}}
-		if got := gitlabHook(context.Background(), cfg, api, scopeOf(gitlab.HookScopeGroup)); got.Verdict != VerdictOK {
+	t.Run("registered and quiet", func(t *testing.T) {
+		if got := run(cfg(nil), group(live), gitlab.HookScopeGroup, quiet); got.Verdict != VerdictOK {
 			t.Fatalf("got %s/%s, want ok", got.Verdict, got.Reason)
 		}
 	})
+	t.Run("nothing configured", func(t *testing.T) {
+		empty := cfg(func(c *config.Config) { c.GitLabWebhookURL, c.GitLabWebhookToken = "", "" })
+		if got := run(empty, group(), gitlab.HookScopeNone, quiet); got.Verdict != VerdictSkip {
+			t.Fatalf("got %s, want skip", got.Verdict)
+		}
+	})
+	t.Run("an address with no secret registers nothing", func(t *testing.T) {
+		c := cfg(func(c *config.Config) { c.GitLabWebhookToken = "" })
+		got := run(c, group(), gitlab.HookScopeNone, quiet)
+		if got.Verdict != VerdictWarn || got.Reason != reasonURLWithoutToken {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
+	t.Run("a secret with no address is registered by hand or not at all", func(t *testing.T) {
+		c := cfg(func(c *config.Config) { c.GitLabWebhookURL = "" })
+		got := run(c, group(), gitlab.HookScopeNone, quiet)
+		if got.Verdict != VerdictWarn || got.Reason != reasonTokenWithoutURL {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
+	t.Run("the address is not the portal's webhook endpoint", func(t *testing.T) {
+		c := cfg(func(c *config.Config) { c.GitLabWebhookURL = "https://portal.example.com/hooks/gitlab" })
+		got := run(c, group(live), gitlab.HookScopeGroup, quiet)
+		if got.Verdict != VerdictFail || got.Reason != reasonPathMismatch {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
 	t.Run("nothing registered", func(t *testing.T) {
-		got := gitlabHook(context.Background(), cfg, &fakeGitLab{}, scopeOf(gitlab.HookScopeNone))
+		got := run(cfg(nil), group(), gitlab.HookScopeNone, quiet)
 		if got.Verdict != VerdictFail || got.Reason != reasonNotRegistered {
-			t.Fatalf("got %s/%s, want fail/%s", got.Verdict, got.Reason, reasonNotRegistered)
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})
 	t.Run("scope resolved but the hook is gone", func(t *testing.T) {
-		got := gitlabHook(context.Background(), cfg, &fakeGitLab{}, scopeOf(gitlab.HookScopeGroup))
+		got := run(cfg(nil), group(), gitlab.HookScopeGroup, quiet)
 		if got.Verdict != VerdictFail || got.Reason != reasonHookMissing {
-			t.Fatalf("got %s/%s, want fail/%s", got.Verdict, got.Reason, reasonHookMissing)
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})
 	t.Run("gitlab switched the hook off", func(t *testing.T) {
 		off := live
 		off.AlertStatus = "disabled"
-		api := &fakeGitLab{groupHooks: []gitlab.HookInfo{off}}
-		got := gitlabHook(context.Background(), cfg, api, scopeOf(gitlab.HookScopeGroup))
+		got := run(cfg(nil), group(off), gitlab.HookScopeGroup, quiet)
 		if got.Verdict != VerdictFail || got.Reason != reasonHookDisabled {
-			t.Fatalf("got %s/%s, want fail/%s", got.Verdict, got.Reason, reasonHookDisabled)
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})
 	t.Run("subscribed to the wrong events", func(t *testing.T) {
 		wrong := live
 		wrong.MergeRequestsEvents = false
-		api := &fakeGitLab{groupHooks: []gitlab.HookInfo{wrong}}
-		got := gitlabHook(context.Background(), cfg, api, scopeOf(gitlab.HookScopeGroup))
+		got := run(cfg(nil), group(wrong), gitlab.HookScopeGroup, quiet)
 		if got.Verdict != VerdictFail || got.Reason != reasonHookNotMR {
-			t.Fatalf("got %s/%s, want fail/%s", got.Verdict, got.Reason, reasonHookNotMR)
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})
 	t.Run("per-repository, all covered", func(t *testing.T) {
@@ -232,12 +284,9 @@ func TestGitLabHook(t *testing.T) {
 			projects:  []gitlab.Project{{ID: 1}, {ID: 2}},
 			projHooks: map[int][]gitlab.HookInfo{1: {live}, 2: {live}},
 		}
-		got := gitlabHook(context.Background(), cfg, api, scopeOf(gitlab.HookScopeProject))
-		if got.Verdict != VerdictOK {
-			t.Fatalf("got %s/%s, want ok", got.Verdict, got.Reason)
-		}
-		if got.Facts["covered"] != "2" {
-			t.Fatalf("covered = %q, want 2", got.Facts["covered"])
+		got := run(cfg(nil), api, gitlab.HookScopeProject, quiet)
+		if got.Verdict != VerdictOK || got.Facts["covered"] != "2" {
+			t.Fatalf("got %s/%s facts=%v", got.Verdict, got.Reason, got.Facts)
 		}
 	})
 	t.Run("per-repository, one repository left out", func(t *testing.T) {
@@ -245,57 +294,56 @@ func TestGitLabHook(t *testing.T) {
 			projects:  []gitlab.Project{{ID: 1}, {ID: 2}},
 			projHooks: map[int][]gitlab.HookInfo{1: {live}},
 		}
-		got := gitlabHook(context.Background(), cfg, api, scopeOf(gitlab.HookScopeProject))
+		got := run(cfg(nil), api, gitlab.HookScopeProject, quiet)
 		if got.Verdict != VerdictWarn || got.Reason != reasonPartialHooks {
-			t.Fatalf("got %s/%s, want warn/%s", got.Verdict, got.Reason, reasonPartialHooks)
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 		if got.Facts["uncovered"] != "1" {
 			t.Fatalf("uncovered = %q, want 1", got.Facts["uncovered"])
 		}
 	})
-	t.Run("not configured", func(t *testing.T) {
-		got := gitlabHook(context.Background(), &config.Config{}, &fakeGitLab{}, scopeOf(gitlab.HookScopeNone))
-		if got.Verdict != VerdictSkip {
-			t.Fatalf("got %s, want skip", got.Verdict)
+
+	// Deliveries: the only place a secret mismatch is ever visible, since
+	// neither side hands its copy back.
+	t.Run("every delivery refused", func(t *testing.T) {
+		d := delivered(DeliveryCounts{Rejected: 7, Total: 7, LastRejected: time.Now()})
+		got := run(cfg(nil), group(live), gitlab.HookScopeGroup, d)
+		if got.Verdict != VerdictFail || got.Reason != reasonSecretMismatch {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})
-}
+	t.Run("some refused, some taken", func(t *testing.T) {
+		d := delivered(DeliveryCounts{Accepted: 3, Rejected: 1, Total: 4})
+		got := run(cfg(nil), group(live), gitlab.HookScopeGroup, d)
+		if got.Verdict != VerdictWarn || got.Reason != reasonSomeRejected {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
 
-func TestDeliveryCheck(t *testing.T) {
-	since := time.Now().Add(-time.Hour)
-	cases := []struct {
-		name       string
-		counts     DeliveryCounts
-		configured bool
-		want       Verdict
-		reason     string
-	}{
-		{"not configured", DeliveryCounts{}, false, VerdictSkip, ReasonNotConfigured},
-		{
-			// The diagnosis the whole tracker exists for: neither side will show
-			// its secret, but every delivery being refused says they differ.
-			"every delivery refused",
-			DeliveryCounts{Rejected: 7, Total: 7}, true, VerdictFail, reasonSecretMismatch,
-		},
-		{
-			"some refused, some taken",
-			DeliveryCounts{Accepted: 3, Rejected: 1, Total: 4}, true, VerdictWarn, reasonSomeRejected,
-		},
-		{
-			"nothing has arrived yet, which is also what a quiet day looks like",
-			DeliveryCounts{}, true, VerdictUnknown, reasonNoDeliveries,
-		},
-		{"arriving and accepted", DeliveryCounts{Accepted: 2, Total: 2}, true, VerdictOK, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			d := fakeDeliveries{counts: map[string]DeliveryCounts{"gitlab": tc.counts}, since: since}
-			got := deliveryCheck(d, "gitlab", tc.configured)
-			if got.Verdict != tc.want || got.Reason != tc.reason {
-				t.Fatalf("got %s/%s, want %s/%s", got.Verdict, got.Reason, tc.want, tc.reason)
-			}
-		})
-	}
+	// Evidence outranks inference. GitLab reaching the portal by another name is
+	// normal, and deliveries arriving prove it works, so the address looking odd
+	// next to PUBLIC_URL is not worth a word.
+	t.Run("a different host is fine while deliveries arrive", func(t *testing.T) {
+		c := cfg(func(c *config.Config) { c.PublicURL = "http://localhost:8080" })
+		d := delivered(DeliveryCounts{Accepted: 2, Total: 2, LastAccepted: time.Now()})
+		if got := run(c, group(live), gitlab.HookScopeGroup, d); got.Verdict != VerdictOK {
+			t.Fatalf("got %s/%s, want ok", got.Verdict, got.Reason)
+		}
+	})
+	t.Run("a different host is worth a word while nothing arrives", func(t *testing.T) {
+		c := cfg(func(c *config.Config) { c.PublicURL = "https://other.example.com" })
+		got := run(c, group(live), gitlab.HookScopeGroup, quiet)
+		if got.Verdict != VerdictWarn || got.Reason != reasonHostMismatch {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
+	t.Run("a different scheme is worth a word while nothing arrives", func(t *testing.T) {
+		c := cfg(func(c *config.Config) { c.PublicURL = "http://portal.example.com" })
+		got := run(c, group(live), gitlab.HookScopeGroup, quiet)
+		if got.Verdict != VerdictWarn || got.Reason != reasonSchemeMismatch {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
 }
 
 // --- Harbor ------------------------------------------------------------------
@@ -356,12 +404,13 @@ func TestHarborProjects(t *testing.T) {
 	})
 }
 
-func TestHarborHook(t *testing.T) {
+func TestHarborWebhook(t *testing.T) {
 	cfg := &config.Config{
 		PublicURL: "https://portal.example.com", HarborWebhookKey: "s",
 		HarborProjects: []string{"platform"},
 	}
 	want := "https://portal.example.com" + HarborWebhookPath
+	quiet := fakeDeliveries{since: time.Now().Add(-time.Hour)}
 	policy := func(enabled bool, events ...string) harbor.WebhookPolicy {
 		p := harbor.WebhookPolicy{Name: "portal", Enabled: enabled, EventTypes: events}
 		p.Targets = append(p.Targets, struct {
@@ -406,16 +455,36 @@ func TestHarborHook(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := harborHook(context.Background(), cfg, tc.api)
+			got := harborWebhook(context.Background(), cfg, tc.api, quiet)
 			if got.Verdict != tc.want || got.Reason != tc.reason {
 				t.Fatalf("got %s/%s, want %s/%s", got.Verdict, got.Reason, tc.want, tc.reason)
 			}
 		})
 	}
 	t.Run("no secret means nothing to check", func(t *testing.T) {
-		got := harborHook(context.Background(), &config.Config{}, &fakeHarbor{})
+		got := harborWebhook(context.Background(), &config.Config{}, &fakeHarbor{}, quiet)
 		if got.Verdict != VerdictSkip {
 			t.Fatalf("got %s, want skip", got.Verdict)
+		}
+	})
+	t.Run("every delivery refused", func(t *testing.T) {
+		d := fakeDeliveries{counts: map[string]DeliveryCounts{
+			"harbor": {Rejected: 4, Total: 4, LastRejected: time.Now()},
+		}}
+		got := harborWebhook(context.Background(), cfg, &fakeHarbor{}, d)
+		if got.Verdict != VerdictFail || got.Reason != reasonSecretMismatch {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+	})
+	t.Run("deliveries arriving beat an unreadable policy list", func(t *testing.T) {
+		// A read-only robot cannot see the policies, but the deliveries prove
+		// both that a policy exists and that the secrets match.
+		api := &fakeHarbor{polErr: map[string]error{"platform": harbor.ErrAccessDenied}}
+		d := fakeDeliveries{counts: map[string]DeliveryCounts{
+			"harbor": {Accepted: 2, Total: 2, LastAccepted: time.Now()},
+		}}
+		if got := harborWebhook(context.Background(), cfg, api, d); got.Verdict != VerdictOK {
+			t.Fatalf("got %s/%s, want ok", got.Verdict, got.Reason)
 		}
 	})
 }
@@ -503,9 +572,9 @@ func TestArgoChecks(t *testing.T) {
 			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})
-	t.Run("nothing deployed yet", func(t *testing.T) {
+	t.Run("nothing deployed yet, so nothing to compare and nothing to say", func(t *testing.T) {
 		got := argoNamespace(context.Background(), &fakeArgo{}, "argocd")
-		if got.Verdict != VerdictSkip || got.Reason != reasonNoApplications {
+		if got.Verdict != VerdictSilent || got.Reason != reasonNoApplications {
 			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
 		}
 	})

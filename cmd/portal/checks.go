@@ -37,11 +37,7 @@ func buildChecks(
 	log *slog.Logger,
 ) *checks.Runner {
 	deliveries := deliveryCounts{wh.Deliveries()}
-	set := checks.Static(cfg)
-	set = append(set, checks.GitLabChecks(cfg, gl, hooks, deliveries)...)
-	set = append(set, checks.HarborChecks(cfg, hb, deliveries)...)
-	set = append(set, checks.ArgoCDChecks(cfg, argo)...)
-	set = append(set, checks.KeycloakChecks(cfg, signIns)...)
+	set := checks.All(cfg, gl, hooks, hb, argo, signIns, deliveries)
 	return checks.NewRunner(log, componentHealth(health), set...)
 }
 

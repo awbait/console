@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"console/internal/config"
 	"console/internal/observability"
 )
 
@@ -43,6 +44,16 @@ const (
 	// VerdictUnknown - we could not look: the upstream did not answer, or it
 	// does not expose what the check needed.
 	VerdictUnknown Verdict = "unknown"
+	// VerdictSilent - there is nothing to judge yet, and saying so is noise.
+	// The check is dropped from the snapshot entirely rather than shown as a
+	// grey row nobody can act on.
+	//
+	// This is the difference between a setup assistant and a status report, and
+	// it is the rule Argo CD follows: it does not probe a cluster until an
+	// application targets it, and a cluster nobody deploys to is left alone
+	// rather than reported as broken or as pending. A configuration that is not
+	// in use yet cannot be wrong yet.
+	VerdictSilent Verdict = "silent"
 )
 
 // Components a check can belong to. They match the probe names in
@@ -77,6 +88,12 @@ type Result struct {
 }
 
 // Check is one named configuration check.
+//
+// One check per configured thing, not one per question asked about it. The
+// verdict is read next to the setting it is about (the admin configuration
+// page), the way a connection status is read next to a repository in Argo CD's
+// settings, so a setting with three things possibly wrong with it still gets one
+// answer and one place to fix it.
 type Check struct {
 	// ID is stable and mirrored in web/src/app/configChecks.ts.
 	ID string
@@ -85,6 +102,11 @@ type Check struct {
 	Component string
 	// Vars are the environment variables that decide this check, so the page can
 	// point at what to edit. Shown as names only.
+	//
+	// The first one is the anchor: the setting the verdict is displayed next to.
+	// The rest are named in the wording as the other half of the same knob. Two
+	// checks must never share an anchor, or one of them has nowhere to appear
+	// (TestEveryCheckHasItsOwnAnchor).
 	Vars []string
 	// Run performs the check. It must not write anything upstream.
 	Run func(ctx context.Context) Result
@@ -116,6 +138,10 @@ type Snapshot struct {
 // ok reports a passing check with optional facts.
 func ok(facts map[string]string) Result { return Result{Verdict: VerdictOK, Facts: facts} }
 
+// silent reports that there is nothing to judge yet, so the check does not
+// appear at all. reason is carried for the log, never for the screen.
+func silent(reason string) Result { return Result{Verdict: VerdictSilent, Reason: reason} }
+
 // verdict builds a result with a reason.
 func verdict(v Verdict, reason string, facts map[string]string) Result {
 	return Result{Verdict: v, Reason: reason, Facts: facts}
@@ -129,6 +155,26 @@ func factsOf(kv ...string) map[string]string {
 		m[kv[i]] = kv[i+1]
 	}
 	return m
+}
+
+// All is the whole check set, in the order the configuration page reads. One
+// place so the set cannot differ between the portal and the tests that hold it
+// to its rules (see TestEveryCheckHasItsOwnAnchor). Any dependency may be nil:
+// the checks behind it then report unknown instead of panicking.
+func All(
+	cfg *config.Config,
+	gitlabAPI GitLabAPI,
+	hooks HookScoper,
+	harborAPI HarborAPI,
+	argoAPI ArgoCDAPI,
+	signIns SignInSource,
+	deliveries Deliveries,
+) []Check {
+	set := Static(cfg)
+	set = append(set, GitLabChecks(cfg, gitlabAPI, hooks, deliveries)...)
+	set = append(set, HarborChecks(cfg, harborAPI, deliveries)...)
+	set = append(set, ArgoCDChecks(cfg, argoAPI)...)
+	return append(set, KeycloakChecks(cfg, signIns)...)
 }
 
 // runTimeout bounds one check. Generous next to the 5s health probe: some checks
@@ -182,7 +228,9 @@ func NewRunner(log *slog.Logger, healthy func(string) bool, checks ...Check) *Ru
 	return r
 }
 
-// Snapshot returns the last result of every check, in declaration order.
+// Snapshot returns the last result of every check that has something to say, in
+// declaration order. A check that came back silent is left out: it is not a
+// grey row, it is not a row.
 func (r *Runner) Snapshot() Snapshot {
 	if r == nil {
 		return Snapshot{}
@@ -191,7 +239,9 @@ func (r *Runner) Snapshot() Snapshot {
 	defer r.mu.Unlock()
 	out := make([]CheckResult, 0, len(r.checks))
 	for _, c := range r.checks {
-		out = append(out, r.results[c.ID])
+		if res := r.results[c.ID]; res.Verdict != VerdictSilent {
+			out = append(out, res)
+		}
 	}
 	return Snapshot{Results: out, CheckedAt: r.checkedAt, Running: r.running}
 }
@@ -267,7 +317,10 @@ func (r *Runner) round(ctx context.Context) {
 // its last reading.
 var (
 	allComponents = []string{ComponentPortal, ComponentGitLab, ComponentHarbor, ComponentArgoCD, ComponentKeycloak}
-	allVerdicts   = []string{string(VerdictOK), string(VerdictWarn), string(VerdictFail), string(VerdictSkip), string(VerdictUnknown)}
+	allVerdicts   = []string{
+		string(VerdictOK), string(VerdictWarn), string(VerdictFail),
+		string(VerdictSkip), string(VerdictUnknown), string(VerdictSilent),
+	}
 )
 
 // publish records the round on the Prometheus gauge.
