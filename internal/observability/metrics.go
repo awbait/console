@@ -33,6 +33,15 @@ var (
 		Help: "Unix timestamp of the last health probe of a platform component.",
 	}, []string{"component"})
 
+	// configChecks is how many configuration checks of a component came back
+	// needing attention (see internal/checks). Counts rather than one series per
+	// check: which one it is belongs in the log line and on the status page, and
+	// this is what an alert would be written against.
+	configChecks = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "console_config_checks",
+		Help: "Configuration checks of a component currently at this verdict.",
+	}, []string{"component", "verdict"})
+
 	// orders is the number of orders in each lifecycle status (DRAFT, HEALTHY,
 	// DEGRADED, ...). Refreshed periodically from the store.
 	orders = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -165,6 +174,18 @@ func SetComponentUp(name, kind, mode string, up bool, d time.Duration) {
 	componentUp.WithLabelValues(name, kind, mode).Set(v)
 	componentProbeDuration.WithLabelValues(name).Observe(d.Seconds())
 	componentLastProbe.WithLabelValues(name).Set(float64(time.Now().Unix()))
+}
+
+// SetConfigCheckCounts replaces the configuration-check gauge after a round.
+// counts is keyed by component then verdict; components and verdicts list every
+// value that exists, so one that has just dropped to zero is reset instead of
+// keeping its last reading forever.
+func SetConfigCheckCounts(counts map[string]map[string]int, components, verdicts []string) {
+	for _, c := range components {
+		for _, v := range verdicts {
+			configChecks.WithLabelValues(c, v).Set(float64(counts[c][v]))
+		}
+	}
 }
 
 // SetOrderCounts replaces the per-status order gauge. Statuses absent from the

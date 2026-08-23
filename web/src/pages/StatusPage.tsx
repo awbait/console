@@ -6,10 +6,12 @@ import {
   IconPlugConnected,
   IconRefresh,
   IconRepeat,
+  IconSettings,
   IconUsers,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { CapabilityStatus, ComponentStatus, ReconcilerStatus } from "../api/types";
 import { capabilityText } from "../app/capabilities";
@@ -225,6 +227,8 @@ export function StatusPage() {
               </Grid>
             </Section>
 
+            <ChecksLine />
+
             <Section title="Хранилища" hint="База данных портала и кеш.">
               <Grid cols={2}>
                 {storage.map((c) => (
@@ -383,6 +387,36 @@ function ReconcilerCard({ r }: { r: ReconcilerStatus }) {
       </p>
       {!ok && r.last_error && <Detail text={r.last_error} />}
     </Card>
+  );
+}
+
+// ChecksLine is all this page says about configuration: whether anything needs
+// doing, and where to go and do it. The verdicts themselves live next to the
+// settings they are about, on the configuration page, because that is where a
+// person is when they can act on them.
+function ChecksLine() {
+  const { data } = useAsync(() => api.getStatusChecks(), []);
+  if (!data?.checked_at) return null;
+  const problems = data.results.filter((c) => c.verdict === "fail" || c.verdict === "warn").length;
+  return (
+    <Link
+      to="/admin/config"
+      className={`flex items-center justify-between gap-3 rounded-lg border p-4 text-sm shadow-sm transition-colors ${
+        problems === 0
+          ? "border-slate-200 bg-surface text-slate-600 hover:bg-slate-50"
+          : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+      }`}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <IconSettings size={16} stroke={1.8} className="shrink-0 opacity-70" />
+        {problems === 0
+          ? "Настройка платформы в порядке."
+          : `Настройка платформы: требуют внимания ${problems} из ${data.results.length}.`}
+      </span>
+      <span className="shrink-0 text-xs font-medium underline-offset-2 group-hover:underline">
+        Открыть конфигурацию
+      </span>
+    </Link>
   );
 }
 

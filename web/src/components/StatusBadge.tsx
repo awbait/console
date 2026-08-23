@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import type { RequestStatus } from "../api/types";
+import { StatusPill } from "./ui";
 
 type IconType = ComponentType<{ size?: number; stroke?: number; className?: string }>;
 
@@ -143,14 +144,9 @@ export function StatusBadge({
   const m = metaFor(status);
   const Icon = noSpin && m.staticIcon ? m.staticIcon : m.Icon;
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-        muted ? "bg-slate-100 text-slate-400" : m.badge
-      }`}
-    >
-      <Icon size={13} stroke={2} className={m.spin && !noSpin ? "animate-spin" : undefined} />
+    <StatusPill tone={muted ? "bg-slate-100 text-slate-400" : m.badge} Icon={Icon} spin={m.spin && !noSpin}>
       {m.label}
-    </span>
+    </StatusPill>
   );
 }
 

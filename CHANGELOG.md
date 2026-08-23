@@ -7,6 +7,17 @@ All notable changes to this project are documented in this file.
 ### Added
 - The platform team is notified when a deletion does not finish within fifteen
   minutes. Until it does, the order keeps showing "Удаляется".
+- "Конфигурация" now says whether each setting actually works, not only what it
+  is set to. The portal checks them against the live systems and marks every
+  setting on the right: whether the GitLab token may open merge requests,
+  whether the webhooks are registered on both sides, whether the Harbor
+  projects and the Argo CD project, cluster and namespace are there. Point at a
+  mark to see what was seen and what to do about it. "Только проблемы" leaves
+  the settings that need attention.
+- "Проверить доставку" on that page asks GitLab to send the portal a sample
+  notification and reports whether it arrived. This is the only way to find out
+  that the two sides hold different secrets, which otherwise shows up as merged
+  orders that never move on.
 
 ### Fixed
 - Deleting a service now takes it out of the cluster. The portal used to report

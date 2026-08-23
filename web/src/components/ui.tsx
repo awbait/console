@@ -7,7 +7,7 @@ import {
   IconRefresh,
   IconX,
 } from "@tabler/icons-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import {
   Button as AriaButton,
   Checkbox as AriaCheckbox,
@@ -420,6 +420,37 @@ export function Card({
     >
       {children}
     </div>
+  );
+}
+
+// StatusPill is the portal's one shape for "what state is this in": an order,
+// a publication, a setting the portal has checked. Shape first, colour second -
+// every state keeps a distinct icon so it survives a colour-blind reader and a
+// black-and-white print. Tone is a background+text pair from the neutral 100/800
+// family (see StatusBadge for the canonical set).
+//
+// It exists so the shape cannot drift: it used to live inside StatusBadge, and
+// the second thing that needed a state pill grew a slightly different one.
+export function StatusPill({
+  tone,
+  Icon,
+  spin,
+  className = "",
+  children,
+}: {
+  tone: string;
+  Icon?: ComponentType<{ size?: number; stroke?: number; className?: string }>;
+  spin?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tone} ${className}`}
+    >
+      {Icon && <Icon size={13} stroke={2} className={spin ? "animate-spin" : undefined} />}
+      {children}
+    </span>
   );
 }
 

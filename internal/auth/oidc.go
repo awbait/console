@@ -32,6 +32,10 @@ type OIDC struct {
 	postLogout string
 	endSession string // Keycloak end_session_endpoint (RP-initiated logout)
 	log        *slog.Logger
+	// SignIns remembers what the last successful sign-in carried, so the status
+	// page can tell a realm that sends the group claim from one that does not.
+	// Optional: nil records nothing.
+	SignIns *SignIns
 }
 
 var _ Authenticator = (*OIDC)(nil)
@@ -315,6 +319,7 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		o.failLogin(w, r, failSession, err)
 		return
 	}
+	o.SignIns.Record(len(cl.Groups), len(user.Teams), string(user.Role))
 	// SameSite=Strict on the session cookie: it is never needed on a cross-site
 	// top-level navigation (the OAuth callback only sets it, the oauth_* cookies
 	// that must survive the Keycloak redirect stay Lax). Strict also defeats the

@@ -1,12 +1,57 @@
-import { IconAlertTriangle, IconInfoCircle, IconRefresh, IconSearch, IconX } from "@tabler/icons-react";
-import { useMemo, useState } from "react";
+import {
+  IconAlertTriangle,
+  IconCircleCheck,
+  IconCircleX,
+  IconClockQuestion,
+  IconInfoCircle,
+  IconMinus,
+  IconRefresh,
+  IconSearch,
+  IconSend,
+  IconX,
+} from "@tabler/icons-react";
+import { type ComponentType, useEffect, useMemo, useState } from "react";
 import { Button as AriaButton, Input, SearchField } from "react-aria-components";
-import { api } from "../api/client";
-import type { ConfigField } from "../api/types";
+import { api, errorMessage } from "../api/client";
+import type { ConfigCheck, ConfigField, DeliveryTest } from "../api/types";
+import {
+  checkAction,
+  checkReason,
+  deliveryOutcomeText,
+  factLabel,
+  factValue,
+  verdictLabel,
+} from "../app/configChecks";
 import { useUser } from "../auth/UserContext";
-import { Button, ErrorBox, Hint, SkeletonRows } from "../components/ui";
+import { Button, ErrorBox, Hint, SkeletonRows, StatusPill } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { CONFIG_GROUPS, CONFIG_TEXT } from "./configText";
+
+// How often the page re-reads what the checks found. They run on the portal's
+// own far slower schedule; this is only how stale the answer on screen may get.
+const CHECKS_REFRESH_MS = 60_000;
+
+// While a round is in flight the page keeps asking, so pressing "проверить
+// сейчас" shows the new answer rather than the previous one.
+const CHECKS_POLL_MS = 2_000;
+
+// How each verdict looks, in the portal's own state palette (see StatusBadge):
+// a background+text pair from the 100/800 family and a distinct icon per state,
+// so the mark survives a colour-blind reader. "Не проверено" and "Не
+// используется" stay grey on purpose - they are not news and must not compete
+// with the rows somebody has to act on.
+const VERDICT_STYLE: Record<string, { tone: string; icon: ComponentType<{ size?: number; stroke?: number; className?: string }> }> = {
+  ok: { tone: "bg-green-100 text-green-800", icon: IconCircleCheck },
+  warn: { tone: "bg-amber-100 text-amber-800", icon: IconAlertTriangle },
+  fail: { tone: "bg-red-100 text-red-800", icon: IconCircleX },
+  skip: { tone: "bg-slate-100 text-slate-600", icon: IconMinus },
+  unknown: { tone: "bg-slate-100 text-slate-600", icon: IconClockQuestion },
+};
+
+// A verdict worth acting on. The "только проблемы" filter keeps these.
+function isProblem(c: ConfigCheck | undefined): boolean {
+  return c?.verdict === "fail" || c?.verdict === "warn";
+}
 
 // The configuration page shows how this portal is set up: every setting it
 // reads, what it is set to, and what it accepts. Read-only on purpose - the
@@ -15,16 +60,79 @@ import { CONFIG_GROUPS, CONFIG_TEXT } from "./configText";
 export function ConfigPage() {
   const { user } = useUser();
   const { data, error, loading, reload } = useAsync(() => api.getConfig(), []);
+  // What the portal found out about these settings by actually using them.
+  // Loaded apart from the settings themselves: it refreshes on its own rhythm
+  // and a failure here must not take the page down with it.
+  const checks = useAsync(() => api.getStatusChecks(), [], undefined, {
+    refetchInterval: CHECKS_REFRESH_MS,
+  });
   const [query, setQuery] = useState("");
+  const [problemsOnly, setProblemsOnly] = useState(false);
+  const [delivery, setDelivery] = useState<DeliveryTest | null>(null);
+  const [deliveryError, setDeliveryError] = useState("");
+  const [testing, setTesting] = useState(false);
+  // The button queues a round and answers at once, so the page has to notice
+  // when the round has actually finished. It remembers which answer was on
+  // screen at the time: a different one means the new round has landed.
+  const [awaitedFrom, setAwaitedFrom] = useState<string | null>(null);
+
+  const answer = checks.data?.checked_at ?? "";
+  const running = Boolean(checks.data?.running) || (awaitedFrom !== null && awaitedFrom === answer);
+  const reloadChecks = checks.reload;
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(reloadChecks, CHECKS_POLL_MS);
+    return () => clearInterval(t);
+  }, [running, reloadChecks]);
+
+  // A verdict is shown next to the first setting its check names (its anchor),
+  // so one knob spread over three variables still gets one answer in one place.
+  const byVar = useMemo(() => {
+    const m = new Map<string, ConfigCheck>();
+    for (const c of checks.data?.checked_at ? (checks.data?.results ?? []) : []) {
+      if (c.vars && c.vars.length > 0) m.set(c.vars[0], c);
+    }
+    return m;
+  }, [checks.data]);
+
+  const problems = useMemo(
+    () => [...byVar.values()].filter((c) => isProblem(c)).length,
+    [byVar],
+  );
+
+  async function runChecks() {
+    setAwaitedFrom(answer);
+    try {
+      await api.runStatusChecks();
+    } catch {
+      setAwaitedFrom(null);
+    }
+    reloadChecks();
+  }
+
+  async function testDelivery() {
+    setTesting(true);
+    setDelivery(null);
+    setDeliveryError("");
+    try {
+      setDelivery(await api.testWebhookDelivery());
+    } catch (e) {
+      setDeliveryError(errorMessage(e));
+    } finally {
+      setTesting(false);
+      reloadChecks();
+    }
+  }
 
   const groups = useMemo(() => {
     const fields = data?.fields ?? [];
     const q = query.trim().toLowerCase();
     const match = (f: ConfigField) =>
-      !q ||
-      f.name.toLowerCase().includes(q) ||
-      f.value.toLowerCase().includes(q) ||
-      (CONFIG_TEXT[f.name] ?? "").toLowerCase().includes(q);
+      (!problemsOnly || isProblem(byVar.get(f.name))) &&
+      (!q ||
+        f.name.toLowerCase().includes(q) ||
+        f.value.toLowerCase().includes(q) ||
+        (CONFIG_TEXT[f.name] ?? "").toLowerCase().includes(q));
     // Known groups first, in the order the page declares them; anything from a
     // group the front end has not heard of still gets a section of its own.
     const known = CONFIG_GROUPS.map((g) => ({ ...g, fields: fields.filter((f) => f.group === g.id).filter(match) }));
@@ -32,7 +140,7 @@ export function ConfigPage() {
     const rest = fields.filter((f) => !knownIds.has(f.group)).filter(match);
     if (rest.length > 0) known.push({ id: "other", label: "Прочее", hint: "", fields: rest });
     return known.filter((g) => g.fields.length > 0);
-  }, [data, query]);
+  }, [data, query, problemsOnly, byVar]);
 
   if (user?.role !== "admin") {
     return (
@@ -53,14 +161,21 @@ export function ConfigPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Конфигурация портала</h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
-            Настройки, с которыми запущен портал. Только просмотр: значения задаются при запуске, и
-            изменить их можно в конфигурации развёртывания. Пароли и токены не показываются.
+            Настройки, с которыми запущен портал. Портал проверяет их на живых системах и пишет
+            результат рядом с каждой: видно не только что задано, но и работает ли оно. Только
+            просмотр: значения задаются при запуске. Пароли и токены не показываются.
           </p>
         </div>
-        <Button variant="secondary" onPress={reload} isDisabled={loading} className="gap-1.5">
-          <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
-          {loading ? "Обновляем…" : "Обновить"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onPress={testDelivery} isDisabled={testing} className="gap-1.5">
+            <IconSend size={16} stroke={1.8} className="text-slate-400" />
+            {testing ? "Ждём доставку…" : "Проверить доставку"}
+          </Button>
+          <Button variant="secondary" onPress={runChecks} isDisabled={running} className="gap-1.5">
+            <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+            {running ? "Проверяем…" : "Проверить сейчас"}
+          </Button>
+        </div>
       </div>
 
       {!loading && !error && (
@@ -84,10 +199,34 @@ export function ConfigPage() {
               <IconX size={14} stroke={2} />
             </AriaButton>
           </SearchField>
+          <button
+            type="button"
+            onClick={() => setProblemsOnly((v) => !v)}
+            aria-pressed={problemsOnly}
+            className={`h-9 shrink-0 cursor-pointer rounded-md border px-3 text-xs font-medium transition-colors ${
+              problemsOnly
+                ? "border-amber-300 bg-amber-50 text-amber-800"
+                : "border-slate-300 bg-surface text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Только проблемы{problems > 0 ? ` (${problems})` : ""}
+          </button>
           <span className="text-xs text-slate-400">
-            {query ? `${shown} из ${total} настроек` : `${total} настроек`}
+            {query || problemsOnly ? `${shown} из ${total} настроек` : `${total} настроек`}
+            {checksFreshness(checks.data?.checked_at, running, problems)}
           </span>
         </div>
+      )}
+
+      {(delivery || deliveryError) && (
+        <DeliveryResult
+          result={delivery}
+          error={deliveryError}
+          onClose={() => {
+            setDelivery(null);
+            setDeliveryError("");
+          }}
+        />
       )}
 
       {/* -mx-1/px-1 keeps the cards' shadows and focus rings off the clipping
@@ -99,7 +238,9 @@ export function ConfigPage() {
           <ErrorBox error={error} onRetry={reload} />
         ) : groups.length === 0 ? (
           <p className="py-10 text-center text-sm text-slate-500">
-            Ничего не нашлось. Попробуйте другое слово.
+            {problemsOnly && !query
+              ? "Проблем в настройке нет."
+              : "Ничего не нашлось. Попробуйте другое слово."}
           </p>
         ) : (
           groups.map((g) => (
@@ -112,7 +253,7 @@ export function ConfigPage() {
               )}
               <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
                 {g.fields.map((f, i) => (
-                  <Row key={f.name} f={f} first={i === 0} />
+                  <Row key={f.name} f={f} first={i === 0} check={byVar.get(f.name)} />
                 ))}
               </div>
             </section>
@@ -124,27 +265,198 @@ export function ConfigPage() {
 }
 
 // One setting. The name and the value are monospaced - they are literals someone
-// copies into a deployment - while everything explaining them is prose.
-function Row({ f, first }: { f: ConfigField; first: boolean }) {
+// copies into a deployment - while everything explaining them is prose. A check
+// that is about this setting adds its verdict under the value, the way Grafana
+// puts the result of "Save & test" under the form it tested.
+function Row({ f, first, check }: { f: ConfigField; first: boolean; check?: ConfigCheck }) {
   const description = CONFIG_TEXT[f.name];
   return (
+    // Two columns: the setting, then what it is set to. Both marks a setting
+    // carries - where its value came from, and whether it works - sit together
+    // on the name line, because they are two answers about one thing and a
+    // column of their own would say they are two different kinds of news.
+    // They are told apart by shape rather than by place: a flat chip for the
+    // value's origin, a bordered pill with an icon for the verdict.
     <div
-      className={`grid grid-cols-1 gap-x-6 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] ${
+      className={`grid grid-cols-1 gap-x-6 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] ${
         first ? "" : "border-t border-slate-100"
       }`}
     >
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-mono text-[13px] font-medium text-slate-800">{f.name}</span>
+        {/* The name is never shortened: it is a literal somebody copies into a
+            deployment, and half of it is worse than none. Where the name and its
+            mark do not fit on one line, the mark wraps under it. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="break-all font-mono text-[13px] font-medium text-slate-800">
+            {f.name}
+          </span>
           <FieldHint f={f} />
           <StateBadge f={f} />
+          {check && <CheckBadge check={check} />}
         </div>
         {description && (
           <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
         )}
       </div>
 
-      <Value f={f} />
+      <div className="min-w-0">
+        <Value f={f} />
+      </div>
+    </div>
+  );
+}
+
+// CheckBadge is the right-hand column: whether this setting works, in one word
+// and one colour, so the page can be scanned down its edge. Everything behind
+// that word - what was seen, what to do, the data it was read from - is one
+// hover or one Tab away, because on a page of sixty settings it would otherwise
+// be sixty paragraphs nobody asked for.
+function CheckBadge({ check }: { check: ConfigCheck }) {
+  const style = VERDICT_STYLE[check.verdict] ?? VERDICT_STYLE.unknown;
+  // Whether there is anything behind the word has to be decided from the data.
+  // Asking the component - `const detail = <CheckDetail/>` - never answers no:
+  // an element is truthy even when rendering it produces nothing, and every
+  // verdict got a tooltip, empty ones included.
+  const reason = checkReason(check.id, check.reason);
+  const action = checkAction(check.id, check.reason);
+  const facts = Object.entries(check.facts ?? {});
+  const hasDetail = Boolean(reason || action || facts.length > 0);
+  const pill = (
+    <StatusPill tone={style.tone} Icon={style.icon}>
+      {verdictLabel(check.verdict)}
+    </StatusPill>
+  );
+  // A verdict with nothing behind it is not worth a trigger that promises more.
+  if (!hasDetail) return pill;
+  return <CheckBadgeWithDetail pill={pill} check={check} reason={reason} action={action} facts={facts} />;
+}
+
+// CheckBadgeWithDetail opens the detail on hover, on focus and on press. The
+// last one is not redundant: a touch screen has no hover at all, and what to do
+// about a failing setting is not something to lose there. Hover keeps working
+// for a pointer because the open state is only ever set, never forced shut.
+function CheckBadgeWithDetail({
+  pill,
+  check,
+  reason,
+  action,
+  facts,
+}: {
+  pill: React.ReactElement;
+  check: ConfigCheck;
+  reason: string;
+  action: string;
+  facts: [string, string][];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Hint
+      text={<CheckDetail reason={reason} action={action} facts={facts} />}
+      placement="top end"
+      isOpen={open}
+      onOpenChange={setOpen}
+    >
+      <AriaButton
+        aria-label={`Подробнее: ${verdictLabel(check.verdict)}`}
+        onPress={() => setOpen((v) => !v)}
+        className="cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        {pill}
+      </AriaButton>
+    </Hint>
+  );
+}
+
+// CheckDetail is what stands behind the verdict: what was seen, what to do about
+// it, and the data it was read from. It is only ever rendered when there is
+// something in it - the badge decides that from the same three values.
+function CheckDetail({
+  reason,
+  action,
+  facts,
+}: {
+  reason: string;
+  action: string;
+  facts: [string, string][];
+}) {
+  return (
+    <div className="max-w-[18rem] text-left">
+      {reason && <p className="leading-relaxed">{reason}</p>}
+      {action && (
+        <p className={`leading-relaxed ${reason ? "mt-1.5" : ""}`}>
+          <span className="font-semibold">Что сделать: </span>
+          {action}
+        </p>
+      )}
+      {facts.length > 0 && (
+        <dl
+          className={`grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 ${
+            reason || action ? "mt-2 border-t border-overlay-edge pt-2" : ""
+          }`}
+        >
+          {facts.map(([key, value]) => (
+            <div key={key} className="contents">
+              <dt className="text-slate-500">{factLabel(key)}</dt>
+              <dd className="min-w-0 break-words font-mono text-[11px] text-slate-700">
+                {factValue(value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+// checksFreshness says how old the verdicts on screen are, and whether anything
+// needs doing. Appended to the settings count, so the page keeps one status line
+// rather than two.
+function checksFreshness(checkedAt: string | undefined, running: boolean, problems: number): string {
+  if (running) return " · проверяем";
+  if (!checkedAt) return "";
+  const t = new Date(checkedAt).getTime();
+  if (Number.isNaN(t)) return "";
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  const when = m < 1 ? "только что" : m < 60 ? `${m} мин назад` : `${Math.round(m / 60)} ч назад`;
+  return problems === 0 ? ` · проверено ${when}, всё в порядке` : ` · проверено ${when}`;
+}
+
+// DeliveryResult reports the one check that makes something happen outside the
+// portal. It stays until dismissed: the answer took ten seconds to arrive and is
+// the whole reason the button was pressed.
+function DeliveryResult({
+  result,
+  error,
+  onClose,
+}: {
+  result: DeliveryTest | null;
+  error: string;
+  onClose: () => void;
+}) {
+  const bad = Boolean(error) || (result != null && result.outcome !== "delivered");
+  return (
+    <div
+      className={`flex shrink-0 items-start justify-between gap-4 rounded-lg border p-3 text-sm ${
+        bad
+          ? "border-amber-200 bg-amber-50 text-amber-800"
+          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+      }`}
+    >
+      <div className="min-w-0">
+        <p>{error || deliveryOutcomeText(result?.outcome ?? "")}</p>
+        {result?.detail && (
+          <p className="mt-2 break-words rounded bg-white/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed">
+            {result.detail}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="shrink-0 cursor-pointer text-xs font-medium underline-offset-2 hover:underline"
+      >
+        Скрыть
+      </button>
     </div>
   );
 }
@@ -217,13 +529,15 @@ function valueText(f: ConfigField): { text: string; literal: boolean } {
   return { text: f.value, literal: true };
 }
 
-// StateBadge answers the question an admin actually has when scanning the page:
-// did this deployment choose the value, or is it whatever the portal ships with?
+// StateBadge answers where the value came from, and only that. It used to mark
+// a set secret green, which now reads as a verdict: green belongs to the check
+// next to it, which is the mark that means "and it works". Amber is left for the
+// one case that is genuinely a warning about the value itself.
 function StateBadge({ f }: { f: ConfigField }) {
   if (f.secret) {
     if (f.is_empty) return <Badge tone="slate">не задан</Badge>;
     if (f.is_default) return <Badge tone="amber">стандартный</Badge>;
-    return <Badge tone="emerald">задан</Badge>;
+    return <Badge tone="brand">задан</Badge>;
   }
   if (f.is_empty) return <Badge tone="slate">пусто</Badge>;
   if (f.is_set) return <Badge tone="brand">задано</Badge>;

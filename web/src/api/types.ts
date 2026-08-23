@@ -155,6 +155,36 @@ export interface CapabilityStatus {
   ok: boolean;
 }
 
+// One configuration check (GET /api/v1/status/checks, admin). The backend
+// answers in identifiers only - what was checked, how it came out and the facts
+// behind it. The sentences live in app/configChecks.ts, next to the rest of the
+// product copy, exactly as they do for capabilities.
+export interface ConfigCheck {
+  id: string; // gitlab_token|harbor_projects|argocd_cluster|...
+  component: string; // portal|gitlab|harbor|argocd|keycloak
+  verdict: "ok" | "warn" | "fail" | "skip" | "unknown";
+  reason?: string; // why the verdict is what it is
+  facts?: Record<string, string>; // what was seen; never a secret
+  vars?: string[]; // env variables that decide this check
+  duration_ms?: number;
+}
+
+export interface ChecksResponse {
+  results: ConfigCheck[];
+  checked_at?: string; // RFC3339; absent before the first round
+  running: boolean; // a round is in flight
+  interval_seconds: number; // how often the set runs by itself
+}
+
+// Result of the one check the portal never runs on its own: it asks GitLab to
+// deliver a sample event and reports whether it arrived
+// (POST /api/v1/status/checks/webhook-delivery).
+export interface DeliveryTest {
+  outcome: "delivered" | "rejected" | "not_delivered" | "not_configured" | "not_registered" | "failed";
+  facts?: Record<string, string>;
+  detail?: string; // the upstream's own words when it refused to send it
+}
+
 // One configuration variable of the running portal (GET /api/v1/config, admin).
 // Read-only: the portal is configured by its deployment.
 export interface ConfigField {
