@@ -2,114 +2,17 @@
 //
 // Бэкенд (internal/checks) отдаёт только идентификаторы: что проверяли, чем
 // закончилось и какие факты увидели. Ни одного предложения он не собирает - так
-// же, как для возможностей портала (см. capabilities.ts). Всё, что видно на
-// экране, живёт здесь, рядом с остальными продуктовыми текстами.
+// же, как для возможностей портала (см. capabilities.ts).
+//
+// Проверка показывается на странице «Конфигурация», в строке той переменной, о
+// которой она. Поэтому здесь нет названия проверки: название строки - это имя
+// переменной, а что она делает, уже написано в configText.ts. Отсюда берутся
+// только три вещи: что увидели, что с этим делать и как назвать факты.
 
 export type CheckVerdict = "ok" | "warn" | "fail" | "skip" | "unknown";
 
-export interface CheckText {
-  // Название проверки: короткое, отвечает на вопрос «что проверяли».
-  label: string;
-  // Зачем эта проверка нужна и чем грозит её провал. Одно предложение.
-  what: string;
-}
-
-// Что проверяем, по идентификаторам из internal/checks.
-export const CHECKS: Record<string, CheckText> = {
-  // --- сам портал: читаем конфигурацию и сверяем её саму с собой ---
-  webhook_pairing: {
-    label: "Уведомления из GitLab",
-    what: "Адрес и секрет уведомлений задаются вместе. С одной половиной портал узнаёт о слияниях только опросом.",
-  },
-  webhook_url: {
-    label: "Адрес для уведомлений",
-    what: "Адрес, на который GitLab шлёт уведомления, должен вести на этот портал.",
-  },
-  instance_dir_template: {
-    label: "Папка заказа в репозитории",
-    what: "Два сервиса одной команды и чарта должны получать разные папки, иначе они перезапишут файлы друг друга.",
-  },
-  app_name_template: {
-    label: "Имя приложения в Argo CD",
-    what: "Два заказа не должны давать одно имя приложения, иначе Argo CD применит только один из них.",
-  },
-  auto_merge: {
-    label: "Слияние без ревью",
-    what: "Портал сливает свои merge request сам, без участия человека. Это режим для стенда.",
-  },
-  harbor_webhook_secret: {
-    label: "Уведомления из Harbor",
-    what: "С секретом Harbor сообщает о новых версиях чартов сразу, без него портал ждёт следующего опроса.",
-  },
-
-  // --- GitLab ---
-  gitlab_token: {
-    label: "Токен GitLab",
-    what: "Портал создаёт репозитории и merge request этим токеном. Ему нужны права api и запас по сроку.",
-  },
-  gitlab_gitops_group: {
-    label: "Группа GitOps",
-    what: "Группа, в которой лежат репозитории команд. Портал должен её видеть.",
-  },
-  gitlab_group_access: {
-    label: "Права в группе GitOps",
-    what: "Роль токена в этой группе решает, сможет ли портал завести репозиторий и подгруппу команды.",
-  },
-  gitlab_webhook: {
-    label: "Вебхук в GitLab",
-    what: "Портал регистрирует вебхук сам. Здесь видно, на каком уровне он зарегистрирован и жив ли он.",
-  },
-  gitlab_webhook_delivery: {
-    label: "Доставки из GitLab",
-    what: "Что реально дошло до портала с момента запуска. Отклонённые доставки означают, что секреты разошлись.",
-  },
-
-  // --- Harbor ---
-  harbor_projects: {
-    label: "Проекты Harbor",
-    what: "Каталог собирается из этих проектов. Проект, которого нет или который не виден роботу, просто пропадает из каталога.",
-  },
-  harbor_artifacts: {
-    label: "Чтение чартов",
-    what: "Права на список репозиториев и на чтение артефактов Harbor выдаёт отдельно. Без второго каталог остаётся без версий.",
-  },
-  harbor_webhook: {
-    label: "Вебхук в Harbor",
-    what: "Политика вебхука на стороне Harbor, которая шлёт уведомления в портал.",
-  },
-  harbor_webhook_delivery: {
-    label: "Доставки из Harbor",
-    what: "Что реально дошло до портала с момента запуска.",
-  },
-
-  // --- Argo CD ---
-  argocd_project: {
-    label: "Проект Argo CD",
-    what: "Проект, который портал указывает в каждом манифесте заказа. Без него Argo CD откажется от приложения.",
-  },
-  argocd_permissions: {
-    label: "Права токена Argo CD",
-    what: "Портал показывает состояние приложений и умеет запускать синхронизацию вручную.",
-  },
-  argocd_cluster: {
-    label: "Кластер по умолчанию",
-    what: "Кластер, в который уезжают заказы, если в них не выбран другой.",
-  },
-  argocd_namespace: {
-    label: "Namespace Argo CD",
-    what: "Argo CD подхватывает приложения только из своего namespace. Портал пишет его в каждый манифест.",
-  },
-
-  // --- Keycloak ---
-  keycloak_groups_claim: {
-    label: "Группы в токене",
-    what: "Роли и команды портал берёт из групп в токене. Без них каждый входящий получает роль наблюдателя.",
-  },
-};
-
-// Что именно увидели, по идентификаторам причин. Ключ вида «проверка.причина»
-// уточняет общий текст: «не настроено» у вебхука и у секрета Harbor значат
-// разное.
+// Что увидели. Ключ вида «проверка.причина» уточняет общий текст: «не
+// настроено» у вебхука GitLab и у секрета Harbor значат разное.
 const REASONS: Record<string, string> = {
   // общее
   upstream_down: "Система не отвечает, поэтому проверить не удалось.",
@@ -117,75 +20,148 @@ const REASONS: Record<string, string> = {
   forbidden: "Прав портала не хватает, чтобы это посмотреть.",
   not_configured: "Не настроено.",
 
-  // сам портал
-  "webhook_pairing.url_without_token": "Задан адрес, но не задан секрет. Вебхук не зарегистрирован, портал работает на опросе.",
-  "webhook_pairing.token_without_url": "Задан секрет, но не задан адрес. Вебхук нужно завести в GitLab вручную.",
-  "webhook_pairing.not_configured": "Уведомления не настроены. Портал узнаёт о слияниях опросом.",
-  "webhook_url.path_mismatch": "Адрес ведёт не на приёмник уведомлений портала.",
-  "webhook_url.scheme_mismatch": "Протокол адреса не совпадает с протоколом портала.",
-  "webhook_url.host_mismatch": "Адрес ведёт на другой хост. Так и должно быть, если GitLab обращается к порталу по внутреннему имени.",
-  "instance_dir_template.not_unique": "Шаблон не различает сервисы. Два заказа одной команды и чарта попадут в одну папку.",
+  // шаблоны и режимы
+  "instance_dir_template.not_unique":
+    "Шаблон не различает сервисы. Два заказа одной команды и чарта попадут в одну папку и перезапишут файлы друг друга.",
   "instance_dir_template.bad_template": "Шаблон не разбирается.",
-  "app_name_template.not_unique": "Шаблон не различает сервисы. Два заказа дадут одно имя приложения.",
-  "app_name_template.team_collision": "Шаблон не различает команды. Заказы разных команд могут дать одно имя.",
-  "app_name_template.chart_collision": "Шаблон не различает чарты. Заказы разных чартов могут дать одно имя.",
+  "app_name_template.not_unique":
+    "Шаблон не различает сервисы. Два заказа дадут одно имя приложения, и Argo CD применит только один.",
+  "app_name_template.team_collision":
+    "Шаблон не различает команды. Заказы разных команд могут дать одно имя приложения.",
+  "app_name_template.chart_collision":
+    "Шаблон не различает чарты. Заказы разных чартов могут дать одно имя приложения.",
   "app_name_template.bad_template": "Шаблон не разбирается.",
-  "auto_merge.enabled": "Слияние без ревью включено. Изменение доедет до кластера, и его никто не посмотрит.",
-  "harbor_webhook_secret.polling_only": "Секрет не задан. Новые версии чартов портал находит опросом.",
+  "auto_merge.enabled":
+    "Портал сливает свои merge request сам. Изменение доедет до кластера, и его никто не посмотрит.",
 
   // GitLab
   "gitlab_token.missing_scope": "У токена нет прав api. Первый же заказ на нём остановится.",
   "gitlab_token.expired": "Срок токена истёк.",
-  "gitlab_token.expires_soon": "Срок токена скоро истечёт. Выпустите новый заранее.",
+  "gitlab_token.expires_soon": "Срок токена скоро истечёт.",
   "gitlab_token.revoked": "Токен отозван.",
-  "gitlab_token.no_introspection": "GitLab не показывает права и срок этого токена. Так бывает с групповыми токенами.",
-  "gitlab_gitops_group.group_missing": "Группы с таким путём в GitLab нет.",
-  "gitlab_group_access.needs_owner": "Создание подгруппы команды включено, а роли Owner у токена нет. Первый заказ новой команды не пройдёт.",
-  "gitlab_group_access.needs_maintainer": "Роли токена не хватает, чтобы заводить репозитории и открывать merge request.",
-  "gitlab_group_access.not_member": "Учётной записи портала нет среди участников группы.",
-  "gitlab_webhook.not_registered": "Вебхук не зарегистрирован ни на одном уровне.",
+  "gitlab_token.no_introspection":
+    "GitLab не показывает права и срок этого токена. Так бывает с групповыми токенами.",
+  "gitlab_group.group_missing": "Группы с таким путём в GitLab нет.",
+  "gitlab_group.forbidden": "Группа есть, но токен её не видит.",
+  "gitlab_group.needs_owner":
+    "Создание подгрупп команд включено, а роли Owner у токена нет. Первый заказ новой команды не пройдёт.",
+  "gitlab_group.needs_maintainer":
+    "Роли токена не хватает, чтобы заводить репозитории и открывать merge request.",
+  "gitlab_group.not_member": "Учётной записи портала нет среди участников группы.",
+  "gitlab_webhook.not_configured": "Уведомления из GitLab не настроены, портал узнаёт о слияниях опросом.",
+  "gitlab_webhook.url_without_token":
+    "Задан адрес, но не задан секрет. Без секрета портал не регистрирует вебхук вовсе.",
+  "gitlab_webhook.token_without_url":
+    "Задан секрет, но не задан адрес. Портал примет доставки, но регистрировать вебхук будет некому.",
+  "gitlab_webhook.path_mismatch": "Адрес ведёт не на приёмник уведомлений портала.",
+  "gitlab_webhook.not_registered": "Вебхук не удалось зарегистрировать ни на одном уровне.",
   "gitlab_webhook.hook_missing": "В GitLab такого вебхука нет. Похоже, его удалили после запуска портала.",
   "gitlab_webhook.hook_disabled": "GitLab отключил вебхук после неудачных доставок.",
   "gitlab_webhook.hook_not_mr": "Вебхук не подписан на события merge request.",
-  "gitlab_webhook.partial_coverage": "Вебхук стоит не на всех репозиториях группы. О слияниях в остальных портал узнаёт опросом.",
-  "gitlab_webhook.not_configured": "Уведомления из GitLab не настроены.",
-
-  // доставки, обе стороны
-  "gitlab_webhook_delivery.secret_mismatch": "Все доставки отклонены. Секрет в портале и секрет в GitLab не совпадают.",
-  "gitlab_webhook_delivery.some_rejected": "Часть доставок отклонена по секрету.",
-  "gitlab_webhook_delivery.no_deliveries": "С момента запуска не пришло ни одной доставки. Это нормально, если в GitLab ничего не сливали.",
-  "gitlab_webhook_delivery.not_configured": "Уведомления из GitLab не настроены.",
-  "harbor_webhook_delivery.secret_mismatch": "Все доставки отклонены. Секрет в портале и секрет в Harbor не совпадают.",
-  "harbor_webhook_delivery.some_rejected": "Часть доставок отклонена по секрету.",
-  "harbor_webhook_delivery.no_deliveries": "С момента запуска не пришло ни одной доставки. Это нормально, если новых версий чартов не было.",
-  "harbor_webhook_delivery.not_configured": "Уведомления из Harbor не настроены.",
+  "gitlab_webhook.partial_coverage":
+    "Вебхук стоит не на всех репозиториях группы. О слияниях в остальных портал узнаёт опросом.",
+  "gitlab_webhook.secret_mismatch":
+    "Все доставки отклонены: секрет в портале и секрет в GitLab не совпадают.",
+  "gitlab_webhook.some_rejected": "Часть доставок отклонена по секрету.",
+  "gitlab_webhook.scheme_mismatch": "Протокол адреса не совпадает с протоколом портала.",
+  "gitlab_webhook.host_mismatch":
+    "Адрес ведёт на другой хост. Так и должно быть, если GitLab обращается к порталу по внутреннему имени.",
 
   // Harbor
   "harbor_projects.projects_missing": "В Harbor нет проекта из списка.",
   "harbor_projects.projects_hidden": "Проект из списка не виден под учётной записью портала.",
-  "harbor_projects.no_repositories": "Проекты читаются, но чартов в них нет.",
+  "harbor_projects.no_repositories": "Проекты читаются, но чартов в них нет. Каталог будет пустым.",
+  "harbor_projects.no_artifacts":
+    "Список репозиториев читается, а сами чарты нет. В каталоге они будут без версий.",
   "harbor_projects.not_configured": "Список проектов пуст, каталогу неоткуда собираться.",
-  "harbor_artifacts.forbidden": "Робот видит репозитории, но не может читать артефакты. В каталоге чарты будут без версий.",
-  "harbor_artifacts.no_repositories": "Читать пока нечего: чартов в проектах нет.",
-  "harbor_webhook.no_policy": "В Harbor нет включённой политики вебхука, которая шлёт уведомления в портал.",
+  "harbor_webhook.not_configured": "Уведомления из Harbor не настроены, новые версии портал находит опросом.",
+  "harbor_webhook.no_policy": "В портале секрет задан, а в Harbor нет политики вебхука, которая шлёт сюда уведомления.",
   "harbor_webhook.policy_disabled": "Политика вебхука есть, но выключена.",
   "harbor_webhook.missing_event": "Политика есть, но не подписана на публикацию артефакта.",
   "harbor_webhook.forbidden": "Учётной записи портала не хватает прав, чтобы посмотреть политики вебхуков.",
-  "harbor_webhook.not_configured": "Уведомления из Harbor не настроены.",
+  "harbor_webhook.secret_mismatch":
+    "Все доставки отклонены: секрет в портале и секрет в Harbor не совпадают.",
+  "harbor_webhook.some_rejected": "Часть доставок отклонена по секрету.",
 
   // Argo CD
-  "argocd_project.project_missing": "Проекта с таким именем в Argo CD нет. Заказ дойдёт до слияния и остановится уже за пределами портала.",
+  "argocd_project.project_missing":
+    "Проекта с таким именем в Argo CD нет. Заказ дойдёт до слияния и остановится уже за пределами портала.",
   "argocd_permissions.cannot_read": "Токен не может читать приложения проекта. Состояние заказов будет пустым.",
-  "argocd_permissions.cannot_sync": "Токен не может запускать синхронизацию. Кнопка на странице заказа не сработает.",
+  "argocd_permissions.cannot_sync":
+    "Токен не может запускать синхронизацию. Кнопка синхронизации на странице заказа не сработает.",
   "argocd_cluster.cluster_missing": "Кластера с таким именем в Argo CD нет.",
-  "argocd_namespace.namespace_diff": "Портал пишет приложения не в тот namespace, из которого их читает Argo CD. Заказ уедет в Git, а сервис не поднимется.",
-  "argocd_namespace.no_applications": "Сравнивать пока не с чем: приложений в Argo CD ещё нет.",
+  "argocd_namespace.namespace_diff":
+    "Портал пишет приложения не в тот namespace, из которого их читает Argo CD. Заказ уедет в Git, а сервис не поднимется.",
 
   // Keycloak
-  "keycloak_groups_claim.no_sign_in": "С момента запуска портала ещё никто не входил.",
-  "keycloak_groups_claim.no_groups": "В токене не пришло ни одной группы. Все входящие получают роль наблюдателя.",
-  "keycloak_groups_claim.no_teams": "Группы пришли, но ни одна не подошла под правило команд.",
-  "keycloak_groups_claim.roles_unmapped": "Группы администраторов не заданы. Роль администратора платформы не сможет получить никто.",
+  "keycloak_groups_claim.no_groups":
+    "В токене не пришло ни одной группы. Все входящие получают роль наблюдателя.",
+  "keycloak_groups_claim.no_teams": "Группы приходят, но ни одна не подошла под правило команд.",
+  "keycloak_groups_claim.roles_unmapped":
+    "Группы администраторов не заданы. Роль администратора платформы не сможет получить никто.",
+};
+
+// Что с этим делать. Пишется для того, кто держит настройку в руках: одно
+// действие, названное конкретно, и запасной вариант, если действие невозможно.
+// Без него страница ставит диагноз и оставляет человека с ним наедине.
+const ACTIONS: Record<string, string> = {
+  "instance_dir_template.not_unique":
+    "Добавьте в шаблон {{.ServiceName}}. Заказы, созданные раньше, остаются в своих папках.",
+  "instance_dir_template.bad_template": "Проверьте шаблон: он должен быть шаблоном Go, например {{.Namespace}}-{{.ServiceName}}.",
+  "app_name_template.not_unique": "Добавьте в шаблон {{.ServiceName}}.",
+  "app_name_template.team_collision": "Добавьте в шаблон {{.Team}}.",
+  "app_name_template.chart_collision": "Добавьте в шаблон {{.Chart}}.",
+  "app_name_template.bad_template": "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.ServiceName}}.",
+  "auto_merge.enabled": "Выключите слияние без ревью везде, кроме стенда.",
+
+  "gitlab_token.missing_scope": "Выпустите токен с правами api и пропишите его заново.",
+  "gitlab_token.expired": "Выпустите новый токен и пропишите его заново.",
+  "gitlab_token.expires_soon": "Выпустите новый токен заранее, пока текущий работает.",
+  "gitlab_token.revoked": "Выпустите новый токен и пропишите его заново.",
+
+  "gitlab_group.group_missing": "Создайте группу в GitLab или укажите путь той, которая уже есть.",
+  "gitlab_group.forbidden": "Дайте учётной записи портала доступ к группе.",
+  "gitlab_group.needs_owner":
+    "Дайте учётной записи портала роль Owner на этой группе. Если подгруппы команд заводит кто-то другой, выключите их создание.",
+  "gitlab_group.needs_maintainer": "Дайте учётной записи портала роль Maintainer на этой группе.",
+  "gitlab_group.not_member": "Добавьте учётную запись портала в группу.",
+
+  "gitlab_webhook.url_without_token": "Задайте секрет и укажите его же в вебхуке на стороне GitLab.",
+  "gitlab_webhook.token_without_url": "Укажите адрес, по которому GitLab достучится до портала, и портал заведёт вебхук сам.",
+  "gitlab_webhook.path_mismatch": "Адрес должен заканчиваться на /api/v1/webhooks/gitlab.",
+  "gitlab_webhook.not_registered":
+    "Проверьте, что токену хватает прав на выбранный уровень: группа требует GitLab Premium, инстанс - администратора.",
+  "gitlab_webhook.hook_missing": "Нажмите «Проверить сейчас»: портал заведёт вебхук заново.",
+  "gitlab_webhook.hook_disabled": "Включите вебхук в GitLab и убедитесь, что портал доступен по указанному адресу.",
+  "gitlab_webhook.hook_not_mr": "Включите у вебхука события merge request.",
+  "gitlab_webhook.partial_coverage": "Нажмите «Проверить сейчас»: портал дозаведёт вебхуки в остальных репозиториях.",
+  "gitlab_webhook.secret_mismatch": "Сверьте секрет портала с секретом вебхука в GitLab и приведите их к одному значению.",
+  "gitlab_webhook.some_rejected": "Сверьте секреты: похоже, один из вебхуков остался со старым значением.",
+  "gitlab_webhook.scheme_mismatch": "Приведите адрес вебхука к тому же протоколу, по которому открывается портал.",
+  "gitlab_webhook.host_mismatch": "Если GitLab обращается к порталу по другому имени, всё в порядке. Иначе исправьте адрес.",
+
+  "harbor_projects.projects_missing": "Создайте проект в Harbor или уберите его из списка.",
+  "harbor_projects.projects_hidden": "Дайте роботу доступ к проекту на чтение.",
+  "harbor_projects.no_repositories": "Опубликуйте чарты в этих проектах или укажите проекты, где они уже есть.",
+  "harbor_projects.no_artifacts": "Дайте роботу право читать артефакты в этих проектах, а не только список репозиториев.",
+  "harbor_projects.not_configured": "Перечислите проекты Harbor, из которых собирается каталог.",
+
+  "harbor_webhook.no_policy":
+    "Заведите в Harbor политику вебхука на адрес портала с событием публикации артефакта и тем же секретом.",
+  "harbor_webhook.policy_disabled": "Включите политику вебхука в Harbor.",
+  "harbor_webhook.missing_event": "Добавьте в политику событие публикации артефакта.",
+  "harbor_webhook.secret_mismatch": "Сверьте секрет портала с заголовком авторизации в политике Harbor.",
+  "harbor_webhook.some_rejected": "Сверьте секреты: похоже, одна из политик осталась со старым значением.",
+
+  "argocd_project.project_missing": "Создайте проект в Argo CD или укажите тот, который уже есть.",
+  "argocd_permissions.cannot_read": "Дайте токену право читать приложения этого проекта.",
+  "argocd_permissions.cannot_sync": "Дайте токену право запускать синхронизацию приложений этого проекта.",
+  "argocd_cluster.cluster_missing": "Зарегистрируйте кластер в Argo CD или укажите уже зарегистрированный.",
+  "argocd_namespace.namespace_diff": "Укажите тот namespace, в котором работает Argo CD.",
+
+  "keycloak_groups_claim.no_groups": "Добавьте группы в токен: нужен scope groups и соответствующий mapper в Keycloak.",
+  "keycloak_groups_claim.no_teams": "Проверьте, что префикс команд совпадает с тем, как названы группы в Keycloak.",
+  "keycloak_groups_claim.roles_unmapped": "Перечислите группы, которые дают роль администратора платформы.",
 };
 
 // Подписи фактов: что именно портал увидел.
@@ -195,9 +171,7 @@ const FACTS: Record<string, string> = {
   admin: "Администратор инстанса",
   actual: "На самом деле",
   alert_status: "Состояние вебхука",
-  artifacts: "Артефактов в репозитории",
-  cluster: "Кластер",
-  configured: "В настройках",
+  artifacts: "Версий в репозитории",
   covered: "Репозиториев с вебхуком",
   days_left: "Дней до истечения",
   disabled: "Отключено вебхуков",
@@ -206,24 +180,20 @@ const FACTS: Record<string, string> = {
   expected_path: "Нужный путь",
   expected_url: "Нужный адрес",
   expires_at: "Срок токена",
-  group: "Группа",
   group_id: "Идентификатор группы",
   groups: "Групп в токене",
   hidden: "Не видны",
   hook_id: "Идентификатор вебхука",
-  hook_url: "Адрес вебхука",
-  last_accepted: "Последняя принятая",
+  last_accepted: "Последняя доставка",
   last_rejected: "Последняя отклонённая",
   last_sign_in: "Последний вход",
   missing: "Нет в Harbor",
   mode: "Режим обновления",
-  project: "Проект",
   project_id: "Идентификатор репозитория",
   projects: "Проекты",
   public_url: "Адрес портала",
   read: "Чтение приложений",
   registered: "Зарегистрированы",
-  requested_scope: "Запрошенный уровень",
   rejected: "Отклонено доставок",
   rendered: "Пример имени",
   rendered_other: "Для другого сервиса",
@@ -231,21 +201,21 @@ const FACTS: Record<string, string> = {
   repository: "Репозиторий",
   required: "Нужна роль",
   role: "Полученная роль",
-  scope: "Уровень",
+  rbac_scope: "Область прав",
+  scope: "Уровень вебхука",
   scopes: "Права токена",
-  since: "Считаем с",
+  since: "Считаем доставки с",
   sync: "Синхронизация",
   teams: "Команд определилось",
-  template: "Шаблон",
   uncovered: "Репозиториев без вебхука",
   unreadable: "Не удалось посмотреть",
   user: "Учётная запись",
   waited_ms: "Ждали, мс",
 };
 
-// Итог проверки одним словом, для правого края карточки.
+// Итог проверки одним словом.
 const VERDICTS: Record<CheckVerdict, string> = {
-  ok: "В порядке",
+  ok: "Работает",
   warn: "Стоит поправить",
   fail: "Не работает",
   skip: "Не используется",
@@ -262,17 +232,18 @@ const DELIVERY_OUTCOMES: Record<string, string> = {
   failed: "GitLab отказался отправить тестовую доставку.",
 };
 
-// Текст проверки. Идентификатор, о котором фронтенд ещё не знает (бэкенд уехал
-// вперёд), получает честную заглушку вместо голого идентификатора на экране.
-export function checkText(id: string): CheckText {
-  return CHECKS[id] ?? { label: id, what: "Портал проверяет эту часть настройки." };
-}
-
 // Предложение о том, что увидели. Сначала уточнение для конкретной проверки,
 // потом общий текст причины.
 export function checkReason(id: string, reason?: string): string {
   if (!reason) return "";
   return REASONS[`${id}.${reason}`] ?? REASONS[reason] ?? "";
+}
+
+// Что сделать. Пусто, если делать нечего: у проверки, которая прошла, действия
+// нет, и придумывать его не надо.
+export function checkAction(id: string, reason?: string): string {
+  if (!reason) return "";
+  return ACTIONS[`${id}.${reason}`] ?? "";
 }
 
 // Подпись факта. Незнакомый ключ показываем как есть: это всё равно понятнее,
