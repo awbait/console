@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { api, errorMessage, HttpError } from "./client";
+import { api, errorMessage, HttpError, setUnauthorizedHandler } from "./client";
 
 describe("errorMessage", () => {
   test("unwraps Error and HttpError messages", () => {
@@ -55,5 +55,38 @@ describe("request timeout handling", () => {
     globalThis.fetch = (() =>
       Promise.reject(new DOMException("aborted", "AbortError"))) as unknown as typeof fetch;
     await expect(api.listCharts()).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+// A session does not expire for one request. The portal keeps several in the
+// air - who am I, what is healthy, how many unread - and an expired session
+// answers 401 to all of them. Every answer used to send the browser to the IdP
+// again, and each new login wrote its state over the previous one's: the login
+// the person actually finished then came back as "sign-in not completed".
+// Kept last in the file: the guard latches for the lifetime of the page.
+describe("re-login on 401", () => {
+  const realFetch = globalThis.fetch;
+  const realTimeout = AbortSignal.timeout;
+
+  beforeEach(() => {
+    AbortSignal.timeout = (() => new AbortController().signal) as typeof AbortSignal.timeout;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 401 }))) as unknown as typeof fetch;
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    AbortSignal.timeout = realTimeout;
+    setUnauthorizedHandler(null);
+  });
+
+  test("a burst of 401s starts one login, not one per request", async () => {
+    let logins = 0;
+    setUnauthorizedHandler(() => {
+      logins++;
+    });
+    await Promise.all(
+      [api.me(), api.listCharts(), api.getCatalog()].map((p) => p.catch(() => {})),
+    );
+    expect(logins).toBe(1);
   });
 });
