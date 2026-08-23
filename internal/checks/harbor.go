@@ -26,6 +26,10 @@ const (
 	reasonNoPolicy        = "no_policy"        // Harbor has no webhook aimed at this portal
 	reasonPolicyDisabled  = "policy_disabled"  // it has one and it is switched off
 	reasonMissingEvent    = "missing_event"    // it is on, but not subscribed to a pushed chart
+
+	// Reasons a check passed, so the green says what was confirmed.
+	reasonChartsReadable = "charts_readable" // every project is visible and its charts read
+	reasonPolicyFound    = "policy_found"    // Harbor has an enabled policy aimed at this portal
 )
 
 // pushArtifactEvent is the Harbor event a new chart version arrives as. It is
@@ -112,16 +116,19 @@ func harborProjects(ctx context.Context, api HarborAPI, projects []string) Resul
 		return verdict(VerdictWarn, reasonNoRepositories, f)
 	}
 
-	f["repository"] = sample.Project + "/" + sample.Name
-	n, err := api.CountArtifacts(ctx, sample.Project, sample.Name)
+	// Which repository was sampled is not reported when it works: it is whichever
+	// one came back first, and to a reader it is an arbitrary name raising a
+	// question the answer does not need. It is named where reading it failed,
+	// because then it is the place to go and look at the robot's permissions.
+	_, err := api.CountArtifacts(ctx, sample.Project, sample.Name)
 	switch {
 	case err != nil && harbor.IsAccessDenied(err):
+		f["repository"] = sample.Project + "/" + sample.Name
 		return verdict(VerdictFail, reasonNoArtifacts, f)
 	case err != nil:
 		return verdict(VerdictUnknown, ReasonUnavailable, f)
 	}
-	f["artifacts"] = strconv.Itoa(n)
-	return ok(f)
+	return verdict(VerdictOK, reasonChartsReadable, f)
 }
 
 // harborWebhook is the whole Harbor notification path in one verdict: the
@@ -176,7 +183,7 @@ func harborWebhook(ctx context.Context, cfg *config.Config, api HarborAPI, deliv
 	switch {
 	case len(withPolicy) > 0:
 		f["projects"] = strings.Join(withPolicy, ", ")
-		return ok(f)
+		return verdict(VerdictOK, reasonPolicyFound, f)
 	case len(disabledIn) > 0:
 		f["projects"] = strings.Join(disabledIn, ", ")
 		return verdict(VerdictFail, reasonPolicyDisabled, f)

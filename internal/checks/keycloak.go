@@ -19,6 +19,7 @@ const (
 	reasonNoGroups    = "no_groups"      // the token carried no groups at all
 	reasonNoTeams     = "no_teams"       // it carried groups, and none of them mean anything here
 	reasonRolesUnused = "roles_unmapped" // no group grants a privileged role, so nobody can get one
+	reasonGroupsOK    = "groups_ok"      // the last token carried groups and they meant something here
 )
 
 // SignInSource reports what the last successful sign-in carried.
@@ -80,5 +81,5 @@ func keycloakGroups(cfg *config.Config, signIns SignInSource) Result {
 		// aimed at a group structure this realm does not have.
 		return verdict(VerdictWarn, reasonNoTeams, f)
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonGroupsOK, f)
 }

@@ -25,6 +25,12 @@ const (
 	reasonCannotSync     = "cannot_sync"     // it may read them but not sync them
 	reasonNamespaceDiff  = "namespace_diff"  // applications are committed where Argo CD does not look
 	reasonNoApplications = "no_applications" // nothing deployed yet, so nothing to compare with
+
+	// Reasons a check passed, so the green says what was confirmed.
+	reasonProjectExists  = "project_exists"  // Argo CD knows the project the portal commits into
+	reasonClusterFound   = "cluster_found"   // the destination cluster is registered
+	reasonMayReadAndSync = "may_read_sync"   // the token may read the applications and sync them
+	reasonNamespaceMatch = "namespace_match" // applications are committed where Argo CD reads them
 )
 
 // ArgoCDAPI is the slice of the Argo CD client the checks read through.
@@ -84,7 +90,7 @@ func argoProject(ctx context.Context, api ArgoCDAPI, project string) Result {
 	case !exists:
 		return verdict(VerdictFail, reasonProjectMissing, f)
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonProjectExists, f)
 }
 
 // argoPermissions asks Argo CD what this token may do, which is the one question
@@ -110,13 +116,13 @@ func argoPermissions(ctx context.Context, api ArgoCDAPI, project string) Result 
 	}
 	canSync, err := api.CanI(ctx, "applications", "sync", scope)
 	if err != nil {
-		return ok(f)
+		return verdict(VerdictOK, reasonMayReadAndSync, f)
 	}
 	f["sync"] = strconv.FormatBool(canSync)
 	if !canSync {
 		return verdict(VerdictWarn, reasonCannotSync, f)
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonMayReadAndSync, f)
 }
 
 // argoCluster checks that the cluster orders are deployed to by default is
@@ -139,7 +145,8 @@ func argoCluster(ctx context.Context, api ArgoCDAPI, cluster string) Result {
 	for _, c := range list {
 		names = append(names, c.Name)
 		if c.Name == cluster || c.Server == cluster {
-			return ok(f)
+			f["server"] = c.Server
+			return verdict(VerdictOK, reasonClusterFound, f)
 		}
 	}
 	f["registered"] = strings.Join(names, ", ")
@@ -168,9 +175,9 @@ func argoNamespace(ctx context.Context, api ArgoCDAPI, configured string) Result
 		// have got this wrong yet, and a row saying so is a row nobody can act on.
 		return silent(reasonNoApplications)
 	}
-	f["actual"] = actual
 	if actual != configured {
+		f["actual"] = actual
 		return verdict(VerdictFail, reasonNamespaceDiff, f)
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonNamespaceMatch, f)
 }

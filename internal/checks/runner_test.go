@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"console/internal/argocd"
 	"console/internal/auth"
 	"console/internal/config"
 	"console/internal/gitlab"
@@ -154,6 +155,41 @@ func TestEveryCheckHasItsOwnAnchor(t *testing.T) {
 	}
 }
 
+// TestPassingChecksSayWhatTheyConfirmed guards the mute green light: a verdict
+// of "works" with nothing behind it cannot be read, because it does not say
+// whether the portal confirmed anything or merely failed to find fault.
+func TestPassingChecksSayWhatTheyConfirmed(t *testing.T) {
+	cases := []Result{
+		gitlabToken(context.Background(), &fakeGitLab{
+			account: &gitlab.Account{Username: "portal"},
+			token:   &gitlab.TokenInfo{Scopes: []string{"api"}, Active: true, Name: "portal"},
+		}),
+		gitlabGroup(context.Background(), &fakeGitLab{
+			account: &gitlab.Account{ID: 1}, access: gitlab.AccessOwner,
+		}, "managed-services", true),
+		harborProjects(context.Background(), &fakeHarbor{
+			repos:     map[string][]harbor.RepoRef{"platform": {{Project: "platform", Name: "postgres"}}},
+			artifacts: 3,
+		}, []string{"platform"}),
+		argoProject(context.Background(), &fakeArgo{projectExists: true}, "portal-managed"),
+		argoCluster(context.Background(), &fakeArgo{
+			clusters: []argocd.Cluster{{Name: "in-cluster"}},
+		}, "in-cluster"),
+		argoNamespace(context.Background(), &fakeArgo{namespace: "argocd"}, "argocd"),
+		keycloakGroups(&config.Config{AdminGroups: []string{"platform-admins"}}, fakeSignIns{
+			auth.SignIn{At: time.Now(), Groups: 2, Teams: 1, Role: string(models.RoleMember)},
+		}),
+	}
+	for _, got := range cases {
+		if got.Verdict != VerdictOK {
+			t.Fatalf("expected a passing check, got %s/%s", got.Verdict, got.Reason)
+		}
+		if got.Reason == "" {
+			t.Fatalf("a passing check says nothing about what it confirmed: %+v", got)
+		}
+	}
+}
+
 func TestRunnerTriggerCoalesces(t *testing.T) {
 	r := NewRunner(quietLogger(), nil, Check{
 		ID: "a", Component: ComponentPortal,
@@ -200,12 +236,12 @@ func TestKeycloakGroupsClaim(t *testing.T) {
 		{
 			"groups resolved to a team",
 			auth.SignIn{At: now, Groups: 2, Teams: 1, Role: string(models.RoleMember)},
-			VerdictOK, "",
+			VerdictOK, reasonGroupsOK,
 		},
 		{
 			"an administrator signed in, so the mapping evidently works",
 			auth.SignIn{At: now, Groups: 1, Teams: 0, Role: string(models.RoleAdmin)},
-			VerdictOK, "",
+			VerdictOK, reasonGroupsOK,
 		},
 	}
 	for _, tc := range cases {
@@ -231,8 +267,13 @@ func TestHarborProjectsReadsArtifacts(t *testing.T) {
 	t.Run("the robot can read them", func(t *testing.T) {
 		api := &fakeHarbor{repos: repos, artifacts: 3}
 		got := harborProjects(context.Background(), api, []string{"platform"})
-		if got.Verdict != VerdictOK || got.Facts["artifacts"] != "3" {
-			t.Fatalf("got %s/%s facts=%v", got.Verdict, got.Reason, got.Facts)
+		if got.Verdict != VerdictOK || got.Reason != reasonChartsReadable {
+			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+		// Which repository was sampled is the check's own business: it is
+		// whichever came back first, and naming it only raises a question.
+		if _, named := got.Facts["repository"]; named {
+			t.Fatalf("a passing check named the repository it happened to sample: %v", got.Facts)
 		}
 	})
 	t.Run("listing works and reading does not", func(t *testing.T) {
@@ -243,6 +284,11 @@ func TestHarborProjectsReadsArtifacts(t *testing.T) {
 		got := harborProjects(context.Background(), api, []string{"platform"})
 		if got.Verdict != VerdictFail || got.Reason != reasonNoArtifacts {
 			t.Fatalf("got %s/%s", got.Verdict, got.Reason)
+		}
+		// Here it is named: it is where somebody goes to look at the robot's
+		// permissions.
+		if got.Facts["repository"] != "platform/postgres" {
+			t.Fatalf("the failing check did not say where to look: %v", got.Facts)
 		}
 	})
 }

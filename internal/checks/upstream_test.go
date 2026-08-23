@@ -97,7 +97,7 @@ func TestGitLabToken(t *testing.T) {
 		{
 			"api scope, no expiry",
 			&fakeGitLab{account: &gitlab.Account{Username: "portal"}, token: &gitlab.TokenInfo{Scopes: []string{"api"}, Active: true, Name: "portal"}},
-			VerdictOK, "",
+			VerdictOK, reasonTokenValid,
 		},
 		{
 			"read-only token passes every health probe and fails the first order",
@@ -147,7 +147,7 @@ func TestGitLabGroup(t *testing.T) {
 		{
 			"owner creates subgroups",
 			&fakeGitLab{account: &gitlab.Account{ID: 1}, access: gitlab.AccessOwner},
-			true, VerdictOK, "",
+			true, VerdictOK, reasonRoleEnough,
 		},
 		{
 			// The case the issue names: the flag is on, the role is not, and the
@@ -159,7 +159,7 @@ func TestGitLabGroup(t *testing.T) {
 		{
 			"maintainer is enough when subgroups are provisioned elsewhere",
 			&fakeGitLab{account: &gitlab.Account{ID: 1}, access: gitlab.AccessMaintainer},
-			false, VerdictOK, "",
+			false, VerdictOK, reasonRoleEnough,
 		},
 		{
 			"developer cannot create repositories",
@@ -176,7 +176,7 @@ func TestGitLabGroup(t *testing.T) {
 			// member at all, so the members API proves nothing about them.
 			"instance admin",
 			&fakeGitLab{account: &gitlab.Account{ID: 1, IsAdmin: true}, accessErr: models.ErrNotFound},
-			true, VerdictOK, "",
+			true, VerdictOK, reasonRoleEnough,
 		},
 		{
 			// Folded in from what used to be a check of its own: to whoever has
@@ -428,7 +428,7 @@ func TestHarborWebhook(t *testing.T) {
 		{
 			"a policy aimed at the portal",
 			&fakeHarbor{policies: map[string][]harbor.WebhookPolicy{"platform": {policy(true, pushArtifactEvent)}}},
-			VerdictOK, "",
+			VerdictOK, reasonPolicyFound,
 		},
 		{
 			// The case the issue names: the portal holds a secret and assumes the

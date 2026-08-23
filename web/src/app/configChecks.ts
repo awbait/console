@@ -14,6 +14,22 @@ export type CheckVerdict = "ok" | "warn" | "fail" | "skip" | "unknown";
 // Что увидели. Ключ вида «проверка.причина» уточняет общий текст: «не
 // настроено» у вебхука GitLab и у секрета Harbor значат разное.
 const REASONS: Record<string, string> = {
+  // что подтвердили, когда всё в порядке. Зелёная отметка без единого слова -
+  // это лампочка, по которой не прочитать, проверил портал что-нибудь или
+  // просто не нашёл, к чему придраться.
+  "gitlab_token.token_valid": "Токен принадлежит порталу, права api есть, срок в запасе.",
+  "gitlab_group.role_enough": "Группа на месте, роли портала в ней хватает на то, что он делает.",
+  "gitlab_webhook.hook_live": "Вебхук зарегистрирован, подписан на merge request и не отключён.",
+  "gitlab_webhook.delivering": "Уведомления доходят, ни одно не отклонено.",
+  "harbor_webhook.delivering": "Уведомления доходят, ни одно не отклонено.",
+  "harbor_projects.charts_readable": "Проекты видны порталу, чарты и их версии читаются.",
+  "harbor_webhook.policy_found": "В Harbor есть включённая политика, которая шлёт уведомления сюда.",
+  "argocd_project.project_exists": "Проект есть в Argo CD.",
+  "argocd_cluster.cluster_found": "Кластер зарегистрирован в Argo CD.",
+  "argocd_permissions.may_read_sync": "Токен читает приложения проекта и может их синхронизировать.",
+  "argocd_namespace.namespace_match": "Совпадает с тем namespace, из которого Argo CD читает приложения.",
+  "keycloak_groups_claim.groups_ok": "Группы приходят в токене и разбираются в команды и роли.",
+
   // общее
   upstream_down: "Система не отвечает, поэтому проверить не удалось.",
   unavailable: "Проверить не удалось: система не ответила на запрос.",
@@ -163,12 +179,11 @@ const ACTIONS: Record<string, string> = {
 
 // Подписи фактов: что именно портал увидел.
 const FACTS: Record<string, string> = {
-  access: "Роль в группе",
+  access: "Роль портала в группе",
   accepted: "Принято доставок",
   admin: "Администратор инстанса",
   actual: "На самом деле",
   alert_status: "Состояние вебхука",
-  artifacts: "Версий в репозитории",
   covered: "Репозиториев с вебхуком",
   days_left: "Дней до истечения",
   disabled: "Отключено вебхуков",
@@ -194,11 +209,12 @@ const FACTS: Record<string, string> = {
   rejected: "Отклонено доставок",
   repositories: "Репозиториев",
   repository: "Репозиторий",
-  required: "Нужна роль",
+  required: "Нужна роль не ниже",
   role: "Полученная роль",
   rbac_scope: "Область прав",
   scope: "Уровень вебхука",
   scopes: "Права токена",
+  server: "Адрес кластера",
   since: "Считаем доставки с",
   sync: "Синхронизация",
   teams: "Команд определилось",

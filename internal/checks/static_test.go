@@ -26,9 +26,12 @@ func TestInstanceDirTemplate(t *testing.T) {
 		tmpl string
 		want Verdict
 	}{
-		{"empty is the service name", "", VerdictOK},
-		{"service name", "{{.ServiceName}}", VerdictOK},
-		{"namespace and service name", "{{.Namespace}}-{{.ServiceName}}", VerdictOK},
+		// A template that does tell services apart is not news: it computes a
+		// property of the very value printed in the row, so only its failure
+		// is worth a word.
+		{"empty is the service name", "", VerdictSilent},
+		{"service name", "{{.ServiceName}}", VerdictSilent},
+		{"namespace and service name", "{{.Namespace}}-{{.ServiceName}}", VerdictSilent},
 		// The whole point of the check: two services of one team and chart would
 		// commit into the same folder and overwrite each other.
 		{"namespace alone", "{{.Namespace}}", VerdictFail},
@@ -51,7 +54,7 @@ func TestAppNameTemplate(t *testing.T) {
 		want   Verdict
 		reason string
 	}{
-		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.ServiceName}}", VerdictOK, ""},
+		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.ServiceName}}", VerdictSilent, reasonUnique},
 		{"no service name", "{{.Team}}-{{.Chart}}", VerdictFail, reasonNotUnique},
 		{"no team", "{{.Chart}}-{{.ServiceName}}", VerdictWarn, reasonTeamCollision},
 		{"no chart", "{{.Team}}-{{.ServiceName}}", VerdictWarn, reasonChartCollision},

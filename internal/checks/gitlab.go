@@ -39,6 +39,14 @@ const (
 	reasonPartialHooks   = "partial_coverage" // per-repository scope, and some repositories have none
 	reasonSecretMismatch = "secret_mismatch"  // every delivery is being rejected on its secret
 	reasonSomeRejected   = "some_rejected"    // some are
+
+	// Reasons a check passed. Green with nothing behind it is a light nobody can
+	// read: it does not say whether the portal confirmed anything or merely
+	// failed to find fault. Every passing verdict here names what was confirmed.
+	reasonTokenValid = "token_valid" // the token is the portal's, has api, and is not about to expire
+	reasonRoleEnough = "role_enough" // the group is there and the role in it covers what the portal does
+	reasonDelivering = "delivering"  // deliveries arrive and none are refused
+	reasonHookLive   = "hook_live"   // registered, on merge requests, and not switched off
 )
 
 // expiryWarning is how far ahead a token expiry is worth a warning. A month is
@@ -160,7 +168,7 @@ func gitlabToken(ctx context.Context, api GitLabAPI) Result {
 		f["days_left"] = strconv.Itoa(left)
 		return verdict(VerdictWarn, reasonExpiresSoon, f)
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonTokenValid, f)
 }
 
 // gitlabGroup checks the group every GitOps repository lives under: that it is
@@ -181,7 +189,10 @@ func gitlabGroup(ctx context.Context, api GitLabAPI, path string, createSubgroup
 	if createSubgroups {
 		need, reason = gitlab.AccessOwner, reasonNeedsOwner
 	}
-	f := factsOf("required", accessName(need))
+	// The required role is reported only where it is not met: next to a role
+	// that already satisfies it, it is half of a comparison that has already
+	// come out fine, and it reads as a demand out of nowhere.
+	f := map[string]string{}
 
 	g, err := api.GetGroup(ctx, path)
 	switch {
@@ -202,20 +213,22 @@ func gitlabGroup(ctx context.Context, api GitLabAPI, path string, createSubgroup
 		// An instance administrator is above group membership and is usually not
 		// a member at all, so asking the members API about them proves nothing.
 		f["access"] = "admin"
-		return ok(f)
+		return verdict(VerdictOK, reasonRoleEnough, f)
 	}
 	level, err := api.GroupAccessLevel(ctx, path, me.ID)
 	switch {
 	case errors.Is(err, models.ErrNotFound):
+		f["required"] = accessName(need)
 		return verdict(VerdictFail, reasonNotMember, f)
 	case err != nil:
 		return verdict(VerdictUnknown, ReasonUnavailable, f)
 	}
 	f["access"] = accessName(level)
 	if level < need {
+		f["required"] = accessName(need)
 		return verdict(VerdictFail, reason, f)
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonRoleEnough, f)
 }
 
 // gitlabWebhook is everything about the portal's own merge-request webhook in
@@ -287,7 +300,7 @@ func gitlabWebhook(ctx context.Context, cfg *config.Config, api GitLabAPI, hooks
 		}
 		delete(f, "public_url")
 	}
-	return ok(f)
+	return verdict(VerdictOK, reasonHookLive, f)
 }
 
 // gitlabHookRegistration checks that the hook is in GitLab, on merge-request
@@ -393,7 +406,7 @@ func deliveryVerdict(d Deliveries, source string, f map[string]string) (Result, 
 		// Deliveries arrive and none are refused. Whatever the address looks
 		// like next to PUBLIC_URL, it demonstrably works.
 		f["last_accepted"] = c.LastAccepted.UTC().Format(time.RFC3339)
-		return ok(f), true
+		return verdict(VerdictOK, reasonDelivering, f), true
 	}
 	f["since"] = d.Since().UTC().Format(time.RFC3339)
 	return Result{}, false

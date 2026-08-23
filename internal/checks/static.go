@@ -13,6 +13,14 @@ import (
 // upstream, no clock. They are the ones that catch a deployment where two
 // settings disagree with each other - the kind of mistake that stays invisible
 // until the first order lands on it.
+//
+// They also say nothing when they pass, and that is the difference between them
+// and every other check here. A check that reached an upstream reports success
+// too, because "the token may open merge requests" is a thing somebody learned
+// by looking and cannot see in the row. A static check only computes a property
+// of the value printed in that same row, so its green tells the reader nothing
+// they could not work out; only its failure is news. Hence VerdictSilent on the
+// way out.
 
 // Check ids of the static set, mirrored in web/src/app/configChecks.ts.
 const (
@@ -39,6 +47,7 @@ const (
 	reasonTeamCollision   = "team_collision"    // the template gives two teams the same application name
 	reasonChartCollision  = "chart_collision"   // the template gives two charts the same application name
 	reasonBadTemplate     = "bad_template"      // the template does not parse
+	reasonUnique          = "unique"            // it does tell services apart, which is not news
 )
 
 // GitLabWebhookPath and HarborWebhookPath are where the portal receives each
@@ -75,7 +84,7 @@ func Static(cfg *config.Config) []Check {
 // construction.
 func instanceDirTemplate(tmpl string) Result {
 	if strings.TrimSpace(tmpl) == "" {
-		return ok(nil)
+		return silent(reasonUnique)
 	}
 	t, err := template.New("instance").Parse(tmpl)
 	if err != nil {
@@ -90,7 +99,7 @@ func instanceDirTemplate(tmpl string) Result {
 	if renderTmpl(t, base) == renderTmpl(t, other) {
 		return verdict(VerdictFail, reasonNotUnique, nil)
 	}
-	return ok(nil)
+	return silent(reasonUnique)
 }
 
 // appNameTemplate checks the Argo CD application name the same way. Two orders
@@ -117,7 +126,7 @@ func appNameTemplate(tmpl string) Result {
 	case renderTmpl(t, byChart) == name:
 		return verdict(VerdictWarn, reasonChartCollision, nil)
 	}
-	return ok(nil)
+	return silent(reasonUnique)
 }
 
 // tmplSample is the sample order the templates are rendered against. It mirrors
