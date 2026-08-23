@@ -188,3 +188,47 @@ describe("a version that vanished from the registry", () => {
     expect(notificationLink(missing)).toBe("/catalog/platform/ingress-gateway/manage/1.2.0");
   });
 });
+
+describe("configuration that broke by itself", () => {
+  const check = (payload: Record<string, unknown>, kind = "config_check_failed") =>
+    notification({ kind, subject_type: "platform", subject_id: "config:gitlab_token", payload });
+
+  test("names what broke, not the check that noticed", () => {
+    expect(notificationText(check({ check: "gitlab_token", reason: "expired" }))).toBe(
+      "Токен GitLab истёк",
+    );
+    expect(
+      notificationText(check({ check: "gitlab_webhook", reason: "hook_disabled" })),
+    ).toBe("GitLab отключил вебхук портала");
+  });
+
+  test("a token expiry says how long is left, so the two warnings differ", () => {
+    expect(
+      notificationText(check({ check: "gitlab_token", reason: "expires_soon", days_left: 21 })),
+    ).toBe("Токен GitLab истекает через 21 день");
+    expect(
+      notificationText(check({ check: "gitlab_token", reason: "expires_soon", days_left: 5 })),
+    ).toBe("Токен GitLab истекает через 5 дней");
+  });
+
+  test("the all-clear names the same thing in the same words", () => {
+    const text = notificationText(
+      check({ check: "gitlab_token" }, "config_check_recovered"),
+    );
+    expect(text).toBe("Токен GitLab снова в порядке");
+  });
+
+  test("both lead to the page where the detail and the fix are", () => {
+    expect(notificationLink(check({ check: "argocd_cluster", reason: "cluster_missing" }))).toBe(
+      "/admin/config",
+    );
+    expect(notificationLink(check({ check: "argocd_cluster" }, "config_check_recovered"))).toBe(
+      "/admin/config",
+    );
+  });
+
+  test("a check this build has never heard of still reads as a sentence", () => {
+    const text = notificationText(check({ check: "vault_token", reason: "sealed" }));
+    expect(text).toBe("Что-то в настройке портала перестало работать");
+  });
+});

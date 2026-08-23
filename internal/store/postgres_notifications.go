@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"console/pkg/models"
 )
 
@@ -128,6 +130,33 @@ func (p *Postgres) MarkAllRead(ctx context.Context, subject string) error {
 		INSERT INTO notification_cursor (subject, cleared_before) VALUES ($1, NOW())
 		ON CONFLICT (subject) DO UPDATE SET cleared_before = EXCLUDED.cleared_before`, subject)
 	return err
+}
+
+// LatestNotification reads the newest notification about one subject. No index
+// covers this: it is asked once per subject per process (see the port's
+// documentation), and the table is bounded by the retention sweep.
+func (p *Postgres) LatestNotification(ctx context.Context, subjectType, subjectID string) (*models.Notification, error) {
+	var n models.Notification
+	var payload []byte
+	err := p.db.QueryRow(ctx, `
+		SELECT id, kind, subject_type, subject_id, audience, audience_key,
+		       actor, actor_name, payload, level, created_at
+		FROM notifications
+		WHERE subject_type = $1 AND subject_id = $2
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1`, subjectType, subjectID).
+		Scan(&n.ID, &n.Kind, &n.SubjectType, &n.SubjectID, &n.Audience, &n.AudienceKey,
+			&n.Actor, &n.ActorName, &payload, &n.Level, &n.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, models.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > 0 {
+		_ = json.Unmarshal(payload, &n.Payload)
+	}
+	return &n, nil
 }
 
 func (p *Postgres) DeleteReadNotificationsBefore(ctx context.Context, cutoff time.Time) (int, error) {

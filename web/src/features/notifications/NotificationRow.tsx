@@ -9,6 +9,8 @@ import {
   IconPackageOff,
   IconRefreshAlert,
   IconRocket,
+  IconSettingsCheck,
+  IconSettingsExclamation,
   IconSparkles,
   IconTrashOff,
   IconUser,
@@ -36,6 +38,8 @@ const ICONS: Record<string, IconType> = {
   version_submitted: IconClipboardCheck,
   chart_discovered: IconPackageImport,
   portal_updated: IconSparkles,
+  config_check_failed: IconSettingsExclamation,
+  config_check_recovered: IconSettingsCheck,
 };
 
 function iconFor(n: AppNotification): IconType {

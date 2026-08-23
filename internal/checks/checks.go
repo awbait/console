@@ -189,12 +189,24 @@ const runTimeout = 30 * time.Second
 // has a button that runs the set now.
 const Interval = 10 * time.Minute
 
+// Announcer is told what a finished round concluded, so that the part of it
+// nobody would otherwise see can be sent to the people who can fix it. Optional:
+// without one the results only ever appear on the configuration page.
+//
+// It is called with every result, not only the bad ones: a check that has gone
+// back to normal is what an announcement of the opposite has to be called off
+// by.
+type Announcer interface {
+	Round(ctx context.Context, results []CheckResult)
+}
+
 // Runner keeps the check set and the last result of every check. Like the health
 // monitor it is the single place the upstreams are read from, so the number of
 // admins looking at the status page does not change the load on GitLab.
 type Runner struct {
-	checks []Check
-	log    *slog.Logger
+	checks   []Check
+	log      *slog.Logger
+	announce Announcer
 	// healthy reports whether a component answered its last probe. Optional: a
 	// nil func treats everything as up, which is what tests want.
 	healthy func(component string) bool
@@ -226,6 +238,14 @@ func NewRunner(log *slog.Logger, healthy func(string) bool, checks ...Check) *Ru
 		r.results[c.ID] = CheckResult{ID: c.ID, Component: c.Component, Vars: c.Vars, Verdict: VerdictUnknown}
 	}
 	return r
+}
+
+// SetAnnouncer wires who hears about a finished round. Set before Run: it is
+// read on every round and written once, at startup.
+func (r *Runner) SetAnnouncer(a Announcer) {
+	if r != nil {
+		r.announce = a
+	}
 }
 
 // Snapshot returns the last result of every check that has something to say, in
@@ -309,6 +329,9 @@ func (r *Runner) round(ctx context.Context) {
 	r.mu.Unlock()
 
 	r.publish(results)
+	if r.announce != nil {
+		r.announce.Round(ctx, results)
+	}
 	r.logger().Debug("configuration checks done", "checks", len(results), "problems", countProblems(results))
 }
 

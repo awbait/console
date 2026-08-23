@@ -382,6 +382,26 @@ func (m *Memory) MarkAllRead(ctx context.Context, subject string) error {
 	return nil
 }
 
+func (m *Memory) LatestNotification(ctx context.Context, subjectType, subjectID string) (*models.Notification, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var latest *models.Notification
+	for _, n := range m.notifications {
+		if n.SubjectType != subjectType || n.SubjectID != subjectID {
+			continue
+		}
+		// Not before, so that the last of several stamped the same moment wins:
+		// they are stored in the order they were sent.
+		if latest == nil || !n.CreatedAt.Before(latest.CreatedAt) {
+			latest = n
+		}
+	}
+	if latest == nil {
+		return nil, models.ErrNotFound
+	}
+	return clone(latest), nil
+}
+
 func (m *Memory) DeleteReadNotificationsBefore(ctx context.Context, cutoff time.Time) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
