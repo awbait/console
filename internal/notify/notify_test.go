@@ -171,14 +171,34 @@ func TestPortalUpdatedIgnoresAnUnstampedBuild(t *testing.T) {
 
 	svc.PortalUpdated(ctx, "dev")
 	svc.PortalUpdated(ctx, "")
-	if got := unread(t, st, reader("alice", "member")); got != 0 {
+	if got := unread(t, st, reader("padmin", "admin")); got != 0 {
 		t.Fatalf("want silence, got %d", got)
 	}
 
 	svc.PortalUpdated(ctx, "0.5.0")
 	svc.PortalUpdated(ctx, "0.5.0") // a restart is not another release
-	if got := unread(t, st, reader("alice", "member")); got != 1 {
+	if got := unread(t, st, reader("padmin", "admin")); got != 1 {
 		t.Fatalf("want one announcement, got %d", got)
+	}
+}
+
+// A release of the portal is news to whoever rolled it out, not to the person
+// who came to order a database: they did not choose the version and cannot
+// choose the next one.
+func TestPortalUpdateGoesToAdminsOnly(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemory()
+	svc := notify.New(st, nil, nil)
+
+	svc.PortalUpdated(ctx, "0.5.0")
+
+	if got := unread(t, st, reader("padmin", "admin")); got != 1 {
+		t.Fatalf("admin: want the announcement, got %d", got)
+	}
+	for _, role := range []string{"member", "auditor", "support", "security"} {
+		if got := unread(t, st, reader("alice", role)); got != 0 {
+			t.Fatalf("%s: want silence, got %d", role, got)
+		}
 	}
 }
 
