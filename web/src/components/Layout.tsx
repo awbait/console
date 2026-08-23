@@ -22,6 +22,7 @@ import {
   IconShieldLock,
   IconTags,
   IconUser,
+  IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -89,6 +90,7 @@ const supportSectionNav: SectionNavItem[] = [
 const adminSectionNav: SectionNavItem[] = [
   { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
   { to: "/admin/approvals", label: "Согласование публикаций", Icon: IconChecklist },
+  { to: "/admin/activity", label: "Кто пользуется порталом", Icon: IconUsers },
   { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
   { to: "/admin/config", label: "Конфигурация", Icon: IconAdjustments },
   { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },

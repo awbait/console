@@ -410,7 +410,7 @@ const DefaultDiscoveryCategory = "uncategorized"
 // DiscoveryActor is the created_by marker of publications registered by the
 // background discovery reconciler (no real user). Such publications are
 // unclaimed and can be adopted by a team (see Adopt).
-const DiscoveryActor = "auto-discovery"
+const DiscoveryActor = models.ActorAutoDiscovery
 
 // DiscoveredChart is a chart found in Harbor for auto-registration.
 type DiscoveredChart struct {

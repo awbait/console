@@ -19,6 +19,7 @@ import {
   IconStack,
   IconTags,
   IconTrash,
+  IconUsers,
   IconX,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -69,7 +70,7 @@ const TONE = {
   slate: "bg-slate-100 text-slate-600",
   brand: "bg-brand-50 text-brand-700",
 } as const;
-type Tone = keyof typeof TONE;
+export type Tone = keyof typeof TONE;
 
 const STATUS_META: Record<PublicationStatus, { label: string; tone: Tone }> = {
   DRAFT: { label: "Черновик", tone: "slate" },
@@ -91,7 +92,11 @@ function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
   );
 }
 
-function StatCard({
+// StatCard is the section's one shape for a number worth looking at. Exported
+// because the activity page counts different things in the same row of cards,
+// and a second shape for the same job is how two admin pages stop looking like
+// one product.
+export function StatCard({
   label,
   value,
   tone,
@@ -217,6 +222,13 @@ export function AdminOverviewPage() {
                 ? `${queue.length} ${ruPlural(queue.length, "решение", "решения", "решений")} ждёт`
                 : "очередь пуста"
             }
+          />
+          <QuickLink
+            to="/admin/activity"
+            tone="emerald"
+            Icon={IconUsers}
+            title="Кто пользуется порталом"
+            desc="люди, команды, последние действия"
           />
           <QuickLink
             to="/admin/status"

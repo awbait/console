@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"console/internal/activity"
 	"console/internal/api"
 	"console/internal/argocd"
 	"console/internal/auth"
@@ -263,11 +264,25 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		}
 	}
 
+	// --- activity ---
+	// Who uses the portal. The directory builds itself from sign-ins: Keycloak
+	// will not hand over its user list without a service account, and the people
+	// who have never opened the portal are the least interesting part of the
+	// answer anyway. Presence needs a cache that can order a set by time; both
+	// backends can, so the assertion is a formality that keeps the Cache port
+	// itself a plain blob store.
+	presence, _ := c.(cache.Presence)
+	if presence == nil {
+		log.Warn("cache backend has no presence support: the portal will not know who is online")
+	}
+	activityRec := activity.New(st, c, presence, observability.Component(log, "activity"))
+
 	// --- HTTP ---
 	srv := &api.Server{
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc,
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
+		Activity: activityRec,
 		// The loaded config backs the admin configuration page (read-only).
 		Config: cfg,
 		System: api.SystemInfo{

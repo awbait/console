@@ -1193,7 +1193,7 @@ type actorRef struct {
 
 func byUser(u *models.User) actorRef { return actorRef{subject: u.Subject, name: u.Name} }
 
-func bySystem() actorRef { return actorRef{subject: "system"} }
+func bySystem() actorRef { return actorRef{subject: models.ActorSystem} }
 
 func (s *Service) transition(ctx context.Context, r *models.Request, to models.RequestStatus, a actorRef) error {
 	from := r.Status

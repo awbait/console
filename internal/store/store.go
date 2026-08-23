@@ -93,6 +93,25 @@ type Store interface {
 	// process, and the answer may be gone once the retention sweep has taken it.
 	LatestNotification(ctx context.Context, subjectType, subjectID string) (*models.Notification, error)
 
+	// Platform users: the portal's own directory, built from who signs in.
+	// TouchUser creates the row on the first visit and refreshes name, teams,
+	// role and last_seen on the ones after, counting one visit per call. It is
+	// called at most once every few minutes per person (see internal/activity),
+	// never once per request.
+	TouchUser(ctx context.Context, u *models.PlatformUser) error
+	// ListUsers returns the whole directory, most recently seen first. No
+	// paging: it holds everyone who has ever signed in, which is the size of the
+	// company, and every reader of it (the activity page, the gauges) needs the
+	// totals anyway.
+	ListUsers(ctx context.Context) ([]*models.PlatformUser, error)
+	// ListActivity returns the newest events of both journals (orders and
+	// publications) as one stream, newest first. Only what people did: events
+	// the platform wrote by itself are left out (see models.IsSystemActor).
+	ListActivity(ctx context.Context, limit int) ([]*models.ActivityEvent, error)
+	// CountActivity counts the same stream since a moment, grouped by event
+	// type and team. For the gauges, which need totals rather than rows.
+	CountActivity(ctx context.Context, since time.Time) ([]*models.ActivityCount, error)
+
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id
 	UpdateCategory(ctx context.Context, c *models.Category) error

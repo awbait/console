@@ -148,6 +148,72 @@ export interface SystemStatus {
   grafana_url?: string;
 }
 
+// One person the portal has seen (GET /api/v1/admin/activity, admin). The
+// directory is built from sign-ins: somebody who has never opened the portal is
+// not in it, because the portal only ever meets the holder of a token.
+export interface PlatformUser {
+  subject: string; // OIDC sub
+  email: string;
+  username: string;
+  name: string;
+  teams: string[];
+  role: Role;
+  first_seen: string; // RFC3339
+  last_seen: string;
+  visits: number; // windows of activity, not requests
+  online?: boolean;
+  seen_ago?: number; // seconds since presence last saw them
+}
+
+// One team as the activity page shows it. Teams come from groups in the token,
+// so a team appears here once somebody from it has signed in.
+export interface TeamActivity {
+  team: string;
+  members: number;
+  online: number;
+  active_24h: number;
+  people?: PlatformUser[];
+}
+
+// One thing a person did, drawn from the order and publication journals. What
+// the platform did by itself is left out.
+export interface ActivityEvent {
+  at: string; // RFC3339
+  source: "order" | "publication";
+  actor: string;
+  actor_name: string;
+  event_type: string;
+  from_status?: string;
+  to_status?: string;
+  subject_id: string;
+  title: string; // service name, or chart path for a publication
+  team: string;
+}
+
+export interface ActivityTotals {
+  users: number;
+  online: number;
+  active_24h: number;
+  active_7d: number;
+  teams: number;
+}
+
+export interface PlatformActivity {
+  totals: ActivityTotals;
+  online: PlatformUser[];
+  users: PlatformUser[];
+  teams: TeamActivity[];
+  events: ActivityEvent[];
+  online_window_seconds: number;
+  grafana_url?: string;
+}
+
+// The small half, polled on its own: who is here right now.
+export interface PlatformOnline {
+  online: PlatformUser[];
+  online_window_seconds: number;
+}
+
 // One thing the portal offers and whether it works right now. Ids are fixed by
 // the backend (internal/status/capabilities.go); their wording lives in
 // app/capabilities.ts.

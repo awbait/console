@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,6 +49,39 @@ var (
 		Name: "console_orders",
 		Help: "Number of orders currently in each lifecycle status.",
 	}, []string{"status"})
+
+	// users is how many people the portal knows, by state: known (has ever
+	// signed in), online, active_24h, active_7d. Numbers only - who they are
+	// stays behind the session on the admin activity page, because /metrics is
+	// served without authentication and a per-person series would be a staff
+	// list that outlives the person by the whole retention window.
+	users = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "console_users",
+		Help: "People the portal has seen, by state (known, online, active_24h, active_7d).",
+	}, []string{"state"})
+
+	// teamUsers is the same count per team: how big a team is and how much of
+	// it is around. A team here is a team someone has signed in from.
+	teamUsers = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "console_team_users",
+		Help: "People of a team the portal has seen, by state (member, online, active_24h).",
+	}, []string{"team", "state"})
+
+	// userActions is how much people did in the trailing window, by event type
+	// and team. A gauge over a window rather than a counter: the events live in
+	// the database, are counted from it on every refresh, and a restart must not
+	// look like everyone stopped working.
+	userActions = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "console_user_actions",
+		Help: "Actions people took in the trailing window, by event type and team.",
+	}, []string{"event_type", "team", "window"})
+
+	// The two gauges above carry label sets that come and go (a team nobody is
+	// left in, an action nobody has taken today). Remember what was written so
+	// the ones that dropped out are deleted rather than frozen at their last
+	// reading.
+	teamUserSet   = newGaugeSet(teamUsers)
+	userActionSet = newGaugeSet(userActions)
 
 	// reconcileRuns counts background reconcile ticks per reconciler and outcome.
 	reconcileRuns = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -195,6 +229,82 @@ func SetOrderCounts(counts map[string]int, known []string) {
 	for _, s := range known {
 		orders.WithLabelValues(s).Set(float64(counts[s]))
 	}
+}
+
+// userStates is every state the people gauge reports, so one that has dropped
+// to zero is reset instead of keeping its last reading.
+var userStates = []string{"known", "online", "active_24h", "active_7d"}
+
+// SetUserCounts replaces the platform-wide people gauge. States absent from the
+// map are set to 0.
+func SetUserCounts(counts map[string]int) {
+	for _, s := range userStates {
+		users.WithLabelValues(s).Set(float64(counts[s]))
+	}
+}
+
+// SetTeamUserCounts replaces the per-team gauge: counts is keyed by team, then
+// by state. A team that is no longer in the map disappears from the gauge.
+func SetTeamUserCounts(counts map[string]map[string]int) {
+	round := map[string]float64{}
+	labels := map[string][]string{}
+	for team, byState := range counts {
+		for state, n := range byState {
+			key := team + "\x00" + state
+			round[key] = float64(n)
+			labels[key] = []string{team, state}
+		}
+	}
+	teamUserSet.replace(round, labels)
+}
+
+// ActionCount is one bar of the actions gauge: how many events of one type one
+// team produced inside the window.
+type ActionCount struct {
+	EventType string
+	Team      string
+	Count     int
+}
+
+// SetUserActionCounts replaces the actions gauge for one window (e.g. "24h").
+// Combinations that have fallen out of it are dropped.
+func SetUserActionCounts(window string, counts []ActionCount) {
+	round := map[string]float64{}
+	labels := map[string][]string{}
+	for _, c := range counts {
+		key := c.EventType + "\x00" + c.Team + "\x00" + window
+		round[key] = float64(c.Count)
+		labels[key] = []string{c.EventType, c.Team, window}
+	}
+	userActionSet.replace(round, labels)
+}
+
+// gaugeSet is a GaugeVec whose label sets are not known in advance and change
+// between rounds. It writes the round it is given and deletes whatever it wrote
+// last time and has not written now, so a series that stopped existing stops
+// reporting instead of freezing at its final value.
+type gaugeSet struct {
+	mu   sync.Mutex
+	vec  *prometheus.GaugeVec
+	live map[string][]string // key -> the label values that produced it
+}
+
+func newGaugeSet(vec *prometheus.GaugeVec) *gaugeSet {
+	return &gaugeSet{vec: vec, live: map[string][]string{}}
+}
+
+func (g *gaugeSet) replace(round map[string]float64, labels map[string][]string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for key, v := range round {
+		g.vec.WithLabelValues(labels[key]...).Set(v)
+	}
+	for key, lv := range g.live {
+		if _, still := round[key]; !still {
+			g.vec.DeleteLabelValues(lv...)
+		}
+	}
+	g.live = labels
 }
 
 // ObserveReconcile records one reconciler tick: its duration, the run counter

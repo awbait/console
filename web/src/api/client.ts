@@ -18,7 +18,9 @@ import type {
   JSONSchema,
   OrderRequest,
   PendingVersion,
+  PlatformActivity,
   PlatformHealth,
+  PlatformOnline,
   PublicationDetail,
   PublicationVersion,
   RequestDetail,
@@ -312,6 +314,12 @@ export const api = {
   testWebhookDelivery: () => req<DeliveryTest>("POST", "/status/checks/webhook-delivery"),
   // runtime configuration, read-only (admin)
   getConfig: () => req<ConfigResponse>("GET", "/config"),
+  // who uses the portal (admin). Two calls because they are read at two
+  // rhythms: the page loads once, "who is here now" keeps refreshing.
+  getActivity: (signal?: AbortSignal) =>
+    req<PlatformActivity>("GET", "/admin/activity", undefined, signal),
+  getOnline: (signal?: AbortSignal) =>
+    req<PlatformOnline>("GET", "/admin/online", undefined, signal),
   // What the portal can do right now. Answers without a session, so the sign-in
   // screen can ask it too.
   getPlatformHealth: (signal?: AbortSignal) =>
