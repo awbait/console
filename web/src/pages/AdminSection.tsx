@@ -227,8 +227,8 @@ export function AdminOverviewPage() {
             to="/admin/activity"
             tone="emerald"
             Icon={IconUsers}
-            title="Кто пользуется порталом"
-            desc="люди, команды, последние действия"
+            title="Активность"
+            desc="кто пользуется порталом и что делает"
           />
           <QuickLink
             to="/admin/status"

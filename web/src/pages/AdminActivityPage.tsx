@@ -60,7 +60,7 @@ export function AdminActivityPage() {
       <section className="flex flex-col">
         <div className="mb-4 flex min-h-9 flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-slate-900">Кто пользуется порталом</h1>
+            <h1 className="text-xl font-semibold text-slate-900">Активность</h1>
             <Chip className="bg-brand-50 text-brand-700">
               <IconSettings size={13} stroke={1.8} className="text-brand-400" />
               Admin

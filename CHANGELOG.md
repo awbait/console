@@ -30,11 +30,11 @@ All notable changes to this project are documented in this file.
   project or cluster disappears. Each of those arrives once, and a second
   message says when it is over. A token about to expire is announced a month
   and a week ahead.
-- "Кто пользуется порталом" is a new page in the admin section. It shows who is
-  using the portal right now, who has been in over the last day and week, what
-  teams they are from, and what people have been doing lately. Search finds a
-  person by name, mail or team. Trends over time are in Grafana, one link away
-  from the page.
+- "Активность" is a new page in the admin section. It shows who is using the
+  portal right now, who has been in over the last day and week, what teams they
+  are from, and what people have been doing lately. Search finds a person by
+  name, mail or team. Trends over time are in Grafana, one link away from the
+  page.
 
 ### Fixed
 - Deleting a service now takes it out of the cluster. The portal used to report
