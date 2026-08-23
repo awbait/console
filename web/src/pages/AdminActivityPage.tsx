@@ -60,7 +60,7 @@ export function AdminActivityPage() {
       <section className="flex flex-col">
         <div className="mb-4 flex min-h-9 flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-slate-900">Активность</h1>
+            <h1 className="text-xl font-semibold text-slate-900">Пользователи</h1>
             <Chip className="bg-brand-50 text-brand-700">
               <IconSettings size={13} stroke={1.8} className="text-brand-400" />
               Admin
@@ -106,7 +106,7 @@ export function AdminActivityPage() {
       <section className="flex flex-col">
         <div className="mb-3 flex min-h-9 flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-800">
-            Люди <span className="font-normal text-slate-400">{users.length}</span>
+            Кто заходил <span className="font-normal text-slate-400">{users.length}</span>
           </h2>
           <div className="w-full sm:w-72">
             <TextField
@@ -259,7 +259,7 @@ function PeopleTable({ people, total }: { people: PlatformUser[]; total: number 
   const shown = people.slice(0, DIRECTORY_ROWS);
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm">
-      <Table aria-label="Люди на платформе" className="w-full min-w-[48rem] text-sm">
+      <Table aria-label="Кто заходил в портал" className="w-full min-w-[48rem] text-sm">
         <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
           <Column isRowHeader className="px-4 py-2.5 text-left">
             Человек

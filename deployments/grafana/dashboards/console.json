@@ -534,7 +534,7 @@
     {
       "type": "stat",
       "title": "People here now",
-      "description": "Anyone whose browser has asked the portal for something in the last five minutes. The portal is never told that somebody left, so presence is always \"seen recently\". Who they are is on the portal's own page (Админ -> Активность): names stay behind the sign-in, because this endpoint is scraped without one.",
+      "description": "Anyone whose browser has asked the portal for something in the last five minutes. The portal is never told that somebody left, so presence is always \"seen recently\". Who they are is on the portal's own page (Админ -> Пользователи): names stay behind the sign-in, because this endpoint is scraped without one.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 6, "x": 0, "y": 64 },
       "id": 23,
