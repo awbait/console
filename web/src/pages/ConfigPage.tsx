@@ -10,7 +10,7 @@ import {
   IconSend,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ComponentType, useEffect, useMemo, useState } from "react";
 import { Button as AriaButton, Input, SearchField } from "react-aria-components";
 import { api, errorMessage } from "../api/client";
 import type { ConfigCheck, ConfigField, DeliveryTest } from "../api/types";
@@ -23,7 +23,7 @@ import {
   verdictLabel,
 } from "../app/configChecks";
 import { useUser } from "../auth/UserContext";
-import { Button, ErrorBox, Hint, SkeletonRows } from "../components/ui";
+import { Button, ErrorBox, Hint, SkeletonRows, StatusPill } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { CONFIG_GROUPS, CONFIG_TEXT } from "./configText";
 
@@ -35,38 +35,17 @@ const CHECKS_REFRESH_MS = 60_000;
 // сейчас" shows the new answer rather than the previous one.
 const CHECKS_POLL_MS = 2_000;
 
-// How each verdict looks. A problem carries the portal's usual colours; "не
-// проверено" and "не используется" stay grey on purpose, because they are not
-// news and must not compete with the rows somebody has to act on.
-const VERDICT_STYLE: Record<
-  string,
-  { pill: string; icon: typeof IconCircleCheck; iconClass: string }
-> = {
-  ok: {
-    pill: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    icon: IconCircleCheck,
-    iconClass: "text-emerald-500",
-  },
-  warn: {
-    pill: "border-amber-200 bg-amber-50 text-amber-800",
-    icon: IconAlertTriangle,
-    iconClass: "text-amber-500",
-  },
-  fail: {
-    pill: "border-red-200 bg-red-50 text-red-700",
-    icon: IconCircleX,
-    iconClass: "text-red-500",
-  },
-  skip: {
-    pill: "border-slate-200 bg-slate-50 text-slate-500",
-    icon: IconMinus,
-    iconClass: "text-slate-400",
-  },
-  unknown: {
-    pill: "border-slate-200 bg-slate-50 text-slate-500",
-    icon: IconClockQuestion,
-    iconClass: "text-slate-400",
-  },
+// How each verdict looks, in the portal's own state palette (see StatusBadge):
+// a background+text pair from the 100/800 family and a distinct icon per state,
+// so the mark survives a colour-blind reader. "Не проверено" and "Не
+// используется" stay grey on purpose - they are not news and must not compete
+// with the rows somebody has to act on.
+const VERDICT_STYLE: Record<string, { tone: string; icon: ComponentType<{ size?: number; stroke?: number; className?: string }> }> = {
+  ok: { tone: "bg-green-100 text-green-800", icon: IconCircleCheck },
+  warn: { tone: "bg-amber-100 text-amber-800", icon: IconAlertTriangle },
+  fail: { tone: "bg-red-100 text-red-800", icon: IconCircleX },
+  skip: { tone: "bg-slate-100 text-slate-600", icon: IconMinus },
+  unknown: { tone: "bg-slate-100 text-slate-600", icon: IconClockQuestion },
 };
 
 // A verdict worth acting on. The "только проблемы" filter keeps these.
@@ -334,7 +313,6 @@ function Row({ f, first, check }: { f: ConfigField; first: boolean; check?: Conf
 // be sixty paragraphs nobody asked for.
 function CheckBadge({ check }: { check: ConfigCheck }) {
   const style = VERDICT_STYLE[check.verdict] ?? VERDICT_STYLE.unknown;
-  const Icon = style.icon;
   // Whether there is anything behind the word has to be decided from the data.
   // Asking the component - `const detail = <CheckDetail/>` - never answers no:
   // an element is truthy even when rendering it produces nothing, and every
@@ -344,12 +322,9 @@ function CheckBadge({ check }: { check: ConfigCheck }) {
   const facts = Object.entries(check.facts ?? {});
   const hasDetail = Boolean(reason || action || facts.length > 0);
   const pill = (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${style.pill}`}
-    >
-      <Icon size={13} stroke={2} className={`shrink-0 ${style.iconClass}`} />
+    <StatusPill tone={style.tone} Icon={style.icon}>
       {verdictLabel(check.verdict)}
-    </span>
+    </StatusPill>
   );
   // A verdict with nothing behind it is not worth a trigger that promises more.
   if (!hasDetail) return pill;
