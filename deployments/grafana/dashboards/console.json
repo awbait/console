@@ -457,7 +457,7 @@
     {
       "type": "stat",
       "title": "Checks failing (by component)",
-      "description": "A failing configuration check means the portal is not wired to that system the way it thinks it is: a token without the scope it needs, a webhook nobody registered on the other side, a project or cluster that is not there. Which check it is shows on the portal's platform status page and in the log (component=checks). The set runs every 10 minutes, so this moves slowly by design.",
+      "description": "A failing configuration check means the portal is not wired to that system the way it thinks it is: a token without the scope it needs, a webhook nobody registered on the other side, a project or cluster that is not there. Which check it is shows on the portal's configuration page and in the log (component=checks). The set runs every 10 minutes, so this moves slowly by design.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
       "id": 20,
