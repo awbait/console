@@ -133,7 +133,8 @@ export interface ComponentStatus {
   url?: string; // external UI link (integrations only)
 }
 export interface ReconcilerStatus {
-  name: string; // provisioning|drift|import|catalog-discovery|argocd-fake
+  // provisioning|drift|import|catalog-discovery|chart-versions|notification-sweep
+  name: string;
   status: "ok" | "failing";
   last_success?: string; // RFC3339; absent if never succeeded
   last_error?: string;

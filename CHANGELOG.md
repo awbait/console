@@ -37,6 +37,9 @@ All notable changes to this project are documented in this file.
 - That entry says what is actually in the way: a change waiting for approval, a
   check that did not pass, an open discussion. It used to be a bare line with
   nothing to act on.
+- Every background loop on "Состояние платформы" is named in words, and says
+  what stops happening if it fails. Two of them used to be shown as
+  "chart-versions" and "notification-sweep".
 
 ## [0.7.0] - 2026-08-21
 
