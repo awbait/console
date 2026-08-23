@@ -47,6 +47,9 @@ All notable changes to this project are documented in this file.
   portal was open in several tabs, an expired session sent every one of them to
   Keycloak at once and the attempts wrote over each other, so the one you
   finished was turned away. Each attempt now stands on its own.
+- Every background loop on "Состояние платформы" is named in words, and says
+  what stops happening if it fails. Two of them used to be shown as
+  "chart-versions" and "notification-sweep".
 
 ### Security
 - A sign-in is accepted once. Returning to a used sign-in address with the back
