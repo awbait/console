@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The portal's own update is announced to platform admins only. It used to
+  arrive in everyone's bell on every release, and there was nothing to do with
+  it: you did not choose the version and cannot choose the next one. The
+  changelog on the About page still shows every release to everybody.
+
 ### Added
 - The platform team is notified when a deletion does not finish within fifteen
   minutes. Until it does, the order keeps showing "Удаляется".

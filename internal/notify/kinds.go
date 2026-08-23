@@ -235,10 +235,14 @@ func (s *Service) ChartVersionMissing(ctx context.Context, st store.Store, p *mo
 	}
 }
 
-// PortalUpdated: the portal itself is a new version. Everyone sees it, and the
-// deduplication key is the version, so a restart is not news and a deployment
-// is - including a portal running in several copies, where whichever starts
-// first writes it.
+// PortalUpdated: the portal itself is a new version. The deduplication key is
+// the version, so a restart is not news and a deployment is - including a
+// portal running in several copies, where whichever starts first writes it.
+//
+// Platform admins only. It used to go to everyone, and that was a message the
+// person who came to order a database could do nothing with: they did not
+// choose the version, cannot choose the next one, and had it land in the bell
+// on every release. Whoever rolled the portal out is the one it is news for.
 func (s *Service) PortalUpdated(ctx context.Context, version string) {
 	if version == "" || version == "dev" {
 		return // an unstamped build is not a release anybody was given
@@ -246,7 +250,8 @@ func (s *Service) PortalUpdated(ctx context.Context, version string) {
 	s.Send(ctx, nil, Notification{
 		Kind:        models.NotifyPortalUpdated,
 		SubjectType: models.SubjectPlatform,
-		Audience:    models.AudienceAll,
+		Audience:    models.AudienceRole,
+		AudienceKey: string(models.RoleAdmin),
 		Payload:     map[string]any{"version": version},
 		Level:       models.LevelInfo,
 		DedupKey:    "portal:version:" + version,
