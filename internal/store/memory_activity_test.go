@@ -32,7 +32,7 @@ func TestListActivitySkipsThePlatformsOwnEvents(t *testing.T) {
 	add(models.ActorSystem, "", "status_changed")
 	add("u1", "Ada", "submitted")
 
-	feed, err := m.ListActivity(ctx, 0)
+	feed, err := m.ListActivity(ctx, ActivityFilter{})
 	if err != nil {
 		t.Fatalf("list activity: %v", err)
 	}
@@ -62,13 +62,51 @@ func TestListActivityLimits(t *testing.T) {
 	for range 5 {
 		_ = m.AddEvent(ctx, &models.RequestEvent{RequestID: r.ID, Actor: "u1", EventType: "updated"})
 	}
-	feed, _ := m.ListActivity(ctx, 2)
+	feed, _ := m.ListActivity(ctx, ActivityFilter{Limit: 2})
 	if len(feed) != 2 {
 		t.Fatalf("limit ignored: %d rows", len(feed))
 	}
-	feed, _ = m.ListActivity(ctx, maxActivityLimit+1000)
+	feed, _ = m.ListActivity(ctx, ActivityFilter{Limit: maxActivityLimit + 1000})
 	if len(feed) != 5 {
 		t.Fatalf("an absurd limit should be clamped, not refused: %d rows", len(feed))
+	}
+}
+
+// The feed narrows to one person or one team: that is what the page's team
+// filter and its per-person card read.
+func TestListActivityFilters(t *testing.T) {
+	ctx := context.Background()
+	m := NewMemory()
+	mk := func(id, team, name string) string {
+		r := &models.Request{ID: id, Team: team, ChartName: "gateway", ServiceName: name,
+			Status: models.StatusDraft}
+		if err := m.CreateRequest(ctx, r); err != nil {
+			t.Fatalf("create %s: %v", id, err)
+		}
+		return r.ID
+	}
+	core := mk("66666666-6666-6666-6666-666666666666", "core", "edge")
+	data := mk("77777777-7777-7777-7777-777777777777", "data", "lake")
+	_ = m.AddEvent(ctx, &models.RequestEvent{RequestID: core, Actor: "u1", EventType: "created"})
+	_ = m.AddEvent(ctx, &models.RequestEvent{RequestID: core, Actor: "u2", EventType: "updated"})
+	_ = m.AddEvent(ctx, &models.RequestEvent{RequestID: data, Actor: "u1", EventType: "updated"})
+
+	byActor, _ := m.ListActivity(ctx, ActivityFilter{Actor: "u1"})
+	if len(byActor) != 2 {
+		t.Fatalf("by actor: %d rows, want 2", len(byActor))
+	}
+	for _, e := range byActor {
+		if e.Actor != "u1" {
+			t.Fatalf("by actor leaked %s", e.Actor)
+		}
+	}
+	byTeam, _ := m.ListActivity(ctx, ActivityFilter{Team: "core"})
+	if len(byTeam) != 2 {
+		t.Fatalf("by team: %d rows, want 2", len(byTeam))
+	}
+	both, _ := m.ListActivity(ctx, ActivityFilter{Actor: "u1", Team: "core"})
+	if len(both) != 1 || both[0].EventType != "created" {
+		t.Fatalf("actor and team together: %+v", both)
 	}
 }
 

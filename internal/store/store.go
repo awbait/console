@@ -33,6 +33,15 @@ type NotificationFilter struct {
 	Limit  int
 }
 
+// ActivityFilter narrows the activity feed. Empty means the whole stream:
+// Actor scopes it to one person (their OIDC subject), Team to the orders and
+// publications one team owns.
+type ActivityFilter struct {
+	Actor string
+	Team  string
+	Limit int
+}
+
 // PublicationFilter narrows ListPublications.
 type PublicationFilter struct {
 	Status models.PublicationStatus
@@ -107,7 +116,7 @@ type Store interface {
 	// ListActivity returns the newest events of both journals (orders and
 	// publications) as one stream, newest first. Only what people did: events
 	// the platform wrote by itself are left out (see models.IsSystemActor).
-	ListActivity(ctx context.Context, limit int) ([]*models.ActivityEvent, error)
+	ListActivity(ctx context.Context, f ActivityFilter) ([]*models.ActivityEvent, error)
 	// CountActivity counts the same stream since a moment, grouped by event
 	// type and team. For the gauges, which need totals rather than rows.
 	CountActivity(ctx context.Context, since time.Time) ([]*models.ActivityCount, error)

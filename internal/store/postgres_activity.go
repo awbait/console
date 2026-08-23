@@ -22,16 +22,16 @@ func (p *Postgres) TouchUser(ctx context.Context, u *models.PlatformUser) error 
 	// carried: Keycloak clients differ in which claims they release, and a
 	// person whose name is known should not lose it to a token that omits it.
 	return p.db.QueryRow(ctx, `
-		INSERT INTO platform_users (subject, email, username, name, teams, role, first_seen, last_seen, visits)
+		INSERT INTO users (subject, email, username, name, teams, role, first_seen, last_seen, visits)
 		VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7, NOW()), COALESCE($7, NOW()), 1)
 		ON CONFLICT (subject) DO UPDATE SET
-			email     = COALESCE(NULLIF(EXCLUDED.email,''), platform_users.email),
-			username  = COALESCE(NULLIF(EXCLUDED.username,''), platform_users.username),
-			name      = COALESCE(NULLIF(EXCLUDED.name,''), platform_users.name),
+			email     = COALESCE(NULLIF(EXCLUDED.email,''), users.email),
+			username  = COALESCE(NULLIF(EXCLUDED.username,''), users.username),
+			name      = COALESCE(NULLIF(EXCLUDED.name,''), users.name),
 			teams     = EXCLUDED.teams,
 			role      = EXCLUDED.role,
 			last_seen = EXCLUDED.last_seen,
-			visits    = platform_users.visits + 1
+			visits    = users.visits + 1
 		RETURNING first_seen, last_seen, visits`,
 		u.Subject, u.Email, u.Username, u.Name, teamList(u.Teams), string(u.Role), nullTime(u.LastSeen)).
 		Scan(&u.FirstSeen, &u.LastSeen, &u.Visits)
@@ -40,7 +40,7 @@ func (p *Postgres) TouchUser(ctx context.Context, u *models.PlatformUser) error 
 func (p *Postgres) ListUsers(ctx context.Context) ([]*models.PlatformUser, error) {
 	rows, err := p.db.Query(ctx, `
 		SELECT subject, email, username, name, teams, role, first_seen, last_seen, visits
-		FROM platform_users ORDER BY last_seen DESC`)
+		FROM users ORDER BY last_seen DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +62,10 @@ func (p *Postgres) ListUsers(ctx context.Context) ([]*models.PlatformUser, error
 
 // activityFeedSQL reads both journals as one stream of what people did.
 //
-// Its arguments are always the same two: $1 the actors that are not people
-// (excluded - see models.IsSystemActor), $2 the oldest event to include, or
-// NULL for all of them.
+// Its arguments are always the same four: $1 the actors that are not people
+// (excluded - see models.IsSystemActor), $2 the oldest event to include or NULL
+// for all of them, $3 one person or '' for everyone, $4 one team or '' for all
+// of them.
 //
 // The actor's name is taken from the event when it recorded one (orders do,
 // since migration 000017) and from the directory otherwise, so publication
@@ -78,9 +79,11 @@ const activityFeedSQL = `
 	       r.team AS team
 	FROM request_events e
 	JOIN requests r ON r.id = e.request_id
-	LEFT JOIN platform_users pu ON pu.subject = e.actor
+	LEFT JOIN users pu ON pu.subject = e.actor
 	WHERE COALESCE(e.actor,'') <> '' AND NOT (e.actor = ANY($1))
 	  AND ($2::timestamptz IS NULL OR e.created_at >= $2)
+	  AND ($3 = '' OR e.actor = $3)
+	  AND ($4 = '' OR r.team = $4)
 	UNION ALL
 	SELECT pe.created_at, 'publication', pe.actor,
 	       COALESCE(pu.name, ''), pe.event_type, COALESCE(pe.from_status,''),
@@ -88,16 +91,18 @@ const activityFeedSQL = `
 	       cp.chart_project || '/' || cp.chart_name, cp.owner_team
 	FROM publication_events pe
 	JOIN chart_publications cp ON cp.id = pe.publication_id
-	LEFT JOIN platform_users pu ON pu.subject = pe.actor
+	LEFT JOIN users pu ON pu.subject = pe.actor
 	WHERE COALESCE(pe.actor,'') <> '' AND NOT (pe.actor = ANY($1))
-	  AND ($2::timestamptz IS NULL OR pe.created_at >= $2)`
+	  AND ($2::timestamptz IS NULL OR pe.created_at >= $2)
+	  AND ($3 = '' OR pe.actor = $3)
+	  AND ($4 = '' OR cp.owner_team = $4)`
 
-func (p *Postgres) ListActivity(ctx context.Context, limit int) ([]*models.ActivityEvent, error) {
+func (p *Postgres) ListActivity(ctx context.Context, f ActivityFilter) ([]*models.ActivityEvent, error) {
 	rows, err := p.db.Query(ctx, `
 		SELECT at, source, actor, actor_name, event_type, from_status, to_status, subject_id, title, team
 		FROM (`+activityFeedSQL+`) feed
 		ORDER BY at DESC
-		LIMIT $3`, models.SystemActors(), nil, activityLimit(limit))
+		LIMIT $5`, models.SystemActors(), nil, f.Actor, f.Team, activityLimit(f.Limit))
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +123,7 @@ func (p *Postgres) CountActivity(ctx context.Context, since time.Time) ([]*model
 	rows, err := p.db.Query(ctx, `
 		SELECT event_type, team, COUNT(*)
 		FROM (`+activityFeedSQL+`) feed
-		GROUP BY event_type, team`, models.SystemActors(), nullTime(since))
+		GROUP BY event_type, team`, models.SystemActors(), nullTime(since), "", "")
 	if err != nil {
 		return nil, err
 	}

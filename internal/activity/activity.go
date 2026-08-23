@@ -208,6 +208,13 @@ func (r *Recorder) Overview(ctx context.Context) (*Overview, error) {
 		if at, ok := online[u.Subject]; ok {
 			u.Online = true
 			u.SeenAgo = int64(now.Sub(at) / time.Second)
+			// Presence is the fresher of the two facts: the directory row is
+			// written at most once every few minutes, presence on every request.
+			// Without this the same person reads as "только что" in one place
+			// and "5 мин назад" in another, on the same screen.
+			if at.After(u.LastSeen) {
+				u.LastSeen = at
+			}
 			ov.Online = append(ov.Online, u)
 		}
 		active24 := now.Sub(u.LastSeen) <= 24*time.Hour

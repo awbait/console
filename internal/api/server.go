@@ -172,9 +172,10 @@ func (s *Server) Router() http.Handler {
 			r.Get("/config", s.handleConfig)
 			// who uses the portal (admin): the sign-in directory, the teams it
 			// adds up to, and what people have been doing. The trends themselves
-			// are in Grafana - see internal/api/handlers_activity.go.
-			r.Get("/admin/activity", s.handleActivity)
-			r.Get("/admin/online", s.handleOnline)
+			// are in Grafana - see internal/api/handlers_users.go.
+			r.Get("/admin/users", s.handleUsers)
+			r.Get("/admin/users/online", s.handleUsersOnline)
+			r.Get("/admin/users/events", s.handleUserEvents)
 
 			// catalog
 			r.Get("/charts", s.handleListCharts)

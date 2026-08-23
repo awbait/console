@@ -198,7 +198,7 @@ export interface ActivityTotals {
   teams: number;
 }
 
-export interface PlatformActivity {
+export interface PlatformUsers {
   totals: ActivityTotals;
   online: PlatformUser[];
   users: PlatformUser[];
@@ -206,6 +206,11 @@ export interface PlatformActivity {
   events: ActivityEvent[];
   online_window_seconds: number;
   grafana_url?: string;
+}
+
+// The feed on its own, for a team or one person.
+export interface ActivityFeed {
+  events: ActivityEvent[];
 }
 
 // The small half, polled on its own: who is here right now.

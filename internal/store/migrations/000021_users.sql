@@ -9,7 +9,7 @@
 -- Команды хранятся тут же, а не в отдельной таблице: их состав целиком
 -- определяется группами в токене, портал их не редактирует, и «команда» без
 -- единого зашедшего участника не существует ни для одной страницы.
-CREATE TABLE IF NOT EXISTS platform_users (
+CREATE TABLE IF NOT EXISTS users (
   subject    TEXT PRIMARY KEY,                    -- OIDC sub: единственный стабильный ключ
   email      TEXT NOT NULL DEFAULT '',
   username   TEXT NOT NULL DEFAULT '',
@@ -26,6 +26,6 @@ CREATE TABLE IF NOT EXISTS platform_users (
 
 -- «Кто заходил за сутки / за неделю» и лента справочника: обе сортируют по
 -- последнему визиту.
-CREATE INDEX IF NOT EXISTS idx_platform_users_last_seen ON platform_users(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen DESC);
 -- Разрез по командам: фильтр «состав команды» и подсчёт размеров команд.
-CREATE INDEX IF NOT EXISTS idx_platform_users_teams ON platform_users USING GIN(teams);
+CREATE INDEX IF NOT EXISTS idx_users_teams ON users USING GIN(teams);

@@ -22,7 +22,7 @@ func TestActivityIsAdminOnly(t *testing.T) {
 	srv.Activity = activity.New(srv.Store, srv.Cache, p, nil)
 	h := srv.Router()
 
-	for _, path := range []string{"/api/v1/admin/activity", "/api/v1/admin/online"} {
+	for _, path := range []string{"/api/v1/admin/users", "/api/v1/admin/users/online", "/api/v1/admin/users/events"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, devReq("GET", path, "core", nil))
 		if rec.Code != http.StatusForbidden {
@@ -41,7 +41,7 @@ func TestActivityIsAdminOnly(t *testing.T) {
 func TestActivityUnwired(t *testing.T) {
 	srv, _, _ := newServer(t)
 	rec := httptest.NewRecorder()
-	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/activity", nil))
+	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/users", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("unwired activity: %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -77,7 +77,7 @@ func TestActivityPayload(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/activity", nil))
+	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/users", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("activity: %d body=%s", rec.Code, rec.Body.String())
 	}

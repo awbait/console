@@ -131,6 +131,35 @@ func TestOverviewCountsPeopleAndTeams(t *testing.T) {
 	}
 }
 
+// The directory row is written at most once every few minutes and presence on
+// every request, so for somebody who is here the two disagree by design. The
+// page must not show both: a person read as "только что" in the online list and
+// "5 мин назад" in the table on the same screen.
+func TestOverviewTakesTheFresherTime(t *testing.T) {
+	rec, st, c := newRecorder(t)
+	ctx := context.Background()
+	now := time.Now()
+	rec.now = func() time.Time { return now }
+
+	if err := st.TouchUser(ctx, &models.PlatformUser{
+		Subject: "u1", Name: "Ada", Teams: []string{"core"}, LastSeen: now.Add(-4 * time.Minute),
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	_ = c.Touch(ctx, presenceKey, "u1", now.Add(-10*time.Second))
+
+	ov, err := rec.Overview(ctx)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if got := now.Sub(ov.Users[0].LastSeen); got > time.Minute {
+		t.Fatalf("directory kept the stale time: %s behind presence", got)
+	}
+	if ov.Online[0].SeenAgo > 60 {
+		t.Fatalf("online list: %d seconds ago", ov.Online[0].SeenAgo)
+	}
+}
+
 // Presence outlives nothing: a set nobody prunes is every person who has ever
 // signed in, kept forever, and read only for the last five minutes.
 func TestPruneDropsStalePresence(t *testing.T) {

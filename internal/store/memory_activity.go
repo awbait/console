@@ -60,10 +60,19 @@ func (m *Memory) ListUsers(ctx context.Context) ([]*models.PlatformUser, error) 
 	return out, nil
 }
 
-func (m *Memory) ListActivity(ctx context.Context, limit int) ([]*models.ActivityEvent, error) {
-	out := m.activity(time.Time{})
+func (m *Memory) ListActivity(ctx context.Context, f ActivityFilter) ([]*models.ActivityEvent, error) {
+	var out []*models.ActivityEvent
+	for _, e := range m.activity(time.Time{}) {
+		if f.Actor != "" && e.Actor != f.Actor {
+			continue
+		}
+		if f.Team != "" && e.Team != f.Team {
+			continue
+		}
+		out = append(out, e)
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
-	if n := activityLimit(limit); len(out) > n {
+	if n := activityLimit(f.Limit); len(out) > n {
 		out = out[:n]
 	}
 	return out, nil
