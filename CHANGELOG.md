@@ -37,6 +37,15 @@ All notable changes to this project are documented in this file.
 - That entry says what is actually in the way: a change waiting for approval, a
   check that did not pass, an open discussion. It used to be a bare line with
   nothing to act on.
+- "Вход не завершён" no longer stops a sign-in that was going fine. When the
+  portal was open in several tabs, an expired session sent every one of them to
+  Keycloak at once and the attempts wrote over each other, so the one you
+  finished was turned away. Each attempt now stands on its own.
+
+### Security
+- A sign-in is accepted once. Returning to a used sign-in address with the back
+  button no longer signs you in again, and the sign-in pages are no longer kept
+  in caches.
 
 ## [0.7.0] - 2026-08-21
 

@@ -11,43 +11,173 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func TestOIDCLoginSetsNonce(t *testing.T) {
-	o := &OIDC{
+func testOIDC() *OIDC {
+	return &OIDC{
 		oauth: oauth2.Config{
 			ClientID:    "portal",
 			Endpoint:    oauth2.Endpoint{AuthURL: "http://kc:8081/auth"},
 			RedirectURL: "http://host/api/v1/auth/callback",
 		},
-		secure: true,
+		secure:    true,
+		postLogin: "http://portal.local/",
+		log:       slog.New(slog.DiscardHandler),
 	}
-	rec := httptest.NewRecorder()
-	o.Login(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/login", nil))
+}
 
-	var nonceCookie, verifierCookie string
-	for _, ck := range rec.Result().Cookies() {
-		switch ck.Name {
-		case "oauth_nonce":
-			nonceCookie = ck.Value
-		case "oauth_verifier":
-			verifierCookie = ck.Value
-		}
+// startLogin runs Login and returns the attempt it wrote: the state Keycloak is
+// asked to echo back, and the cookie that has to come back with it.
+func startLogin(t *testing.T, o *OIDC, target string, carry ...*http.Cookie) (string, *http.Cookie) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	for _, c := range carry {
+		req.AddCookie(c)
 	}
-	if nonceCookie == "" {
-		t.Fatal("oauth_nonce cookie not set")
-	}
-	if verifierCookie == "" {
-		t.Fatal("oauth_verifier (PKCE) cookie not set")
-	}
+	o.Login(rec, req)
+
 	loc, err := url.Parse(rec.Header().Get("Location"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := loc.Query().Get("nonce"); got != nonceCookie {
-		t.Fatalf("nonce param = %q, want cookie value %q", got, nonceCookie)
+	state := loc.Query().Get("state")
+	if state == "" {
+		t.Fatalf("no state in the auth URL: %s", rec.Header().Get("Location"))
+	}
+	for _, ck := range rec.Result().Cookies() {
+		if ck.Name == loginCookiePrefix+state && ck.Value != "" {
+			return state, ck
+		}
+	}
+	t.Fatalf("login wrote no cookie for state %q: %+v", state, rec.Result().Cookies())
+	return "", nil
+}
+
+func TestOIDCLoginSetsNonce(t *testing.T) {
+	o := testOIDC()
+	rec := httptest.NewRecorder()
+	o.Login(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/login", nil))
+
+	loc, err := url.Parse(rec.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pending pendingLogin
+	for _, ck := range rec.Result().Cookies() {
+		if ck.Name == loginCookiePrefix+loc.Query().Get("state") {
+			if pending, err = decodePendingLogin(ck.Value); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if pending.Nonce == "" {
+		t.Fatal("the login kept no nonce")
+	}
+	if pending.Verifier == "" {
+		t.Fatal("the login kept no PKCE verifier")
+	}
+	if got := loc.Query().Get("nonce"); got != pending.Nonce {
+		t.Fatalf("nonce param = %q, want the one the login kept %q", got, pending.Nonce)
 	}
 	// PKCE: the auth URL must carry an S256 challenge (not the raw verifier).
 	if loc.Query().Get("code_challenge") == "" || loc.Query().Get("code_challenge_method") != "S256" {
 		t.Fatalf("missing PKCE S256 challenge in auth URL: %s", loc.RawQuery)
+	}
+	// The redirect carries this attempt's state; a cached copy of it would send
+	// the next login to Keycloak with a state whose cookie is gone.
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+}
+
+// Two tabs starting a login at the same time is the ordinary case, not the
+// exotic one: an expired session answers 401 to everything in flight. Neither
+// attempt may write over the other, or the login the person finishes comes back
+// with a state nobody is waiting for.
+func TestParallelLoginsDoNotOverwriteEachOther(t *testing.T) {
+	o := testOIDC()
+	stateA, cookieA := startLogin(t, o, "/api/v1/auth/login?return_to=/catalog")
+	stateB, cookieB := startLogin(t, o, "/api/v1/auth/login?return_to=/orders", cookieA)
+
+	if stateA == stateB {
+		t.Fatal("two logins got the same state")
+	}
+	if cookieA.Name == cookieB.Name {
+		t.Fatalf("both logins wrote the cookie %q, so the second erased the first", cookieA.Name)
+	}
+	// The browser now carries both attempts, and the older one still finishes:
+	// the callback for A must not be turned away because B started later.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback?state="+stateA+"&code=xyz", nil)
+	req.AddCookie(cookieA)
+	req.AddCookie(cookieB)
+	o.Callback(rec, req)
+
+	loc, err := url.Parse(rec.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The exchange itself cannot happen without a Keycloak here, so the login
+	// gets that far and no further. What matters is that it was not turned away
+	// as a login this browser never started.
+	if got := loc.Query().Get("auth_error"); got == "state" {
+		t.Error("the older tab's callback was rejected, though its cookie was still there")
+	}
+}
+
+// An authorization response is good once. Coming back to the callback URL a
+// second time - the back button, a reloaded tab - must not start a session.
+func TestCallbackSpendsTheAttempt(t *testing.T) {
+	o := testOIDC()
+	state, cookie := startLogin(t, o, "/api/v1/auth/login")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback?state="+state+"&code=xyz", nil)
+	req.AddCookie(cookie)
+	o.Callback(rec, req)
+
+	var cleared bool
+	for _, ck := range rec.Result().Cookies() {
+		if ck.Name == loginCookiePrefix+state && ck.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatalf("the attempt's cookie outlived its callback: %+v", rec.Result().Cookies())
+	}
+}
+
+// An abandoned login leaves its cookie behind for the whole login window, and
+// the browser sends every one of them with every request. Starting a new login
+// drops the oldest.
+func TestLoginPrunesAbandonedAttempts(t *testing.T) {
+	o := testOIDC()
+	var carry []*http.Cookie
+	var states []string
+	for range maxPendingLogins + 2 {
+		state, cookie := startLogin(t, o, "/api/v1/auth/login", carry...)
+		carry = append(carry, cookie)
+		states = append(states, state)
+	}
+	// Whatever survived, the newest attempt is among it and the browser is not
+	// left carrying every login anyone ever abandoned.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/login", nil)
+	for _, c := range carry {
+		req.AddCookie(c)
+	}
+	o.Login(rec, req)
+
+	dropped := 0
+	for _, ck := range rec.Result().Cookies() {
+		if ck.MaxAge < 0 {
+			dropped++
+		}
+		if ck.Name == loginCookiePrefix+states[len(states)-1] && ck.MaxAge < 0 {
+			t.Error("the newest pending login was dropped, not the oldest")
+		}
+	}
+	if want := len(carry) - (maxPendingLogins - 1); dropped != want {
+		t.Errorf("dropped %d attempts of %d, want %d", dropped, len(carry), want)
 	}
 }
 
@@ -146,13 +276,14 @@ func TestResolveReturn(t *testing.T) {
 // can say what happened next to the button that tries again.
 func TestCallbackFailuresSendTheUserBack(t *testing.T) {
 	cases := []struct {
-		name   string
-		query  string
-		cookie string // the oauth_state this browser carries, if any
-		want   string
+		name  string
+		query string
+		state string // the attempt this browser still carries, if any
+		want  string
 	}{
 		{"the cookie is gone, or was never this browser's", "?state=abc&code=xyz", "", "state"},
 		{"the callback belongs to another login", "?state=abc&code=xyz", "another", "state"},
+		{"the callback carries no state at all", "?code=xyz", "abc", "state"},
 		{"Keycloak refused", "?error=access_denied&error_description=user+cancelled", "abc", "provider"},
 	}
 	for _, c := range cases {
@@ -160,8 +291,8 @@ func TestCallbackFailuresSendTheUserBack(t *testing.T) {
 			o := &OIDC{postLogin: "http://portal.local/", log: slog.New(slog.DiscardHandler)}
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/callback"+c.query, nil)
-			if c.cookie != "" {
-				req.AddCookie(&http.Cookie{Name: "oauth_state", Value: c.cookie})
+			if c.state != "" {
+				req.AddCookie(&http.Cookie{Name: loginCookiePrefix + c.state, Value: "irrelevant"})
 			}
 			o.Callback(rec, req)
 

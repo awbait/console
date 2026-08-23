@@ -81,6 +81,21 @@ export function setUnauthorizedHandler(h: (() => void) | null) {
   unauthorizedHandler = h;
 }
 
+// A session does not expire for one request: the portal always has several in
+// the air - who am I, what is healthy, how many unread - and they all come back
+// 401 together. The handler leaves for the IdP, and the page keeps running
+// until the browser navigates, so every one of those answers used to start
+// another login. Only the first one may.
+let leavingForLogin = false;
+function handleUnauthorized() {
+  // With no handler registered yet the first load is still deciding whether
+  // anyone is signed in, and nothing is latched: that 401 belongs to the
+  // sign-in screen, not to a re-login.
+  if (leavingForLogin || !unauthorizedHandler) return;
+  leavingForLogin = true;
+  unauthorizedHandler();
+}
+
 // Central "an upstream just failed" handler, registered by the platform-health
 // layer. A request that came back 502 is the earliest evidence the portal has
 // that something outside it broke - earlier than any poll - so it is worth
@@ -128,7 +143,7 @@ async function req<T>(
     } catch {
       /* non-JSON error */
     }
-    if (res.status === 401) unauthorizedHandler?.();
+    if (res.status === 401) handleUnauthorized();
     if (parsed?.error === "upstream_unavailable") upstreamFailureHandler?.();
     throw new HttpError(res.status, parsed);
   }

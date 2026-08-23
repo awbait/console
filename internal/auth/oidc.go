@@ -5,11 +5,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -161,8 +164,8 @@ const (
 	failSession  = "session"  // the portal could not remember the login
 )
 
-// loginWindow is how long the cookies that carry a login in progress live: the
-// state, the nonce, the PKCE verifier and where to return to. It has to cover
+// loginWindow is how long the cookie that carries a login in progress lives:
+// the nonce, the PKCE verifier and where to return to. It has to cover
 // the whole time the person spends at Keycloak, and that is not a moment - a
 // password typed slowly, a second factor, a password reset in the middle of it.
 // Five minutes turned out to be short enough that ordinary logins fell out of
@@ -170,12 +173,127 @@ const (
 // could do nothing about and could not understand.
 const loginWindow = int(15 * time.Minute / time.Second)
 
+// A login in progress belongs to an attempt, not to the browser. The portal has
+// several requests in the air at any moment - who am I, what is healthy, how
+// many unread - and when the session expires they all come back 401 at once, in
+// every open tab. With one fixed set of cookie names the second attempt to
+// start a login wrote its state over the first one's, and the login the person
+// actually finished came back carrying a state nobody was waiting for any more:
+// "sign-in not completed", on a login that was going perfectly well.
+//
+// So the state goes into the cookie name and everything else the attempt needs
+// into its value. Two attempts write two different cookies and neither disturbs
+// the other. Finding the cookie named after the state Keycloak echoed back is
+// what proves the callback belongs to a login this browser started - the same
+// thing comparing two values used to prove, the state being unguessable either
+// way.
+const loginCookiePrefix = "oauth_login_"
+
+// maxPendingLogins bounds how many unfinished attempts a browser carries at
+// once: each one is a cookie sent with every request, and a login is abandoned
+// far more often than it is finished - a tab closed at the Keycloak form leaves
+// one behind for the whole login window. Past the limit the oldest are dropped,
+// as the least likely to still be waiting for their callback.
+const maxPendingLogins = 4
+
+// pendingLogin is what the callback needs to finish an attempt that the
+// redirect to Keycloak left behind: the nonce the id_token has to carry, the
+// PKCE verifier, and where the person was going.
+type pendingLogin struct {
+	Nonce    string `json:"n"`
+	Verifier string `json:"v"`
+	ReturnTo string `json:"r,omitempty"`
+	// Issued is when the attempt started, in milliseconds: it only decides which
+	// attempt to drop first, and logins started from different tabs at the same
+	// 401 are a fraction of a second apart.
+	Issued int64 `json:"t"`
+}
+
+// encode packs an attempt into one cookie value. Base64 so that arbitrary path
+// characters in the return-to survive cookie sanitization.
+func (p pendingLogin) encode() (string, error) {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func decodePendingLogin(v string) (pendingLogin, error) {
+	var p pendingLogin
+	b, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return p, err
+	}
+	return p, json.Unmarshal(b, &p)
+}
+
+// setPendingLogin writes an attempt's cookie. Lax, because it has to survive
+// the top-level navigation back from Keycloak, and short-lived, so an abandoned
+// attempt does not linger.
+func (o *OIDC) setPendingLogin(w http.ResponseWriter, state, value string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name: loginCookiePrefix + state, Value: value, Path: "/", HttpOnly: true,
+		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: maxAge,
+	})
+}
+
+func (o *OIDC) clearPendingLogin(w http.ResponseWriter, state string) {
+	o.setPendingLogin(w, state, "", -1)
+}
+
+// prunePendingLogins expires the oldest attempts the browser still carries, to
+// leave room for the one about to start.
+func (o *OIDC) prunePendingLogins(w http.ResponseWriter, r *http.Request) {
+	type attempt struct {
+		state  string
+		issued int64
+		seen   int // position in the cookie header, see the sort below
+	}
+	var pending []attempt
+	for i, c := range r.Cookies() {
+		if !strings.HasPrefix(c.Name, loginCookiePrefix) {
+			continue
+		}
+		state := strings.TrimPrefix(c.Name, loginCookiePrefix)
+		p, err := decodePendingLogin(c.Value)
+		if err != nil {
+			// Unreadable: it will never finish a login, so there is no reason to
+			// keep sending it.
+			o.clearPendingLogin(w, state)
+			continue
+		}
+		pending = append(pending, attempt{state: state, issued: p.Issued, seen: i})
+	}
+	// Newest first. Two attempts started in the same millisecond are told apart
+	// by the order the browser sends them in: that is roughly the order they
+	// were set, and it is the only hint there is.
+	slices.SortFunc(pending, func(a, b attempt) int {
+		if c := cmp.Compare(b.issued, a.issued); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.seen, a.seen)
+	})
+	for _, a := range pending[min(len(pending), maxPendingLogins-1):] {
+		o.clearPendingLogin(w, a.state)
+	}
+}
+
+// noStore keeps a login response out of every cache between here and the
+// browser. The redirect to Keycloak carries this attempt's state in Location,
+// and the callback response carries the session cookie: a reused copy of either
+// is a login that cannot be finished at best.
+func noStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+}
+
 // failLogin sends the browser back to the sign-in screen with the reason
 // attached, instead of leaving it on a bare error page. Every one of these ends
 // the same way for the person: start the login again - and the button that does
 // that is on the screen they are now looking at.
 func (o *OIDC) failLogin(w http.ResponseWriter, r *http.Request, reason string, err error) {
 	o.logger().Warn("login failed", "reason", reason, "err", err)
+	noStore(w)
 	http.Redirect(w, r, withParam(o.postLogin, "auth_error", reason), http.StatusFound)
 }
 
@@ -205,37 +323,31 @@ func (o *OIDC) Login(w http.ResponseWriter, r *http.Request) {
 		o.failLogin(w, r, failStart, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name: "oauth_state", Value: state, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
-	})
-	// nonce binds the id_token to this login (replay/injection defence). Stored in
-	// a short-lived HttpOnly cookie and verified against idToken.Nonce on callback.
+	// nonce binds the id_token to this login (replay/injection defence). Kept
+	// with the attempt and verified against idToken.Nonce on callback.
 	nonce, err := randState()
 	if err != nil {
 		o.failLogin(w, r, failStart, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name: "oauth_nonce", Value: nonce, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
-	})
 	// PKCE: bind the auth code to this client via a one-time verifier (defence in
-	// depth even for a confidential client). The verifier is kept in a short-lived
-	// HttpOnly cookie; only its S256 challenge goes to the IdP.
+	// depth even for a confidential client). Only its S256 challenge goes to the
+	// IdP.
 	verifier := oauth2.GenerateVerifier()
-	http.SetCookie(w, &http.Cookie{
-		Name: "oauth_verifier", Value: verifier, Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
-	})
-	// Remember where to return after callback. Base64-encoded so arbitrary path
-	// characters survive cookie sanitization; validated again on the way back.
-	if rt := safeReturnTo(r.URL.Query().Get("return_to")); rt != "" {
-		http.SetCookie(w, &http.Cookie{
-			Name: "oauth_return", Value: base64.RawURLEncoding.EncodeToString([]byte(rt)),
-			Path: "/", HttpOnly: true, Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: loginWindow,
-		})
+	// Where to return afterwards is validated here and again on the way back.
+	value, err := pendingLogin{
+		Nonce:    nonce,
+		Verifier: verifier,
+		ReturnTo: safeReturnTo(r.URL.Query().Get("return_to")),
+		Issued:   time.Now().UnixMilli(),
+	}.encode()
+	if err != nil {
+		o.failLogin(w, r, failStart, err)
+		return
 	}
+	o.prunePendingLogins(w, r)
+	o.setPendingLogin(w, state, value, loginWindow)
+	noStore(w)
 	http.Redirect(w, r,
 		o.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)),
 		http.StatusFound)
@@ -251,26 +363,33 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		o.failLogin(w, r, failProvider, fmt.Errorf("%s: %s", e, r.URL.Query().Get("error_description")))
 		return
 	}
-	// The state cookie is what ties this callback to a login this browser
-	// started. Missing means the login is not this browser's, or is old enough
-	// that the cookie is gone; different means the callback belongs to another
-	// one. Both are the same story for the person: this login cannot be
-	// finished, start it again.
-	stateCookie, err := r.Cookie("oauth_state")
-	if err != nil || stateCookie.Value == "" || stateCookie.Value != r.URL.Query().Get("state") {
+	// The cookie named after the state is what ties this callback to a login this
+	// browser started. No such cookie means the login is not this browser's, or
+	// is old enough that the cookie is gone, or it has already been finished
+	// once. All the same story for the person: this login cannot be finished,
+	// start it again.
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		o.failLogin(w, r, failState, errors.New("the callback carries no state"))
+		return
+	}
+	stateCookie, err := r.Cookie(loginCookiePrefix + state)
+	if err != nil || stateCookie.Value == "" {
 		o.failLogin(w, r, failState, err)
 		return
 	}
-	// Complete PKCE: send the verifier from the cookie set in Login. Cleared after.
-	var exchangeOpts []oauth2.AuthCodeOption
-	if vc, verr := r.Cookie("oauth_verifier"); verr == nil && vc.Value != "" {
-		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(vc.Value))
-		http.SetCookie(w, &http.Cookie{
-			Name: "oauth_verifier", Value: "", Path: "/", HttpOnly: true,
-			Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-		})
+	pending, err := decodePendingLogin(stateCookie.Value)
+	// The attempt is spent either way: an authorization response is good once,
+	// and leaving the state alive would let this callback be replayed until the
+	// login window ran out.
+	o.clearPendingLogin(w, state)
+	if err != nil {
+		o.failLogin(w, r, failState, err)
+		return
 	}
-	oauth2Token, err := o.oauth.Exchange(ctx, r.URL.Query().Get("code"), exchangeOpts...)
+	// Complete PKCE with the verifier this attempt kept.
+	oauth2Token, err := o.oauth.Exchange(ctx, r.URL.Query().Get("code"),
+		oauth2.VerifierOption(pending.Verifier))
 	if err != nil {
 		o.failLogin(w, r, failExchange, err)
 		return
@@ -285,17 +404,12 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		o.failLogin(w, r, failIdentity, err)
 		return
 	}
-	// Bind the id_token to this browser's login: its nonce must match the cookie
-	// set in Login. Defeats id_token replay/injection.
-	nonceCookie, nerr := r.Cookie("oauth_nonce")
-	if nerr != nil || nonceCookie.Value == "" || idToken.Nonce != nonceCookie.Value {
+	// Bind the id_token to this browser's login: its nonce must match the one
+	// this attempt started with. Defeats id_token replay/injection.
+	if pending.Nonce == "" || idToken.Nonce != pending.Nonce {
 		o.failLogin(w, r, failIdentity, errors.New("id_token nonce does not match the login"))
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name: "oauth_nonce", Value: "", Path: "/", HttpOnly: true,
-		Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-	})
 	var cl claims
 	if err := idToken.Claims(&cl); err != nil {
 		o.failLogin(w, r, failIdentity, err)
@@ -330,18 +444,10 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 		Secure: o.secure, SameSite: http.SameSiteStrictMode, MaxAge: int(o.sessionTTL.Seconds()),
 	})
 	dest := o.postLogin
-	if c, err := r.Cookie("oauth_return"); err == nil && c.Value != "" {
-		if raw, derr := base64.RawURLEncoding.DecodeString(c.Value); derr == nil {
-			if rt := safeReturnTo(string(raw)); rt != "" {
-				dest = resolveReturn(o.postLogin, rt)
-			}
-		}
-		// Consume the one-shot cookie regardless of validity.
-		http.SetCookie(w, &http.Cookie{
-			Name: "oauth_return", Value: "", Path: "/", HttpOnly: true,
-			Secure: o.secure, SameSite: http.SameSiteLaxMode, MaxAge: -1,
-		})
+	if rt := safeReturnTo(pending.ReturnTo); rt != "" {
+		dest = resolveReturn(o.postLogin, rt)
 	}
+	noStore(w)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 
