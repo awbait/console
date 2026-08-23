@@ -292,33 +292,36 @@ export function ConfigPage() {
 function Row({ f, first, check }: { f: ConfigField; first: boolean; check?: ConfigCheck }) {
   const description = CONFIG_TEXT[f.name];
   return (
-    // Three columns on a wide screen: what the setting is, what it is set to,
-    // and whether it works. The verdict keeps a column of its own so the page
-    // can be scanned down its right edge, the way Argo CD's settings are. On a
-    // narrow screen it moves up under the name, where it is still the second
-    // thing read rather than the last.
+    // Two columns: the setting, then what it is set to. Both marks a setting
+    // carries - where its value came from, and whether it works - sit together
+    // on the name line, because they are two answers about one thing and a
+    // column of their own would say they are two different kinds of news.
+    // They are told apart by shape rather than by place: a flat chip for the
+    // value's origin, a bordered pill with an icon for the verdict.
     <div
-      className={`grid grid-cols-1 gap-x-6 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,9rem)] ${
+      className={`grid grid-cols-1 gap-x-6 gap-y-1.5 px-4 py-3 md:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] ${
         first ? "" : "border-t border-slate-100"
       }`}
     >
-      <div className="min-w-0 md:order-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-mono text-[13px] font-medium text-slate-800">{f.name}</span>
+      <div className="min-w-0">
+        {/* The name is never shortened: it is a literal somebody copies into a
+            deployment, and half of it is worse than none. Where the name and its
+            mark do not fit on one line, the mark wraps under it. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="break-all font-mono text-[13px] font-medium text-slate-800">
+            {f.name}
+          </span>
           <FieldHint f={f} />
           <StateBadge f={f} />
+          {check && <CheckBadge check={check} />}
         </div>
         {description && (
           <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
         )}
       </div>
 
-      <div className="order-3 min-w-0 md:order-2">
+      <div className="min-w-0">
         <Value f={f} />
-      </div>
-
-      <div className="order-2 min-w-0 md:order-3 md:flex md:h-9 md:items-center">
-        {check && <CheckBadge check={check} />}
       </div>
     </div>
   );
@@ -350,10 +353,37 @@ function CheckBadge({ check }: { check: ConfigCheck }) {
   );
   // A verdict with nothing behind it is not worth a trigger that promises more.
   if (!hasDetail) return pill;
+  return <CheckBadgeWithDetail pill={pill} check={check} reason={reason} action={action} facts={facts} />;
+}
+
+// CheckBadgeWithDetail opens the detail on hover, on focus and on press. The
+// last one is not redundant: a touch screen has no hover at all, and what to do
+// about a failing setting is not something to lose there. Hover keeps working
+// for a pointer because the open state is only ever set, never forced shut.
+function CheckBadgeWithDetail({
+  pill,
+  check,
+  reason,
+  action,
+  facts,
+}: {
+  pill: React.ReactElement;
+  check: ConfigCheck;
+  reason: string;
+  action: string;
+  facts: [string, string][];
+}) {
+  const [open, setOpen] = useState(false);
   return (
-    <Hint text={<CheckDetail reason={reason} action={action} facts={facts} />} placement="top end">
+    <Hint
+      text={<CheckDetail reason={reason} action={action} facts={facts} />}
+      placement="top end"
+      isOpen={open}
+      onOpenChange={setOpen}
+    >
       <AriaButton
         aria-label={`Подробнее: ${verdictLabel(check.verdict)}`}
+        onPress={() => setOpen((v) => !v)}
         className="cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       >
         {pill}
@@ -524,13 +554,15 @@ function valueText(f: ConfigField): { text: string; literal: boolean } {
   return { text: f.value, literal: true };
 }
 
-// StateBadge answers the question an admin actually has when scanning the page:
-// did this deployment choose the value, or is it whatever the portal ships with?
+// StateBadge answers where the value came from, and only that. It used to mark
+// a set secret green, which now reads as a verdict: green belongs to the check
+// next to it, which is the mark that means "and it works". Amber is left for the
+// one case that is genuinely a warning about the value itself.
 function StateBadge({ f }: { f: ConfigField }) {
   if (f.secret) {
     if (f.is_empty) return <Badge tone="slate">не задан</Badge>;
     if (f.is_default) return <Badge tone="amber">стандартный</Badge>;
-    return <Badge tone="emerald">задан</Badge>;
+    return <Badge tone="brand">задан</Badge>;
   }
   if (f.is_empty) return <Badge tone="slate">пусто</Badge>;
   if (f.is_set) return <Badge tone="brand">задано</Badge>;
