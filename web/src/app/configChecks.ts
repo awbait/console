@@ -31,8 +31,6 @@ const REASONS: Record<string, string> = {
   "app_name_template.chart_collision":
     "Шаблон не различает чарты. Заказы разных чартов могут дать одно имя приложения.",
   "app_name_template.bad_template": "Шаблон не разбирается.",
-  "auto_merge.enabled":
-    "Портал сливает свои merge request сам. Изменение доедет до кластера, и его никто не посмотрит.",
 
   // GitLab
   "gitlab_token.missing_scope": "У токена нет прав api. Первый же заказ на нём остановится.",
@@ -112,7 +110,6 @@ const ACTIONS: Record<string, string> = {
   "app_name_template.team_collision": "Добавьте в шаблон {{.Team}}.",
   "app_name_template.chart_collision": "Добавьте в шаблон {{.Chart}}.",
   "app_name_template.bad_template": "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.ServiceName}}.",
-  "auto_merge.enabled": "Выключите слияние без ревью везде, кроме стенда.",
 
   "gitlab_token.missing_scope": "Выпустите токен с правами api и пропишите его заново.",
   "gitlab_token.expired": "Выпустите новый токен и пропишите его заново.",
@@ -195,8 +192,6 @@ const FACTS: Record<string, string> = {
   read: "Чтение приложений",
   registered: "Зарегистрированы",
   rejected: "Отклонено доставок",
-  rendered: "Пример имени",
-  rendered_other: "Для другого сервиса",
   repositories: "Репозиториев",
   repository: "Репозиторий",
   required: "Нужна роль",

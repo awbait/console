@@ -332,7 +332,14 @@ function Row({ f, first, check }: { f: ConfigField; first: boolean; check?: Conf
 function CheckBadge({ check }: { check: ConfigCheck }) {
   const style = VERDICT_STYLE[check.verdict] ?? VERDICT_STYLE.unknown;
   const Icon = style.icon;
-  const detail = <CheckDetail check={check} />;
+  // Whether there is anything behind the word has to be decided from the data.
+  // Asking the component - `const detail = <CheckDetail/>` - never answers no:
+  // an element is truthy even when rendering it produces nothing, and every
+  // verdict got a tooltip, empty ones included.
+  const reason = checkReason(check.id, check.reason);
+  const action = checkAction(check.id, check.reason);
+  const facts = Object.entries(check.facts ?? {});
+  const hasDetail = Boolean(reason || action || facts.length > 0);
   const pill = (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${style.pill}`}
@@ -342,9 +349,9 @@ function CheckBadge({ check }: { check: ConfigCheck }) {
     </span>
   );
   // A verdict with nothing behind it is not worth a trigger that promises more.
-  if (!detail) return pill;
+  if (!hasDetail) return pill;
   return (
-    <Hint text={detail} placement="top end">
+    <Hint text={<CheckDetail reason={reason} action={action} facts={facts} />} placement="top end">
       <AriaButton
         aria-label={`Подробнее: ${verdictLabel(check.verdict)}`}
         className="cursor-help rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -356,13 +363,17 @@ function CheckBadge({ check }: { check: ConfigCheck }) {
 }
 
 // CheckDetail is what stands behind the verdict: what was seen, what to do about
-// it, and the data it was read from. Returns null when there is none of that, so
-// the badge can tell whether it is worth making it a trigger at all.
-function CheckDetail({ check }: { check: ConfigCheck }): React.ReactElement | null {
-  const reason = checkReason(check.id, check.reason);
-  const action = checkAction(check.id, check.reason);
-  const facts = Object.entries(check.facts ?? {});
-  if (!reason && !action && facts.length === 0) return null;
+// it, and the data it was read from. It is only ever rendered when there is
+// something in it - the badge decides that from the same three values.
+function CheckDetail({
+  reason,
+  action,
+  facts,
+}: {
+  reason: string;
+  action: string;
+  facts: [string, string][];
+}) {
   return (
     <div className="max-w-[18rem] text-left">
       {reason && <p className="leading-relaxed">{reason}</p>}

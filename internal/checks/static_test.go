@@ -70,7 +70,7 @@ func TestAppNameTemplate(t *testing.T) {
 func TestStaticSetIsComplete(t *testing.T) {
 	cfg := &config.Config{StatusUpdateMode: config.StatusModeHybrid, ArgoCDAppNameTmpl: "{{.Team}}-{{.Chart}}-{{.ServiceName}}"}
 	set := Static(cfg)
-	want := []string{IDInstanceDirTmpl, IDAppNameTmpl, IDAutoMerge}
+	want := []string{IDInstanceDirTmpl, IDAppNameTmpl}
 	if len(set) != len(want) {
 		t.Fatalf("static set has %d checks, want %d", len(set), len(want))
 	}
@@ -90,14 +90,5 @@ func TestStaticSetIsComplete(t *testing.T) {
 		if len(c.Vars) == 0 {
 			t.Fatalf("check %q names no variables, so the page cannot say what to edit", c.ID)
 		}
-	}
-}
-
-func TestAutoMerge(t *testing.T) {
-	if got := autoMerge(false); got.Verdict != VerdictOK {
-		t.Fatalf("off: got %s, want ok", got.Verdict)
-	}
-	if got := autoMerge(true); got.Verdict != VerdictWarn || got.Reason != reasonEnabled {
-		t.Fatalf("on: got %s/%s, want warn/%s", got.Verdict, got.Reason, reasonEnabled)
 	}
 }

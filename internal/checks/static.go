@@ -18,8 +18,13 @@ import (
 const (
 	IDInstanceDirTmpl = "instance_dir_template"
 	IDAppNameTmpl     = "app_name_template"
-	IDAutoMerge       = "auto_merge"
 )
+
+// GITLAB_AUTO_MERGE has no check on purpose. A check has to observe something
+// the row does not already show, and "auto-merge is on" is the value of the
+// setting, restated. Worse, the portal cannot tell a stand from production, so
+// the verdict would be a warning nobody can ever close, and a warning that is
+// always on is what hides the ones that are not. Startup still logs it.
 
 // Reasons the static checks return. The webhook ones live here too: the checks
 // that use them are about a webhook, not about a template, but the sentences
@@ -34,7 +39,6 @@ const (
 	reasonTeamCollision   = "team_collision"    // the template gives two teams the same application name
 	reasonChartCollision  = "chart_collision"   // the template gives two charts the same application name
 	reasonBadTemplate     = "bad_template"      // the template does not parse
-	reasonEnabled         = "enabled"           // the setting is on, and it should not be outside a stand
 )
 
 // GitLabWebhookPath and HarborWebhookPath are where the portal receives each
@@ -60,12 +64,6 @@ func Static(cfg *config.Config) []Check {
 			Vars:      []string{"ARGOCD_APP_NAME_TEMPLATE"},
 			Run:       func(context.Context) Result { return appNameTemplate(cfg.ArgoCDAppNameTmpl) },
 		},
-		{
-			ID:        IDAutoMerge,
-			Component: ComponentPortal,
-			Vars:      []string{"GITLAB_AUTO_MERGE"},
-			Run:       func(context.Context) Result { return autoMerge(cfg.GitLabAutoMerge) },
-		},
 	}
 }
 
@@ -77,7 +75,7 @@ func Static(cfg *config.Config) []Check {
 // construction.
 func instanceDirTemplate(tmpl string) Result {
 	if strings.TrimSpace(tmpl) == "" {
-		return ok(factsOf("rendered", "one"))
+		return ok(nil)
 	}
 	t, err := template.New("instance").Parse(tmpl)
 	if err != nil {
@@ -86,15 +84,13 @@ func instanceDirTemplate(tmpl string) Result {
 	base := tmplSample{Team: "core", Chart: "postgres", ServiceName: "one", Namespace: "apps", Cluster: "in-cluster"}
 	other := base
 	other.ServiceName = "two"
-	first, second := renderTmpl(t, base), renderTmpl(t, other)
-	f := factsOf("rendered", first)
-	if first == second {
-		// Showing what a second service renders to is the whole point here: the
-		// two strings being identical is the failure.
-		f["rendered_other"] = second
-		return verdict(VerdictFail, reasonNotUnique, f)
+	// What the template renders to is not reported: the template itself is right
+	// there in the row this verdict hangs on, and a worked example of it is one
+	// more thing to read for no decision.
+	if renderTmpl(t, base) == renderTmpl(t, other) {
+		return verdict(VerdictFail, reasonNotUnique, nil)
 	}
-	return ok(f)
+	return ok(nil)
 }
 
 // appNameTemplate checks the Argo CD application name the same way. Two orders
@@ -113,27 +109,15 @@ func appNameTemplate(tmpl string) Result {
 	byTeam.Team = "billing"
 	byChart.Chart = "redis"
 	name := renderTmpl(t, base)
-	f := factsOf("rendered", name)
 	switch {
 	case renderTmpl(t, byService) == name:
-		return verdict(VerdictFail, reasonNotUnique, f)
+		return verdict(VerdictFail, reasonNotUnique, nil)
 	case renderTmpl(t, byTeam) == name:
-		return verdict(VerdictWarn, reasonTeamCollision, f)
+		return verdict(VerdictWarn, reasonTeamCollision, nil)
 	case renderTmpl(t, byChart) == name:
-		return verdict(VerdictWarn, reasonChartCollision, f)
+		return verdict(VerdictWarn, reasonChartCollision, nil)
 	}
-	return ok(f)
-}
-
-// autoMerge reports the portal merging its own merge requests without a human.
-// It is a demo setting: on a real GitLab it means a change reaches the cluster
-// with nobody having looked at it. Startup logs a warning about it, which is
-// read by nobody a week later; this puts it on a page.
-func autoMerge(on bool) Result {
-	if !on {
-		return ok(nil)
-	}
-	return verdict(VerdictWarn, reasonEnabled, nil)
+	return ok(nil)
 }
 
 // tmplSample is the sample order the templates are rendered against. It mirrors
