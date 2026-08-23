@@ -297,6 +297,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		observability.Component(log, "checks"))
 	srv.Checks = configChecks
 	srv.TestWebhookDelivery = webhookDeliveryTest(cfg, gl, hooks, webhookHandler)
+	// Part of what these checks catch breaks with nobody touching the portal: a
+	// token reaches its expiry, a webhook is switched off after failed
+	// deliveries, a project is deleted. That is told to the platform team
+	// instead of waiting on a page for somebody to open it.
+	configChecks.SetAnnouncer(notifySvc.ConfigWatch())
 	go configChecks.Run(ctx)
 
 	// Refresh order gauges in-process (single replica), reusing the poller

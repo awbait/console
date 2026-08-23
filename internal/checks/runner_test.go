@@ -371,3 +371,37 @@ func TestGitLabDeliveryTest(t *testing.T) {
 		}
 	})
 }
+
+// The announcer hears every result, including the checks that passed: an
+// announcement about a check that has gone back to normal is what has to be
+// called off, and nobody can call it off without being told.
+func TestRunnerTellsTheAnnouncerAboutTheRound(t *testing.T) {
+	r := NewRunner(quietLogger(), nil,
+		Check{ID: "a", Component: ComponentPortal, Run: func(context.Context) Result { return ok(nil) }},
+		Check{ID: "b", Component: ComponentGitLab, Run: func(context.Context) Result {
+			return verdict(VerdictFail, "broken", nil)
+		}},
+	)
+	heard := &recorder{}
+	r.SetAnnouncer(heard)
+	r.round(context.Background())
+	r.round(context.Background())
+
+	if len(heard.rounds) != 2 {
+		t.Fatalf("the announcer heard %d rounds, want 2", len(heard.rounds))
+	}
+	if len(heard.rounds[0]) != 2 {
+		t.Fatalf("a round carried %d results, want both checks", len(heard.rounds[0]))
+	}
+}
+
+type recorder struct {
+	mu     sync.Mutex
+	rounds [][]CheckResult
+}
+
+func (rec *recorder) Round(_ context.Context, results []CheckResult) {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	rec.rounds = append(rec.rounds, results)
+}

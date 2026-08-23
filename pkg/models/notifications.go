@@ -60,6 +60,11 @@ const (
 	NotifyChartVersionMissing = "chart_version_missing"
 	// The portal itself.
 	NotifyPortalUpdated = "portal_updated"
+	// Something the portal is wired to broke on its own: a token that expired,
+	// a webhook the far side switched off, a project somebody deleted. The
+	// configuration page shows all of it, but only to whoever opens it.
+	NotifyConfigCheckFailed    = "config_check_failed"
+	NotifyConfigCheckRecovered = "config_check_recovered"
 )
 
 // Notification is one thing worth telling somebody about. One row per event,

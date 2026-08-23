@@ -24,6 +24,12 @@ All notable changes to this project are documented in this file.
   notification and reports whether it arrived. This is the only way to find out
   that the two sides hold different secrets, which otherwise shows up as merged
   orders that never move on.
+- The platform team is notified when the setup breaks by itself: the GitLab
+  token expires or is withdrawn, GitLab switches the webhook off after failed
+  deliveries, the webhook secret stops matching, a Harbor project or an Argo CD
+  project or cluster disappears. Each of those arrives once, and a second
+  message says when it is over. A token about to expire is announced a month
+  and a week ahead.
 
 ### Fixed
 - Deleting a service now takes it out of the cluster. The portal used to report

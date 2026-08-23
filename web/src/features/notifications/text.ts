@@ -11,7 +11,35 @@
 
 import type { AppNotification } from "@/api/types";
 import { mergeBlockReason } from "@/features/orders/mergeBlock";
+import { ruPlural } from "@/form/fieldErrors";
 import { releaseAnchor } from "@/lib/release";
+
+// Что именно перестало работать в настройке портала. Здесь только заголовок:
+// что с этим делать, написано на странице «Конфигурация», куда ведёт
+// уведомление, и повторять это в одну строку не нужно.
+const CONFIG_BROKE: Record<string, string> = {
+  "gitlab_token.expired": "Токен GitLab истёк",
+  "gitlab_token.revoked": "Токен GitLab отозван",
+  "gitlab_webhook.hook_disabled": "GitLab отключил вебхук портала",
+  "gitlab_webhook.secret_mismatch": "GitLab отклоняет все уведомления: секрет не совпадает",
+  "harbor_webhook.secret_mismatch": "Harbor отклоняет все уведомления: секрет не совпадает",
+  "harbor_projects.projects_missing": "В Harbor пропал проект из списка",
+  "harbor_projects.projects_hidden": "Проект Harbor больше не виден порталу",
+  "argocd_project.project_missing": "В Argo CD пропал проект портала",
+  "argocd_cluster.cluster_missing": "В Argo CD пропал кластер портала",
+};
+
+// Как назвать проверку, когда она снова в порядке. Отбой читают через несколько
+// дней после самой поломки, и «проверка gitlab_token» к тому времени ничего не
+// напоминает.
+const CONFIG_SUBJECT: Record<string, string> = {
+  gitlab_token: "Токен GitLab",
+  gitlab_webhook: "Вебхук GitLab",
+  harbor_webhook: "Уведомления из Harbor",
+  harbor_projects: "Проекты Harbor",
+  argocd_project: "Проект портала в Argo CD",
+  argocd_cluster: "Кластер портала в Argo CD",
+};
 
 // str reads a payload field as text. The payload is JSON from the server, and a
 // missing field is a notification worth showing anyway - with a little less in
@@ -62,11 +90,33 @@ export function notificationText(n: AppNotification): string {
       return `Сервис ${service} не удалился до конца, проверьте, что осталось в кластере`;
     case "portal_updated":
       return `Портал обновлён до версии ${str(n, "version")}`;
+    case "config_check_failed":
+      return configBrokeText(n);
+    case "config_check_recovered": {
+      const subject = CONFIG_SUBJECT[str(n, "check")];
+      return subject ? `${subject} снова в порядке` : "Настройка портала снова в порядке";
+    }
     default:
       // A kind this build does not know: the portal is newer on the server than
       // in this browser. Saying so is better than an empty row.
       return "Что-то произошло, но эта версия портала не знает, как об этом рассказать";
   }
+}
+
+// Срок токена - единственная поломка, о которой портал говорит дважды: за месяц
+// и за неделю. Поэтому она и звучит по-разному: «истекает через 25 дней» и
+// «истекает через 5 дней» - это разные новости, а «скоро истечёт» дважды
+// читается как повтор.
+function configBrokeText(n: AppNotification): string {
+  const check = str(n, "check");
+  const reason = str(n, "reason");
+  if (check === "gitlab_token" && reason === "expires_soon") {
+    const days = typeof n.payload?.days_left === "number" ? n.payload.days_left : null;
+    if (days === null) return "Срок токена GitLab скоро истечёт";
+    if (days <= 0) return "Токен GitLab истекает сегодня";
+    return `Токен GitLab истекает через ${days} ${ruPlural(days, "день", "дня", "дней")}`;
+  }
+  return CONFIG_BROKE[`${check}.${reason}`] ?? "Что-то в настройке портала перестало работать";
 }
 
 // Where a notification leads. Built from what it is about, never stored: routes
@@ -79,6 +129,11 @@ export function notificationLink(n: AppNotification): string | null {
   // merged since 0.4.0.
   if (n.kind === "portal_updated") {
     return `/about#${releaseAnchor(str(n, "version"))}`;
+  }
+  // Настройка читается на своей странице: там же видно, что именно портал
+  // увидел, и что с этим делать.
+  if (n.kind === "config_check_failed" || n.kind === "config_check_recovered") {
+    return "/admin/config";
   }
   // A version waiting for approval leads to where the decision is made, not to
   // where the version is written: this one is addressed to admins, and their

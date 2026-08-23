@@ -83,6 +83,15 @@ type Store interface {
 	// DeleteReadNotificationsBefore drops notifications everyone concerned has
 	// read and that are older than the cutoff. Returns how many went.
 	DeleteReadNotificationsBefore(ctx context.Context, cutoff time.Time) (int, error)
+	// LatestNotification returns the newest notification about one subject,
+	// whatever its audience, or ErrNotFound.
+	//
+	// It is how a loop that announces a state and then calls it off finds out
+	// what it last said: the notification is the record, so nothing has to be
+	// kept in memory to stay quiet across a restart. Read on the first round
+	// after a restart and not again, so it costs a query per subject per
+	// process, and the answer may be gone once the retention sweep has taken it.
+	LatestNotification(ctx context.Context, subjectType, subjectID string) (*models.Notification, error)
 
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id
