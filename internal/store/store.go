@@ -33,13 +33,20 @@ type NotificationFilter struct {
 	Limit  int
 }
 
-// ActivityFilter narrows the activity feed. Empty means the whole stream:
-// Actor scopes it to one person (their OIDC subject), Team to the orders and
-// publications one team owns.
+// ActivityFilter narrows the activity feed. Empty means the whole stream,
+// newest first: Actor scopes it to one person (their OIDC subject), Team to the
+// orders and publications one team owns.
 type ActivityFilter struct {
 	Actor string
 	Team  string
 	Limit int
+	// Cursor is where the previous page ended: the next page continues past it
+	// in whichever direction Oldest asks for. Zero starts from the beginning.
+	// A moment rather than an offset, so events arriving while somebody reads
+	// cannot shift the page under them into repeats or gaps.
+	Cursor time.Time
+	// Oldest reverses the order to earliest first.
+	Oldest bool
 }
 
 // PublicationFilter narrows ListPublications.

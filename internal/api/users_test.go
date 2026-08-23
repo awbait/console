@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -93,12 +94,6 @@ func TestActivityPayload(t *testing.T) {
 			Team    string `json:"team"`
 			Members int    `json:"members"`
 		} `json:"teams"`
-		Events []struct {
-			EventType string `json:"event_type"`
-			ActorName string `json:"actor_name"`
-			Title     string `json:"title"`
-			Team      string `json:"team"`
-		} `json:"events"`
 		OnlineWindowSeconds int `json:"online_window_seconds"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -113,15 +108,107 @@ func TestActivityPayload(t *testing.T) {
 	if len(got.Teams) != 1 || got.Teams[0].Team != "core" || got.Teams[0].Members != 1 {
 		t.Fatalf("teams: %+v", got.Teams)
 	}
-	if len(got.Events) != 1 {
-		t.Fatalf("want only the human event, got %+v", got.Events)
-	}
-	if got.Events[0].EventType != "created" || got.Events[0].Title != "edge" ||
-		got.Events[0].Team != "core" || got.Events[0].ActorName != "Ada" {
-		t.Fatalf("event: %+v", got.Events[0])
-	}
 	if got.OnlineWindowSeconds != int(activity.OnlineWindow.Seconds()) {
 		t.Fatalf("window: %d", got.OnlineWindowSeconds)
+	}
+
+	// The feed is its own endpoint: it carries what a person did, and only what
+	// a person did.
+	rec = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/users/events", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("events: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var feed struct {
+		Events []struct {
+			EventType string `json:"event_type"`
+			ActorName string `json:"actor_name"`
+			Title     string `json:"title"`
+			Team      string `json:"team"`
+		} `json:"events"`
+		HasMore bool `json:"has_more"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &feed); err != nil {
+		t.Fatalf("decode feed: %v (%s)", err, rec.Body.String())
+	}
+	if len(feed.Events) != 1 {
+		t.Fatalf("want only the human event, got %+v", feed.Events)
+	}
+	if feed.Events[0].EventType != "created" || feed.Events[0].Title != "edge" ||
+		feed.Events[0].Team != "core" || feed.Events[0].ActorName != "Ada" {
+		t.Fatalf("event: %+v", feed.Events[0])
+	}
+	if feed.HasMore {
+		t.Fatalf("one event is not more than a page")
+	}
+}
+
+// The feed is read a page at a time, in either direction, and says whether
+// there is another page. Without that the "показать ещё" button is offered
+// until it fetches nothing.
+func TestUserEventsPaging(t *testing.T) {
+	srv, _, _ := newServer(t)
+	p, _ := srv.Cache.(cache.Presence)
+	srv.Activity = activity.New(srv.Store, srv.Cache, p, nil)
+	ctx := context.Background()
+
+	r := &models.Request{ID: "88888888-8888-8888-8888-888888888888", Team: "core",
+		ChartName: "gateway", ServiceName: "edge", Status: models.StatusDraft}
+	if err := srv.Store.CreateRequest(ctx, r); err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	for range 3 {
+		if err := srv.Store.AddEvent(ctx, &models.RequestEvent{
+			RequestID: r.ID, Actor: "u1", ActorName: "Ada", EventType: "updated",
+		}); err != nil {
+			t.Fatalf("add event: %v", err)
+		}
+	}
+
+	page := func(query string) (times []string, more bool) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/users/events"+query, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d body=%s", query, rec.Code, rec.Body.String())
+		}
+		var got struct {
+			Events []struct {
+				At string `json:"at"`
+			} `json:"events"`
+			HasMore bool `json:"has_more"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("decode: %v (%s)", err, rec.Body.String())
+		}
+		for _, e := range got.Events {
+			times = append(times, e.At)
+		}
+		return times, got.HasMore
+	}
+
+	first, more := page("?limit=2")
+	if len(first) != 2 || !more {
+		t.Fatalf("first page: %d rows, more=%v", len(first), more)
+	}
+	next, more := page("?limit=2&cursor=" + url.QueryEscape(first[1]))
+	if len(next) != 1 || more {
+		t.Fatalf("second page: %d rows, more=%v", len(next), more)
+	}
+	for _, seen := range first {
+		if next[0] == seen {
+			t.Fatalf("the second page repeated an event from the first")
+		}
+	}
+	newest, _ := page("?limit=3")
+	oldest, _ := page("?limit=3&sort=oldest")
+	if len(oldest) != 3 {
+		t.Fatalf("oldest first: %d rows, want 3", len(oldest))
+	}
+	for i, at := range oldest {
+		if at != newest[len(newest)-1-i] {
+			t.Fatalf("oldest first did not reverse the feed: %v vs %v", oldest, newest)
+		}
 	}
 }
 

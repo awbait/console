@@ -32,10 +32,12 @@ All notable changes to this project are documented in this file.
   and a week ahead.
 - "Пользователи" is a new page in the admin section. It shows who is using the
   portal right now, who has been in over the last day and week, what teams they
-  are from, and what people have been doing lately. Pick a team to narrow the
-  whole page to it, or search for a person by name, mail or team. Opening a
-  person shows their card: teams, role, first visit, and what they have done.
-  Trends over time are in Grafana, one link away from the page.
+  are from, and what people have been doing lately. Search finds a person by
+  name, mail or team. Opening a person shows their card: teams, role, first
+  visit and their own actions. Opening a team shows who is in it and everything
+  its people have done. Every list of actions reads newest or oldest first and
+  loads further on request. Trends over time are in Grafana, one link away from
+  the page.
 
 ### Fixed
 - Deleting a service now takes it out of the cluster. The portal used to report

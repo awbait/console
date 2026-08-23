@@ -69,9 +69,23 @@ func (m *Memory) ListActivity(ctx context.Context, f ActivityFilter) ([]*models.
 		if f.Team != "" && e.Team != f.Team {
 			continue
 		}
+		// The page boundary follows the order, same as in Postgres.
+		if !f.Cursor.IsZero() {
+			if f.Oldest && !e.At.After(f.Cursor) {
+				continue
+			}
+			if !f.Oldest && !e.At.Before(f.Cursor) {
+				continue
+			}
+		}
 		out = append(out, e)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	sort.SliceStable(out, func(i, j int) bool {
+		if f.Oldest {
+			return out[i].At.Before(out[j].At)
+		}
+		return out[i].At.After(out[j].At)
+	})
 	if n := activityLimit(f.Limit); len(out) > n {
 		out = out[:n]
 	}

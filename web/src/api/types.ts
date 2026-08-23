@@ -203,14 +203,14 @@ export interface PlatformUsers {
   online: PlatformUser[];
   users: PlatformUser[];
   teams: TeamActivity[];
-  events: ActivityEvent[];
   online_window_seconds: number;
   grafana_url?: string;
 }
 
-// The feed on its own, for a team or one person.
+// One page of the feed, for everyone, a team or one person.
 export interface ActivityFeed {
   events: ActivityEvent[];
+  has_more: boolean;
 }
 
 // The small half, polled on its own: who is here right now.

@@ -322,11 +322,18 @@ export const api = {
     req<PlatformUsers>("GET", "/admin/users", undefined, signal),
   getOnline: (signal?: AbortSignal) =>
     req<PlatformOnline>("GET", "/admin/users/online", undefined, signal),
-  getUserEvents: (f: { actor?: string; team?: string; limit?: number }, signal?: AbortSignal) => {
+  // One page of the feed. `cursor` is the time of the last event already shown
+  // and `sort` says which end to read from.
+  getUserEvents: (
+    f: { actor?: string; team?: string; limit?: number; cursor?: string; sort?: string },
+    signal?: AbortSignal,
+  ) => {
     const q = new URLSearchParams();
     if (f.actor) q.set("actor", f.actor);
     if (f.team) q.set("team", f.team);
     if (f.limit) q.set("limit", String(f.limit));
+    if (f.cursor) q.set("cursor", f.cursor);
+    if (f.sort) q.set("sort", f.sort);
     return req<ActivityFeed>("GET", `/admin/users/events?${q}`, undefined, signal);
   },
   // What the portal can do right now. Answers without a session, so the sign-in

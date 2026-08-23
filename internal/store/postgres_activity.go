@@ -98,11 +98,18 @@ const activityFeedSQL = `
 	  AND ($4 = '' OR cp.owner_team = $4)`
 
 func (p *Postgres) ListActivity(ctx context.Context, f ActivityFilter) ([]*models.ActivityEvent, error) {
+	// The page boundary and the order have to agree: reading earliest-first
+	// continues past the cursor, reading newest-first continues before it.
+	order, page := "DESC", "($6::timestamptz IS NULL OR at < $6)"
+	if f.Oldest {
+		order, page = "ASC", "($6::timestamptz IS NULL OR at > $6)"
+	}
 	rows, err := p.db.Query(ctx, `
 		SELECT at, source, actor, actor_name, event_type, from_status, to_status, subject_id, title, team
 		FROM (`+activityFeedSQL+`) feed
-		ORDER BY at DESC
-		LIMIT $5`, models.SystemActors(), nil, f.Actor, f.Team, activityLimit(f.Limit))
+		WHERE `+page+`
+		ORDER BY at `+order+`
+		LIMIT $5`, models.SystemActors(), nil, f.Actor, f.Team, activityLimit(f.Limit), nullTime(f.Cursor))
 	if err != nil {
 		return nil, err
 	}

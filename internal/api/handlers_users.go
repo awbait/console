@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"console/internal/activity"
 	"console/internal/auth"
@@ -21,22 +22,17 @@ import (
 // outlives the person, since a series stays in the time series database until
 // retention takes it.
 
-const (
-	// activityFeedLimit is how many events the page shows at once. A ribbon of
-	// what has been going on, not a journal: the full history of an order is on
-	// the order's own page.
-	activityFeedLimit = 60
-	// personFeedLimit is the shorter list shown for one person.
-	personFeedLimit = 30
-)
+// activityFeedLimit is how many events one page of the feed holds. A ribbon of
+// what has been going on, not a journal: the full history of an order is on the
+// order's own page, and the reader asks for more when they want more.
+const activityFeedLimit = 30
 
 // usersResponse is the whole page in one answer.
 type usersResponse struct {
-	Totals activity.Totals         `json:"totals"`
-	Online []*models.PlatformUser  `json:"online"`
-	Users  []*models.PlatformUser  `json:"users"`
-	Teams  []*models.TeamActivity  `json:"teams"`
-	Events []*models.ActivityEvent `json:"events"`
+	Totals activity.Totals        `json:"totals"`
+	Online []*models.PlatformUser `json:"online"`
+	Users  []*models.PlatformUser `json:"users"`
+	Teams  []*models.TeamActivity `json:"teams"`
 	// OnlineWindowSeconds is what "online" means here, so the page can say it
 	// instead of hard-coding the same number a second time.
 	OnlineWindowSeconds int `json:"online_window_seconds"`
@@ -51,9 +47,13 @@ type onlineResponse struct {
 	OnlineWindowSeconds int                    `json:"online_window_seconds"`
 }
 
-// eventsResponse is the feed on its own, for a team or a person.
+// eventsResponse is one page of the feed, for everyone, a team or a person.
 type eventsResponse struct {
 	Events []*models.ActivityEvent `json:"events"`
+	// HasMore says whether asking again past the last event returns anything,
+	// so the page knows whether to offer "показать ещё" rather than finding out
+	// by fetching nothing.
+	HasMore bool `json:"has_more"`
 }
 
 // adminActivity guards every endpoint here and returns the recorder. Same gate
@@ -81,14 +81,8 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request) {
 		s.writeDomainErr(w, r, err)
 		return
 	}
-	events, err := s.Store.ListActivity(r.Context(), activityFilter(r, activityFeedLimit))
-	if err != nil {
-		s.writeDomainErr(w, r, err)
-		return
-	}
 	writeJSON(w, http.StatusOK, usersResponse{
 		Totals: ov.Totals, Online: ov.Online, Users: ov.Users, Teams: ov.Teams,
-		Events:              nonNilEvents(events),
 		OnlineWindowSeconds: int(activity.OnlineWindow.Seconds()),
 		GrafanaURL:          s.System.GrafanaURL,
 	})
@@ -116,25 +110,41 @@ func (s *Server) handleUserEvents(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.adminActivity(w, r); !ok {
 		return
 	}
-	events, err := s.Store.ListActivity(r.Context(), activityFilter(r, personFeedLimit))
+	f := activityFilter(r, activityFeedLimit)
+	// Ask for one more than the page holds: whether the extra row comes back is
+	// the answer to "is there another page", and it costs nothing to look.
+	want := f.Limit
+	f.Limit = want + 1
+	events, err := s.Store.ListActivity(r.Context(), f)
 	if err != nil {
 		s.writeDomainErr(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, eventsResponse{Events: nonNilEvents(events)})
+	more := len(events) > want
+	if more {
+		events = events[:want]
+	}
+	writeJSON(w, http.StatusOK, eventsResponse{Events: nonNilEvents(events), HasMore: more})
 }
 
 // activityFilter reads the feed's query parameters. A limit that is missing or
 // unreadable falls back to the caller's default, and the store clamps whatever
 // gets through.
 func activityFilter(r *http.Request, defaultLimit int) store.ActivityFilter {
+	q := r.URL.Query()
 	f := store.ActivityFilter{
-		Actor: r.URL.Query().Get("actor"),
-		Team:  r.URL.Query().Get("team"),
-		Limit: defaultLimit,
+		Actor:  q.Get("actor"),
+		Team:   q.Get("team"),
+		Limit:  defaultLimit,
+		Oldest: q.Get("sort") == "oldest",
 	}
-	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+	if n, err := strconv.Atoi(q.Get("limit")); err == nil && n > 0 {
 		f.Limit = n
+	}
+	// An unreadable cursor is not an error worth a 400: it means the page asked
+	// for "the next page after nothing", which is the first page.
+	if t, err := time.Parse(time.RFC3339Nano, q.Get("cursor")); err == nil {
+		f.Cursor = t
 	}
 	return f
 }
