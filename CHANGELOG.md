@@ -4,15 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-### Changed
-- The portal's own update is announced to platform admins only. It used to
-  arrive in everyone's bell on every release, and there was nothing to do with
-  it: you did not choose the version and cannot choose the next one. The
-  changelog on the About page still shows every release to everybody.
+## [0.8.0] - 2026-08-24
+
+A release about the portal watching itself: "Конфигурация" now checks every
+setting against the live systems, and the platform team hears when the setup
+breaks on its own. The admin section also gained a page about the people using
+the portal.
 
 ### Added
-- The platform team is notified when a deletion does not finish within fifteen
-  minutes. Until it does, the order keeps showing "Удаляется".
 - "Конфигурация" now says whether each setting actually works, not only what it
   is set to. The portal checks them against the live systems and marks every
   setting on the right: whether the GitLab token may open merge requests,
@@ -30,6 +29,8 @@ All notable changes to this project are documented in this file.
   project or cluster disappears. Each of those arrives once, and a second
   message says when it is over. A token about to expire is announced a month
   and a week ahead.
+- The platform team is notified when a deletion does not finish within fifteen
+  minutes. Until it does, the order keeps showing "Удаляется".
 - "Пользователи" is a new page in the admin section. It shows who is using the
   portal right now, who has been in over the last day and week, what teams they
   are from, and what people have been doing lately. Search finds a person by
@@ -38,6 +39,12 @@ All notable changes to this project are documented in this file.
   its people have done. Every list of actions reads newest or oldest first and
   loads further on request. Trends over time are in Grafana, one link away from
   the page.
+
+### Changed
+- The portal's own update is announced to platform admins only. It used to
+  arrive in everyone's bell on every release, and there was nothing to do with
+  it: you did not choose the version and cannot choose the next one. The
+  changelog on the About page still shows every release to everybody.
 
 ### Fixed
 - Deleting a service now takes it out of the cluster. The portal used to report
@@ -436,7 +443,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/awbait/console/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/awbait/console/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awbait/console/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/awbait/console/compare/v0.4.0...v0.5.0
