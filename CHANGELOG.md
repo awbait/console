@@ -47,10 +47,9 @@ the portal.
   changelog on the About page still shows every release to everybody.
 
 ### Fixed
-- Deleting a service now takes it out of the cluster. The portal used to report
-  the service as deleted while everything it had deployed kept running, and
-  somebody had to remove it by hand. Services ordered before this fix are
-  deleted the same way.
+- Deleting a service takes it out of the cluster. The portal used to report the
+  deletion while the service kept running, and somebody removed it by hand.
+  Orders made earlier are deleted the same way. **Reported by:** obs
 - "Изменение не удалось применить автоматически" no longer appears in an order's
   history while the change is on its way through. The portal now waits for the
   checks to finish before calling anything a problem, and a restart of the
