@@ -13,10 +13,12 @@ const listener = {
   allOf: [
     {
       if: { properties: { protocol: { enum: ["TCP"] } }, required: ["protocol"] },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
       then: { properties: { hostname: { "ui:widget": "hidden" } } },
     },
     {
       if: { properties: { protocol: { const: "HTTP" } }, required: ["protocol"] },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
       then: { required: ["hostname"] },
     },
   ],
