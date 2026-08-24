@@ -561,11 +561,46 @@ type AdoptInput struct {
 	OwnerTeam  string
 }
 
+// unclaimed: registered by the discovery reconciler and still parked on the
+// discovery admin group. That group is the parking lot for a find nobody owns
+// yet, so being "owned" by it says the opposite of what it looks like.
+func (s *Service) unclaimed(p *models.ChartPublication) bool {
+	return p.CreatedBy == DiscoveryActor && (s.discoveryOwner == "" || p.OwnerTeam == s.discoveryOwner)
+}
+
+// adoptable: unclaimed and not yet put into use. A version approved by an admin
+// is the moment a find becomes a service of the platform's own: it is in the
+// catalog, it can be ordered, and letting any team take it over from there
+// would hand them somebody else's live service. Ownership then moves only the
+// deliberate way, by the admin naming the owning team.
+func (s *Service) adoptable(p *models.ChartPublication, versions []*models.PublicationVersion) bool {
+	if !s.unclaimed(p) {
+		return false
+	}
+	for _, v := range versions {
+		if v.Status == models.PubApproved {
+			return false
+		}
+	}
+	return true
+}
+
+// fillAdoptable computes the read-time Adoptable flag for one publication.
+func (s *Service) fillAdoptable(ctx context.Context, p *models.ChartPublication) error {
+	vs, err := s.store.ListVersions(ctx, p.ID)
+	if err != nil {
+		return err
+	}
+	p.Adoptable = s.adoptable(p, vs)
+	return nil
+}
+
 // Adopt claims an unclaimed auto-discovered publication for a team: a deferred
 // registration. The adopter picks category and owner group (own team; admin -
 // any, same rule as Create) and becomes the publisher (created_by), which also
-// makes the publication non-adoptable afterwards. Unclaimed = created by the
-// discovery reconciler and still owned by the discovery admin group.
+// makes the publication non-adoptable afterwards. Adoptable = created by the
+// discovery reconciler, still owned by the discovery admin group, and without
+// an approved version (see adoptable).
 func (s *Service) Adopt(ctx context.Context, u *models.User, id string, in AdoptInput) (*models.ChartPublication, error) {
 	p, err := s.store.GetPublication(ctx, id)
 	if err != nil {
@@ -580,8 +615,15 @@ func (s *Service) Adopt(ctx context.Context, u *models.User, id string, in Adopt
 	if !canManage(u, in.OwnerTeam) {
 		return nil, ErrForbidden
 	}
-	if p.CreatedBy != DiscoveryActor || (s.discoveryOwner != "" && p.OwnerTeam != s.discoveryOwner) {
+	if !s.unclaimed(p) {
 		return nil, conflict("публикацию уже сопровождает группа %s", p.OwnerTeam)
+	}
+	vs, err := s.store.ListVersions(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.adoptable(p, vs) {
+		return nil, conflict("сервис уже в каталоге: владельца назначает администратор платформы")
 	}
 	if p.Status == models.PubPending {
 		return nil, ErrPendingLocked
@@ -609,11 +651,25 @@ func (s *Service) Adopt(ctx context.Context, u *models.User, id string, in Adopt
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*models.ChartPublication, error) {
-	return s.store.GetPublication(ctx, id)
+	p, err := s.store.GetPublication(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillAdoptable(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func (s *Service) GetByChart(ctx context.Context, project, name string) (*models.ChartPublication, error) {
-	return s.store.GetPublicationByChart(ctx, project, name)
+	p, err := s.store.GetPublicationByChart(ctx, project, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillAdoptable(ctx, p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func (s *Service) List(ctx context.Context, f store.PublicationFilter) ([]*models.ChartPublication, error) {
@@ -629,6 +685,7 @@ func (s *Service) List(ctx context.Context, f store.PublicationFilter) ([]*model
 			return nil, err
 		}
 		p.EffectiveStatus = models.DeriveStatus(p, vs)
+		p.Adoptable = s.adoptable(p, vs)
 		// RecommendedVersion as stored is only the owner's explicit pick, and it
 		// is usually unset - a caller reading it raw would see "nothing to order"
 		// for a service that orders fine. Report what an order would actually be

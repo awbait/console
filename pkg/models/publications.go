@@ -48,6 +48,13 @@ type ChartPublication struct {
 	// misleading for multi-version publications. Empty unless the read path fills
 	// it in.
 	EffectiveStatus PublicationStatus `json:"effective_status,omitempty"`
+	// Adoptable reports whether the publication is still the ownerless find the
+	// discovery reconciler registered, so a team may claim it. Computed at read
+	// time, never persisted: it depends on the discovery admin group (runtime
+	// configuration) and on whether any version has been approved yet. The
+	// interface must gate "take it over" on this and not on CreatedBy alone,
+	// which stays "auto-discovery" for the whole life of the publication.
+	Adoptable bool `json:"adoptable"`
 	// DraftCategoryID/DraftOwnerTeam is a proposed but not yet approved metadata
 	// change. Live values (CategoryID/OwnerTeam, used by the catalog and
 	// permissions) change only on approve; an empty string - no pending changes.

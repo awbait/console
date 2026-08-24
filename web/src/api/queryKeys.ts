@@ -23,6 +23,7 @@ export const qk = {
   ],
   viewSchema: (): QueryKey => ["view-schema"],
   changelog: (project: string, name: string): QueryKey => ["changelog", project, name],
+  teams: (): QueryKey => ["teams"],
   requests: (): QueryKey => ["requests"],
   platformHealth: (): QueryKey => ["platform-health"],
 };

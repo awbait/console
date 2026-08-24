@@ -394,6 +394,9 @@ type publicationSummary struct {
 	Status        models.PublicationStatus `json:"status"`
 	Published     bool                     `json:"published"`      // has an active approved view
 	HasOrderView  bool                     `json:"has_order_view"` // approved view contains views.order
+	// Adoptable: an ownerless find a team may claim (see models.ChartPublication).
+	// The catalog card and the chart page gate "take it over" on this.
+	Adoptable bool `json:"adoptable"`
 	// ApprovedViewVersion is the "blessed" chart version: the view is checked up
 	// to it, and orders on a lower version can be upgraded.
 	ApprovedViewVersion string `json:"approved_view_version,omitempty"`
@@ -445,6 +448,7 @@ func publicationSummaryFor(p *models.ChartPublication,
 		CreatedBy:     p.CreatedBy,
 		CreatedByName: p.CreatedByName,
 		Status:        p.EffectiveStatus,
+		Adoptable:     p.Adoptable,
 		Published:     len(orderable) > 0,
 		// An orderable version always carries an approved view with an "order"
 		// form (submit/save enforce ValidateStructure), so any orderable version

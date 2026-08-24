@@ -6,7 +6,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication } from "../api/types";
-import { AUTO_DISCOVERY_ACTOR, isUnclaimed, publisherLabel } from "../api/types";
+import { isUnclaimed, publisherLabel } from "../api/types";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
@@ -32,12 +32,13 @@ export function ChartDetailPage() {
   const { user } = useUser();
   const pub = findCatalogChart(catalogCharts, project, name)?.publication;
   // "Manage" for owners/admins; "Publish" (no publication yet) for any team
-  // member (they pick the owner team at registration). An unclaimed
-  // auto-discovered publication is also open to team members - the manage page
-  // offers adopting it (take over ownership).
+  // member (they pick the owner team at registration). A chart nobody owns yet
+  // is also open to team members - the manage page offers adopting it (take
+  // over ownership). Only the server says which charts those are: a service the
+  // platform team has already published is owned, whoever found it.
   const hasTeam = user?.role === "admin" || (user?.teams?.length ?? 0) > 0;
   const manageable = pub
-    ? canModify(user, pub.owner_team) || (pub.created_by === AUTO_DISCOVERY_ACTOR && hasTeam)
+    ? canModify(user, pub.owner_team) || (isUnclaimed(pub) && hasTeam)
     : hasTeam;
 
   // Warm the manage page's data while this page is being read. That page needs

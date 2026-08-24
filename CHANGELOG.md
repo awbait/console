@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- A platform admin can name the team that owns a service. "Владелец" on the
+  management page offered only the teams the reader is in, and an admin is in
+  none of them, so there was nothing to choose from. It now offers every team
+  the portal knows.
+
+### Security
+- Only the owning team manages a service. Charts the portal found itself stayed
+  open to any member of any team, who could also take such a service over.
+  **Reported by:** DBA
+
 ## [0.8.0] - 2026-08-24
 
 A release about the portal watching itself: "Конфигурация" now checks every

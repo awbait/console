@@ -428,3 +428,115 @@ func TestSeedIdempotent(t *testing.T) {
 		t.Fatalf("re-seed overwrote user edit: %+v", cats2)
 	}
 }
+
+// TestAdoptClosesOnceInUse: a find the admins have put into the catalog is not
+// up for grabs any more. Until then it stays adoptable, and the flag the
+// interface gates its "take it over" affordance on says so on every read path.
+func TestAdoptClosesOnceInUse(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	svc.SetDiscoveryOwner("platform-admins")
+
+	if err := svc.EnsureDiscovered(ctx, []publications.DiscoveredChart{
+		{Project: "platform", Name: "ingress-gateway", Author: "Maintainer"},
+	}, "platform-admins", "network"); err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	found, err := st.GetPublicationByChart(ctx, "platform", "ingress-gateway")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nobody has done anything with it yet: adoptable, and read as such.
+	p, err := svc.Get(ctx, found.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Adoptable {
+		t.Fatal("a fresh find must be adoptable")
+	}
+
+	// The admin publishes a version of it themselves: the service is in the
+	// catalog now, and it belongs to whoever owns it.
+	a := admin()
+	if _, err := svc.SaveVersionView(ctx, a, p.ID, "1.0.0", viewV1); err != nil {
+		t.Fatalf("save view: %v", err)
+	}
+	if _, err := svc.SubmitVersion(ctx, a, p.ID, "1.0.0"); err != nil {
+		t.Fatalf("submit version: %v", err)
+	}
+	if _, err := svc.ApproveVersion(ctx, a, p.ID, "1.0.0"); err != nil {
+		t.Fatalf("approve version: %v", err)
+	}
+
+	p, err = svc.Get(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Adoptable {
+		t.Fatal("a published service must not read as adoptable")
+	}
+	if _, err := svc.Adopt(ctx, member("abc"), p.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "abc",
+	}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("adopt a published service: want conflict, got %v", err)
+	}
+	// The owner did not move.
+	p, err = svc.Get(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.OwnerTeam != "platform-admins" || p.CreatedBy != publications.DiscoveryActor {
+		t.Fatalf("owner changed: owner=%s created_by=%s", p.OwnerTeam, p.CreatedBy)
+	}
+
+	// The admin still names the owning team, which is the deliberate way out of
+	// the parking lot: the metadata FSM, approved by the admin themselves.
+	abc := "abc"
+	if _, err := svc.Update(ctx, a, p.ID, publications.UpdateInput{OwnerTeam: &abc}); err != nil {
+		t.Fatalf("admin proposes an owner: %v", err)
+	}
+	if _, err := svc.Submit(ctx, a, p.ID); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	p, err = svc.Approve(ctx, a, p.ID)
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if p.OwnerTeam != "abc" {
+		t.Fatalf("owner = %s, want abc", p.OwnerTeam)
+	}
+}
+
+// TestAdoptableFlagInList: the catalog reads publications through List, and the
+// flag has to be filled in there too - it is what the chart page gates on.
+func TestAdoptableFlagInList(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	svc.SetDiscoveryOwner("platform-admins")
+
+	if err := svc.EnsureDiscovered(ctx, []publications.DiscoveredChart{
+		{Project: "platform", Name: "redis"},
+	}, "platform-admins", "network"); err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if _, err := svc.Create(ctx, member("core"), publications.CreateInput{
+		ChartProject: "platform", ChartName: "pg", CategoryID: "network", OwnerTeam: "core",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pubs, err := svc.List(ctx, store.PublicationFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, p := range pubs {
+		got[p.ChartName] = p.Adoptable
+	}
+	if !got["redis"] {
+		t.Error("the unclaimed find must read as adoptable")
+	}
+	if got["pg"] {
+		t.Error("a chart somebody registered is never adoptable")
+	}
+}
