@@ -18,9 +18,10 @@ import {
 import { Link, useSearchParams } from "react-router-dom";
 import type { CatalogChart, Category } from "../api/types";
 import { isUnclaimed, publisherLabel } from "../api/types";
-import { CAPABILITIES } from "../app/capabilities";
 import { useCatalog } from "../app/CatalogContext";
+import { CAPABILITIES } from "../app/capabilities";
 import { useTeam } from "../app/TeamContext";
+import { useTeamLabel } from "../auth/UserContext";
 import { AddChartDialog } from "../components/AddChartDialog";
 import { categoryIcon, ProductIcon } from "../components/icons";
 import { Button, Card, OutageState, SkeletonCards } from "../components/ui";
@@ -45,6 +46,7 @@ function matchesQuery(c: CatalogChart, q: string): boolean {
 export function CatalogPage() {
   const { categories, charts, error, loading, reload } = useCatalog();
   const { team } = useTeam();
+  const teamLabel = useTeamLabel();
   // Search/filter state lives in the URL (?q=&cat=), so a filtered view can be
   // shared and survives navigation back to the catalog.
   const [params, setParams] = useSearchParams();
@@ -181,7 +183,7 @@ export function CatalogPage() {
           title="Каталог пуст"
           text={
             team
-              ? `Для группы ${team} пока нет доступных сервисов. Добавьте сервис из Harbor - или дождитесь, пока его опубликует владелец.`
+              ? `Для группы ${teamLabel(team)} пока нет доступных сервисов. Добавьте сервис из Harbor - или дождитесь, пока его опубликует владелец.`
               : "Добавьте сервис из Harbor через «Добавить сервис» - или включите автодискавери, и найденные чарты появятся здесь."
           }
         />
@@ -334,6 +336,7 @@ function ChartCard({
   muted?: boolean;
 }) {
   const pub = c.publication;
+  const teamLabel = useTeamLabel();
   const approved = isApprovedChart(c);
   const orderable = pub?.orderable_versions ?? [];
   // Approved charts show a snapshot (version + description + icon at approve time),
@@ -412,11 +415,11 @@ function ChartCard({
               name: the admin group it is parked on is bookkeeping, not an owner. */}
           {pub && !isUnclaimed(pub) && (
             <span
-              title={`Владелец: ${pub.owner_team}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
+              title={`Владелец: ${teamLabel(pub.owner_team)}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
               className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-brand-700"
             >
               <IconUsersGroup size={12} stroke={1.8} className="text-brand-400" aria-hidden />
-              {pub.owner_team}
+              {teamLabel(pub.owner_team)}
             </span>
           )}
           {c.allowed_teams && c.allowed_teams.length > 0 && (

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"console/pkg/models"
 )
 
 // The owner selector asks for the teams the portal knows. Only an admin may
@@ -54,5 +56,54 @@ func TestHTTPTeams(t *testing.T) {
 		if !found {
 			t.Fatalf("team %q missing from %v", want, got.Teams)
 		}
+	}
+}
+
+// The interface cannot name an owner it does not recognise as a group, so
+// /auth/me carries which groups grant a role. Without the wiring the field is
+// absent and every owner is printed as stored, which is what happens in tests
+// and in dev mode.
+func TestHTTPMeRoleGroups(t *testing.T) {
+	srv, _, _ := newServer(t)
+
+	var bare struct {
+		Role       string            `json:"role"`
+		RoleGroups map[string]string `json:"role_groups"`
+	}
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/auth/me", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("me: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &bare); err != nil {
+		t.Fatal(err)
+	}
+	if bare.Role != "admin" {
+		t.Fatalf("role = %q, want admin", bare.Role)
+	}
+	if len(bare.RoleGroups) != 0 {
+		t.Fatalf("nothing wired, want no role_groups, got %v", bare.RoleGroups)
+	}
+
+	srv.RoleGroups = map[string]models.Role{
+		"idp_ecpk_console/admin": models.RoleAdmin,
+		"console/support":        models.RoleSupport,
+	}
+	var wired struct {
+		RoleGroups map[string]string `json:"role_groups"`
+	}
+	rec = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, devReq("GET", "/api/v1/auth/me", "core", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("me: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &wired); err != nil {
+		t.Fatal(err)
+	}
+	// Everybody gets the map: an owner has to be named the same way whoever is
+	// looking at the catalog.
+	if wired.RoleGroups["idp_ecpk_console/admin"] != "admin" ||
+		wired.RoleGroups["console/support"] != "support" {
+		t.Fatalf("role_groups = %v", wired.RoleGroups)
 	}
 }

@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Where a service belongs to the platform team, the owner reads "Администратор
+  платформы" instead of the group path in the directory. The catalog, the chart
+  page, the approval cards and the admin tables all say it the same way, the way
+  the profile menu already did.
 - A platform admin can name the team that owns a service. "Владелец" on the
   management page offered only the teams the reader is in, and an admin is in
   none of them, so there was nothing to choose from. It now offers every team

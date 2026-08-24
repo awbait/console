@@ -10,7 +10,7 @@ import { isUnclaimed, publisherLabel } from "../api/types";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
-import { canModify, useUser } from "../auth/UserContext";
+import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Changelog, withContent } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
@@ -30,6 +30,7 @@ export function ChartDetailPage() {
   const { categories, charts: catalogCharts } = useCatalog();
   const { blockedReason } = usePlatformHealth();
   const { user } = useUser();
+  const teamLabel = useTeamLabel();
   const pub = findCatalogChart(catalogCharts, project, name)?.publication;
   // "Manage" for owners/admins; "Publish" (no publication yet) for any team
   // member (they pick the owner team at registration). A chart nobody owns yet
@@ -174,7 +175,7 @@ export function ChartDetailPage() {
               <Chip className="bg-brand-50 text-brand-700">
                 <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
                 <span className="text-brand-400">Владелец:</span>
-                {pub.owner_team}
+                {teamLabel(pub.owner_team)}
               </Chip>
             )}
             {pub?.created_by_name && (

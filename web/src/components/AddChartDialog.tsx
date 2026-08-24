@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { api, HttpError } from "../api/client";
 import type { ChartCheckResult } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
-import { useUser } from "../auth/UserContext";
+import { useTeamLabel, useUser } from "../auth/UserContext";
 import type { FieldKind } from "../form/fieldErrors";
 import { Button, Select, TextField } from "./ui";
 
@@ -40,6 +40,7 @@ export function AddChartDialog() {
   const [err, setErr] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [ownerTeam, setOwnerTeam] = useState<string | null>(user?.teams?.[0] ?? null);
+  const teamLabel = useTeamLabel();
   const [busy, setBusy] = useState(false);
   // Chart already published (409); instead of the form, offer to go to manage.
   const [conflict, setConflict] = useState(false);
@@ -214,7 +215,7 @@ export function AddChartDialog() {
                         isRequired
                         selectedKey={ownerTeam}
                         onSelectionChange={setOwnerTeam}
-                        options={teams.map((t) => ({ id: t, label: t }))}
+                        options={teams.map((t) => ({ id: t, label: teamLabel(t) }))}
                       />
                     ) : (
                       <TextField

@@ -7,6 +7,7 @@ import type { ChartPublication, PublicationVersion } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
 import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
+import { useTeamLabel } from "../auth/UserContext";
 import { FormErrors } from "./FormErrors";
 import { Button, Card, Chip, TextField } from "./ui";
 
@@ -118,6 +119,7 @@ function ProposalChip({ label, from, to }: { label: string; from: string; to: st
 export function PublicationReview({ pub, onReviewed }: { pub: ChartPublication; onReviewed: () => void }) {
   const { categories } = useCatalog();
   const { success } = useToast();
+  const teamLabel = useTeamLabel();
   const navigate = useNavigate();
   const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const [rejectComment, setRejectComment] = useState("");
@@ -128,7 +130,12 @@ export function PublicationReview({ pub, onReviewed }: { pub: ChartPublication; 
   const proposals: { label: string; from: string; to: string }[] = [];
   if (pub.draft_category_id)
     proposals.push({ label: "Категория", from: catLabel(pub.category_id), to: catLabel(pub.draft_category_id) });
-  if (pub.draft_owner_team) proposals.push({ label: "Владелец", from: pub.owner_team, to: pub.draft_owner_team });
+  if (pub.draft_owner_team)
+    proposals.push({
+      label: "Владелец",
+      from: teamLabel(pub.owner_team),
+      to: teamLabel(pub.draft_owner_team),
+    });
 
   async function onApprove() {
     setBusy("approve");

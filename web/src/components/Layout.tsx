@@ -41,6 +41,7 @@ import { api } from "../api/client";
 import type { CatalogChart } from "../api/types";
 import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
+import { ROLE_LABELS } from "../auth/roles";
 import { useUser } from "../auth/UserContext";
 import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { useAsync } from "../hooks/useAsync";
@@ -218,15 +219,6 @@ function NavSection({
     </div>
   );
 }
-
-// Human-readable role labels for the profile menu.
-const ROLE_LABELS: Record<string, string> = {
-  auditor: "Аудитор",
-  member: "Участник",
-  support: "Поддержка",
-  security: "Информационная безопасность",
-  admin: "Администратор платформы",
-};
 
 // From this width on there is room for the menu to stand open beside the page,
 // so the choice is the person's. Below it the page is what matters and the menu

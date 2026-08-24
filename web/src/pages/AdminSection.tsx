@@ -52,7 +52,7 @@ import type {
 } from "../api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
-import { useUser } from "../auth/UserContext";
+import { useTeamLabel, useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon, ProductIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
@@ -535,6 +535,7 @@ function QueueTable({ items }: { items: QueueItem[] }) {
 // QueueRow: one decision. The whole row navigates, like the orders table.
 function QueueRow({ item }: { item: QueueItem }) {
   const navigate = useNavigate();
+  const teamLabel = useTeamLabel();
   const p = item.pub;
   return (
     <Row
@@ -563,7 +564,7 @@ function QueueRow({ item }: { item: QueueItem }) {
           {p.chart_project}/{p.chart_name}
         </span>
       </Cell>
-      <Cell className="px-4 py-3 text-left text-slate-600">{p.owner_team}</Cell>
+      <Cell className="px-4 py-3 text-left text-slate-600">{teamLabel(p.owner_team)}</Cell>
       <Cell className="px-4 py-3 text-right text-slate-500">{waitedFor(item.since)}</Cell>
     </Row>
   );
@@ -574,6 +575,7 @@ function QueueRow({ item }: { item: QueueItem }) {
 function PublicationRow({ pub, onChanged }: { pub: ChartPublication; onChanged: () => void }) {
   const navigate = useNavigate();
   const { user } = useUser();
+  const teamLabel = useTeamLabel();
   const { charts, reload: reloadCatalog } = useCatalog();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -623,7 +625,7 @@ function PublicationRow({ pub, onChanged }: { pub: ChartPublication; onChanged: 
         <CategoryChip id={pub.category_id} />
       </Cell>
       <Cell className="hidden px-4 py-3 text-left text-slate-600 md:table-cell">
-        {pub.owner_team}
+        {teamLabel(pub.owner_team)}
       </Cell>
       {/* What a user can order right now. Empty means nothing is orderable yet,
           which "Согласовано" alone does not tell you: the metadata can be
@@ -755,6 +757,7 @@ function PublicationRowActions({
 // publications have nothing to decide, so it points to the manage page instead.
 export function AdminApprovalDetailPage() {
   const { project = "", name = "" } = useParams();
+  const teamLabel = useTeamLabel();
   const {
     data: pub,
     loading,
@@ -808,7 +811,7 @@ export function AdminApprovalDetailPage() {
           </p>
         </div>
         <Badge tone={st.tone}>{st.label}</Badge>
-        <Badge tone="brand">{pub.owner_team}</Badge>
+        <Badge tone="brand">{teamLabel(pub.owner_team)}</Badge>
       </div>
 
       {/* Metadata (category/owner) approval, if any. */}
