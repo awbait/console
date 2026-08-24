@@ -27,15 +27,74 @@ var orderStatuses = []models.RequestStatus{
 func (s *Server) RunMetricsRefresher(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	s.refreshOrderMetrics(ctx)
+	s.RefreshMetrics(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			s.refreshOrderMetrics(ctx)
+			s.RefreshMetrics(ctx)
 		}
 	}
+}
+
+// RefreshMetrics recomputes every gauge the portal derives from stored state,
+// once. The loop above is the only caller in production; it is exported so a
+// test can take one reading without starting a ticker.
+func (s *Server) RefreshMetrics(ctx context.Context) {
+	s.refreshOrderMetrics(ctx)
+	s.refreshActivityMetrics(ctx)
+}
+
+// actionWindow is how far back the actions gauge looks. A day: long enough that
+// a quiet morning does not read as a dead platform, short enough that the
+// number still means "lately".
+const actionWindow = 24 * time.Hour
+
+// refreshActivityMetrics counts the people using the portal and what they have
+// been doing. It also prunes presence: this loop is the only thing that runs on
+// its own, and the presence set is the only thing here that would otherwise
+// grow without bound.
+//
+// Names never reach the gauges - see internal/api/handlers_activity.go for why.
+func (s *Server) refreshActivityMetrics(ctx context.Context) {
+	if s.Activity == nil {
+		return
+	}
+	if err := s.Activity.Prune(ctx); err != nil {
+		s.logger().Warn("metrics: prune presence failed", "err", err)
+	}
+	ov, err := s.Activity.Overview(ctx)
+	if err != nil {
+		s.logger().Warn("metrics: activity overview failed", "err", err)
+		return
+	}
+	observability.SetUserCounts(map[string]int{
+		"known":      ov.Totals.Users,
+		"online":     ov.Totals.Online,
+		"active_24h": ov.Totals.Active24h,
+		"active_7d":  ov.Totals.Active7d,
+	})
+	teams := make(map[string]map[string]int, len(ov.Teams))
+	for _, t := range ov.Teams {
+		teams[t.Team] = map[string]int{
+			"member": t.Members, "online": t.Online, "active_24h": t.Active24h,
+		}
+	}
+	observability.SetTeamUserCounts(teams)
+
+	counts, err := s.Store.CountActivity(ctx, time.Now().Add(-actionWindow))
+	if err != nil {
+		s.logger().Warn("metrics: count activity failed", "err", err)
+		return
+	}
+	actions := make([]observability.ActionCount, 0, len(counts))
+	for _, c := range counts {
+		actions = append(actions, observability.ActionCount{
+			EventType: c.EventType, Team: c.Team, Count: c.Count,
+		})
+	}
+	observability.SetUserActionCounts("24h", actions)
 }
 
 // refreshOrderMetrics counts non-deleted-scoped orders by status across all

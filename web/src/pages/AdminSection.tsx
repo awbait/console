@@ -19,6 +19,7 @@ import {
   IconStack,
   IconTags,
   IconTrash,
+  IconUsers,
   IconX,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -69,7 +70,7 @@ const TONE = {
   slate: "bg-slate-100 text-slate-600",
   brand: "bg-brand-50 text-brand-700",
 } as const;
-type Tone = keyof typeof TONE;
+export type Tone = keyof typeof TONE;
 
 const STATUS_META: Record<PublicationStatus, { label: string; tone: Tone }> = {
   DRAFT: { label: "Черновик", tone: "slate" },
@@ -91,7 +92,11 @@ function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
   );
 }
 
-function StatCard({
+// StatCard is the section's one shape for a number worth looking at. Exported
+// because the activity page counts different things in the same row of cards,
+// and a second shape for the same job is how two admin pages stop looking like
+// one product.
+export function StatCard({
   label,
   value,
   tone,
@@ -170,23 +175,24 @@ export function AdminOverviewPage() {
   const drafts = all.filter((p) => effStatus(p) === "DRAFT" || effStatus(p) === "REJECTED").length;
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="flex flex-col">
-        <div className="mb-4 flex min-h-9 items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Администрирование платформы</h1>
-          <Chip className="bg-brand-50 text-brand-700">
-            <IconSettings size={13} stroke={1.8} className="text-brand-400" />
-            Admin
-          </Chip>
-        </div>
+    // Same shape as the rest of the admin section: the heading keeps its place
+    // and only the sections below it scroll.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-slate-900">Администрирование платформы</h1>
+        <Chip className="bg-brand-50 text-brand-700">
+          <IconSettings size={13} stroke={1.8} className="text-brand-400" />
+          Admin
+        </Chip>
+      </div>
 
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Ждут решения" value={queue.length} tone="amber" Icon={IconClock} />
           <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
           <StatCard label="Черновики" value={drafts} tone="slate" Icon={IconFileText} />
           <StatCard label="Всего публикаций" value={all.length} tone="brand" Icon={IconStack} />
         </div>
-      </section>
 
       <section className="flex flex-col">
         <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
@@ -219,6 +225,13 @@ export function AdminOverviewPage() {
             }
           />
           <QuickLink
+            to="/admin/users"
+            tone="emerald"
+            Icon={IconUsers}
+            title="Пользователи"
+            desc="кто пользуется порталом и что делает"
+          />
+          <QuickLink
             to="/admin/status"
             tone="brand"
             Icon={IconActivity}
@@ -234,6 +247,7 @@ export function AdminOverviewPage() {
           />
         </div>
       </section>
+      </div>
     </div>
   );
 }
@@ -919,8 +933,10 @@ export function AdminCategoriesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div>
+    // Same shape as the rest of the admin section: the heading keeps its place
+    // and only the list below it scrolls.
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="shrink-0">
         <h1 className="text-xl font-semibold">Категории каталога</h1>
         <p className="mt-1 text-sm text-slate-500">
           Перетаскивайте за ручку для порядка, кликните иконку чтобы сменить. Название и порядок
@@ -930,6 +946,7 @@ export function AdminCategoriesPage() {
 
       {err && <ErrorBox error={new Error(err)} />}
 
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
       <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
         {order.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-slate-500">Категорий нет. Добавьте первую ниже.</p>
@@ -963,6 +980,7 @@ export function AdminCategoriesPage() {
       </div>
 
       <AddCategory busy={busy} run={run} />
+      </div>
     </div>
   );
 }

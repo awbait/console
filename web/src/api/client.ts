@@ -1,6 +1,7 @@
 import { apiErrorText } from "./errorText";
 import type {
   AboutInfo,
+  ActivityFeed,
   ApiError,
   AppNotification,
   CatalogResponse,
@@ -19,6 +20,8 @@ import type {
   OrderRequest,
   PendingVersion,
   PlatformHealth,
+  PlatformOnline,
+  PlatformUsers,
   PublicationDetail,
   PublicationVersion,
   RequestDetail,
@@ -312,6 +315,27 @@ export const api = {
   testWebhookDelivery: () => req<DeliveryTest>("POST", "/status/checks/webhook-delivery"),
   // runtime configuration, read-only (admin)
   getConfig: () => req<ConfigResponse>("GET", "/config"),
+  // who uses the portal (admin). Three calls because they are read at three
+  // rhythms: the page loads once, "who is here now" keeps refreshing, and the
+  // feed is re-asked whenever it is narrowed to a team or a person.
+  getUsers: (signal?: AbortSignal) =>
+    req<PlatformUsers>("GET", "/admin/users", undefined, signal),
+  getOnline: (signal?: AbortSignal) =>
+    req<PlatformOnline>("GET", "/admin/users/online", undefined, signal),
+  // One page of the feed. `cursor` is the time of the last event already shown
+  // and `sort` says which end to read from.
+  getUserEvents: (
+    f: { actor?: string; team?: string; limit?: number; cursor?: string; sort?: string },
+    signal?: AbortSignal,
+  ) => {
+    const q = new URLSearchParams();
+    if (f.actor) q.set("actor", f.actor);
+    if (f.team) q.set("team", f.team);
+    if (f.limit) q.set("limit", String(f.limit));
+    if (f.cursor) q.set("cursor", f.cursor);
+    if (f.sort) q.set("sort", f.sort);
+    return req<ActivityFeed>("GET", `/admin/users/events?${q}`, undefined, signal);
+  },
   // What the portal can do right now. Answers without a session, so the sign-in
   // screen can ask it too.
   getPlatformHealth: (signal?: AbortSignal) =>

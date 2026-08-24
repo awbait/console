@@ -33,6 +33,22 @@ type NotificationFilter struct {
 	Limit  int
 }
 
+// ActivityFilter narrows the activity feed. Empty means the whole stream,
+// newest first: Actor scopes it to one person (their OIDC subject), Team to the
+// orders and publications one team owns.
+type ActivityFilter struct {
+	Actor string
+	Team  string
+	Limit int
+	// Cursor is where the previous page ended: the next page continues past it
+	// in whichever direction Oldest asks for. Zero starts from the beginning.
+	// A moment rather than an offset, so events arriving while somebody reads
+	// cannot shift the page under them into repeats or gaps.
+	Cursor time.Time
+	// Oldest reverses the order to earliest first.
+	Oldest bool
+}
+
 // PublicationFilter narrows ListPublications.
 type PublicationFilter struct {
 	Status models.PublicationStatus
@@ -92,6 +108,25 @@ type Store interface {
 	// after a restart and not again, so it costs a query per subject per
 	// process, and the answer may be gone once the retention sweep has taken it.
 	LatestNotification(ctx context.Context, subjectType, subjectID string) (*models.Notification, error)
+
+	// Platform users: the portal's own directory, built from who signs in.
+	// TouchUser creates the row on the first visit and refreshes name, teams,
+	// role and last_seen on the ones after, counting one visit per call. It is
+	// called at most once every few minutes per person (see internal/activity),
+	// never once per request.
+	TouchUser(ctx context.Context, u *models.PlatformUser) error
+	// ListUsers returns the whole directory, most recently seen first. No
+	// paging: it holds everyone who has ever signed in, which is the size of the
+	// company, and every reader of it (the activity page, the gauges) needs the
+	// totals anyway.
+	ListUsers(ctx context.Context) ([]*models.PlatformUser, error)
+	// ListActivity returns the newest events of both journals (orders and
+	// publications) as one stream, newest first. Only what people did: events
+	// the platform wrote by itself are left out (see models.IsSystemActor).
+	ListActivity(ctx context.Context, f ActivityFilter) ([]*models.ActivityEvent, error)
+	// CountActivity counts the same stream since a moment, grouped by event
+	// type and team. For the gauges, which need totals rather than rows.
+	CountActivity(ctx context.Context, since time.Time) ([]*models.ActivityCount, error)
 
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id

@@ -15,14 +15,17 @@ type entry struct {
 type Memory struct {
 	mu    sync.Mutex
 	items map[string]entry
-	now   func() time.Time
+	// presence sets, keyed the same way Redis keys its sorted sets: key ->
+	// member -> when it was last seen (see presence.go).
+	presence map[string]map[string]time.Time
+	now      func() time.Time
 }
 
 var _ Cache = (*Memory)(nil)
 
 // NewMemory returns an empty in-memory cache.
 func NewMemory() *Memory {
-	return &Memory{items: map[string]entry{}, now: time.Now}
+	return &Memory{items: map[string]entry{}, presence: map[string]map[string]time.Time{}, now: time.Now}
 }
 
 func (m *Memory) Get(ctx context.Context, key string) ([]byte, bool, error) {

@@ -11,21 +11,22 @@ import (
 
 // Memory is an in-memory Store for tests and local fakes-only runs.
 type Memory struct {
-	mu        sync.Mutex
-	requests  map[string]*models.Request
-	mrs       map[string]*models.RequestMR
-	events    []*models.RequestEvent
-	eventSeq  int64
-	categories map[string]*models.Category
-	pubs        map[string]*models.ChartPublication
-	pubVersions map[string]*models.PublicationVersion // keyed by version ID
-	pubEvents   []*models.PublicationEvent
-	pubEventSeq int64
+	mu            sync.Mutex
+	requests      map[string]*models.Request
+	mrs           map[string]*models.RequestMR
+	events        []*models.RequestEvent
+	eventSeq      int64
+	categories    map[string]*models.Category
+	pubs          map[string]*models.ChartPublication
+	pubVersions   map[string]*models.PublicationVersion // keyed by version ID
+	pubEvents     []*models.PublicationEvent
+	pubEventSeq   int64
+	users         map[string]*models.PlatformUser // sign-in directory, keyed by OIDC subject
 	notifications []*models.Notification
 	notifRead     map[string]map[string]bool // subject -> notification id -> read
 	notifCursor   map[string]time.Time       // subject -> "everything before this is read"
-	now       func() time.Time
-	lastStamp time.Time
+	now           func() time.Time
+	lastStamp     time.Time
 }
 
 var _ Store = (*Memory)(nil)
@@ -33,11 +34,12 @@ var _ Store = (*Memory)(nil)
 // NewMemory returns an empty in-memory store.
 func NewMemory() *Memory {
 	return &Memory{
-		requests:   map[string]*models.Request{},
-		mrs:        map[string]*models.RequestMR{},
+		requests:    map[string]*models.Request{},
+		mrs:         map[string]*models.RequestMR{},
 		categories:  map[string]*models.Category{},
 		pubs:        map[string]*models.ChartPublication{},
 		pubVersions: map[string]*models.PublicationVersion{},
+		users:       map[string]*models.PlatformUser{},
 		notifRead:   map[string]map[string]bool{},
 		notifCursor: map[string]time.Time{},
 		now:         time.Now,
@@ -434,7 +436,7 @@ func (m *Memory) Tx(ctx context.Context, fn func(Store) error) error {
 }
 
 func (m *Memory) Ping(ctx context.Context) error { return nil }
-func (m *Memory) Close()                          {}
+func (m *Memory) Close()                         {}
 
 func contains(s []string, v string) bool {
 	for _, x := range s {

@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"console/internal/activity"
 	"console/internal/argocd"
 	"console/internal/auth"
 	"console/internal/cache"
@@ -83,6 +84,11 @@ type Server struct {
 	// GitLab client and the hook manager both exist. Optional: nil answers 503.
 	TestWebhookDelivery func(context.Context) checks.DeliveryTest
 
+	// Activity records who uses the portal (presence in the cache, the sign-in
+	// directory in the store) and reads that back for the admin activity page.
+	// Optional: nil records nothing and answers 503 on those endpoints.
+	Activity *activity.Recorder
+
 	// Webhooks handles inbound upstream webhooks (GitLab MR, Harbor push). Routes
 	// register per-source only when that source's secret is set; nil omits them
 	// entirely (e.g. tests).
@@ -142,6 +148,12 @@ func (s *Server) Router() http.Handler {
 		// authenticated
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(s.Auth))
+			// Note that this person is around. After the authenticator, which is
+			// where the user comes from, and before everything else: the record is
+			// of a request arriving, not of it succeeding.
+			if s.Activity != nil {
+				r.Use(s.Activity.Middleware)
+			}
 
 			r.Get("/auth/me", s.handleMe)
 
@@ -158,6 +170,12 @@ func (s *Server) Router() http.Handler {
 			r.Post("/status/checks/webhook-delivery", s.handleTestWebhookDelivery)
 			// runtime configuration, read-only (admin)
 			r.Get("/config", s.handleConfig)
+			// who uses the portal (admin): the sign-in directory, the teams it
+			// adds up to, and what people have been doing. The trends themselves
+			// are in Grafana - see internal/api/handlers_users.go.
+			r.Get("/admin/users", s.handleUsers)
+			r.Get("/admin/users/online", s.handleUsersOnline)
+			r.Get("/admin/users/events", s.handleUserEvents)
 
 			// catalog
 			r.Get("/charts", s.handleListCharts)
