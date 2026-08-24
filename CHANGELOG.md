@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- A platform admin can name the team that owns a service. "Владелец" on the
+  management page offered only the teams the reader is in, and an admin is in
+  none of them, so there was nothing to choose from. It now offers every team
+  the portal knows.
+
+### Security
+- A service already in the catalog cannot be taken over by another team. A chart
+  the portal found in Harbor itself is offered for a team to take on, and that
+  offer used to stand even after the platform team had published the service.
+  It closes now as soon as a version of the service is approved.
+
 ## [0.8.0] - 2026-08-24
 
 A release about the portal watching itself: "Конфигурация" now checks every
@@ -65,19 +77,11 @@ the portal.
 - Every background loop on "Состояние платформы" is named in words, and says
   what stops happening if it fails. Two of them used to be shown as
   "chart-versions" and "notification-sweep".
-- A platform admin can name the team that owns a service. "Владелец" on the
-  management page offered only the teams the reader is in, and an admin is in
-  none of them, so there was nothing to choose from. It now offers every team
-  the portal knows.
 
 ### Security
 - A sign-in is accepted once. Returning to a used sign-in address with the back
   button no longer signs you in again, and the sign-in pages are no longer kept
   in caches.
-- A service already in the catalog cannot be taken over by another team. A chart
-  the portal found in Harbor itself is offered for a team to take on, and that
-  offer used to stand even after the platform team had published the service.
-  It closes now as soon as a version of the service is approved.
 
 ## [0.7.0] - 2026-08-21
 
