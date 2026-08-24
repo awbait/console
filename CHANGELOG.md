@@ -13,7 +13,7 @@ All notable changes to this project are documented in this file.
 ### Security
 - Only the owning team manages a service. Charts the portal found itself stayed
   open to any member of any team, who could also take such a service over.
-  Reported by the DBA team.
+  **Reported by:** DBA
 
 ## [0.8.0] - 2026-08-24
 
