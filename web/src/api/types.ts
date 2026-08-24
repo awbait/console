@@ -317,13 +317,19 @@ export function publisherLabel(createdBy: string): string {
   return createdBy === AUTO_DISCOVERY_ACTOR ? "Maintainer" : "Опубликовано";
 }
 
-// isUnclaimed reports whether a publication is still the one auto-discovery
-// created and nobody has taken over. Harbor knows nothing about teams, so such
-// a publication is parked on the admin group until someone adopts it - naming
-// that group as the owner would state something untrue, since the whole point
-// of the state is that it has no owner yet.
-export function isUnclaimed(pub: { created_by: string }): boolean {
-  return pub.created_by === AUTO_DISCOVERY_ACTOR;
+// isUnclaimed reports whether a publication has no owner yet: auto-discovery
+// found the chart and nobody has taken it over. Harbor knows nothing about
+// teams, so such a chart is parked on the admin group meanwhile - naming that
+// group as the owner would state something untrue, since the whole point of the
+// state is that it has no owner yet.
+//
+// The answer is the server's (`adoptable`), not a guess from created_by: that
+// field keeps saying "auto-discovery" for as long as the publication exists,
+// including long after the platform team has published the service and made it
+// orderable. Reading it as "up for grabs" is what let any team take over a
+// service that was already in the catalog.
+export function isUnclaimed(pub: { adoptable?: boolean }): boolean {
+  return !!pub.adoptable;
 }
 
 // Lightweight publication projection in the /catalog response (without view-document bodies).
@@ -334,6 +340,8 @@ export interface PublicationSummary {
   created_by: string;
   created_by_name: string;
   status: PublicationStatus;
+  // An ownerless find a team may still claim (see ChartPublication.adoptable).
+  adoptable: boolean;
   published: boolean; // has an active approved view
   has_order_view: boolean; // approved view contains views.order (order form)
   // "Blessed" chart version: the view is verified up to it - orders on a lower
@@ -454,6 +462,12 @@ export interface ChartPublication {
   // Prefer this for display/filtering; status stays the raw metadata FSM (used by
   // the metadata review flow). Absent on responses that do not compute it.
   effective_status?: PublicationStatus;
+  // A chart auto-discovery found that nobody owns yet and any team may take
+  // over. The server decides: it stops being true as soon as somebody claims
+  // the chart or a version of it is approved, and it is the only thing the
+  // interface may gate adoption on. created_by stays "auto-discovery" for the
+  // whole life of such a publication and says nothing about who owns it.
+  adoptable: boolean;
   // Unapproved metadata change: live category_id/owner_team change only on
   // approve, until then the proposed values live here (empty - no edits).
   draft_category_id?: string;

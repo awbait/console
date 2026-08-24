@@ -211,6 +211,12 @@ export const api = {
     req<Category>("PATCH", `/categories/${enc(c.id)}`, { label: c.label, sort: c.sort, icon: c.icon }),
   deleteCategory: (id: string) => req<void>("DELETE", `/categories/${enc(id)}`),
 
+  // Teams the portal has seen, for the owner selector. Admin only: everybody
+  // else may only hand a service to a team they are in, and the session already
+  // carries those.
+  listTeams: (signal?: AbortSignal) =>
+    req<{ teams: string[] | null }>("GET", "/teams", undefined, signal).then((r) => r.teams ?? []),
+
   // chart publications (metadata + view builder + approval)
   listPublications: (params?: Record<string, string>) =>
     req<ChartPublication[] | null>("GET", "/publications" + qs(params)).then((r) => r ?? []),

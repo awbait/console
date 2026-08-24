@@ -176,6 +176,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/admin/users", s.handleUsers)
 			r.Get("/admin/users/online", s.handleUsersOnline)
 			r.Get("/admin/users/events", s.handleUserEvents)
+			// The teams the portal has seen, for the owner selector (admin only).
+			r.Get("/teams", s.handleListTeams)
 
 			// catalog
 			r.Get("/charts", s.handleListCharts)

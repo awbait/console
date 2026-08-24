@@ -30,7 +30,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication, PublicationStatus, PublicationVersion } from "../api/types";
-import { AUTO_DISCOVERY_ACTOR, isUnclaimed, publisherLabel } from "../api/types";
+import { isUnclaimed, publisherLabel } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
@@ -210,11 +210,24 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
   );
 
   const isOwner = canModify(user, pub.owner_team);
-  // Unclaimed auto-discovered draft: a team member may adopt it (take over
-  // ownership). The server re-checks; created_by flips to the adopter on adopt,
-  // hiding the card afterwards.
-  const canAdopt =
-    !isOwner && pub.created_by === AUTO_DISCOVERY_ACTOR && (user?.teams?.length ?? 0) > 0;
+  const isAdmin = user?.role === "admin";
+  // The teams the portal knows, for the two controls that name a team the
+  // reader is not in: the admin's owner selector and the admin's assignment of
+  // an ownerless chart. Nobody else may name such a team, so nobody else asks.
+  const { data: knownTeams } = useAsync(
+    (signal) => (isAdmin ? api.listTeams(signal) : Promise.resolve<string[]>([])),
+    [isAdmin],
+    isAdmin ? qk.teams() : undefined,
+  );
+  // A chart nobody owns yet: a team member takes it over, and the admin names
+  // the team it goes to. The server decides which charts those are (adoptable)
+  // and re-checks on the call; created_by flips to the adopter, hiding the card
+  // afterwards.
+  const canAdopt = isUnclaimed(pub) && (isAdmin || (user?.teams?.length ?? 0) > 0);
+  // A team member takes the chart into their own team; the admin hands it to
+  // any of them. The parking group is in the admin's list too: a chart the
+  // platform team runs itself has an owner like every other.
+  const adoptTargets = isAdmin ? (knownTeams ?? []) : (user?.teams ?? []);
   // Metadata (category/owner) has its own publication-level approval FSM: it is
   // frozen only while the metadata change itself is under review.
   const metaPending = pub.status === "PENDING";
@@ -226,9 +239,18 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
 
   const catLabel = (id: string) => categories.find((c) => c.id === id)?.label ?? id;
   const categoryLabel = catLabel(pub.category_id);
+  // Who the service may be handed to: your own teams, and for an admin every
+  // team the portal knows. An admin is in no team of their own (the admin group
+  // is not a team), so without that list the selector had a single option -
+  // itself - and disappeared, leaving nobody who could name an owner.
   const ownerOptions = [
     ...new Set(
-      [...(user?.teams ?? []), pub.owner_team, pub.draft_owner_team].filter(Boolean) as string[],
+      [
+        ...(user?.teams ?? []),
+        ...(knownTeams ?? []),
+        pub.owner_team,
+        pub.draft_owner_team,
+      ].filter(Boolean) as string[],
     ),
   ];
   const recommended = pub.recommended_version ?? "";
@@ -332,7 +354,10 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
               {categoryLabel}
             </Chip>
           )}
-          {metaEditable && ownerOptions.length > 1 ? (
+          {/* A chart nobody owns yet is handed over by the card below, in one
+              step and without an approval round: naming its owner is not a
+              change to a service somebody runs. */}
+          {metaEditable && !isUnclaimed(pub) && ownerOptions.length > 1 ? (
             <ChipSelect
               label="Владелец"
               icon={<IconUsersGroup size={13} stroke={1.8} className="text-slate-400" />}
@@ -361,7 +386,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
         </div>
       </div>
 
-      {canAdopt && <AdoptCard pub={pub} onAdopted={reload} />}
+      {canAdopt && <AdoptCard pub={pub} teams={adoptTargets} onAdopted={reload} />}
 
       {/* Metadata (category/owner) change has its own approval flow. */}
       {metaPending ? (
@@ -443,13 +468,23 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
 // AdoptCard claims an unclaimed auto-discovered publication: the chart was
 // registered by the Harbor scan and has no real owner yet, any team member can
 // take it over by picking a category and their owner group.
-function AdoptCard({ pub, onAdopted }: { pub: ChartPublication; onAdopted: () => void }) {
+function AdoptCard({
+  pub,
+  teams,
+  onAdopted,
+}: {
+  pub: ChartPublication;
+  teams: string[];
+  onAdopted: () => void;
+}) {
   const { user } = useUser();
   const { categories, reload: reloadCatalog } = useCatalog();
   const { success, error } = useToast();
-  const teams = user?.teams ?? [];
+  // The admin hands the chart to somebody else, a team member takes it for
+  // themselves. Same call, and the difference is only in what the card says.
+  const assigning = user?.role === "admin";
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [ownerTeam, setOwnerTeam] = useState<string | null>(teams[0] ?? null);
+  const [ownerTeam, setOwnerTeam] = useState<string | null>(assigning ? null : (teams[0] ?? null));
   const [busy, setBusy] = useState(false);
 
   async function onAdopt() {
@@ -475,8 +510,9 @@ function AdoptCard({ pub, onAdopted }: { pub: ChartPublication; onAdopted: () =>
       <div>
         <h2 className="text-sm font-semibold text-slate-800">Чарт никем не сопровождается</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Публикация создана автоматически при сканировании Harbor. Возьмите чарт в работу: ваша
-          группа станет владельцем и сможет настраивать формы заказа и публиковать версии.
+          {assigning
+            ? "Портал нашёл этот чарт в Harbor сам, владельца у него пока нет. Назначьте группу: она сможет настраивать формы заказа и публиковать версии."
+            : "Публикация создана автоматически при сканировании Harbor. Возьмите чарт в работу: ваша группа станет владельцем и сможет настраивать формы заказа и публиковать версии."}
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -499,7 +535,7 @@ function AdoptCard({ pub, onAdopted }: { pub: ChartPublication; onAdopted: () =>
           />
         </div>
         <Button variant="primary" isDisabled={busy} onPress={onAdopt}>
-          Взять в работу
+          {assigning ? "Назначить владельца" : "Взять в работу"}
         </Button>
       </div>
     </Card>
