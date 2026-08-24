@@ -11,9 +11,9 @@ All notable changes to this project are documented in this file.
   the portal knows.
 
 ### Security
-- A service in the catalog cannot be taken over by another team. The portal
-  offered a chart it had found itself for a team to take on, even once the
-  service behind that chart was published. Found by the DBA team.
+- Only the owning team manages a service. Charts the portal found itself stayed
+  open to any member of any team, who could also take such a service over.
+  Reported by the DBA team.
 
 ## [0.8.0] - 2026-08-24
 
