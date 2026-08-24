@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-24
+
+A release about who owns a service: only the owning team manages it, a platform
+admin can name that team, and where the platform team owns a service the portal
+says so in words instead of a path out of the user directory.
+
 ### Fixed
 - Where a service belongs to the platform team, the owner reads "Администратор
   платформы" instead of the group path in the directory. The catalog, the chart
@@ -449,7 +455,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/awbait/console/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/awbait/console/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/awbait/console/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/awbait/console/compare/v0.5.0...v0.6.0
