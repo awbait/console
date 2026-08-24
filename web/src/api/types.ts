@@ -9,6 +9,11 @@ export interface User {
   name: string;
   teams: string[];
   role: Role;
+  // Groups that grant a role instead of being a team, and the role each of them
+  // grants. Such a group can own a service, and its path ("idp/console/admin")
+  // means nothing to a reader, so the portal names it by the role: see
+  // teamLabel in auth/roles.ts. Absent where nothing is configured.
+  role_groups?: Record<string, Role>;
 }
 
 export interface Chart {

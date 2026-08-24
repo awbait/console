@@ -283,6 +283,9 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
 		Activity: activityRec,
+		// Which groups grant a role rather than being a team. The interface
+		// names such an owner by its role instead of printing the group path.
+		RoleGroups: roleGroups(cfg),
 		// The loaded config backs the admin configuration page (read-only).
 		Config: cfg,
 		System: api.SystemInfo{
@@ -446,6 +449,30 @@ func (d discoveryReconciler) Reconcile(ctx context.Context) error {
 		refs = append(refs, publications.DiscoveredChart{Project: c.Project, Name: c.Name, Author: c.Author})
 	}
 	return d.pubs.EnsureDiscovered(ctx, refs, d.ownerTeam, d.categoryID)
+}
+
+// roleGroups maps every group that grants a role to that role. A group like
+// this is not a team: it never lands in anybody's team list, but it can own a
+// service, and the interface has to call such an owner by its role rather than
+// print the group path at a person who has never seen it.
+//
+// Built from the same configuration the roles themselves come from, so the two
+// cannot drift apart.
+func roleGroups(cfg *config.Config) map[string]models.Role {
+	out := map[string]models.Role{}
+	for _, g := range cfg.AdminGroups {
+		out[g] = models.RoleAdmin
+	}
+	for _, g := range cfg.SupportGroups {
+		out[g] = models.RoleSupport
+	}
+	for _, g := range cfg.SecurityGroups {
+		out[g] = models.RoleSecurity
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // backendName reports the effective backend for display on the status page:

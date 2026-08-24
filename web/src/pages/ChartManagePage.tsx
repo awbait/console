@@ -33,7 +33,7 @@ import type { ChartPublication, PublicationStatus, PublicationVersion } from "..
 import { isUnclaimed, publisherLabel } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
-import { canModify, useUser } from "../auth/UserContext";
+import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
@@ -126,6 +126,7 @@ function RegisterCard({
 
   const isAdmin = user?.role === "admin";
   const teams = user?.teams ?? [];
+  const teamLabel = useTeamLabel();
 
   async function onCreate() {
     if (!categoryId || !ownerTeam) {
@@ -171,7 +172,7 @@ function RegisterCard({
           isRequired
           selectedKey={ownerTeam}
           onSelectionChange={setOwnerTeam}
-          options={teams.map((t) => ({ id: t, label: t }))}
+          options={teams.map((t) => ({ id: t, label: teamLabel(t) }))}
         />
       ) : isAdmin ? (
         <TextField
@@ -211,6 +212,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
 
   const isOwner = canModify(user, pub.owner_team);
   const isAdmin = user?.role === "admin";
+  const teamLabel = useTeamLabel();
   // The teams the portal knows, for the two controls that name a team the
   // reader is not in: the admin's owner selector and the admin's assignment of
   // an ownerless chart. Nobody else may name such a team, so nobody else asks.
@@ -363,17 +365,21 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
               icon={<IconUsersGroup size={13} stroke={1.8} className="text-slate-400" />}
               value={pub.draft_owner_team || pub.owner_team}
               pending={!!pub.draft_owner_team}
-              options={ownerOptions.map((t) => ({ id: t, label: t }))}
+              options={ownerOptions.map((t) => ({ id: t, label: teamLabel(t) }))}
               onChange={(t) => onMetaChange({ owner_team: t })}
               info="Владелец изменится только после согласования"
             />
           ) : pub.draft_owner_team ? (
-            <ProposalChip label="Владелец" from={pub.owner_team} to={pub.draft_owner_team} />
+            <ProposalChip
+              label="Владелец"
+              from={teamLabel(pub.owner_team)}
+              to={teamLabel(pub.draft_owner_team)}
+            />
           ) : isUnclaimed(pub) ? null : ( // parked on the admin group, not owned
             <Chip className="bg-brand-50 text-brand-700">
               <IconUsersGroup size={13} stroke={1.8} className="text-brand-400" />
               <span className="text-brand-400">Владелец:</span>
-              {pub.owner_team}
+              {teamLabel(pub.owner_team)}
             </Chip>
           )}
           {pub.created_by_name && (
@@ -480,6 +486,7 @@ function AdoptCard({
   const { user } = useUser();
   const { categories, reload: reloadCatalog } = useCatalog();
   const { success, error } = useToast();
+  const teamLabel = useTeamLabel();
   // The admin hands the chart to somebody else, a team member takes it for
   // themselves. Same call, and the difference is only in what the card says.
   const assigning = user?.role === "admin";
@@ -497,7 +504,7 @@ function AdoptCard({
       await api.adoptPublication(pub.id, { category_id: categoryId, owner_team: ownerTeam });
       reloadCatalog();
       onAdopted();
-      success(`Чарт теперь сопровождает группа ${ownerTeam}`);
+      success(`Чарт теперь сопровождает группа ${teamLabel(ownerTeam)}`);
     } catch (e) {
       error(e instanceof HttpError ? e.message : (e as Error).message);
     } finally {
@@ -531,7 +538,7 @@ function AdoptCard({
             isRequired
             selectedKey={ownerTeam}
             onSelectionChange={setOwnerTeam}
-            options={teams.map((t) => ({ id: t, label: t }))}
+            options={teams.map((t) => ({ id: t, label: teamLabel(t) }))}
           />
         </div>
         <Button variant="primary" isDisabled={busy} onPress={onAdopt}>

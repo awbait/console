@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { api } from "../api/client";
-import { HttpError, setUnauthorizedHandler } from "../api/client";
+import { createContext, type ReactNode, useContext, useEffect } from "react";
+import { api, HttpError, setUnauthorizedHandler } from "../api/client";
 import type { User } from "../api/types";
 import { useAsync } from "../hooks/useAsync";
+import { labelFor } from "./roles";
 
 interface UserCtx {
   user: User | null;
@@ -40,6 +40,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       {children}
     </Ctx.Provider>
   );
+}
+
+// useTeamLabel gives the naming function bound to this session: call it for
+// every owning team the interface prints (see auth/roles.ts).
+export function useTeamLabel(): (team: string) => string {
+  const { user } = useContext(Ctx);
+  return labelFor(user);
 }
 
 export function useUser() {

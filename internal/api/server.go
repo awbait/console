@@ -22,6 +22,7 @@ import (
 	"console/internal/spa"
 	"console/internal/store"
 	"console/internal/webhooks"
+	"console/pkg/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -50,6 +51,13 @@ type Server struct {
 	// ArgoCDURL is the ArgoCD UI base (ARGOCD_URL); empty when not configured
 	// (e.g. fake mode). Used to build per-app deep links in the request detail.
 	ArgoCDURL string
+
+	// RoleGroups maps a group that grants a role (RBAC_ADMIN_GROUPS and its
+	// support/security counterparts) to that role, and travels to the SPA in
+	// GET /auth/me. Such a group is not a team, but it can own a service, so
+	// the interface has to know which owner names are groups to be called by
+	// their role. Optional: empty leaves every owner printed as stored.
+	RoleGroups map[string]models.Role
 
 	// Upstream ports + their configured modes, used by the system status page
 	// (GET /api/v1/status) to probe and report integration health.
@@ -332,6 +340,23 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
+// meResponse is the session, plus the one piece of configuration the interface
+// needs in order to name things: which groups grant a role rather than being a
+// team. A group like "idp_ecpk_console/admin" can own a service, and printing
+// its path tells the reader nothing - it is "Администратор платформы" they know
+// from the profile menu. What that reads as is the interface's business, so the
+// portal sends the role and the wording stays in the SPA.
+//
+// Empty when nothing is wired (tests, dev): the interface then prints the group
+// as it is, which is what it did before.
+type meResponse struct {
+	*models.User
+	RoleGroups map[string]models.Role `json:"role_groups,omitempty"`
+}
+
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, auth.UserFrom(r.Context()))
+	writeJSON(w, http.StatusOK, meResponse{
+		User:       auth.UserFrom(r.Context()),
+		RoleGroups: s.RoleGroups,
+	})
 }

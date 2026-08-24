@@ -23,6 +23,7 @@ import type { ChartPublication, ViewDocument } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
+import { useTeamLabel } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { ProductIcon } from "../components/icons";
@@ -89,6 +90,7 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
   const { success } = useToast();
   const { reload: reloadCatalog } = useCatalog();
+  const teamLabel = useTeamLabel();
   const navigate = useNavigate();
   const project = pub.chart_project;
   const name = pub.chart_name;
@@ -176,7 +178,7 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
             <IconPackage size={13} stroke={1.8} className="text-slate-400" /> {cur.status}
           </Chip>
         )}
-        <Chip className="bg-brand-50 text-brand-700">{pub.owner_team}</Chip>
+        <Chip className="bg-brand-50 text-brand-700">{teamLabel(pub.owner_team)}</Chip>
       </div>
 
       {!pending && (
