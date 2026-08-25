@@ -5,10 +5,9 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
-- The order form no longer shows fields that do not fit the values already
-  picked. A gateway entry point on TCP or UDP lost its "Домен" field: such an
-  entry point has no domain, and the cluster refused an order that carried one.
-  Which fields go away is the chart's own call.
+- The order form hides fields that do not fit the values already picked. A point
+  on TCP or UDP no longer has the "Домен" field: such a point has no domain, and
+  a filled one kept the gateway from rolling out.
 
 ## [0.8.1] - 2026-08-24
 
