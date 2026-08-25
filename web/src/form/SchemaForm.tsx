@@ -102,10 +102,11 @@ function walkErrors(
       ...conditionalRequired(s, (value as Values) ?? {}, root),
       ...(view?.required ?? []),
     ]);
+    const hidden = new Set<string>(conditionalHidden(s, (value as Values) ?? {}, root));
     for (const k of viewKeys(s, view)) {
       const childNode = view?.overrides?.[k] ? { ...s.properties[k], ...view.overrides[k] } : s.properties[k];
       const child = deref(childNode, root);
-      if (isHidden(child)) continue;
+      if (hidden.has(k) || isHidden(child)) continue;
       const cv = (value as Values)?.[k];
       const cpath = `${base}/${k}`;
       // A required field with a schema default/const isn't "missing input" - the
@@ -163,7 +164,8 @@ function viewKeys(schema: Schema, view?: View): string[] {
 // inputs. Supports: $ref/definitions, propertyOrder, ui:widget:"hidden",
 // objects, arrays (add/remove), oneOf (variant picker), additionalProperties
 // maps, enum/const, defaults and defaultSnippets. if/then is used to surface
-// conditional required fields (see conditionalRequired) but not otherwise
+// conditional required fields (see conditionalRequired) and to hide fields the
+// current value makes meaningless (see conditionalHidden), but not otherwise
 // enforced - the OrderPage offers a raw-YAML fallback for the rest.
 
 function resolvePointer(ref: string, root: Schema): Schema {
@@ -225,16 +227,33 @@ function ifMatches(ifSchema: Schema, value: Values, root: Schema): boolean {
   return true;
 }
 
-// conditionalRequired returns keys made required by satisfied if/then branches
-// (top-level and inside allOf) for the current value. Mirrors the chart schema's
-// conditional requirements (e.g. listener hostname/tlsMode for HTTPS/TLS).
-function conditionalRequired(schema: Schema, value: Values, root: Schema): string[] {
-  const out: string[] = [];
+// matchedThens returns the "then" schemas of the if/then branches (top-level and
+// inside allOf) whose condition holds for the current value.
+function matchedThens(schema: Schema, value: Values, root: Schema): Schema[] {
   const branches: Schema[] = [];
   if (schema.if) branches.push(schema);
   for (const a of (schema.allOf as Schema[]) ?? []) if (a.if) branches.push(a);
-  for (const b of branches) {
-    if (b.then?.required && ifMatches(b.if, value ?? {}, root)) out.push(...b.then.required);
+  return branches
+    .filter((b) => b.then && ifMatches(b.if, value ?? {}, root))
+    .map((b) => b.then as Schema);
+}
+
+// conditionalRequired returns keys made required by satisfied if/then branches
+// for the current value. Mirrors the chart schema's conditional requirements
+// (e.g. listener hostname/tlsMode for HTTPS/TLS).
+function conditionalRequired(schema: Schema, value: Values, root: Schema): string[] {
+  return matchedThens(schema, value, root).flatMap((t) => (t.required as string[]) ?? []);
+}
+
+// conditionalHidden returns keys the satisfied if/then branches mark hidden for
+// the current value, so a chart can drop a field that stops making sense (a TCP
+// entry point has no domain) without the portal knowing what the field means.
+function conditionalHidden(schema: Schema, value: Values, root: Schema): string[] {
+  const out: string[] = [];
+  for (const t of matchedThens(schema, value, root)) {
+    for (const [k, node] of Object.entries(t.properties ?? {})) {
+      if (isHidden(deref(node as Schema, root))) out.push(k);
+    }
   }
   return out;
 }
@@ -355,6 +374,9 @@ function ObjectFields({
     ...conditionalRequired(schema, value, root),
     ...(view?.required ?? []), // portal-side forced-required hint
   ]);
+  // Fields the current value hides (e.g. the domain of a TCP entry point):
+  // the chart marks them ui:widget "hidden" inside the matching if/then branch.
+  const hidden = new Set<string>(conditionalHidden(schema, value, root));
   const set = (k: string, v: unknown) => {
     if (v === undefined) {
       const { [k]: _drop, ...rest } = value;
@@ -374,7 +396,7 @@ function ObjectFields({
           : schema.properties[k];
         // Skip hidden fields here so their empty anchor wrapper doesn't add a
         // phantom gap (Field would render null for them anyway).
-        if (isHidden(deref(node, root))) return null;
+        if (hidden.has(k) || isHidden(deref(node, root))) return null;
         const childPath = `${path}/${k}`;
         return (
           // Anchor by path so the error summary can scroll to and focus this field;

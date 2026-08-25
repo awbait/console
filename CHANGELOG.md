@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- The order form hides fields that do not fit the values already picked. A point
+  on TCP or UDP no longer asks for a domain: it cannot have one, and a domain
+  filled in there kept the gateway from rolling out.
+
 ## [0.8.1] - 2026-08-24
 
 A release about who owns a service: only the owning team manages it, a platform
