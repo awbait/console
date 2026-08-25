@@ -6,8 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - The order form hides fields that do not fit the values already picked. A point
-  on TCP or UDP no longer has the "Домен" field: such a point has no domain, and
-  a filled one kept the gateway from rolling out.
+  on TCP or UDP no longer asks for a domain: it cannot have one, and a domain
+  filled in there kept the gateway from rolling out.
 
 ## [0.8.1] - 2026-08-24
 
