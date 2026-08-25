@@ -77,6 +77,19 @@ Write for the person using the product, in their language, in short finished
 sentences. Say what is different and, when it is not obvious, what it gives them
 or what to do about it.
 
+**An entry is at most three sentences, and every one of them has a job:**
+
+1. **What it is now.** Present tense, naming the place in the interface. Always
+   there.
+2. **What it was.** One short sentence, only where the change makes no sense
+   without it.
+3. **What to do.** A button to press, a setting to write. Only where something
+   is actually required of the reader.
+
+Nothing else belongs in an entry. Why we decided to do it, which layer changed,
+where the rule is now declared - that is written for us, and it is what turns a
+two-sentence entry into a six-sentence one.
+
 **Sentence length is the rule that matters most.** A changelog is skimmed, not
 read. An entry written as one flowing sentence with clauses hanging off it is
 the single most common way to make it unreadable, and it is what this section
@@ -94,7 +107,15 @@ exists to prevent.
   notifications arrive; after that a notification simply "arrives", it is not
   "written into the bell".
 - **One sentence, one thought, about 15 words.** Two thoughts are two sentences.
-- **At most three sentences per entry.** More than that means it is two entries.
+- **More than three sentences means it is two entries.** Split it, or drop what
+  the reader was never going to act on.
+- **"What it was" is about the product, not about the reader.** "People filled
+  it in anyway", "users kept getting confused" are guesses nobody checked. Say
+  what the portal or the cluster did: the field was shown for every protocol,
+  and a domain on TCP stopped the gateway from rolling out.
+- **No list of five things inside an entry.** Name the class of them - "the
+  token, the webhook, a Harbor or Argo CD project" - and let the page itself
+  show the rest.
 - **No parenthetical asides set off by dashes, and no semicolons.** If a clause
   needs punctuation to be squeezed in, it is a sentence of its own.
 - **Lead with what the reader sees now.** How it used to be comes after, in one
@@ -106,6 +127,10 @@ exists to prevent.
   icons stay on the same line".
 - No internal vocabulary: no function, file, package, table, flag or endpoint
   names, no ticket numbers, no branch or commit references.
+- **A term the reader meets is not internal vocabulary.** Protocols, namespace,
+  merge request, the name of an environment variable - keep them, spelling them
+  out costs the reader more than it saves. The line is whether the word lives
+  anywhere outside our code.
 - No implementation detail: the reader does not care which layer changed or how
   it was done, only what changed for them.
 - Be specific. "Bug fixes", "performance improvements" and "various
@@ -114,7 +139,8 @@ exists to prevent.
   developers; rewrite it.
 - Name the visible thing the way the interface names it. A setting the reader
   has to write themselves is part of that surface: name it exactly, the way it
-  is written in the configuration.
+  is written in the configuration. In a translated file this holds for the
+  translated wording, see **Translations**.
 
 | Instead of | Write |
 | --- | --- |
@@ -183,6 +209,12 @@ translated, and it is translated as product text, not word by word.
 
 Category names in Russian: Added - Добавлено, Changed - Изменено, Deprecated -
 Устарело, Removed - Удалено, Fixed - Исправлено, Security - Безопасность.
+
+**Each file is written in one language, all the way through.** Page, button and
+field names are translated with the rest of the entry, even where the interface
+itself is only in the other language. A quoted original dropped into the middle
+of a translated sentence makes the entry read as two languages at once, and the
+reader who needs the exact wording has the other file for it.
 
 ## This project
 
