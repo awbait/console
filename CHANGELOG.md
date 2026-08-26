@@ -8,6 +8,9 @@ All notable changes to this project are documented in this file.
 - The order form hides fields that do not fit the values already picked. A point
   on TCP or UDP no longer asks for a domain: it cannot have one, and a domain
   filled in there kept the gateway from rolling out.
+- A list in the order form names its choices. "Cluster" now reads "techsec-dev
+  (tco)" instead of "tco", and the meaning of the codes no longer sits in the
+  text under the field.
 
 ## [0.8.1] - 2026-08-24
 
