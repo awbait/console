@@ -478,7 +478,7 @@ function Field({
         hideLabel={hideLabel}
         selectedKey={value != null ? String(value) : (s.default != null ? String(s.default) : null)}
         onSelectionChange={(k) => change(coerceEnum(s.enum, k))}
-        options={s.enum.map((e: unknown) => ({ id: String(e), label: String(e) }))}
+        options={enumOptions(s)}
       />
     );
   }
@@ -544,6 +544,28 @@ function Field({
 function coerceEnum(values: unknown[], key: string): unknown {
   const match = values.find((v) => String(v) === key);
   return match ?? key;
+}
+
+// enumOptions names the choices of a list field. A chart may put an "enumNames"
+// array next to its "enum": same length, same order, one readable name per
+// value, so the person ordering sees "techsec-dev (tco)" instead of the bare
+// code the chart stores. The keyword is an extension of draft-07, described in
+// charts/CONVENTIONS.md.
+export function enumOptions(s: Schema): { id: string; label: string }[] {
+  return (s.enum as unknown[]).map((e, i) => ({ id: String(e), label: enumName(s, i) }));
+}
+
+// enumLabel names an already chosen value (a collapsed row shows it, not a list).
+export function enumLabel(s: Schema, value: unknown): string {
+  const i = Array.isArray(s.enum) ? s.enum.indexOf(value) : -1;
+  return i < 0 ? String(value) : enumName(s, i);
+}
+
+// A value the chart left unnamed - no enumNames at all, a list shorter than the
+// enum, an entry that is not a string - keeps showing its own code.
+function enumName(s: Schema, i: number): string {
+  const name = Array.isArray(s.enumNames) ? s.enumNames[i] : undefined;
+  return typeof name === "string" && name !== "" ? name : String(s.enum[i]);
 }
 
 // NumberInput is a filtered text input, not a native <input type="number">:
@@ -631,7 +653,7 @@ function summarize(schema: Schema, value: unknown, root: Schema): string {
     const val = v[k];
     if (val == null || val === "") continue;
     if (ps.enum || ps.type === "string" || ps.type === "number" || ps.type === "integer") {
-      parts.push(String(val));
+      parts.push(ps.enum ? enumLabel(ps, val) : String(val));
     } else if (ps.type === "array" && Array.isArray(val) && val.length) {
       parts.push(`${text(ps.title) ?? k}: ${val.length}`);
     }
