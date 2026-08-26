@@ -138,7 +138,12 @@ export function applyEnums(itemSchema: Schema, enums: EnumRule[] | undefined, fu
     const values = [...new Set(src.map((x) => x?.[rule.value]).filter((v) => v != null && v !== ""))];
     if (values.length === 0) continue;
     const node = schemaNodeAt(out, out, rule.at);
-    if (node) node.enum = values;
+    if (node) {
+      node.enum = values;
+      // The names the chart wrote belong to the enum it wrote: they name nothing
+      // in a list built from the order itself.
+      node.enumNames = undefined;
+    }
   }
   return out;
 }
