@@ -29,9 +29,10 @@ All notable changes to this project are documented in this file.
 - An order keeps working after its version leaves the catalog. Its page used to
   open without the product tabs, and saving the values was refused as an
   unavailable version.
-- A service whose edit was rejected can still be managed from the portal. The
-  order used to go to "Отклонён" for good: the service kept running, but nothing
-  could edit, upgrade or delete it any more. A rejected deletion did the same.
+- An edit closed in the team's repository instead of applied no longer takes the
+  service out of the portal's hands. The order used to go to "Отклонён" for
+  good: the service kept running, but nothing could edit, upgrade or delete it
+  any more. A closed deletion broke it the same way.
 - Orders already stuck in "Отклонён" that way are released on upgrade. The
   portal follows their service's state again and notices changes made to it
   outside the portal.
