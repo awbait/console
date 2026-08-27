@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-27
+
+A release about the order form: it asks only for what the values already picked
+allow, spells out the choices in its lists, and takes a service name written as
+a host address.
+
 ### Changed
 - The order form hides fields that do not fit the values already picked. A point
   on TCP or UDP no longer asks for a domain: it cannot have one, and a domain
@@ -467,7 +473,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/awbait/console/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/awbait/console/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/awbait/console/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/awbait/console/compare/v0.6.0...v0.7.0
