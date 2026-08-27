@@ -48,14 +48,14 @@ export function RequestDetailPage() {
   const { charts } = useCatalog();
   const toast = useToast();
   const { data, error, loading, reload } = useAsync(() => api.getRequest(id), [id]);
-  // The chart's approved view document drives the product tabs/actions. Loaded
-  // here (was inside the tabs) so ProductView stays presentational.
+  // The approved view document of the version this order runs drives the product
+  // tabs/actions. Loaded here (was inside the tabs) so ProductView stays
+  // presentational. Asked by order rather than by chart version: the chart route
+  // answers only for versions still on offer, and an order keeps running on a
+  // version long after it has left the catalog or been taken out of support.
   const { data: viewDoc } = useAsync<ViewDocument | null>(
-    () =>
-      data
-        ? api.getChartView(data.request.chart_project, data.request.chart_name, data.request.chart_version)
-        : Promise.resolve(null),
-    [data?.request.chart_project, data?.request.chart_name, data?.request.chart_version],
+    (signal) => (data ? api.getRequestView(id, signal) : Promise.resolve(null)),
+    [id, data?.request.chart_version],
   );
 
   const [editingName, setEditingName] = useState(false);

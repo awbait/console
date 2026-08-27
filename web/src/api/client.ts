@@ -299,6 +299,12 @@ export const api = {
     req<OrderRequest[]>("GET", "/requests" + qs(params), undefined, signal),
   getRequest: (id: string, signal?: AbortSignal) =>
     req<RequestDetail>("GET", `/requests/${enc(id)}`, undefined, signal),
+  // The view document of the version this order runs. Asked by order and not by
+  // chart version: the chart route serves order forms and answers only for
+  // versions still on offer, and an order outlives its version's place in the
+  // catalog.
+  getRequestView: (id: string, signal?: AbortSignal) =>
+    req<ViewDocument>("GET", `/requests/${enc(id)}/view`, undefined, signal),
   createRequest: (body: CreateOrderBody) => req<OrderRequest>("POST", "/requests", body),
   updateRequest: (id: string, body: UpdateOrderBody) =>
     req<OrderRequest>("PATCH", `/requests/${enc(id)}`, body),

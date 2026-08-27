@@ -601,6 +601,39 @@ func (s *Service) ActiveViewVersion(ctx context.Context, project, name, chartVer
 	return v.ApprovedViewJSON, nil
 }
 
+// PublishedViewVersion returns the approved view of one exact chart version,
+// whether or not it can still be ordered.
+//
+// It answers a different question from ActiveViewVersion, and the difference is
+// who is asking. A form is somebody choosing a version, so it may only be built
+// on a version that is on offer. An order is somebody who chose one already:
+// it stays on the version it was created with, and that version can later leave
+// the catalog or be taken out of support - which must not take the order's own
+// page down with it, since the service is still running and its parameters can
+// still be changed. Whether a version may be ordered is decided where orders
+// are made (provisioning), not by what a page is allowed to render.
+//
+// The registry is not consulted: the document is the portal's own, and an order
+// whose chart was deleted needs its page more than most.
+func (s *Service) PublishedViewVersion(ctx context.Context, project, name, chartVersion string) (json.RawMessage, error) {
+	p, err := s.store.GetPublicationByChart(ctx, project, name)
+	if err != nil {
+		return nil, err
+	}
+	versions, err := s.store.ListVersions(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range versions {
+		// An approved view is only ever written by an approval, so carrying one is
+		// what "this version was published once" means.
+		if v.ChartVersion == chartVersion && len(v.ApprovedViewJSON) > 0 {
+			return v.ApprovedViewJSON, nil
+		}
+	}
+	return nil, models.ErrNotFound
+}
+
 // resolveOrderableVersion picks the version to serve: the requested one if it is
 // orderable+APPROVED; otherwise (empty request) the recommended version, falling
 // back to the highest orderable+APPROVED version. Returns nil if none qualifies.

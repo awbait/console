@@ -234,6 +234,34 @@ func TestDeprecateTellsTheTeamsRunningIt(t *testing.T) {
 	}
 }
 
+// An order keeps its page after its version leaves support: the document that
+// page is built from is served by the version, not by the catalog.
+func TestDeprecatedVersionStillRendersItsOrder(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	owner := member("core")
+	p := newPub(t, svc, owner, "ingress-gateway")
+	publishVersion(t, svc, owner, p.ID, "1.0.0", viewV1)
+	publishVersion(t, svc, owner, p.ID, "2.0.0", viewV1)
+	if _, err := svc.DeprecateVersion(ctx, owner, p.ID, "1.0.0", ""); err != nil {
+		t.Fatalf("deprecate: %v", err)
+	}
+
+	// An order form may not open on it: choosing this version is over.
+	if _, err := svc.ActiveViewVersion(ctx, "platform", "ingress-gateway", "1.0.0"); !errors.Is(err, models.ErrNotFound) {
+		t.Fatalf("order form on a deprecated version: want ErrNotFound, got %v", err)
+	}
+	// The order that already runs it still gets its document.
+	view, err := svc.PublishedViewVersion(ctx, "platform", "ingress-gateway", "1.0.0")
+	if err != nil || len(view) == 0 {
+		t.Fatalf("the order's own view must survive deprecation: %v", err)
+	}
+	// A version nobody ever approved has no document to serve.
+	if _, err := svc.PublishedViewVersion(ctx, "platform", "ingress-gateway", "9.9.9"); !errors.Is(err, models.ErrNotFound) {
+		t.Fatalf("unknown version: want ErrNotFound, got %v", err)
+	}
+}
+
 // order files a live order of one chart version for a team.
 func order(t *testing.T, st *store.Memory, p *models.ChartPublication, version, team string, n int) {
 	t.Helper()

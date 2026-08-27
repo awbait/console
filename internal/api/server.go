@@ -239,6 +239,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/requests", s.handleCreateRequest)
 			r.Get("/requests/events", s.handleAllRequestEvents) // global stream for lists (static path wins over /{id})
 			r.Get("/requests/{id}", s.handleGetRequest)
+			// The view document of the version THIS order runs, which outlives the
+			// version's place in the catalog (see handleGetRequestView).
+			r.Get("/requests/{id}/view", s.handleGetRequestView)
 			r.Patch("/requests/{id}", s.handlePatchRequest)
 			r.Delete("/requests/{id}", s.handleDeleteRequest)
 			r.Post("/requests/{id}/rename", s.handleRenameRequest)
