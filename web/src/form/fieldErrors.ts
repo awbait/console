@@ -7,6 +7,7 @@
 export const fieldMsg = {
   required: "Обязательное поле.",
   charset: "Используйте строчные латинские буквы, цифры и дефис.",
+  charsetDots: "Используйте строчные латинские буквы, цифры, точку и дефис.",
   charsetFromLetter: "Используйте строчные латинские буквы, цифры и дефис, начиная с буквы.",
   edgeChars: "Первый и последний символ - буква или цифра.",
   firstLetter: "Первый символ - буква, последний - буква или цифра.",
@@ -40,6 +41,7 @@ export const fieldMsg = {
 // длиннее 63 символов." is already a statement.
 export const fieldHint = {
   charset: "Строчные латинские буквы, цифры и дефис.",
+  charsetDots: "Строчные латинские буквы, цифры, точка и дефис.",
   integer: "Целое число.",
   pathSlash: "Путь начинается с косой черты.",
 };
@@ -64,6 +66,12 @@ export function ruPlural(n: number, one: string, few: string, many: string): str
 // or trailing hyphen. Namespaces, workload names, service accounts and naming
 // tags all follow it.
 export const DNS_LABEL_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+// RFC 1123 DNS subdomain: labels as above, joined by dots. The name of a
+// Kubernetes object, which is what a service name becomes (the ArgoCD
+// application) and what a chart may name a thing after - the secret-store calls
+// a store after the vault it reads, vault.idp.ecpk.test-vault.
+export const DNS_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
 // FieldConstraints is the part of a chart's values.schema.json that says what
 // may be typed into a field.
@@ -91,6 +99,7 @@ export interface FieldRequirement {
 }
 
 const CHARSET_RE = /^[a-z0-9-]*$/;
+const DOTS_CHARSET_RE = /^[a-z0-9.-]*$/;
 const INTEGER_RE = /^-?\d+$/;
 // Like a DNS label, but the first character has to be a letter. Charts use it
 // for the tags that become the leading part of a resource name.
@@ -105,6 +114,15 @@ const charsetRule: FieldRequirement = {
   err: fieldMsg.charset,
 };
 const edgeRule: FieldRequirement = { text: fieldMsg.edgeChars, met: (v) => DNS_LABEL_RE.test(v) };
+const dotsCharsetRule: FieldRequirement = {
+  text: fieldHint.charsetDots,
+  met: (v) => DOTS_CHARSET_RE.test(v),
+  err: fieldMsg.charsetDots,
+};
+const subdomainEdgeRule: FieldRequirement = {
+  text: fieldMsg.edgeChars,
+  met: (v) => DNS_SUBDOMAIN_RE.test(v),
+};
 const firstLetterRule: FieldRequirement = {
   text: fieldMsg.firstLetter,
   met: (v) => LETTER_LABEL_RE.test(v),
@@ -138,6 +156,17 @@ const CHARSET_PATTERNS: { re: string; msg: string; rules: FieldRequirement[] }[]
   },
   { re: "^[a-z0-9-]+$", msg: fieldMsg.charset, rules: [charsetRule] },
   { re: "^[a-z0-9-]*$", msg: fieldMsg.charset, rules: [charsetRule] },
+  // DNS subdomain: the same label, and dots between labels.
+  {
+    re: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$",
+    msg: fieldMsg.charsetDots,
+    rules: [dotsCharsetRule, subdomainEdgeRule],
+  },
+  {
+    re: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+    msg: fieldMsg.charsetDots,
+    rules: [dotsCharsetRule, subdomainEdgeRule],
+  },
   // The same label, but starting with a letter.
   {
     re: "^[a-z]([a-z0-9-]*[a-z0-9])?$",
@@ -221,6 +250,24 @@ export function dnsLabelRequirements(maxLen = 63): FieldRequirement[] {
   ];
 }
 
+// dnsSubdomainError is dnsLabelError with dots allowed between labels.
+export function dnsSubdomainError(v: string, maxLen = 63): string | null {
+  if (!v) return null;
+  if (v.length > maxLen) return fieldMsg.maxLen(maxLen);
+  if (!DOTS_CHARSET_RE.test(v)) return fieldMsg.charsetDots;
+  if (!DNS_SUBDOMAIN_RE.test(v)) return fieldMsg.edgeChars;
+  return null;
+}
+
+// dnsSubdomainRequirements is dnsSubdomainError said forwards.
+export function dnsSubdomainRequirements(maxLen = 63): FieldRequirement[] {
+  return [
+    { text: fieldHint.charsetDots, met: (v) => DOTS_CHARSET_RE.test(v) },
+    { text: fieldMsg.edgeChars, met: (v) => DNS_SUBDOMAIN_RE.test(v) },
+    { text: fieldMsg.maxLen(maxLen), met: (v) => v.length <= maxLen },
+  ];
+}
+
 // FieldKind is the two halves of one rule set travelling together: what the
 // field says it takes, and what it says when the value is not that. A field
 // driven by a chart schema gets both from the schema; a field the portal writes
@@ -245,6 +292,13 @@ export const fieldKind = {
   dnsLabel: (maxLen = 63): FieldKind => ({
     requirements: dnsLabelRequirements(maxLen),
     error: (v) => dnsLabelError(v, maxLen),
+  }),
+
+  // RFC 1123 DNS subdomain: the service name, which may come from a chart field
+  // that names a Kubernetes object.
+  dnsSubdomain: (maxLen = 63): FieldKind => ({
+    requirements: dnsSubdomainRequirements(maxLen),
+    error: (v) => dnsSubdomainError(v, maxLen),
   }),
 
   // A whole number within bounds: ports, replica counts, sizes.

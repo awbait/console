@@ -80,7 +80,7 @@ export function OrderMetaCard({
           label="Service name"
           isRequired
           placeholder="payments-db"
-          kind={fieldKind.dnsLabel()}
+          kind={fieldKind.dnsSubdomain()}
           value={serviceName}
           onChange={onServiceName}
           errorText={showErrors && !serviceName ? fieldMsg.required : undefined}

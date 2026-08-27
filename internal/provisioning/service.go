@@ -29,7 +29,22 @@ import (
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 
+// serviceNameRe: a DNS subdomain, so dots are allowed. The service name is the
+// name of a Kubernetes object (the ArgoCD application) and a folder in the
+// GitOps repo, and both take a subdomain. It can also come from the chart
+// itself, when the version's view names an identity field, and a chart is free
+// to name a thing the way Kubernetes does: the secret-store calls a store after
+// the vault it reads, vault.idp.ecpk.test-vault. A namespace stays a plain
+// label - see validNamespace.
+var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+
 var allDigitsRe = regexp.MustCompile(`^[0-9]+$`)
+
+// validServiceName: DNS-1123 subdomain, capped at the length of a label so the
+// names it is built into (the application, the branch, the folder) stay short.
+func validServiceName(name string) bool {
+	return serviceNameRe.MatchString(name) && len(name) <= 63
+}
 
 // validNamespace: DNS-1123 label and not purely numeric (a numeric namespace
 // is almost certainly a typo, and some tools choke on such a name).
@@ -413,7 +428,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if !canProvision(u, in.Team) {
 		return nil, ErrForbidden
 	}
-	if !nameRe.MatchString(in.ServiceName) || len(in.ServiceName) > 63 {
+	if !validServiceName(in.ServiceName) {
 		return nil, &ValidationError{Message: MsgServiceName}
 	}
 	if in.Namespace != "" && !validNamespace(in.Namespace) {
@@ -543,7 +558,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if r.Status != models.StatusDraft {
 		return nil, &ValidationError{Message: MsgNotDraft}
 	}
-	if !nameRe.MatchString(r.ServiceName) || len(r.ServiceName) > 63 {
+	if !validServiceName(r.ServiceName) {
 		return nil, &ValidationError{Message: MsgServiceName}
 	}
 	var values map[string]any
@@ -689,7 +704,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		r.ChartVersion = in.Version
 	}
 	if in.ServiceName != "" && in.ServiceName != r.ServiceName {
-		if !nameRe.MatchString(in.ServiceName) || len(in.ServiceName) > 63 {
+		if !validServiceName(in.ServiceName) {
 			return nil, &ValidationError{Message: MsgServiceName}
 		}
 		r.ServiceName = in.ServiceName

@@ -181,6 +181,42 @@ func TestCreateNamespaceValidation(t *testing.T) {
 	}
 }
 
+// A service name may be a whole DNS subdomain: a chart can name the thing it
+// deploys after a host, and the version's view then makes that name the service
+// name (secret-store calls a store after its vault). A namespace still may not:
+// Kubernetes takes a label there.
+func TestCreateServiceNameSubdomain(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+
+	req, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "vault.idp.ecpk.test-vault", Namespace: "team-core",
+		Values: validValues(),
+	})
+	if err != nil || req.ServiceName != "vault.idp.ecpk.test-vault" {
+		t.Fatalf("dotted service name: err=%v name=%q", err, req.ServiceName)
+	}
+
+	var ve *provisioning.ValidationError
+	for _, name := range []string{"vault..bad", ".vault", "vault.", "Vault.Test"} {
+		if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+			ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+			Team: "core", ServiceName: name, Namespace: "team-core", Values: validValues(),
+		}); !errors.As(err, &ve) {
+			t.Fatalf("service name %q: want validation error, got %v", name, err)
+		}
+	}
+
+	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg2", Namespace: "team.core", Values: validValues(),
+	}); !errors.As(err, &ve) {
+		t.Fatalf("dotted namespace: want validation error, got %v", err)
+	}
+}
+
 func TestCreateConflict(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)

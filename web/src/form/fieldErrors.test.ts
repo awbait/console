@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import {
   dnsLabelError,
   dnsLabelRequirements,
+  dnsSubdomainError,
   fieldHint,
   fieldKind,
   fieldMsg,
@@ -263,5 +264,45 @@ describe("schemaViolationText", () => {
       expect(text).toMatch(/^[А-ЯЁ].*\.$/);
       expect(text).not.toMatch(/must be|length|pattern|schema|json/i);
     }
+  });
+});
+
+// A service name may be a whole DNS subdomain: a chart can name what it deploys
+// after a host, and the order takes that name. The label rules still hold
+// inside every part of it.
+describe("dnsSubdomainError", () => {
+  it("takes a dotted name", () => {
+    expect(dnsSubdomainError("vault.idp.ecpk.test-vault")).toBeNull();
+    expect(dnsSubdomainError("payments-db")).toBeNull();
+  });
+
+  it("names the character that does not belong", () => {
+    expect(dnsSubdomainError("Vault.Test")).toBe(fieldMsg.charsetDots);
+    expect(dnsSubdomainError("vault_test")).toBe(fieldMsg.charsetDots);
+  });
+
+  it("refuses an empty part and an edge dot", () => {
+    expect(dnsSubdomainError("vault..bad")).toBe(fieldMsg.edgeChars);
+    expect(dnsSubdomainError(".vault")).toBe(fieldMsg.edgeChars);
+    expect(dnsSubdomainError("vault.")).toBe(fieldMsg.edgeChars);
+  });
+
+  it("counts the whole name against the limit", () => {
+    expect(dnsSubdomainError("a".repeat(64))).toBe(fieldMsg.maxLen(63));
+  });
+});
+
+// The chart pattern behind a store name has to be one the portal can say in
+// words, or the field falls back to "Недопустимый формат."
+describe("patternError for a DNS subdomain", () => {
+  const pattern = "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$";
+
+  it("says what the value broke", () => {
+    expect(patternError(pattern, "Vault.Test")).toBe(fieldMsg.charsetDots);
+    expect(patternError(pattern, "vault..bad")).toBe(fieldMsg.edgeChars);
+  });
+
+  it("states the rule when no value is at hand", () => {
+    expect(patternError(pattern)).toBe(fieldMsg.charsetDots);
   });
 });
