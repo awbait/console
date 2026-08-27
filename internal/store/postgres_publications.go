@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -216,14 +217,16 @@ func (p *Postgres) ListPublicationEvents(ctx context.Context, publicationID stri
 // --- publication versions ---
 
 const pubVersionCols = `id, publication_id, chart_version, view_json, approved_view_json,
-	status, orderable, approved_description, approved_icon_url,
+	status, orderable, deprecated_at, deprecated_by, deprecation_note,
+	approved_description, approved_icon_url,
 	COALESCE(reviewed_by,''), COALESCE(review_comment,''), version, created_at, updated_at`
 
 func scanPublicationVersion(row pgx.Row) (*models.PublicationVersion, error) {
 	var v models.PublicationVersion
 	var view, approved []byte
 	err := row.Scan(&v.ID, &v.PublicationID, &v.ChartVersion, &view, &approved,
-		&v.Status, &v.Orderable, &v.ApprovedDescription, &v.ApprovedIconURL,
+		&v.Status, &v.Orderable, &v.DeprecatedAt, &v.DeprecatedBy, &v.DeprecationNote,
+		&v.ApprovedDescription, &v.ApprovedIconURL,
 		&v.ReviewedBy, &v.ReviewComment, &v.Version, &v.CreatedAt, &v.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, models.ErrNotFound
@@ -284,6 +287,27 @@ func (p *Postgres) UpsertVersion(ctx context.Context, v *models.PublicationVersi
 		return err
 	}
 	*v = *stored
+	return nil
+}
+
+// SetDeprecated: at non-nil takes the version out of support, nil puts it back
+// and clears the reason with it - a note left behind would be read as the reason
+// for the next removal. UpsertVersion does not touch these columns, so the view
+// document can be saved without anything here being restated.
+func (p *Postgres) SetDeprecated(ctx context.Context, versionID string, at *time.Time, by, note string) error {
+	if at == nil {
+		by, note = "", ""
+	}
+	tag, err := p.db.Exec(ctx,
+		`UPDATE publication_versions
+		 SET deprecated_at=$1, deprecated_by=$2, deprecation_note=$3, updated_at=NOW()
+		 WHERE id=$4`, at, by, note, versionID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return models.ErrNotFound
+	}
 	return nil
 }
 

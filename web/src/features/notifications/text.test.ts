@@ -85,6 +85,7 @@ describe("notificationText", () => {
       "version_submitted",
       "chart_discovered",
       "chart_version_missing",
+      "version_deprecated",
       "portal_updated",
     ];
     for (const kind of kinds) {
@@ -165,6 +166,43 @@ describe("what the platform team is told", () => {
     expect(notificationText(n)).toContain("waypoint");
     expect(notificationText(n)).toMatch(/владельц/i);
     expect(notificationLink(n)).toBe("/catalog/platform/waypoint/manage");
+  });
+});
+
+describe("a version taken out of support", () => {
+  const deprecated = (payload: Record<string, unknown>) =>
+    notification({
+      kind: "version_deprecated",
+      subject_type: "version",
+      subject_id: "pub-1/1.4.2",
+      level: "attention",
+      payload: {
+        chart_project: "platform",
+        chart_name: "ingress-gateway",
+        chart_version: "1.4.2",
+        ...payload,
+      },
+    });
+
+  test("says what happened, why, and where to go", () => {
+    expect(notificationText(deprecated({ move_to: "1.6.0", note: "не держим 1.x" }))).toBe(
+      "Версия 1.4.2 сервиса ingress-gateway снята с поддержки, перейдите на 1.6.0: не держим 1.x",
+    );
+  });
+
+  test("drops the halves it has nothing to say for", () => {
+    expect(notificationText(deprecated({}))).toBe(
+      "Версия 1.4.2 сервиса ingress-gateway снята с поддержки",
+    );
+    expect(notificationText(deprecated({ move_to: "1.6.0" }))).toBe(
+      "Версия 1.4.2 сервиса ingress-gateway снята с поддержки, перейдите на 1.6.0",
+    );
+  });
+
+  // It is addressed to the teams running the version, who do not manage the
+  // service: the page where its document is written is not theirs to open.
+  test("opens the service in the catalog, not its editor", () => {
+    expect(notificationLink(deprecated({}))).toBe("/catalog/platform/ingress-gateway");
   });
 });
 

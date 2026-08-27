@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"console/internal/auth"
 	"console/internal/catalog"
@@ -363,6 +365,39 @@ func (s *Server) handleSetVersionOrderable(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, v)
 }
 
+// deprecateReq carries the owner's reason. Optional: a version can simply be
+// old. It is trimmed and stored as written, and the interface quotes it.
+type deprecateReq struct {
+	Note string `json:"note"`
+}
+
+func (s *Server) handleDeprecateVersion(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	var body deprecateReq
+	// A reason is optional, so a body that is missing altogether is not an error
+	// - only one that is there and unreadable.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	v, err := s.Pubs.DeprecateVersion(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"), body.Note)
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (s *Server) handleUndeprecateVersion(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	v, err := s.Pubs.UndeprecateVersion(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
 type recommendedReq struct {
 	Version string `json:"version"`
 }
@@ -412,6 +447,12 @@ type publicationSummary struct {
 	// longer has, highest first. Nothing offers them; the owner and the admin see
 	// them so that "approved but not published" carries its reason.
 	GoneVersions []string `json:"gone_versions,omitempty"`
+	// DeprecatedVersions are versions the owner has taken out of support, highest
+	// first. Nothing offers them either; an order still running on one shows it,
+	// which is what makes "this version is no longer offered" explainable to the
+	// person running it rather than only to the owner. Each carries the date and
+	// the owner's reason, because that is what the order's page has to say.
+	DeprecatedVersions []deprecatedVersion `json:"deprecated_versions,omitempty"`
 	// ApprovedDescription is the chart description at approval time (the catalog
 	// shows this, not the live one from Harbor).
 	ApprovedDescription string `json:"approved_description,omitempty"`
@@ -437,19 +478,37 @@ type catalogChart struct {
 // registry has been taken into account (see publications.CatalogVersions).
 // A publication with nothing orderable reads as not published - there is
 // nothing behind the order button.
-func publicationSummaryFor(p *models.ChartPublication,
-	recommended *models.PublicationVersion, orderable, gone []string) *publicationSummary {
+// deprecatedVersion is one out-of-support version as the catalog reports it:
+// enough to write the sentence on an order that still runs it, without fetching
+// the publication's versions.
+type deprecatedVersion struct {
+	Version string     `json:"version"`
+	At      *time.Time `json:"at,omitempty"`
+	Note    string     `json:"note,omitempty"`
+}
 
+func publicationSummaryFor(p *models.ChartPublication, cv publications.CatalogView) *publicationSummary {
+	orderable := cv.Orderable
+	deprecated := make([]deprecatedVersion, 0, len(cv.Deprecated))
+	for _, v := range cv.Deprecated {
+		deprecated = append(deprecated, deprecatedVersion{
+			Version: v.ChartVersion, At: v.DeprecatedAt, Note: v.DeprecationNote,
+		})
+	}
+	if len(deprecated) == 0 {
+		deprecated = nil // omitempty
+	}
 	sum := &publicationSummary{
-		GoneVersions: gone,
-		ID:            p.ID,
-		CategoryID:    p.CategoryID,
-		OwnerTeam:     p.OwnerTeam,
-		CreatedBy:     p.CreatedBy,
-		CreatedByName: p.CreatedByName,
-		Status:        p.EffectiveStatus,
-		Adoptable:     p.Adoptable,
-		Published:     len(orderable) > 0,
+		GoneVersions:       cv.Gone,
+		DeprecatedVersions: deprecated,
+		ID:                 p.ID,
+		CategoryID:         p.CategoryID,
+		OwnerTeam:          p.OwnerTeam,
+		CreatedBy:          p.CreatedBy,
+		CreatedByName:      p.CreatedByName,
+		Status:             p.EffectiveStatus,
+		Adoptable:          p.Adoptable,
+		Published:          len(orderable) > 0,
 		// An orderable version always carries an approved view with an "order"
 		// form (submit/save enforce ValidateStructure), so any orderable version
 		// means the chart has an order form.
@@ -461,12 +520,12 @@ func publicationSummaryFor(p *models.ChartPublication,
 		// one, orders on a lower version can be upgraded.
 		sum.ApprovedViewVersion = orderable[0]
 	}
-	if recommended != nil {
+	if rec := cv.Recommended; rec != nil {
 		// The catalog card shows the default-served version's snapshots
 		// (description/icon at approve time), not the live Harbor data.
-		sum.RecommendedVersion = recommended.ChartVersion
-		sum.ApprovedDescription = recommended.ApprovedDescription
-		sum.ApprovedIconURL = recommended.ApprovedIconURL
+		sum.RecommendedVersion = rec.ChartVersion
+		sum.ApprovedDescription = rec.ApprovedDescription
+		sum.ApprovedIconURL = rec.ApprovedIconURL
 	}
 	return sum
 }
@@ -510,8 +569,8 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		if listed && versions == nil {
 			versions = []string{}
 		}
-		recommended, orderable, gone, _ := s.Pubs.CatalogVersions(ctx, p, versions)
-		byChart[p.ChartProject+"/"+p.ChartName] = publicationSummaryFor(p, recommended, orderable, gone)
+		cv, _ := s.Pubs.CatalogVersions(ctx, p, versions)
+		byChart[p.ChartProject+"/"+p.ChartName] = publicationSummaryFor(p, cv)
 	}
 	out := make([]catalogChart, 0, len(charts))
 	listed := make(map[string]bool, len(charts))
@@ -538,15 +597,15 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 			entry.Chart = *ch
 			// Now that the chart's versions are known, project the allowlist onto
 			// them, as the listed charts above already are.
-			if rec, orderable, gone, verr := s.Pubs.CatalogVersions(ctx, p, ch.Versions); verr == nil {
-				entry.Publication = publicationSummaryFor(p, rec, orderable, gone)
+			if cv, verr := s.Pubs.CatalogVersions(ctx, p, ch.Versions); verr == nil {
+				entry.Publication = publicationSummaryFor(p, cv)
 			}
 		} else {
 			entry.Missing = true
 			// The chart is gone: nothing of it can be ordered, whatever the
 			// allowlist still says.
-			if rec, orderable, gone, verr := s.Pubs.CatalogVersions(ctx, p, []string{}); verr == nil {
-				entry.Publication = publicationSummaryFor(p, rec, orderable, gone)
+			if cv, verr := s.Pubs.CatalogVersions(ctx, p, []string{}); verr == nil {
+				entry.Publication = publicationSummaryFor(p, cv)
 			}
 		}
 		out = append(out, entry)

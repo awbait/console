@@ -588,6 +588,10 @@ function PublicationRow({ pub, onChanged }: { pub: ChartPublication; onChanged: 
   // to an empty catalog column and looks like an oversight.
   const gone = catalogPub?.gone_versions ?? [];
   const orderable = catalogPub?.orderable_versions ?? [];
+  // Approved, not in the catalog, and this time on purpose: the owner took every
+  // version out of support. Same empty column as the case above, different
+  // reason, and only one of the two can be true at a glance.
+  const retired = catalogPub?.deprecated_versions ?? [];
   // Only the metadata decision is made from here. A version submission is
   // decided on its own page, where the document sits next to the form it
   // produces - deciding that from a row is what the queue used to ask for.
@@ -653,6 +657,16 @@ function PublicationRow({ pub, onChanged }: { pub: ChartPublication; onChanged: 
                 +{orderable.length - 1}
               </span>
             )}
+          </span>
+        ) : retired.length > 0 ? (
+          <span
+            className="inline-flex items-center gap-1.5"
+            title={`Владелец снял эти версии с поддержки: ${retired.map((d) => d.version).join(", ")}`}
+          >
+            <Chip className="bg-amber-50 font-mono text-amber-700">v{retired[0].version}</Chip>
+            <span className="text-xs text-amber-600">
+              снята с поддержки{retired.length > 1 ? ` +${retired.length - 1}` : ""}
+            </span>
           </span>
         ) : (
           <span className="text-slate-300">-</span>

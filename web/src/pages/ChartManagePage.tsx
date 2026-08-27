@@ -1,6 +1,7 @@
 import {
   IconAlertCircle,
   IconAlertTriangle,
+  IconArchive,
   IconArrowNarrowRight,
   IconArrowRight,
   IconCategory,
@@ -36,9 +37,11 @@ import { useToast } from "../app/ToastContext";
 import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
+import { dateInWords } from "../lib/time";
 
 export const STATUS_LABELS: Record<
   PublicationStatus,
@@ -52,16 +55,31 @@ export const STATUS_LABELS: Record<
 
 // Short availability/status hint for a version, used in the editor's version
 // switcher dropdown: "рекомендуемая, в каталоге" / "черновик" / "".
+//
+// A version out of support says only that: it is not in the catalog, cannot be
+// recommended and cannot be edited, so nothing else about it is worth the line.
 export function versionHint(
   v: string,
   row: PublicationVersion | null | undefined,
   recommended: string,
 ): string {
+  if (row?.deprecated_at) return "снята с поддержки";
   const parts: string[] = [];
   if (v === recommended) parts.push("рекомендуемая");
   if (row?.orderable) parts.push("в каталоге");
   else if (row) parts.push(STATUS_LABELS[row.status].label.toLowerCase());
   return parts.join(", ");
+}
+
+// What the chip and the banner say about a version out of support, in one
+// sentence: when it happened and, if the owner left one, why.
+export function deprecationText(row: {
+  deprecated_at?: string;
+  deprecation_note?: string;
+}): string {
+  const when = row.deprecated_at ? dateInWords(row.deprecated_at) : "";
+  const head = when ? `Снята с поддержки ${when}.` : "Снята с поддержки.";
+  return row.deprecation_note ? `${head} ${row.deprecation_note}` : head;
 }
 
 // Publication management overview: metadata (category, owner) + the versions
@@ -306,6 +324,35 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
     }
   }
 
+  // Taking a version out of support asks for a reason first, so the dialog holds
+  // which version it is about and what the owner typed.
+  const [deprecating, setDeprecating] = useState<PublicationVersion | null>(null);
+  const [note, setNote] = useState("");
+
+  async function onDeprecate(row: PublicationVersion, reason: string) {
+    await api.deprecateVersion(pub.id, row.chart_version, reason);
+    // Support also decides what is in the catalog and what is recommended, so
+    // both the versions and the publication are re-read.
+    reload();
+    reloadVersions();
+    reloadCatalog();
+    success(`Версия ${row.chart_version} снята с поддержки`);
+  }
+
+  async function onUndeprecate(row: PublicationVersion) {
+    setBusy(`support:${row.chart_version}`);
+    try {
+      await api.undeprecateVersion(pub.id, row.chart_version);
+      reloadVersions();
+      reloadCatalog();
+      success(`Версия ${row.chart_version} вернулась в работу`);
+    } catch (e) {
+      error(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function onSetRecommended(v: string) {
     setBusy(`recommend:${v}`);
     try {
@@ -447,6 +494,8 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
                   basePath={`/catalog/${project}/${name}/manage`}
                   onToggleOrderable={onToggleOrderable}
                   onSetRecommended={onSetRecommended}
+                  onDeprecate={setDeprecating}
+                  onUndeprecate={onUndeprecate}
                 />
               ))}
               {orphanRows.map((r) => (
@@ -461,12 +510,50 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
                   basePath={`/catalog/${project}/${name}/manage`}
                   onToggleOrderable={onToggleOrderable}
                   onSetRecommended={onSetRecommended}
+                  onDeprecate={setDeprecating}
+                  onUndeprecate={onUndeprecate}
                 />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* A version leaves support with a reason attached: it is what the teams
+          still running it are told, and what the chip explains months later. The
+          field is optional, because a version can simply be old. */}
+      <ConfirmDialog
+        isOpen={deprecating !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeprecating(null);
+            setNote("");
+          }
+        }}
+        title={`Снять версию ${deprecating?.chart_version ?? ""} с поддержки`}
+        confirmLabel="Снять с поддержки"
+        busyLabel="Снимаем…"
+        danger
+        message={
+          <div className="flex flex-col gap-3">
+            <p>
+              Версия уйдёт из каталога, заказать её будет нельзя. Уже созданные заказы продолжат
+              работать.
+            </p>
+            <TextField
+              label="Причина"
+              description="Её увидят команды, у которых есть заказы на этой версии."
+              value={note}
+              onChange={setNote}
+            />
+          </div>
+        }
+        onConfirm={() => {
+          const row = deprecating;
+          if (!row) return;
+          return onDeprecate(row, note.trim());
+        }}
+      />
     </div>
   );
 }
@@ -561,6 +648,8 @@ function VersionRow({
   basePath,
   onToggleOrderable,
   onSetRecommended,
+  onDeprecate,
+  onUndeprecate,
 }: {
   version: string;
   row: PublicationVersion | null;
@@ -571,15 +660,34 @@ function VersionRow({
   basePath: string;
   onToggleOrderable: (row: PublicationVersion) => void;
   onSetRecommended: (v: string) => void;
+  onDeprecate: (row: PublicationVersion) => void;
+  onUndeprecate: (row: PublicationVersion) => void;
 }) {
   const st = row ? STATUS_LABELS[row.status] : null;
+  // Out of support: the only thing left to offer is putting it back, so every
+  // other action goes away rather than answering with a refusal when pressed.
+  const deprecated = !!row?.deprecated_at;
   // A version the registry no longer has cannot be decided about: it is not
   // orderable whatever the row says, and the portal refuses changes to it until
   // it is back (the same rule is enforced on the server).
   const canToggleOrderable =
-    isOwner && !missing && !!row && row.status === "APPROVED" && !!row.approved_view_json;
+    isOwner &&
+    !missing &&
+    !deprecated &&
+    !!row &&
+    row.status === "APPROVED" &&
+    !!row.approved_view_json;
   const canRecommend =
-    isOwner && !missing && !!row && row.orderable && row.status === "APPROVED" && !recommended;
+    isOwner &&
+    !missing &&
+    !deprecated &&
+    !!row &&
+    row.orderable &&
+    row.status === "APPROVED" &&
+    !recommended;
+  // Only a version that was published at some point can be taken out of
+  // support: a draft nobody approved was never offered to anybody.
+  const canDeprecate = isOwner && !deprecated && !!row && !!row.approved_view_json;
 
   return (
     <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
@@ -591,6 +699,14 @@ function VersionRow({
               <IconTag size={12} stroke={2} />
               Рекомендуемая
             </Chip>
+          )}
+          {deprecated && row && (
+            <span title={deprecationText(row)}>
+              <Chip className="bg-amber-50 text-amber-700">
+                <IconArchive size={12} stroke={2} />
+                Снята с поддержки
+              </Chip>
+            </span>
           )}
           {missing && (
             <span title="Этой версии нет в реестре. Заказать её нельзя, изменить тоже - пока она не вернётся.">
@@ -639,11 +755,21 @@ function VersionRow({
               {row.orderable ? "Убрать из каталога" : "В каталог"}
             </RowAction>
           )}
+          {canDeprecate && row && (
+            <RowAction isDisabled={busy !== null} onPress={() => onDeprecate(row)}>
+              Снять с поддержки
+            </RowAction>
+          )}
+          {deprecated && isOwner && row && (
+            <RowAction isDisabled={busy !== null} onPress={() => onUndeprecate(row)}>
+              Вернуть в работу
+            </RowAction>
+          )}
           <Link
             to={`${basePath}/${encodeURIComponent(version)}`}
             className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 outline-none transition-colors hover:bg-brand-100 focus-visible:ring-2 focus-visible:ring-brand-500"
           >
-            {isOwner && !missing ? (row ? "Изменить" : "Настроить") : "Открыть"}
+            {isOwner && !missing && !deprecated ? (row ? "Изменить" : "Настроить") : "Открыть"}
             <IconArrowRight size={14} stroke={1.8} />
           </Link>
         </div>

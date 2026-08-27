@@ -228,6 +228,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/publications/{id}/versions/{version}/approve", s.handleApproveVersion) // admin
 			r.Post("/publications/{id}/versions/{version}/reject", s.handleRejectVersion)   // admin
 			r.Post("/publications/{id}/versions/{version}/orderable", s.handleSetVersionOrderable)
+			// Support: taking a version out of it is the owner's own decision, so it
+			// sits beside the allowlist rather than in the approval routes above.
+			r.Post("/publications/{id}/versions/{version}/deprecate", s.handleDeprecateVersion)
+			r.Post("/publications/{id}/versions/{version}/undeprecate", s.handleUndeprecateVersion)
 			r.Post("/publications/{id}/recommended", s.handleSetRecommendedVersion)
 
 			// requests
@@ -235,6 +239,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/requests", s.handleCreateRequest)
 			r.Get("/requests/events", s.handleAllRequestEvents) // global stream for lists (static path wins over /{id})
 			r.Get("/requests/{id}", s.handleGetRequest)
+			// The view document of the version THIS order runs, which outlives the
+			// version's place in the catalog (see handleGetRequestView).
+			r.Get("/requests/{id}/view", s.handleGetRequestView)
 			r.Patch("/requests/{id}", s.handlePatchRequest)
 			r.Delete("/requests/{id}", s.handleDeleteRequest)
 			r.Post("/requests/{id}/rename", s.handleRenameRequest)

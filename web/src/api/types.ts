@@ -337,6 +337,14 @@ export function isUnclaimed(pub: { adoptable?: boolean }): boolean {
   return !!pub.adoptable;
 }
 
+// One version out of support, as the catalog reports it: enough to word the
+// notice on an order still running it.
+export interface DeprecatedVersion {
+  version: string;
+  at?: string;
+  note?: string;
+}
+
 // Lightweight publication projection in the /catalog response (without view-document bodies).
 export interface PublicationSummary {
   id: string;
@@ -362,6 +370,11 @@ export interface PublicationSummary {
   // first. Nothing offers them: this is what makes "approved but not published"
   // explainable on the owner's and the admin's pages.
   gone_versions?: string[];
+  // Versions the owner has taken out of support, highest first. Nothing offers
+  // them either, but for a different reason and to a different audience: an
+  // order still running on one has to be able to say so, with the date and the
+  // owner's reason.
+  deprecated_versions?: DeprecatedVersion[];
   // Chart description at approval time (catalog shows this, not the live one).
   approved_description?: string;
   // Chart icon at approval time (catalog/profile show this, not the live one).
@@ -497,6 +510,13 @@ export interface PublicationVersion {
   approved_view_json?: ViewDocument | null; // approved view of this version
   status: PublicationStatus;
   orderable: boolean;
+  // When the owner took the version out of support, absent while it is still
+  // supported. Nothing about such a version can be changed and nothing new can
+  // be ordered from it, until it is put back. deprecated_by is the OIDC subject
+  // of whoever did it, deprecation_note their reason (may be empty).
+  deprecated_at?: string;
+  deprecated_by?: string;
+  deprecation_note?: string;
   approved_description?: string;
   approved_icon_url?: string;
   reviewed_by?: string;

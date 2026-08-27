@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -96,6 +97,37 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		"events":         evs,
 		"argocd_url":     s.argocdAppURL(req),
 	})
+}
+
+// handleGetRequestView returns the approved view document of the chart version
+// this order runs on. The order's own page is built from it: the product tabs,
+// the actions, the values editor.
+//
+// It goes by the order rather than by the chart (/charts/{project}/{name}/view)
+// because the two are asked by different people. That one serves order forms
+// and answers only for versions still on offer, which is what keeps a form from
+// opening on a version nobody may order. This one serves somebody who ordered
+// already: their version may since have left the catalog or been taken out of
+// support, and the order still runs and can still be changed.
+func (s *Server) handleGetRequestView(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	req, err := s.Prov.Get(r.Context(), u, chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	view, err := s.Pubs.PublishedViewVersion(r.Context(), req.ChartProject, req.ChartName, req.ChartVersion)
+	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not_found", "no approved view for chart")
+			return
+		}
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(view)
 }
 
 // argocdAppURL builds a deep link to the order's ArgoCD Application, or "" when

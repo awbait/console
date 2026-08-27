@@ -224,24 +224,37 @@ func (s *Service) orderView(ctx context.Context, chartProject, chartName, versio
 	return best.ApprovedViewJSON
 }
 
+// ensureDeployable rejects a version the registry no longer has. Everything
+// that will deploy a chart asks this, including a change to an order that is
+// staying on the version it already runs: the registry decides what exists, and
+// a version that is gone cannot be deployed - its schema is gone with it, so
+// accepting the change would also mean writing values nothing has checked.
+func (s *Service) ensureDeployable(ctx context.Context, chartProject, chartName, version string) error {
+	if version == "" {
+		return nil
+	}
+	if _, err := s.catalog.GetVersion(ctx, chartProject, chartName, version); err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			return &ValidationError{
+				Message: "версии " + version + " больше нет в реестре чартов. Выберите доступную версию сервиса.",
+			}
+		}
+		return fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
+	}
+	return nil
+}
+
 // ensureOrderable rejects an order whose version is not an orderable+APPROVED
 // version of the publication. Charts without a publication, or publications
 // with nothing published at all, are not restricted, so the guard only bites
 // once a service has at least one orderable version.
+//
+// It answers "may this version be chosen", so it belongs to the paths where a
+// version is being picked. An order that keeps the version it already has picks
+// nothing and asks ensureDeployable instead.
 func (s *Service) ensureOrderable(ctx context.Context, chartProject, chartName, version string) error {
-	// The registry decides what exists, this database only what is allowed. A
-	// version deleted from the registry cannot be deployed whatever the allowlist
-	// says, and its schema is gone with it - so accepting the change would also
-	// mean writing values nothing has checked.
-	if version != "" {
-		if _, err := s.catalog.GetVersion(ctx, chartProject, chartName, version); err != nil {
-			if errors.Is(err, models.ErrNotFound) {
-				return &ValidationError{
-					Message: "версии " + version + " больше нет в реестре чартов. Выберите доступную версию сервиса.",
-				}
-			}
-			return fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
-		}
+	if err := s.ensureDeployable(ctx, chartProject, chartName, version); err != nil {
+		return err
 	}
 	pub, err := s.store.GetPublicationByChart(ctx, chartProject, chartName)
 	if err != nil || pub == nil {
@@ -613,7 +626,16 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	if in.Version != "" {
 		version = in.Version
 	}
-	if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+	// Choosing a version and keeping the one you have are different questions,
+	// and only the first one the allowlist answers. A version can leave the
+	// catalog, or be taken out of support, long after somebody ordered it - and
+	// that must not freeze the values of what is already running on it. What
+	// still has to hold either way is that the registry has the chart.
+	if version != r.ChartVersion {
+		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+			return nil, err
+		}
+	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
 		return nil, err
 	}
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true)

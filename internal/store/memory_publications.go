@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"sort"
+	"time"
 
 	"console/pkg/models"
 )
@@ -210,6 +211,10 @@ func (m *Memory) UpsertVersion(ctx context.Context, v *models.PublicationVersion
 			v.Version = ex.Version + 1
 			v.CreatedAt = ex.CreatedAt
 			v.UpdatedAt = now
+			// Support is changed by SetDeprecated alone, so saving a view document
+			// carries it over rather than restating it. Postgres does the same by
+			// leaving those columns out of the upsert.
+			v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = ex.DeprecatedAt, ex.DeprecatedBy, ex.DeprecationNote
 			m.pubVersions[id] = clone(v)
 			return nil
 		}
@@ -233,6 +238,21 @@ func (m *Memory) SetOrderable(ctx context.Context, versionID string, orderable b
 		return models.ErrNotFound
 	}
 	v.Orderable = orderable
+	v.UpdatedAt = m.stamp()
+	return nil
+}
+
+func (m *Memory) SetDeprecated(ctx context.Context, versionID string, at *time.Time, by, note string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.pubVersions[versionID]
+	if !ok {
+		return models.ErrNotFound
+	}
+	if at == nil {
+		by, note = "", ""
+	}
+	v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = at, by, note
 	v.UpdatedAt = m.stamp()
 	return nil
 }

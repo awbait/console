@@ -154,6 +154,12 @@ type Store interface {
 	UpsertVersion(ctx context.Context, v *models.PublicationVersion) error
 	// SetOrderable flips a single version's allowlist flag without a version bump.
 	SetOrderable(ctx context.Context, versionID string, orderable bool) error
+	// SetDeprecated takes a version out of support (at non-nil, with who did it
+	// and why) or puts it back (at nil, which clears the reason too). No version
+	// bump, like SetOrderable: support is a flag beside the view document, not a
+	// change to it, and bumping the lock would make an editor open elsewhere
+	// lose unrelated work.
+	SetDeprecated(ctx context.Context, versionID string, at *time.Time, by, note string) error
 	// SetRecommended sets the publication's recommended_version (no version bump).
 	SetRecommended(ctx context.Context, publicationID, chartVersion string) error
 

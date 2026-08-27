@@ -92,6 +92,10 @@ type Notifier interface {
 	VersionSubmitted(ctx context.Context, st store.Store, p *models.ChartPublication, version string, u *models.User)
 	ChartDiscovered(ctx context.Context, st store.Store, p *models.ChartPublication)
 	ChartVersionMissing(ctx context.Context, st store.Store, p *models.ChartPublication, version string)
+	// VersionDeprecated: the owner took a version out of support. teams are the
+	// teams still running it - the only people this is news for. moveTo is the
+	// version the service recommends instead, empty when it has none left.
+	VersionDeprecated(ctx context.Context, st store.Store, p *models.ChartPublication, version, note, moveTo string, teams []string, u *models.User)
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
@@ -490,11 +494,11 @@ func (s *Service) notifyMissingVersions(ctx context.Context, p *models.ChartPubl
 	if len(inRegistry) == 0 {
 		return nil
 	}
-	_, _, gone, err := s.CatalogVersions(ctx, p, inRegistry)
+	cv, err := s.CatalogVersions(ctx, p, inRegistry)
 	if err != nil {
 		return err
 	}
-	for _, v := range gone {
+	for _, v := range cv.Gone {
 		s.notify.ChartVersionMissing(ctx, nil, p, v)
 	}
 	return nil

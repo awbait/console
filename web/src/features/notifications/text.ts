@@ -80,6 +80,17 @@ export function notificationText(n: AppNotification): string {
       const head = `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} отклонена`;
       return comment ? `${head}: ${comment}` : head;
     }
+    case "version_deprecated": {
+      const version = str(n, "chart_version");
+      const moveTo = str(n, "move_to");
+      const why = str(n, "note");
+      // Three things in one line, and each is dropped when there is nothing to
+      // say: what happened, why, and where to go. The reason is the owner's own
+      // sentence, so it keeps its punctuation and the line ends after it.
+      const head = `Версия ${version} сервиса ${str(n, "chart_name")} снята с поддержки`;
+      const where = moveTo ? `${head}, перейдите на ${moveTo}` : head;
+      return why ? `${where}: ${why}` : where;
+    }
     case "chart_version_missing":
       return `Версия ${str(n, "chart_version")} сервиса ${str(n, "chart_name")} пропала из реестра, заказать её больше нельзя`;
     case "version_submitted":
@@ -134,6 +145,16 @@ export function notificationLink(n: AppNotification): string | null {
   // увидел, и что с этим делать.
   if (n.kind === "config_check_failed" || n.kind === "config_check_recovered") {
     return "/admin/config";
+  }
+  // A version taken out of support leads to the service in the catalog, not to
+  // the version's own page: this one is addressed to the teams running it, who
+  // do not manage the service and have nothing to do on the page where its
+  // document is written. What they came for is the version to move to.
+  if (n.kind === "version_deprecated") {
+    const project = str(n, "chart_project");
+    const name = str(n, "chart_name");
+    if (!project || !name) return null;
+    return `/catalog/${enc(project)}/${enc(name)}`;
   }
   // A version waiting for approval leads to where the decision is made, not to
   // where the version is written: this one is addressed to admins, and their

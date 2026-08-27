@@ -9,6 +9,7 @@ export function fmtDateTime(iso: string): string {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+
 // fmtRelative renders a compact "X ago" label (abbreviations dodge RU plural
 // forms); falls back to the absolute date past a week. Full date belongs in a
 // title attribute beside it.
@@ -52,6 +53,16 @@ export function dayLabel(iso: string, now: number = Date.now()): string {
   const days = Math.round((startOf(new Date(now)) - startOf(d)) / 86_400_000);
   if (days === 0) return "Сегодня";
   if (days === 1) return "Вчера";
+  return dateInWords(iso, now);
+}
+
+// The day in words, inside a sentence: "20 августа", and with the year once it
+// is not this one. For things measured in days rather than minutes - a version
+// was taken out of support on a date, and the hour it happened at tells the
+// reader nothing. Unlike dayLabel it never says "Сегодня": that reads as a
+// label, and this goes mid-sentence.
+export function dateInWords(iso: string, now: number = Date.now()): string {
+  const d = new Date(iso);
   const date = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
   return d.getFullYear() === new Date(now).getFullYear() ? date : `${date} ${d.getFullYear()}`;
 }

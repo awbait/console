@@ -58,6 +58,9 @@ const (
 	NotifyOrderDeleteStalled = "order_delete_stalled"
 	// A published version the registry no longer has.
 	NotifyChartVersionMissing = "chart_version_missing"
+	// A version its owner has taken out of support: it can no longer be ordered,
+	// and whoever still runs it should move on.
+	NotifyVersionDeprecated = "version_deprecated"
 	// The portal itself.
 	NotifyPortalUpdated = "portal_updated"
 	// Something the portal is wired to broke on its own: a token that expired,

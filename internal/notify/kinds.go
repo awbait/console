@@ -235,6 +235,46 @@ func (s *Service) ChartVersionMissing(ctx context.Context, st store.Store, p *mo
 	}
 }
 
+// VersionDeprecated: the owner has taken a version out of support. It cannot be
+// ordered any more, and whoever is running it should move to another one.
+//
+// Addressed to the teams that actually have an order on that version, one
+// message each, rather than to the owning team or to everybody: the owner is
+// the one who just pressed the button, and a team that never ordered this
+// service can do nothing with the news. The teams are worked out by the
+// publications service, which is the side that can read the orders.
+//
+// The payload carries the owner's reason and the version to move to, because
+// both are the whole content of the message: "снята с поддержки" without
+// either leaves the reader with a question and nowhere to take it.
+func (s *Service) VersionDeprecated(ctx context.Context, st store.Store, p *models.ChartPublication, version, note, moveTo string, teams []string, u *models.User) {
+	payload := versionPayload(p, version, "")
+	if note != "" {
+		payload["note"] = note
+	}
+	if moveTo != "" {
+		payload["move_to"] = moveTo
+	}
+	for _, team := range teams {
+		s.Send(ctx, st, Notification{
+			Kind:        models.NotifyVersionDeprecated,
+			SubjectType: models.SubjectVersion,
+			SubjectID:   p.ID + "/" + version,
+			Audience:    models.AudienceTeam,
+			AudienceKey: team,
+			Actor:       actorSubject(u),
+			ActorName:   actorName(u),
+			Payload:     payload,
+			Level:       models.LevelAttention,
+			// One removal, one message per team. A version put back and taken out
+			// again is news again, and the key says so by carrying nothing that
+			// would survive the round trip - it is the removal that is unique here,
+			// not the version.
+			DedupKey: "",
+		})
+	}
+}
+
 // PortalUpdated: the portal itself is a new version. The deduplication key is
 // the version, so a restart is not news and a deployment is - including a
 // portal running in several copies, where whichever starts first writes it.

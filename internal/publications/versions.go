@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"console/internal/observability"
 	"console/internal/store"
@@ -54,6 +55,11 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 	v, err := s.getOrInitVersion(ctx, p, chartVersion)
 	if err != nil {
 		return nil, err
+	}
+	// This path does not go through loadManagedVersion (it creates the row when
+	// there is none), so it asks about support itself.
+	if v.Deprecated() {
+		return nil, errDeprecated(v)
 	}
 	if v.Status == models.PubPending {
 		return nil, ErrPendingLocked
@@ -150,6 +156,12 @@ func (s *Service) reviewVersion(ctx context.Context, u *models.User, pubID, char
 		if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
 			return nil, err
 		}
+	}
+	// Taking a version out of support withdraws it from review, so a deprecated
+	// version in the queue is a race with the owner rather than a decision left
+	// to make. Asked here because the review path loads the row itself.
+	if v.Deprecated() {
+		return nil, errDeprecated(v)
 	}
 	if v.Status != models.PubPending {
 		return nil, conflict("версия не находится на согласовании")
@@ -259,6 +271,9 @@ func (s *Service) SetRecommendedVersion(ctx context.Context, u *models.User, pub
 		if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
 			return err
 		}
+		if v.Deprecated() {
+			return errDeprecated(v)
+		}
 		if !v.Published() {
 			return conflict("рекомендуемой можно сделать только доступную для заказа версию")
 		}
@@ -271,6 +286,174 @@ func (s *Service) SetRecommendedVersion(ctx context.Context, u *models.User, pub
 		"publication_id", p.ID, "chart", p.ChartName, "chart_version", chartVersion, "actor", u.Subject)
 	observability.ObservePublicationVersionEvent("recommended")
 	return nil
+}
+
+// DeprecateVersion takes a version out of support: it leaves the catalog, gives
+// up the recommendation if it held it, and refuses every change until somebody
+// puts it back. Orders already running on it are untouched - deprecation closes
+// the door on new orders, it does not take a service down.
+//
+// note is the owner's reason, and it travels: it is in the journal, in the chip
+// on every page showing the version, and in the message the teams still running
+// it receive. Empty is allowed - a version can simply be old - but the sentence
+// those teams read is much better with it.
+//
+// Only a version that was published at some point can be taken out of support.
+// A draft nobody ever approved was never offered to anybody, so there is nothing
+// to withdraw: it is deleted or left alone, not deprecated.
+func (s *Service) DeprecateVersion(ctx context.Context, u *models.User, pubID, chartVersion, note string) (*models.PublicationVersion, error) {
+	p, v, err := s.loadVersionToManage(ctx, u, pubID, chartVersion)
+	if err != nil {
+		return nil, err
+	}
+	if v.Deprecated() {
+		return nil, conflict("Версия %s уже снята с поддержки.", chartVersion)
+	}
+	if len(v.ApprovedViewJSON) == 0 {
+		return nil, conflict("Снять с поддержки можно только версию, которая была согласована.")
+	}
+	note = strings.TrimSpace(note)
+
+	// A version waiting in the admin's queue leaves it in the same move. Without
+	// this the queue keeps offering a decision on something already buried, and
+	// approving it would put a deprecated version back in the catalog.
+	withdrawn := v.Status == models.PubPending
+	// The mark, the catalog flag, the review status and the recommendation are
+	// one decision and are written as one: a failure halfway through must not
+	// leave a version that is out of the catalog but not out of support, or the
+	// service recommending something nobody can order.
+	at := time.Now()
+	clearRecommended := p.RecommendedVersion == chartVersion
+	if err := s.store.Tx(ctx, func(tx store.Store) error {
+		if withdrawn {
+			v.Status = models.PubDraft
+			if err := tx.UpsertVersion(ctx, v); err != nil {
+				return err
+			}
+		}
+		if v.Orderable {
+			if err := tx.SetOrderable(ctx, v.ID, false); err != nil {
+				return err
+			}
+			v.Orderable = false
+		}
+		if err := tx.SetDeprecated(ctx, v.ID, &at, u.Subject, note); err != nil {
+			return err
+		}
+		// The owner's explicit pick is cleared rather than moved: with it empty
+		// the recommendation falls to the highest orderable version by the rule
+		// in models.ChartPublication, which is the same answer and one that stays
+		// right as versions come and go.
+		if clearRecommended {
+			if err := tx.SetRecommended(ctx, p.ID, ""); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = &at, u.Subject, note
+	if clearRecommended {
+		p.RecommendedVersion = ""
+	}
+
+	payload := map[string]any{"chart_version": chartVersion}
+	if note != "" {
+		payload["note"] = note
+	}
+	if withdrawn {
+		payload["withdrawn"] = true // it was in the approval queue
+	}
+	s.addEvent(ctx, p.ID, u, "version_deprecated", "", "", payload)
+	s.logger().Info("publication version deprecated",
+		"publication_id", p.ID, "chart", p.ChartName, "chart_version", chartVersion,
+		"actor", u.Subject)
+	observability.ObservePublicationVersionEvent("deprecated")
+	s.notifyDeprecated(ctx, p, v, u)
+	return v, nil
+}
+
+// UndeprecateVersion puts a version back in support. The approval status it had
+// is what it goes back to - deprecation only ever moved it out of the review
+// queue, and that move cannot be undone by guessing. It does not go back into
+// the catalog by itself either: offering a version again is a decision, and the
+// owner makes it with the catalog switch.
+func (s *Service) UndeprecateVersion(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.PublicationVersion, error) {
+	p, v, err := s.loadVersionToManage(ctx, u, pubID, chartVersion)
+	if err != nil {
+		return nil, err
+	}
+	if !v.Deprecated() {
+		return nil, conflict("Версия %s и так на поддержке.", chartVersion)
+	}
+	if err := s.store.SetDeprecated(ctx, v.ID, nil, "", ""); err != nil {
+		return nil, err
+	}
+	v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = nil, "", ""
+	s.addEvent(ctx, p.ID, u, "version_undeprecated", "", "", map[string]any{"chart_version": chartVersion})
+	s.logger().Info("publication version undeprecated",
+		"publication_id", p.ID, "chart", p.ChartName, "chart_version", chartVersion,
+		"actor", u.Subject)
+	observability.ObservePublicationVersionEvent("undeprecated")
+	return v, nil
+}
+
+// notifyDeprecated tells the teams still running the version that it is out of
+// support, and what to move to. Addressed by who has an order on it rather than
+// to everybody: a team that never ordered this service cannot act on the news,
+// and a bell that rings for them is a bell they learn to ignore.
+//
+// Best effort throughout: a version leaves support whether or not the message
+// goes out, so a failure to work out the audience is logged and dropped.
+func (s *Service) notifyDeprecated(ctx context.Context, p *models.ChartPublication, v *models.PublicationVersion, u *models.User) {
+	if s.notify == nil {
+		return
+	}
+	teams, err := s.teamsRunning(ctx, p, v.ChartVersion)
+	if err != nil {
+		s.logger().Warn("deprecation audience", "publication_id", p.ID,
+			"chart", p.ChartName, "chart_version", v.ChartVersion, "err", err)
+		return
+	}
+	if len(teams) == 0 {
+		return // nobody is running it, so there is nobody to tell
+	}
+	// Where to go instead: whatever the service recommends now, worked out after
+	// the version left the catalog. Empty when the service has nothing orderable
+	// left, and the message then simply does not name a replacement.
+	moveTo := ""
+	if versions, err := s.store.ListVersions(ctx, p.ID); err == nil {
+		if next := resolveOrderableVersion(p, versions, ""); next != nil {
+			moveTo = next.ChartVersion
+		}
+	}
+	s.notify.VersionDeprecated(ctx, nil, p, v.ChartVersion, v.DeprecationNote, moveTo, teams, u)
+}
+
+// teamsRunning lists the teams holding a live order on one version of a chart,
+// in a stable order.
+func (s *Service) teamsRunning(ctx context.Context, p *models.ChartPublication, chartVersion string) ([]string, error) {
+	// Admin: the audience is every team that ordered it, not the teams of
+	// whoever pressed the button.
+	orders, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true, Chart: p.ChartName})
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var teams []string
+	for _, r := range orders {
+		if r.ChartProject != p.ChartProject || r.ChartVersion != chartVersion || r.Team == "" {
+			continue
+		}
+		if seen[r.Team] {
+			continue
+		}
+		seen[r.Team] = true
+		teams = append(teams, r.Team)
+	}
+	sort.Strings(teams)
+	return teams, nil
 }
 
 // PendingVersion is a version awaiting review together with its publication.
@@ -302,6 +485,12 @@ func (s *Service) PendingVersions(ctx context.Context) ([]PendingVersion, error)
 			if v.Status != models.PubPending {
 				continue
 			}
+			// Deprecation withdraws a version from review, so this cannot normally
+			// happen - but the queue is what an admin acts on, and it must never
+			// offer a decision that the version's own routes would refuse.
+			if v.Deprecated() {
+				continue
+			}
 			if known && !present[v.ChartVersion] {
 				continue
 			}
@@ -322,31 +511,55 @@ func (s *Service) ValidateVersionView(ctx context.Context, pubID, chartVersion s
 	return s.validateVersionView(ctx, p, chartVersion, view), nil
 }
 
-// CatalogVersions projects a publication's versions for the catalog: the
-// resolved recommended (default-served) version row - its description/icon
-// snapshots feed the catalog card - and the list of all orderable+APPROVED
-// versions, highest first (for the "+N" chip and tooltip). recommended is nil
-// and orderable empty when the publication has no orderable versions yet.
+// CatalogView is what the catalog needs to know about a publication's versions.
+type CatalogView struct {
+	// Recommended is the version served by default - its description/icon
+	// snapshots feed the catalog card. Nil when nothing is orderable yet.
+	Recommended *models.PublicationVersion
+	// Orderable is every orderable+APPROVED version, highest first (the card's
+	// main chip and its "+N").
+	Orderable []string
+	// Gone names the versions a person did approve for the catalog that the
+	// registry has since lost. They are not orderable; the owner and the admin
+	// need them said out loud, or a service whose version was deleted is
+	// indistinguishable from one nobody has published yet.
+	Gone []string
+	// Deprecated is the versions the owner has taken out of support, highest
+	// first. Nothing offers them either, but for a different reason and to a
+	// different audience: somebody may still be running one, and the interface
+	// has to be able to say so on their order - with the date and the reason,
+	// which is why these are the rows and not just the numbers.
+	Deprecated []*models.PublicationVersion
+}
+
+// CatalogVersions projects a publication's versions for the catalog.
 // inRegistry lists the chart versions the registry currently holds, so a
 // version the allowlist still names but the registry has lost is not offered.
 // Pass nil when that is not known (a registry outage) and the allowlist is used
 // as it stands.
-// The third result names the versions a person did approve for the catalog that
-// the registry has since lost. They are not orderable; the owner and the admin
-// need them said out loud, or a service whose version was deleted is
-// indistinguishable from one nobody has published yet.
-func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublication, inRegistry []string) (recommended *models.PublicationVersion, orderable, gone []string, err error) {
+func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublication, inRegistry []string) (CatalogView, error) {
 	versions, err := s.store.ListVersions(ctx, p.ID)
 	if err != nil {
-		return nil, nil, nil, err
+		return CatalogView{}, err
 	}
+	var out CatalogView
 	present := presentSet(inRegistry)
 	for _, v := range versions {
 		if v.Published() && present != nil && !present[v.ChartVersion] {
-			gone = append(gone, v.ChartVersion)
+			out.Gone = append(out.Gone, v.ChartVersion)
+		}
+		// Support is the owner's word about the version, so it is reported
+		// whatever the registry currently holds.
+		if v.Deprecated() {
+			out.Deprecated = append(out.Deprecated, v)
 		}
 	}
-	sort.Slice(gone, func(i, j int) bool { return models.CompareChartVersions(gone[i], gone[j]) > 0 })
+	sort.Slice(out.Gone, func(i, j int) bool {
+		return models.CompareChartVersions(out.Gone[i], out.Gone[j]) > 0
+	})
+	sort.Slice(out.Deprecated, func(i, j int) bool {
+		return models.CompareChartVersions(out.Deprecated[i].ChartVersion, out.Deprecated[j].ChartVersion) > 0
+	})
 	versions = availableVersions(versions, present)
 	pub := make([]*models.PublicationVersion, 0, len(versions))
 	for _, v := range versions {
@@ -357,11 +570,12 @@ func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublicatio
 	sort.Slice(pub, func(i, j int) bool {
 		return models.CompareChartVersions(pub[i].ChartVersion, pub[j].ChartVersion) > 0 // highest first
 	})
-	orderable = make([]string, len(pub))
+	out.Orderable = make([]string, len(pub))
 	for i, v := range pub {
-		orderable[i] = v.ChartVersion
+		out.Orderable[i] = v.ChartVersion
 	}
-	return resolveOrderableVersion(p, versions, ""), orderable, gone, nil
+	out.Recommended = resolveOrderableVersion(p, versions, "")
+	return out, nil
 }
 
 // ActiveViewVersion returns the approved view of an orderable version (for order
@@ -385,6 +599,39 @@ func (s *Service) ActiveViewVersion(ctx context.Context, project, name, chartVer
 		return nil, models.ErrNotFound
 	}
 	return v.ApprovedViewJSON, nil
+}
+
+// PublishedViewVersion returns the approved view of one exact chart version,
+// whether or not it can still be ordered.
+//
+// It answers a different question from ActiveViewVersion, and the difference is
+// who is asking. A form is somebody choosing a version, so it may only be built
+// on a version that is on offer. An order is somebody who chose one already:
+// it stays on the version it was created with, and that version can later leave
+// the catalog or be taken out of support - which must not take the order's own
+// page down with it, since the service is still running and its parameters can
+// still be changed. Whether a version may be ordered is decided where orders
+// are made (provisioning), not by what a page is allowed to render.
+//
+// The registry is not consulted: the document is the portal's own, and an order
+// whose chart was deleted needs its page more than most.
+func (s *Service) PublishedViewVersion(ctx context.Context, project, name, chartVersion string) (json.RawMessage, error) {
+	p, err := s.store.GetPublicationByChart(ctx, project, name)
+	if err != nil {
+		return nil, err
+	}
+	versions, err := s.store.ListVersions(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range versions {
+		// An approved view is only ever written by an approval, so carrying one is
+		// what "this version was published once" means.
+		if v.ChartVersion == chartVersion && len(v.ApprovedViewJSON) > 0 {
+			return v.ApprovedViewJSON, nil
+		}
+	}
+	return nil, models.ErrNotFound
 }
 
 // resolveOrderableVersion picks the version to serve: the requested one if it is
@@ -447,7 +694,25 @@ func (s *Service) getOrInitVersion(ctx context.Context, p *models.ChartPublicati
 // separate question, asked only by the calls that would put it forward (see
 // RequireInRegistry): withdrawing one has to keep working, or a version that
 // vanished mid-review could never be cleared.
+//
+// A version its owner has taken out of support is refused here, which is what
+// makes "снята с поддержки" mean the same thing on every route: submitting,
+// reviewing, putting it in the catalog and recommending it all end at this
+// call. The only way past it is UndeprecateVersion.
 func (s *Service) loadManagedVersion(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.ChartPublication, *models.PublicationVersion, error) {
+	p, v, err := s.loadVersionToManage(ctx, u, pubID, chartVersion)
+	if err != nil {
+		return nil, nil, err
+	}
+	if v.Deprecated() {
+		return nil, nil, errDeprecated(v)
+	}
+	return p, v, nil
+}
+
+// loadVersionToManage is loadManagedVersion without the support check: only the
+// two calls that change support itself may use it.
+func (s *Service) loadVersionToManage(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.ChartPublication, *models.PublicationVersion, error) {
 	p, err := s.store.GetPublication(ctx, pubID)
 	if err != nil {
 		return nil, nil, err
@@ -460,6 +725,12 @@ func (s *Service) loadManagedVersion(ctx context.Context, u *models.User, pubID,
 		return nil, nil, err
 	}
 	return p, v, nil
+}
+
+// errDeprecated is the one refusal every operation on an unsupported version
+// gives, so a person meets the same sentence wherever they run into it.
+func errDeprecated(v *models.PublicationVersion) error {
+	return conflict("Версия %s снята с поддержки. Верните её в работу, чтобы изменить.", v.ChartVersion)
 }
 
 // validateVersionView cross-validates a view against that chart version's schema;
