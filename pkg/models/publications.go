@@ -128,6 +128,15 @@ type PublicationVersion struct {
 	// Orderable is the owner-controlled allowlist flag: only orderable versions
 	// can be selected when placing an order.
 	Orderable bool `json:"orderable"`
+	// DeprecatedAt is when the version was taken out of support, nil while it is
+	// still supported. It sits beside Orderable rather than inside Status
+	// because it answers a different question: Status is the approval FSM ("was
+	// this version reviewed?"), this is the owner saying "we no longer keep this
+	// one up". DeprecatedBy is who said so and DeprecationNote why, both shown to
+	// whoever still runs the version.
+	DeprecatedAt    *time.Time `json:"deprecated_at,omitempty"`
+	DeprecatedBy    string     `json:"deprecated_by,omitempty"`
+	DeprecationNote string     `json:"deprecation_note,omitempty"`
 	// ApprovedDescription/ApprovedIconURL are Harbor snapshots taken at approve
 	// time (the catalog shows these, not live Harbor data).
 	ApprovedDescription string    `json:"approved_description,omitempty"`
@@ -139,11 +148,23 @@ type PublicationVersion struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 
-// Orderable + APPROVED + carrying an approved view: this version can serve order
-// forms. The presence of an "order" view inside the document is checked by the
-// publications service (it needs to parse the view), not here.
+// Deprecated reports that the owner has taken this version out of support:
+// nothing may be ordered from it and nothing about it may be changed until it is
+// put back. (Not a deprecation marker on this method - the paragraph is worded
+// to keep tooling from reading it as one.)
+func (v *PublicationVersion) Deprecated() bool { return v.DeprecatedAt != nil }
+
+// Orderable + APPROVED + carrying an approved view + still supported: this
+// version can serve order forms. The presence of an "order" view inside the
+// document is checked by the publications service (it needs to parse the view),
+// not here.
+//
+// Taking a version out of support clears Orderable, so the support check is a
+// second lock on the same door. It is here because this is the one place every
+// reader of "can this be ordered" goes through, and a row that keeps its
+// allowlist flag for any reason must not slip back into the catalog.
 func (v *PublicationVersion) Published() bool {
-	return v.Status == PubApproved && v.Orderable && len(v.ApprovedViewJSON) > 0
+	return v.Status == PubApproved && v.Orderable && !v.Deprecated() && len(v.ApprovedViewJSON) > 0
 }
 
 // PublicationEvent is a publication audit / status-change record.

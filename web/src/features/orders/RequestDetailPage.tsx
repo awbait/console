@@ -5,6 +5,7 @@
 
 import {
   IconAlertTriangle,
+  IconArchive,
   IconArrowUpCircle,
   IconCheck,
   IconDeviceFloppy,
@@ -35,7 +36,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { safeHref } from "@/lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
-import { fmtDateTime } from "@/lib/time";
+import { dateInWords, fmtDateTime } from "@/lib/time";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
 export function RequestDetailPage() {
@@ -163,7 +164,12 @@ export function RequestDetailPage() {
   const upgradeTo = upgradeVersions[0] ?? null; // recommended (approved) version
   const canUpgrade =
     editable && !isDraft && liveStatus && upgradeVersions.length > 0 && !r.drifted && !openMR;
-  const showUpgradeNudge = canUpgrade && upgradeDismissed !== upgradeTo;
+  // The version this order runs on is out of support. The service keeps running
+  // and its values stay editable - what ended is the version, not the order.
+  const deprecated = pub?.deprecated_versions?.find((d) => d.version === r.chart_version) ?? null;
+  // One notice about the version, not two: the deprecation says everything the
+  // update nudge says and adds why, so the nudge stands down while it is up.
+  const showUpgradeNudge = canUpgrade && !deprecated && upgradeDismissed !== upgradeTo;
 
   function dismissUpgradeNudge() {
     setUpgradeDismissed(upgradeTo);
@@ -319,6 +325,29 @@ export function RequestDetailPage() {
               <IconExternalLink size={14} stroke={1.8} />
               Открыть в GitLab
             </a>
+          )}
+        </div>
+      )}
+      {deprecated && !isDraft && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="flex items-start gap-2">
+            <IconArchive size={18} stroke={1.8} className="mt-px shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="font-medium">
+                Версия {r.chart_version} снята с поддержки
+                {deprecated.at ? ` ${dateInWords(deprecated.at)}` : ""}.{" "}
+                {upgradeTo ? `Перейдите на ${upgradeTo}.` : "Заказать её больше нельзя."}
+              </p>
+              {deprecated.note && <p className="mt-0.5 text-amber-700">{deprecated.note}</p>}
+            </div>
+          </div>
+          {canUpgrade && (
+            <button
+              onClick={() => setUpgradeOpen(true)}
+              className="shrink-0 rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-xs font-medium text-amber-800 outline-none hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              Обновить
+            </button>
           )}
         </div>
       )}

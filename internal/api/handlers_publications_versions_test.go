@@ -91,6 +91,45 @@ func TestVersionManagementAPI(t *testing.T) {
 	if len(versions) != 1 || versions[0].Status != models.PubApproved || !versions[0].Orderable {
 		t.Fatalf("unexpected versions: %+v", versions)
 	}
+
+	// Support: the owner takes the version out of it, and the routes that would
+	// change it afterwards refuse with 409 instead.
+	{
+		rec := do(devReq("POST", base+"/versions/3.1.0/deprecate", "core", map[string]any{"note": "перешли на 4.x"}))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("deprecate: %d body=%s", rec.Code, rec.Body.String())
+		}
+		var v models.PublicationVersion
+		if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+			t.Fatal(err)
+		}
+		if !v.Deprecated() || v.Orderable || v.DeprecationNote != "перешли на 4.x" {
+			t.Fatalf("unexpected deprecated version: %+v", v)
+		}
+	}
+	if rec := do(devReq("POST", base+"/versions/3.1.0/orderable", "core", map[string]any{"orderable": true})); rec.Code != http.StatusConflict {
+		t.Fatalf("orderable on a deprecated version: want 409, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := do(devReq("PUT", base+"/versions/3.1.0", "core", map[string]any{"view": view})); rec.Code != http.StatusConflict {
+		t.Fatalf("save a deprecated version: want 409, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	// A stranger cannot put it back, the owner can, and the reason goes with it.
+	if rec := do(devReq("POST", base+"/versions/3.1.0/undeprecate", "other", nil)); rec.Code != http.StatusForbidden {
+		t.Fatalf("stranger undeprecate: want 403, got %d", rec.Code)
+	}
+	{
+		rec := do(devReq("POST", base+"/versions/3.1.0/undeprecate", "core", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("undeprecate: %d body=%s", rec.Code, rec.Body.String())
+		}
+		var v models.PublicationVersion
+		if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+			t.Fatal(err)
+		}
+		if v.Deprecated() || v.DeprecationNote != "" {
+			t.Fatalf("undeprecate must clear the mark: %+v", v)
+		}
+	}
 }
 
 // publishes two orderable versions of a synthetic chart and checks that the

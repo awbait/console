@@ -228,6 +228,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/publications/{id}/versions/{version}/approve", s.handleApproveVersion) // admin
 			r.Post("/publications/{id}/versions/{version}/reject", s.handleRejectVersion)   // admin
 			r.Post("/publications/{id}/versions/{version}/orderable", s.handleSetVersionOrderable)
+			// Support: taking a version out of it is the owner's own decision, so it
+			// sits beside the allowlist rather than in the approval routes above.
+			r.Post("/publications/{id}/versions/{version}/deprecate", s.handleDeprecateVersion)
+			r.Post("/publications/{id}/versions/{version}/undeprecate", s.handleUndeprecateVersion)
 			r.Post("/publications/{id}/recommended", s.handleSetRecommendedVersion)
 
 			// requests

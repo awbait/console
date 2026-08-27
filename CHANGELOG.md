@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- A version of a service can be taken out of support. "Снять с поддержки" on the
+  chart's management page takes it out of the catalog with a reason, and nothing
+  about it can be changed until "Вернуть в работу" puts it back.
+- An order running on a version that was taken out of support says so on its
+  page, with the reason and the version to move to. The service keeps running
+  and its values stay editable.
+- The teams running a version are notified when it is taken out of support. The
+  message carries the owner's reason and the version to move to.
+
 ### Changed
 - The order form hides fields that do not fit the values already picked. A point
   on TCP or UDP no longer asks for a domain: it cannot have one, and a domain

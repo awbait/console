@@ -280,6 +280,17 @@ export const api = {
     req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/orderable`, {
       orderable,
     }),
+  // Support. Taking a version out of it also clears its catalog flag and its
+  // recommendation, so the caller reloads both the versions and the catalog.
+  deprecateVersion: (id: string, version: string, note: string) =>
+    req<PublicationVersion>("POST", `/publications/${enc(id)}/versions/${enc(version)}/deprecate`, {
+      note,
+    }),
+  undeprecateVersion: (id: string, version: string) =>
+    req<PublicationVersion>(
+      "POST",
+      `/publications/${enc(id)}/versions/${enc(version)}/undeprecate`,
+    ),
   setRecommendedVersion: (id: string, version: string) =>
     req<void>("POST", `/publications/${enc(id)}/recommended`, { version }),
 

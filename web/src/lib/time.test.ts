@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dayLabel, fmtRecent, fmtRelative } from "./time";
+import { dateInWords, dayLabel, fmtRecent, fmtRelative } from "./time";
 
 const NOW = new Date("2026-08-19T12:00:00").getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -37,6 +37,19 @@ describe("dayLabel", () => {
 
   test("a date from another year carries the year", () => {
     expect(dayLabel(new Date("2025-12-31T10:00:00").toISOString(), NOW)).toBe("31 декабря 2025");
+  });
+});
+
+describe("dateInWords", () => {
+  test("names the day inside a sentence, never \"today\"", () => {
+    expect(dateInWords(ago(1 * HOUR), NOW)).toBe("19 августа");
+    expect(dateInWords(ago(3 * DAY), NOW)).toBe("16 августа");
+  });
+
+  test("a date from another year carries the year", () => {
+    expect(dateInWords(new Date("2025-12-31T10:00:00").toISOString(), NOW)).toBe(
+      "31 декабря 2025",
+    );
   });
 });
 

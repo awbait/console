@@ -16,6 +16,17 @@ type recorder struct {
 	submitted  []string // "<chart>@<version>" per VersionSubmitted
 	discovered []string // "<project>/<chart>" per ChartDiscovered
 	missing    []string // "<chart>@<version>" per ChartVersionMissing
+	deprecated []deprecationNote
+}
+
+// deprecationNote is one VersionDeprecated as the recorder saw it: what was
+// taken out of support, who was told, and what they were told to move to.
+type deprecationNote struct {
+	Chart   string
+	Version string
+	Note    string
+	MoveTo  string
+	Teams   []string
 }
 
 func (r *recorder) VersionApproved(context.Context, store.Store, *models.ChartPublication, string, *models.User) {
@@ -33,6 +44,11 @@ func (r *recorder) ChartDiscovered(_ context.Context, _ store.Store, p *models.C
 }
 func (r *recorder) ChartVersionMissing(_ context.Context, _ store.Store, p *models.ChartPublication, v string) {
 	r.missing = append(r.missing, p.ChartName+"@"+v)
+}
+func (r *recorder) VersionDeprecated(_ context.Context, _ store.Store, p *models.ChartPublication, v, note, moveTo string, teams []string, _ *models.User) {
+	r.deprecated = append(r.deprecated, deprecationNote{
+		Chart: p.ChartName, Version: v, Note: note, MoveTo: moveTo, Teams: teams,
+	})
 }
 
 // publish puts a service in the catalog: one approved, orderable version with a

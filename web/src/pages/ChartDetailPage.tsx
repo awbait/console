@@ -1,4 +1,4 @@
-import { IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-react";
+import { IconArchive, IconCategory, IconTag, IconUser, IconUsersGroup } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
@@ -18,6 +18,7 @@ import { Markdown } from "../components/Markdown";
 import { Button, Card, Chip, LinkButton, OutageState, Skeleton, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
+import { dateInWords } from "../lib/time";
 
 export function ChartDetailPage() {
   const { project = "", name = "" } = useParams();
@@ -136,6 +137,11 @@ export function ChartDetailPage() {
   // refresh the data (mark the "Manage" button with a dot).
   const viewOutdated =
     !!pub?.approved_view_version && isNewer(liveVersion, pub.approved_view_version);
+  // Every version this service had is out of support. Without saying so the page
+  // falls back to the version Harbor holds and reads as "nobody has published
+  // this yet", which is the opposite of what happened.
+  const retired = !published && (pub?.deprecated_versions?.length ?? 0) > 0;
+  const retiredNewest = retired ? pub?.deprecated_versions?.[0] : undefined;
 
   return (
     // Who the chart is stays on screen: the name, what it is for and the
@@ -164,6 +170,18 @@ export function ChartDetailPage() {
               <IconTag size={13} stroke={1.8} className="text-slate-400" />
               <span className="text-slate-400">Версия:</span>v{version}
             </Chip>
+            {retiredNewest && (
+              <span
+                title={`Последняя версия ${retiredNewest.version} снята с поддержки${
+                  retiredNewest.at ? ` ${dateInWords(retiredNewest.at)}` : ""
+                }.${retiredNewest.note ? ` ${retiredNewest.note}` : ""}`}
+              >
+                <Chip className="bg-amber-50 text-amber-700">
+                  <IconArchive size={13} stroke={1.8} />
+                  Снят с поддержки
+                </Chip>
+              </span>
+            )}
             {categoryLabel && (
               <Chip className="bg-slate-100 text-slate-600">
                 <IconCategory size={13} stroke={1.8} className="text-slate-400" />
