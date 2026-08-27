@@ -30,7 +30,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
 import { NotFound } from "@/components/NotFound";
-import { StatusBadge } from "@/components/StatusBadge";
+import { StatusBadge, statusGroup, statusNextStep } from "@/components/StatusBadge";
 import { Button, Card, Select, SkeletonRows } from "@/components/ui";
 import { useAsync } from "@/hooks/useAsync";
 import { safeHref } from "@/lib/href";
@@ -141,6 +141,14 @@ export function RequestDetailPage() {
   // it with 409 open_mr. Surface it up front so we can disable those actions and
   // point at the MR instead of letting the user hit the error.
   const openMR = mrs.find((m) => m.mr_status === "opened") ?? null;
+  // A status the order does not leave on its own needs a next step spelled out.
+  // MR_CLOSED is two different stories: an order that was turned down, and a
+  // deletion someone called off, where the service keeps running. A closed
+  // delete change is what tells them apart, and since MR_CLOSED is terminal
+  // (see the FSM in internal/provisioning/state_machine.go) there is only ever
+  // one such change to look at.
+  const deleteCancelled = mrs.some((m) => m.action === "delete" && m.mr_status === "closed");
+  const nextStep = statusNextStep(r.status, deleteCancelled);
   // modifiable: provision-class affordances (create/delete) - owner or admin.
   // editable: value/rename/upgrade affordances - also support, across teams.
   const modifiable = canModify(user, r.team) && r.status !== "DELETED";
@@ -253,6 +261,25 @@ export function RequestDetailPage() {
           { label: r.service_name },
         ]}
       />
+      {/* A status the order will not leave on its own is the first thing on the
+          page: the badge names the state, this says what to do about it. Red for
+          a service that is down, slate for an order that was called off - the
+          second is not an incident. */}
+      {nextStep && (
+        <div
+          className={`flex items-start gap-2 rounded-md border px-4 py-3 text-sm ${
+            statusGroup(r.status) === "broken"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-slate-200 bg-slate-50 text-slate-700"
+          }`}
+        >
+          <IconAlertTriangle size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">{nextStep.title}</p>
+            <p className="mt-0.5">{nextStep.hint}</p>
+          </div>
+        </div>
+      )}
       {r.imported && (
         <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
           <IconGitFork size={18} stroke={1.8} className="mt-0.5 shrink-0" />

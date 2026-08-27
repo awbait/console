@@ -29,9 +29,10 @@ import { ProductIcon } from "@/components/icons";
 import {
   STATUS_GROUPS,
   StatusBadge,
-  StatusDot,
   type StatusGroupKey,
   statusGroup,
+  statusMeta,
+  statusNextStep,
 } from "@/components/StatusBadge";
 import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
 import { useAsync } from "@/hooks/useAsync";
@@ -244,17 +245,24 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         )}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
+      {/* The status now carries a word, not just a dot, so the row is wider than
+          it was. On a narrow screen the table scrolls sideways instead of
+          squeezing the columns into unreadable stacks. */}
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm">
         <Table aria-label={title} className="w-full text-sm">
           <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
             <Column className="px-4 py-2.5 text-left">Категория</Column>
             {allTeams && <Column className="px-4 py-2.5 text-left">Команда</Column>}
             <Column className="px-4 py-2.5 text-left">Продукт</Column>
             <Column isRowHeader className="px-4 py-2.5 text-left">Имя</Column>
-            <Column className="px-4 py-2.5 text-left">Метка</Column>
+            {/* The word next to the status icon costs the width a column used
+                to take. The label is what a row can lose first: the service
+                name beside it identifies the order just as well, and the order
+                page shows the label in full. */}
+            <Column className="hidden px-4 py-2.5 text-left 2xl:table-cell">Метка</Column>
             <Column className="px-4 py-2.5 text-left">Создатель</Column>
             <Column className="px-4 py-2.5 text-right">Дата создания</Column>
-            <Column className="px-4 py-2.5 text-center">Статус</Column>
+            <Column className="whitespace-nowrap px-4 py-2.5 text-left">Статус</Column>
             <Column className="w-12 px-4 py-2.5">
               <span className="sr-only">Действия</span>
             </Column>
@@ -339,13 +347,21 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       })()}
                     </span>
                   </Cell>
-                  <Cell className="px-4 py-3 text-left text-slate-600">{r.display_name || "-"}</Cell>
+                  <Cell className="hidden px-4 py-3 text-left text-slate-600 2xl:table-cell">
+                    {r.display_name || "-"}
+                  </Cell>
                   <Cell className="px-4 py-3 text-left text-slate-500">{r.created_by_name}</Cell>
                   <Cell className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
                     {fmtDateTime(r.created_at)}
                   </Cell>
-                  <Cell className="px-4 py-3 text-center">
-                    <StatusDot status={r.status} />
+                  {/* The status is read as a word: a coloured dot alone needed a
+                      hover to say anything, and on a touch screen there is no
+                      hover at all. The tooltip is left for the dead ends, where
+                      what to do next does not fit on a badge. */}
+                  <Cell className="whitespace-nowrap px-4 py-3 text-left">
+                    <span title={statusNextStep(r.status)?.hint}>
+                      <StatusBadge status={r.status} />
+                    </span>
                   </Cell>
                   <Cell className="px-4 py-3 text-right">
                     <RowActions
@@ -391,6 +407,10 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
 // StatusFilter is one chip opening a multi-select of which statuses to show
 // (deleted orders off by default). It lists the same groups the badges show, so what
 // a person picks here is worded exactly like what they read in the table.
+//
+// It doubles as the legend: every group is spelled out with what it means, so
+// the one place that already names all eight states also explains them, and the
+// table does not have to carry a legend of its own.
 function StatusFilter({
   shown,
   onChange,
@@ -421,12 +441,12 @@ function StatusFilter({
               key={key}
               id={key}
               textValue={key}
-              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
+              className="flex cursor-pointer items-start gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
             >
               {({ isSelected }) => (
                 <>
                   <span
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                       isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
                     }`}
                   >
@@ -435,12 +455,24 @@ function StatusFilter({
                   {/* Any state of the group renders the group's own badge:
                       the badge is what a person is picking here, and it must
                       not spin in a menu. */}
-                  <StatusBadge status={statuses[0]} noSpin />
+                  <span className="min-w-0">
+                    <StatusBadge status={statuses[0]} noSpin />
+                    <span className="mt-1 block max-w-[17rem] text-xs text-slate-500">
+                      {statusMeta(statuses[0]).note}
+                    </span>
+                  </span>
                 </>
               )}
             </MenuItem>
           ))}
         </Menu>
+        <Link
+          to="/docs/statuses"
+          target="_blank"
+          className="block border-t border-slate-100 px-3 py-2 text-xs font-medium text-brand-700 outline-none hover:bg-slate-50 focus-visible:bg-slate-50"
+        >
+          Подробнее о статусах
+        </Link>
       </Popover>
     </MenuTrigger>
   );

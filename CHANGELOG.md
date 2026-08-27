@@ -13,6 +13,17 @@ All notable changes to this project are documented in this file.
   and its values stay editable.
 - The teams running a version are notified when it is taken out of support. The
   message carries the owner's reason and the version to move to.
+- An order that will not move on its own says what to do about it. A service
+  that is down and a rejected order explain the next step on the order page.
+
+### Changed
+- The orders table spells the status out in a word next to its icon. The icon
+  alone had to be hovered over to be read, and on a phone or a tablet it could
+  not be read at all. On a narrow screen the "Метка" column gives way to it.
+- Order states are named after what happens to the service: "Принят" replaces
+  "Сохраняем", "Отклонён" replaces "Отклонено". What each state means is written
+  out in the "Статусы" filter above the table and in the "Статусы и
+  развёртывание" help page.
 
 ### Fixed
 - An order keeps working after its version leaves the catalog. Its page used to

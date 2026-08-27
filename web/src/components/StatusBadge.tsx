@@ -3,7 +3,7 @@ import {
   IconBan,
   IconCircleCheck,
   IconCircleX,
-  IconDeviceFloppy,
+  IconClock,
   IconLoader2,
   IconPencil,
   IconRocket,
@@ -20,7 +20,7 @@ type IconType = ComponentType<{ size?: number; stroke?: number; className?: stri
 // The machine behind an order has eleven states (pkg/models/models.go), and four
 // of them are about how the portal writes a change into Git. That is the
 // portal's own business: the person on this screen wants to know whether their
-// service is being saved, is coming up, works, or does not. So the states are
+// order was taken, the service is coming up, works, or does not. So the states are
 // grouped, every screen shows the group, and the exact state stays reachable for
 // whoever has to work out why an order is where it is - in the tooltip of the
 // detailed history, never in the badge.
@@ -29,7 +29,7 @@ type IconType = ComponentType<{ size?: number; stroke?: number; className?: stri
 // a glance and for colour-blind users.
 export type StatusGroupKey =
   | "draft"
-  | "saving"
+  | "accepted"
   | "deploying"
   | "healthy"
   | "broken"
@@ -39,6 +39,9 @@ export type StatusGroupKey =
 
 interface StatusMeta {
   label: string; // human-readable (RU)
+  // One line of what the state means, for the legend: the label names the
+  // state, this says what it means for the service.
+  note: string;
   Icon: IconType;
   fg: string; // icon/text colour
   badge: string; // pill background + text
@@ -46,29 +49,70 @@ interface StatusMeta {
   staticIcon?: IconType; // non-animated stand-in for spinning statuses (e.g. timeline)
 }
 
+// Every label names the service (or the order the person sent), never what the
+// portal is doing about it: "Сохраняем" told a person who was waiting for a
+// service that some file was being written.
 const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
-  draft: { label: "Черновик", Icon: IconPencil, fg: "text-slate-500", badge: "bg-slate-100 text-slate-700" },
-  saving: {
-    label: "Сохраняем",
-    Icon: IconLoader2,
+  draft: {
+    label: "Черновик",
+    note: "Заказ создан, но ещё не отправлен.",
+    Icon: IconPencil,
+    fg: "text-slate-500",
+    badge: "bg-slate-100 text-slate-700",
+  },
+  // No spinner here: an accepted order can wait for a person to read it, and a
+  // spinner that turns for an hour promises progress that is not happening.
+  accepted: {
+    label: "Принят",
+    note: "Заказ отправлен, сервиса в кластере ещё нет.",
+    Icon: IconClock,
     fg: "text-amber-600",
     badge: "bg-amber-100 text-amber-800",
-    spin: true,
-    staticIcon: IconDeviceFloppy,
   },
   deploying: {
     label: "Разворачивается",
+    note: "Платформа приводит кластер к заказанному состоянию.",
     Icon: IconLoader2,
     fg: "text-blue-600",
     badge: "bg-blue-100 text-blue-800",
     spin: true,
     staticIcon: IconRocket,
   },
-  healthy: { label: "Работает", Icon: IconCircleCheck, fg: "text-emerald-600", badge: "bg-green-100 text-green-800" },
-  broken: { label: "Не работает", Icon: IconAlertTriangle, fg: "text-red-600", badge: "bg-red-100 text-red-800" },
-  rejected: { label: "Отклонено", Icon: IconBan, fg: "text-slate-500", badge: "bg-slate-200 text-slate-600" },
-  deleting: { label: "Удаляется", Icon: IconTrash, fg: "text-orange-600", badge: "bg-orange-100 text-orange-800" },
-  deleted: { label: "Удалён", Icon: IconCircleX, fg: "text-slate-400", badge: "bg-gray-200 text-gray-600" },
+  healthy: {
+    label: "Работает",
+    note: "Сервис развёрнут и работает без ошибок.",
+    Icon: IconCircleCheck,
+    fg: "text-emerald-600",
+    badge: "bg-green-100 text-green-800",
+  },
+  broken: {
+    label: "Не работает",
+    note: "Сервис развёрнут с ошибкой или его нет в кластере.",
+    Icon: IconAlertTriangle,
+    fg: "text-red-600",
+    badge: "bg-red-100 text-red-800",
+  },
+  rejected: {
+    label: "Отклонён",
+    note: "Изменение отменили, портал его не применил.",
+    Icon: IconBan,
+    fg: "text-slate-500",
+    badge: "bg-slate-200 text-slate-600",
+  },
+  deleting: {
+    label: "Удаляется",
+    note: "Сервис убирается из кластера.",
+    Icon: IconTrash,
+    fg: "text-orange-600",
+    badge: "bg-orange-100 text-orange-800",
+  },
+  deleted: {
+    label: "Удалён",
+    note: "Сервиса больше нет.",
+    Icon: IconCircleX,
+    fg: "text-slate-400",
+    badge: "bg-gray-200 text-gray-600",
+  },
 };
 
 // Which group each state falls into. The pairs that share one group are the ones
@@ -78,7 +122,7 @@ const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
 // the same, and the difference is a support question.
 const GROUP_OF: Record<string, StatusGroupKey> = {
   DRAFT: "draft",
-  MR_CREATED: "saving",
+  MR_CREATED: "accepted",
   MR_MERGED: "deploying",
   DEPLOYING: "deploying",
   HEALTHY: "healthy",
@@ -93,7 +137,7 @@ const GROUP_OF: Record<string, StatusGroupKey> = {
 // The groups in lifecycle order, each with the states it covers: what a status
 // filter offers, so a filter can never drift from what the badges say.
 export const STATUS_GROUPS: { key: StatusGroupKey; statuses: RequestStatus[] }[] = (
-  ["draft", "saving", "deploying", "healthy", "broken", "rejected", "deleting", "deleted"] as StatusGroupKey[]
+  ["draft", "accepted", "deploying", "healthy", "broken", "rejected", "deleting", "deleted"] as StatusGroupKey[]
 ).map((key) => ({
   key,
   statuses: (Object.keys(GROUP_OF) as RequestStatus[]).filter((s) => GROUP_OF[s] === key),
@@ -110,6 +154,9 @@ function metaFor(status: string): StatusMeta {
   return (
     (key && GROUP_META[key]) || {
       label: status,
+      // The legend is drawn from the groups, so an ungrouped state never gets
+      // there and has nothing to say beyond its own name.
+      note: "",
       Icon: IconLoader2,
       fg: "text-slate-500",
       badge: "bg-gray-100 text-gray-700",
@@ -130,6 +177,42 @@ export function statusTitle(status: string, detailed?: boolean): string {
   return detailed && GROUP_OF[status] ? `${label} (${status})` : label;
 }
 
+// A state the order does not leave on its own, and what the person looking at it
+// can do about it. Everything else either moves on by itself or has a button on
+// the page saying what to press, so only the dead ends are listed here.
+export interface NextStep {
+  title: string;
+  hint: string;
+}
+
+const NEXT_STEP: Record<string, NextStep> = {
+  DEGRADED: {
+    title: "Сервис развёрнут, но работает с ошибками",
+    hint: "Само это не исправится. Напишите в поддержку платформы и пришлите ссылку на эту страницу.",
+  },
+  ARGO_MISSING: {
+    title: "Сервиса нет в кластере",
+    hint: "Заказ есть, а сервиса в кластере нет. Напишите в поддержку платформы и пришлите ссылку на эту страницу.",
+  },
+  MR_CLOSED: {
+    title: "Заказ отклонён",
+    hint: "Изменение отменили, и портал его не применил. Отправьте заказ заново или напишите в поддержку платформы.",
+  },
+};
+
+// statusNextStep is what to do next, or null when the state speaks for itself.
+// deleteCancelled marks the one MR_CLOSED that is not a rejected order: a
+// deletion someone called off, where the service is still running.
+export function statusNextStep(status: string, deleteCancelled = false): NextStep | null {
+  if (status === "MR_CLOSED" && deleteCancelled) {
+    return {
+      title: "Удаление отменено",
+      hint: "Сервис работает, но портал больше не принимает изменения по этому заказу. Напишите в поддержку платформы.",
+    };
+  }
+  return NEXT_STEP[status] ?? null;
+}
+
 export function StatusBadge({
   status,
   muted,
@@ -147,25 +230,5 @@ export function StatusBadge({
     <StatusPill tone={muted ? "bg-slate-100 text-slate-400" : m.badge} Icon={Icon} spin={m.spin && !noSpin}>
       {m.label}
     </StatusPill>
-  );
-}
-
-// Status as a single colored icon (label exposed via title/aria-label). Distinct
-// shapes make each status recognizable in the compact orders table.
-export function StatusDot({
-  status,
-  size = 22,
-  detailed,
-}: {
-  status: RequestStatus | string;
-  size?: number;
-  detailed?: boolean;
-}) {
-  const m = metaFor(status);
-  const title = statusTitle(status, detailed);
-  return (
-    <span title={title} aria-label={title} className="inline-flex">
-      <m.Icon size={size} stroke={2} className={`${m.fg} ${m.spin ? "animate-spin" : ""}`} />
-    </span>
   );
 }
