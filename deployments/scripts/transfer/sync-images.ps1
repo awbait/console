@@ -49,6 +49,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# What stops this script is almost always the environment, not the script: no
+# Docker, no access to Harbor, a release that has no such asset. The operator
+# needs the sentence that says so, and a PowerShell position line above it
+# buries that sentence. Cleanup still runs: finally blocks unwind first.
+trap {
+  Write-Host ''
+  Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+  exit 1
+}
+
 # Credentials: parameters win, then the environment, then the stand default.
 if (-not $HarborUser)     { $HarborUser     = $env:HARBOR_USER }
 if (-not $HarborUser)     { $HarborUser     = 'admin' }
@@ -71,6 +81,22 @@ function Invoke-Native {
   return $out
 }
 
+# Runs a native command whose failure is an answer rather than a fault: "is the
+# daemon up", "is the tag already there". Returns its stdout; the caller reads
+# $LASTEXITCODE.
+#
+# The plain `& exe ... 2>$null` this replaces looks equivalent and is not: in
+# Windows PowerShell, redirecting a native command's stderr turns every line it
+# writes into a NativeCommandError, and under $ErrorActionPreference = 'Stop'
+# that error is terminating. So `docker manifest inspect` answering "not found"
+# - the normal way to learn a tag is missing - killed the script instead.
+function Invoke-Quiet {
+  param([string]$Exe, [string[]]$Arguments)
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { & $Exe @Arguments 2>$null } finally { $ErrorActionPreference = $prev }
+}
+
 function Test-Command {
   param([string]$Name)
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
@@ -86,7 +112,7 @@ function Assert-Docker {
     throw "docker is not on PATH. Install Docker Desktop (https://docs.docker.com/desktop/) and reopen the terminal."
   }
 
-  & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+  Invoke-Quiet docker @('info', '--format', '{{.ServerVersion}}') | Out-Null
   if ($LASTEXITCODE -eq 0) { return }
 
   Write-Step 'Docker daemon is not responding, starting Docker Desktop'
@@ -100,7 +126,7 @@ function Assert-Docker {
   # Docker Desktop takes a while to hand over a working daemon socket.
   for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 5
-    & docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+    Invoke-Quiet docker @('info', '--format', '{{.ServerVersion}}') | Out-Null
     if ($LASTEXITCODE -eq 0) { Write-Ok 'daemon is up'; return }
     Write-Skip "waiting for the daemon ($(($i + 1) * 5)s)"
   }
@@ -113,7 +139,7 @@ function Get-LatestVersion {
   param([string]$Repo)
 
   if (Test-Command 'gh') {
-    $tag = & gh release view --repo $Repo --json tagName -q .tagName 2>$null
+    $tag = Invoke-Quiet gh @('release', 'view', '--repo', $Repo, '--json', 'tagName', '-q', '.tagName')
     if ($LASTEXITCODE -eq 0 -and $tag) { return "$tag".Trim() }
   }
 
@@ -134,7 +160,7 @@ function Get-ReleaseAsset {
   if (Test-Path $target) { Remove-Item $target -Force }
 
   if (Test-Command 'gh') {
-    & gh release download $Tag --repo $Repo --pattern $Asset --dir $Destination 2>$null
+    Invoke-Quiet gh @('release', 'download', $Tag, '--repo', $Repo, '--pattern', $Asset, '--dir', $Destination) | Out-Null
     if ($LASTEXITCODE -eq 0 -and (Test-Path $target)) { return $target }
   }
 
@@ -194,11 +220,11 @@ function Connect-Harbor {
 # private project answers honestly instead of looking empty.
 function Test-RemoteImage {
   param([string]$Reference)
-  & docker manifest inspect $Reference 2>$null | Out-Null
+  Invoke-Quiet docker @('manifest', 'inspect', $Reference) | Out-Null
   if ($LASTEXITCODE -eq 0) { return $true }
   # Harbor on the stand serves a self-signed certificate; if docker was not
   # taught the CA, --insecure is the second chance before calling it absent.
-  & docker manifest inspect --insecure $Reference 2>$null | Out-Null
+  Invoke-Quiet docker @('manifest', 'inspect', '--insecure', $Reference) | Out-Null
   return ($LASTEXITCODE -eq 0)
 }
 
@@ -297,7 +323,7 @@ finally {
   } else {
     Write-Step 'Cleaning up'
     foreach ($image in ($createdImages | Select-Object -Unique)) {
-      & docker rmi $image 2>$null | Out-Null
+      Invoke-Quiet docker @('rmi', $image) | Out-Null
     }
     if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue }
     Write-Ok 'archives and local images removed'

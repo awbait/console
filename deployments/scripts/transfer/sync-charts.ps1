@@ -66,6 +66,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# What stops this script is almost always the environment, not the script: a map
+# nobody filled in, a token without access, a host that does not resolve. The
+# operator needs the sentence that says so, and a PowerShell position line above
+# it buries that sentence. Cleanup still runs: finally blocks unwind first.
+trap {
+  Write-Host ''
+  Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+  exit 1
+}
+
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'charts-map.json' }
 
 # --- small helpers ----------------------------------------------------------
@@ -87,6 +97,20 @@ function Invoke-Native {
     throw "$What failed (exit $LASTEXITCODE): $Exe $($Arguments -join ' ')"
   }
   return $out
+}
+
+# Runs a native command whose failure is an answer rather than a fault: "is this
+# version already in Harbor". Returns its stdout; the caller reads $LASTEXITCODE.
+#
+# The plain `& exe ... 2>$null` this replaces looks equivalent and is not: in
+# Windows PowerShell, redirecting a native command's stderr turns every line it
+# writes into a NativeCommandError, and under $ErrorActionPreference = 'Stop'
+# that error is terminating - so the command answering "no" killed the script.
+function Invoke-Quiet {
+  param([string]$Exe, [string[]]$Arguments)
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { & $Exe @Arguments 2>$null } finally { $ErrorActionPreference = $prev }
 }
 
 # name/version out of a Chart.yaml. A two-field read does not justify a YAML
@@ -224,7 +248,7 @@ try {
         continue
       }
     } else {
-      & git clone --quiet --depth 1 --branch $targetBranch $remote $clone 2>$null
+      Invoke-Quiet git @('clone', '--quiet', '--depth', '1', '--branch', $targetBranch, $remote, $clone) | Out-Null
       if ($LASTEXITCODE -ne 0) {
         Write-Warn "cannot clone $remote anonymously; in a real run the token would be used"
         $failed += "${chart}: clone failed (dry run, no token)"
@@ -325,7 +349,7 @@ try {
 
       $showArgs = @('show', 'chart', "$ociRepo/$($meta.Name)", '--version', $meta.Version)
       if ($InsecureTls) { $showArgs += '--insecure-skip-tls-verify' }
-      & helm @showArgs 2>$null | Out-Null
+      Invoke-Quiet helm $showArgs | Out-Null
       if ($LASTEXITCODE -eq 0 -and -not $Force) {
         Write-Skip "$ociRepo/$($meta.Name):$($meta.Version) is already in Harbor, not pushing"
         continue
@@ -349,7 +373,7 @@ try {
   }
 }
 finally {
-  if ($loggedIn) { & helm registry logout $harborHost 2>$null | Out-Null }
+  if ($loggedIn) { Invoke-Quiet helm @('registry', 'logout', $harborHost) | Out-Null }
   if ($Keep) {
     Write-Host ''
     Write-Skip "-Keep: leaving the clones in $workDir"
