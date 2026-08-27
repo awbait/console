@@ -64,14 +64,14 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 			case models.MRMerged:
 				s.tryTransition(ctx, r, models.StatusMRMerged)
 			case models.MRClosed:
-				s.tryTransition(ctx, r, models.StatusMRClosed)
+				s.tryTransition(ctx, r, closedChangeTarget(latest.Action))
 			}
 		case models.StatusDeleteRequested:
 			switch latest.Status {
 			case models.MRMerged:
 				s.tryTransition(ctx, r, models.StatusDeleteMRMerged)
 			case models.MRClosed:
-				s.tryTransition(ctx, r, models.StatusMRClosed)
+				s.tryTransition(ctx, r, closedChangeTarget(latest.Action))
 			}
 		}
 	}
@@ -334,6 +334,30 @@ func mapHealth(h argocd.HealthStatus) models.RequestStatus {
 		return models.StatusArgoMissing
 	default:
 		return ""
+	}
+}
+
+// closedChangeTarget is where an order goes when its change was closed instead
+// of merged. What that means depends on what the change was for.
+//
+// A closed FIRST order is the only one that means there is no service: nothing
+// was ever created, and MR_CLOSED - a terminal state - says so. An edit or a
+// deletion is a change to a service that is already running, and closing it
+// leaves that service exactly as it was, so the order goes back to MR_MERGED
+// (its manifests are in Git) and the ArgoCD sweep in reconcileOne settles its
+// real state from there. It used to go to MR_CLOSED as well, which killed a live order:
+// nothing leaves MR_CLOSED, so the service could no longer be edited, upgraded
+// or even deleted through the portal, and ListActive stopped handing it to the
+// poller and the drift check.
+//
+// An action this build does not know keeps the old behaviour: a change we
+// cannot classify is not one to declare a service alive on.
+func closedChangeTarget(action models.MRAction) models.RequestStatus {
+	switch action {
+	case models.ActionUpdate, models.ActionDelete:
+		return models.StatusMRMerged
+	default:
+		return models.StatusMRClosed
 	}
 }
 

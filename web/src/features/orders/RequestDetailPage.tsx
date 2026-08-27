@@ -142,13 +142,7 @@ export function RequestDetailPage() {
   // point at the MR instead of letting the user hit the error.
   const openMR = mrs.find((m) => m.mr_status === "opened") ?? null;
   // A status the order does not leave on its own needs a next step spelled out.
-  // MR_CLOSED is two different stories: an order that was turned down, and a
-  // deletion someone called off, where the service keeps running. A closed
-  // delete change is what tells them apart, and since MR_CLOSED is terminal
-  // (see the FSM in internal/provisioning/state_machine.go) there is only ever
-  // one such change to look at.
-  const deleteCancelled = mrs.some((m) => m.action === "delete" && m.mr_status === "closed");
-  const nextStep = statusNextStep(r.status, deleteCancelled);
+  const nextStep = statusNextStep(r.status);
   // modifiable: provision-class affordances (create/delete) - owner or admin.
   // editable: value/rename/upgrade affordances - also support, across teams.
   const modifiable = canModify(user, r.team) && r.status !== "DELETED";

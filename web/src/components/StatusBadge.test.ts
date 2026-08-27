@@ -105,13 +105,12 @@ describe("statusNextStep", () => {
     }
   });
 
-  test("a cancelled deletion is not a rejected order: the service is still running", () => {
-    expect(statusNextStep("MR_CLOSED", true)).not.toEqual(statusNextStep("MR_CLOSED"));
-    expect(statusNextStep("MR_CLOSED", true)?.hint).toMatch(/работает/i);
-  });
-
-  test("the flag only matters where a deletion could have been cancelled", () => {
-    expect(statusNextStep("HEALTHY", true)).toBeNull();
+  // MR_CLOSED reaches the SPA for one reason only: the order was turned down
+  // and no service was created (internal/provisioning/state_machine.go). A
+  // cancelled edit or deletion leaves the order live, so the text here can say
+  // there is no service without hedging.
+  test("a rejected order is told its service was never created", () => {
+    expect(statusNextStep("MR_CLOSED")?.hint).toMatch(/не создан/i);
   });
 });
 

@@ -94,7 +94,7 @@ const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
   },
   rejected: {
     label: "Отклонён",
-    note: "Изменение отменили, портал его не применил.",
+    note: "Заказ отклонили, сервис не создан.",
     Icon: IconBan,
     fg: "text-slate-500",
     badge: "bg-slate-200 text-slate-600",
@@ -196,20 +196,12 @@ const NEXT_STEP: Record<string, NextStep> = {
   },
   MR_CLOSED: {
     title: "Заказ отклонён",
-    hint: "Изменение отменили, и портал его не применил. Отправьте заказ заново или напишите в поддержку платформы.",
+    hint: "Заказ не применили, сервис не создан. Отправьте заказ заново или напишите в поддержку платформы.",
   },
 };
 
 // statusNextStep is what to do next, or null when the state speaks for itself.
-// deleteCancelled marks the one MR_CLOSED that is not a rejected order: a
-// deletion someone called off, where the service is still running.
-export function statusNextStep(status: string, deleteCancelled = false): NextStep | null {
-  if (status === "MR_CLOSED" && deleteCancelled) {
-    return {
-      title: "Удаление отменено",
-      hint: "Сервис работает, но портал больше не принимает изменения по этому заказу. Напишите в поддержку платформы.",
-    };
-  }
+export function statusNextStep(status: string): NextStep | null {
   return NEXT_STEP[status] ?? null;
 }
 
