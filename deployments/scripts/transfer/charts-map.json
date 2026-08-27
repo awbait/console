@@ -1,0 +1,23 @@
+{
+  "sourceRepo": "awbait/console-charts",
+  "ref": "main",
+
+  "gitlabUrl": "https://gitlab.idp.ecpk.test",
+  "targetBranch": "main",
+
+  "harborHost": "harbor.idp.ecpk.test",
+  "harborProject": "platform",
+
+  "keep": ["values.yaml"],
+
+  "charts": {
+    "ingress-gateway": { "project": "" },
+    "egress-gateway":  { "project": "" },
+    "waypoint":        { "project": "" },
+    "policies":        { "project": "" },
+    "namespace":       { "project": "" },
+    "project":         { "project": "" },
+    "secret-store":    { "project": "" },
+    "console":         { "project": "", "harborProject": "core" }
+  }
+}
