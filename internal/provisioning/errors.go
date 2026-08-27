@@ -55,7 +55,7 @@ type FieldError struct {
 // (web/src/form/fieldErrors.ts). The machinery the portal runs on - merge
 // requests, states of the order's own FSM - is never what it answers with.
 const (
-	MsgServiceName   = "Имя сервиса: используйте строчные латинские буквы, цифры и дефис."
+	MsgServiceName   = "Имя сервиса: используйте строчные латинские буквы, цифры, точку и дефис."
 	MsgCluster       = "Кластер: используйте строчные латинские буквы, цифры и дефис."
 	MsgUnknownChart  = "Такого сервиса или его версии больше нет. Обновите страницу и выберите доступную версию."
 	MsgNotDraft      = "Заказ уже отправлен. Обновите страницу, чтобы увидеть, что с ним происходит."
