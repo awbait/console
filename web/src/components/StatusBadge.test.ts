@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RequestStatus } from "@/api/types";
-import { STATUS_GROUPS, statusGroup, statusMeta, statusTitle } from "./StatusBadge";
+import { STATUS_GROUPS, statusGroup, statusMeta, statusNextStep, statusTitle } from "./StatusBadge";
 
 // Every state the order FSM can be in (pkg/models/models.go). Written out here
 // rather than derived from the groups: this is the list the backend can grow,
@@ -63,15 +63,65 @@ describe("labels", () => {
       expect(statusMeta(s).label).toMatch(/^[А-ЯЁ][а-яё ]+$/);
     }
   });
+
+  test("name the service or the order, not what the portal is doing about it", () => {
+    // "Сохраняем" was the portal narrating its own filing while the person was
+    // waiting for a service. A label in the first person plural is that mistake.
+    for (const s of ALL_STATUSES) {
+      expect(statusMeta(s).label).not.toMatch(/ем$/);
+    }
+  });
+});
+
+// The legend: what each group means, spelled out where the groups are listed.
+describe("notes", () => {
+  test("every group has one, as a finished sentence", () => {
+    for (const { statuses } of STATUS_GROUPS) {
+      expect(statusMeta(statuses[0]).note).toMatch(/^[А-ЯЁ].*\.$/);
+    }
+  });
+
+  test("explain the state without the portal's own bookkeeping", () => {
+    for (const { statuses } of STATUS_GROUPS) {
+      expect(statusMeta(statuses[0]).note).not.toMatch(/\bMR\b|слияни|merge|git|argo/i);
+    }
+  });
+});
+
+// A dead end is a state the order does not leave by itself. Those are the ones
+// where the badge alone leaves a person with nothing to do.
+describe("statusNextStep", () => {
+  test("every dead end says what to do next", () => {
+    for (const s of ["DEGRADED", "ARGO_MISSING", "MR_CLOSED"]) {
+      const next = statusNextStep(s);
+      expect(next?.title).toBeTruthy();
+      expect(next?.hint).toMatch(/поддержк|заново/i);
+    }
+  });
+
+  test("a state that moves on by itself is left alone", () => {
+    for (const s of ["DRAFT", "MR_CREATED", "MR_MERGED", "DEPLOYING", "HEALTHY", "DELETED"]) {
+      expect(statusNextStep(s)).toBeNull();
+    }
+  });
+
+  test("a cancelled deletion is not a rejected order: the service is still running", () => {
+    expect(statusNextStep("MR_CLOSED", true)).not.toEqual(statusNextStep("MR_CLOSED"));
+    expect(statusNextStep("MR_CLOSED", true)?.hint).toMatch(/работает/i);
+  });
+
+  test("the flag only matters where a deletion could have been cancelled", () => {
+    expect(statusNextStep("HEALTHY", true)).toBeNull();
+  });
 });
 
 describe("statusTitle", () => {
   test("plain by default: the group is all there is to read", () => {
-    expect(statusTitle("MR_CREATED")).toBe("Сохраняем");
+    expect(statusTitle("MR_CREATED")).toBe("Принят");
   });
 
   test("detailed adds the exact state, for whoever works out where an order is stuck", () => {
-    expect(statusTitle("MR_CREATED", true)).toBe("Сохраняем (MR_CREATED)");
+    expect(statusTitle("MR_CREATED", true)).toBe("Принят (MR_CREATED)");
   });
 
   test("an unknown state is shown as it came, detailed or not", () => {
