@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-27
+
+Релиз про форму заказа: она спрашивает только то, что подходит к уже выбранным
+значениям, расшифровывает варианты в списках и принимает имя сервиса,
+написанное как адрес хоста.
+
 ### Изменено
 - Форма заказа скрывает поля, которые не подходят к уже выбранным значениям.
   У точки с протоколом TCP или UDP больше нет поля «Домен»: домена у такой
@@ -465,7 +471,8 @@ GitOps-провижининг, согласование публикаций и 
 - Сборка и релизы на GitHub Actions: проверки PR, тег и GitHub Release, сборка
   образов портала и коллектора.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/awbait/console/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/awbait/console/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/awbait/console/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/awbait/console/compare/v0.6.0...v0.7.0
