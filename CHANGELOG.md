@@ -16,9 +16,8 @@ All notable changes to this project are documented in this file.
 - Added the status name next to its icon in the orders table.
 
 ### Changed
-- Renamed the order statuses and put a description of each into the "Statuses"
-  filter above the orders table and into the "Statuses and deployment" help
-  page.
+- Renamed the order statuses and described each of them in the "Statuses and
+  deployment" help page.
 
 ### Fixed
 - Fixed opening an order whose version has left the catalog: the page shows the

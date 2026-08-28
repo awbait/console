@@ -39,9 +39,6 @@ export type StatusGroupKey =
 
 interface StatusMeta {
   label: string; // human-readable (RU)
-  // One line of what the state means, for the legend: the label names the
-  // state, this says what it means for the service.
-  note: string;
   Icon: IconType;
   fg: string; // icon/text colour
   badge: string; // pill background + text
@@ -55,7 +52,6 @@ interface StatusMeta {
 const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
   draft: {
     label: "Черновик",
-    note: "Заказ создан, но ещё не отправлен.",
     Icon: IconPencil,
     fg: "text-slate-500",
     badge: "bg-slate-100 text-slate-700",
@@ -64,14 +60,12 @@ const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
   // spinner that turns for an hour promises progress that is not happening.
   accepted: {
     label: "Принят",
-    note: "Заказ отправлен, сервиса в кластере ещё нет.",
     Icon: IconClock,
     fg: "text-amber-600",
     badge: "bg-amber-100 text-amber-800",
   },
   deploying: {
     label: "Разворачивается",
-    note: "Платформа приводит кластер к заказанному состоянию.",
     Icon: IconLoader2,
     fg: "text-blue-600",
     badge: "bg-blue-100 text-blue-800",
@@ -80,35 +74,30 @@ const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
   },
   healthy: {
     label: "Работает",
-    note: "Сервис развёрнут и работает без ошибок.",
     Icon: IconCircleCheck,
     fg: "text-emerald-600",
     badge: "bg-green-100 text-green-800",
   },
   broken: {
     label: "Не работает",
-    note: "Сервис развёрнут с ошибкой или его нет в кластере.",
     Icon: IconAlertTriangle,
     fg: "text-red-600",
     badge: "bg-red-100 text-red-800",
   },
   rejected: {
     label: "Отклонён",
-    note: "Заказ отклонили, сервис не создан.",
     Icon: IconBan,
     fg: "text-slate-500",
     badge: "bg-slate-200 text-slate-600",
   },
   deleting: {
     label: "Удаляется",
-    note: "Сервис убирается из кластера.",
     Icon: IconTrash,
     fg: "text-orange-600",
     badge: "bg-orange-100 text-orange-800",
   },
   deleted: {
     label: "Удалён",
-    note: "Сервиса больше нет.",
     Icon: IconCircleX,
     fg: "text-slate-400",
     badge: "bg-gray-200 text-gray-600",
@@ -154,9 +143,6 @@ function metaFor(status: string): StatusMeta {
   return (
     (key && GROUP_META[key]) || {
       label: status,
-      // The legend is drawn from the groups, so an ungrouped state never gets
-      // there and has nothing to say beyond its own name.
-      note: "",
       Icon: IconLoader2,
       fg: "text-slate-500",
       badge: "bg-gray-100 text-gray-700",

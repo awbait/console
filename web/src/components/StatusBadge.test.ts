@@ -73,21 +73,6 @@ describe("labels", () => {
   });
 });
 
-// The legend: what each group means, spelled out where the groups are listed.
-describe("notes", () => {
-  test("every group has one, as a finished sentence", () => {
-    for (const { statuses } of STATUS_GROUPS) {
-      expect(statusMeta(statuses[0]).note).toMatch(/^[А-ЯЁ].*\.$/);
-    }
-  });
-
-  test("explain the state without the portal's own bookkeeping", () => {
-    for (const { statuses } of STATUS_GROUPS) {
-      expect(statusMeta(statuses[0]).note).not.toMatch(/\bMR\b|слияни|merge|git|argo/i);
-    }
-  });
-});
-
 // A dead end is a state the order does not leave by itself. Those are the ones
 // where the badge alone leaves a person with nothing to do.
 describe("statusNextStep", () => {
