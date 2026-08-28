@@ -148,6 +148,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		cfg.HarborProjects, cfg.HarborInsecureTLS, cfg.HarborTimeout)
 
 	gl := gitlab.NewClient(cfg.GitLabURL, cfg.GitLabToken, cfg.GitLabGitopsGroup, cfg.GitLabTimeout)
+	gl.Log = observability.Component(log, "gitlab")
 
 	argo := argocd.NewClient(cfg.ArgoCDURL, cfg.ArgoCDToken, cfg.GitLabTimeout)
 
@@ -216,6 +217,22 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// really sends the group claim is not something it will tell us; the only
 	// evidence is a token it has issued (see internal/checks.KeycloakChecks).
 	signIns := auth.NewSignIns()
+	// Sessions are shared, so somebody signs in through one replica and then
+	// works on any of them. The evidence of what their token carried has to
+	// travel with them, or the check goes blind everywhere but there.
+	signIns.Announce = func(in auth.SignIn) {
+		bus.Publish(events.Event{
+			Topic: events.TopicSignIns,
+			Type:  "sign_in",
+			Data: map[string]any{
+				"at":     in.At.UTC().Format(time.RFC3339Nano),
+				"groups": in.Groups,
+				"teams":  in.Teams,
+				"role":   in.Role,
+			},
+		})
+	}
+	go forwardSignIns(ctx, bus, signIns)
 	authn, err := buildAuth(ctx, cfg, c, observability.Component(log, "auth"), signIns)
 	if err != nil {
 		return err
@@ -269,6 +286,18 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// reconcile sweep. Routes register only for sources whose secret is set.
 	webhookHandler := webhooks.New(reconcileRequest{bus}, observability.Component(log, "webhooks"),
 		cfg.GitLabWebhookToken, cfg.HarborWebhookKey)
+	// A delivery lands on whichever replica the ingress picked, and the counters
+	// it feeds are read on whichever replica an admin opened - the configuration
+	// page, and the button that asks GitLab for a test delivery and then waits
+	// for it. So every replica hears about every delivery.
+	webhookHandler.Announce = func(source, outcome string) {
+		bus.Publish(events.Event{
+			Topic: events.TopicWebhooks,
+			Type:  "delivery_recorded",
+			Data:  map[string]any{"source": source, "outcome": outcome},
+		})
+	}
+	go forwardWebhookDeliveries(ctx, bus, webhookHandler)
 	// Register the portal's own hook in GitLab (GITLAB_WEBHOOK_URL set), so no
 	// human has to add it after a deploy. Whether a failure here is fatal depends
 	// on the mode: in hybrid the poll still advances every order, in webhook-only
@@ -464,6 +493,73 @@ func forwardReconcileRequests(ctx context.Context, bus events.Bus, poller *statu
 			poller.Trigger(reason)
 		}
 	}
+}
+
+// forwardWebhookDeliveries counts, here, a delivery that arrived at another
+// replica. Our own is skipped: the handler counted it as it answered, and the
+// bus hands every replica its own events back. Blocks until ctx is cancelled.
+func forwardWebhookDeliveries(ctx context.Context, bus events.Bus, h *webhooks.Handler) {
+	ch, unsub := bus.Subscribe(events.TopicWebhooks)
+	defer unsub()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-ch:
+			if e.Local {
+				continue
+			}
+			source, _ := e.Data["source"].(string)
+			outcome, _ := e.Data["outcome"].(string)
+			h.RecordElsewhere(source, outcome)
+		}
+	}
+}
+
+// forwardSignIns records, here, a sign-in served by another replica. Our own is
+// skipped for the same reason as above, and would be discarded anyway: the most
+// recent sign-in wins and it is already this one. Blocks until ctx is cancelled.
+func forwardSignIns(ctx context.Context, bus events.Bus, signIns *auth.SignIns) {
+	ch, unsub := bus.Subscribe(events.TopicSignIns)
+	defer unsub()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-ch:
+			if e.Local {
+				continue
+			}
+			at, err := time.Parse(time.RFC3339Nano, stringField(e.Data, "at"))
+			if err != nil {
+				continue
+			}
+			signIns.Apply(auth.SignIn{
+				At:     at,
+				Groups: intField(e.Data, "groups"),
+				Teams:  intField(e.Data, "teams"),
+				Role:   stringField(e.Data, "role"),
+			})
+		}
+	}
+}
+
+func stringField(d map[string]any, key string) string {
+	s, _ := d[key].(string)
+	return s
+}
+
+// intField reads a whole number out of an event payload. Both types are real:
+// a number is an int in the process that published it and a float64 after the
+// trip through JSON, and an event reaches subscribers both ways.
+func intField(d map[string]any, key string) int {
+	switch v := d[key].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	}
+	return 0
 }
 
 // announceIfLeading passes a finished round of configuration checks on only from

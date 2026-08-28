@@ -18,6 +18,11 @@ import (
 // rather than a limitation: "no delivery since the portal started" is what an
 // admin needs to see, and a number carried over from the previous process would
 // hide exactly the case where a hook broke during a deploy.
+//
+// They count what reached the portal, not what reached this process: a delivery
+// lands on whichever replica the ingress picked, and every replica is told about
+// it (see Handler.Announce). What a replica misses is only what arrived before
+// it started, which is the same window a restart has always had.
 
 // Delivery outcomes, matching what the handler does with a request.
 const (

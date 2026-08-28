@@ -127,6 +127,44 @@ func TestPublishDoesNotBlockWhenRedisIsBehind(t *testing.T) {
 	}
 }
 
+// TestASubscriberCanTellItsOwnEventFromAnothersProtects the counters that are
+// kept on every replica: a webhook delivery is counted where it arrived and
+// then announced, so the replica that announced it must not count it again.
+func TestASubscriberCanTellItsOwnEventFromAnothers(t *testing.T) {
+	them := bus("replica-b")
+	them.Publish(Event{Topic: "webhooks", Type: "delivery_recorded"})
+	fromThem := wire(t, them)
+
+	us := bus("replica-a")
+	ch, unsub := us.Subscribe("webhooks")
+	defer unsub()
+
+	us.Publish(Event{Topic: "webhooks", Type: "delivery_recorded"})
+	if got := <-ch; !got.Local {
+		t.Fatal("an event published here is not marked as ours, so it would be counted twice")
+	}
+	<-us.out // our own copy on its way to the other replicas
+
+	us.deliver(fromThem)
+	if got := <-ch; got.Local {
+		t.Fatal("an event from another replica is marked as ours, so it would not be counted at all")
+	}
+}
+
+// TestTheInProcessBusMarksEverythingLocal: with one replica every event is its
+// own, and a subscriber that skips other replicas' events must still see all of
+// them.
+func TestTheInProcessBusMarksEverythingLocal(t *testing.T) {
+	b := New()
+	ch, unsub := b.Subscribe("webhooks")
+	defer unsub()
+
+	b.Publish(Event{Topic: "webhooks", Type: "delivery_recorded"})
+	if got := <-ch; !got.Local {
+		t.Fatal("the in-process bus published an event as if it came from somewhere else")
+	}
+}
+
 func TestAnUnreadableEventIsDroppedNotPanicked(t *testing.T) {
 	b := bus("replica-a")
 	ch, unsub := b.Subscribe("requests")

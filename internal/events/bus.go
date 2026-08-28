@@ -19,13 +19,36 @@ type Event struct {
 	Topic string         `json:"-"`    // "requests" (all of them) or "request:<id>"
 	Type  string         `json:"type"` // status_changed, mr_updated, ...
 	Data  map[string]any `json:"data"`
+	// Local is true when this replica published the event and false when it
+	// came from another one. The bus sets it; what a publisher passes is
+	// ignored.
+	//
+	// Most subscribers have no use for it - an event is an event, and where it
+	// was published is the bus's business. It matters to a subscriber that has
+	// already acted on its own copy by the time the event reaches it, and would
+	// otherwise count the same thing twice.
+	Local bool `json:"-"`
 }
 
-// TopicReconcile asks whoever runs the background loops to sweep now, instead
-// of waiting for the next tick. It is not an event a browser subscribes to: it
-// travels the same bus because the replica that receives a webhook is not
-// necessarily the one that reconciles (see internal/leader).
-const TopicReconcile = "reconcile"
+// Topics that are not a browser's business. They travel the same bus because
+// the replica something happens on is not the replica that has to know about
+// it (see internal/leader).
+const (
+	// TopicReconcile asks whoever runs the background loops to sweep now,
+	// instead of waiting for the next tick.
+	TopicReconcile = "reconcile"
+	// TopicWebhooks carries the fact that a webhook was delivered, so every
+	// replica counts a delivery that reached one of them. The counters are what
+	// the configuration page reads and what the "check delivery" button waits
+	// for, and a delivery lands on whichever replica the ingress picked.
+	TopicWebhooks = "webhooks"
+	// TopicSignIns carries what the last sign-in's token held. Sessions are
+	// shared, so a person signs in through one replica and works on any of
+	// them; the evidence of what the token carried has to travel with it, or
+	// the check that reads it (internal/checks.KeycloakChecks) goes blind on
+	// every replica but one.
+	TopicSignIns = "sign-ins"
+)
 
 // Bus is what a publisher and a subscriber see. Memory and Redis implement it;
 // the domains hold this interface, so which bus is wired is a decision main
@@ -80,7 +103,15 @@ func (b *Memory) Subscribe(topic string) (<-chan Event, func()) {
 }
 
 // Publish delivers an event to all subscribers of its topic (non-blocking).
+// Whoever calls it is the replica the event came from, so it is marked local.
 func (b *Memory) Publish(e Event) {
+	e.Local = true
+	b.publish(e)
+}
+
+// publish is the fan-out itself, without deciding where the event came from.
+// The Redis bus uses it to deliver another replica's event through this one.
+func (b *Memory) publish(e Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for ch := range b.subs[e.Topic] {

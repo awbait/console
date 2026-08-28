@@ -172,5 +172,7 @@ func (r *Redis) deliver(payload []byte) {
 		return
 	}
 	observability.ObserveBusEvent("in", "ok")
-	r.local.Publish(Event{Topic: env.Topic, Type: env.Type, Data: env.Data})
+	// Not Publish: this event belongs to another replica, and a subscriber that
+	// has already acted on its own copy tells the two apart by Local.
+	r.local.publish(Event{Topic: env.Topic, Type: env.Type, Data: env.Data})
 }
