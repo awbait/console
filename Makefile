@@ -184,3 +184,9 @@ stand-gitlab-webhooks:
 # exercise import/discovery. Needs IMPORT_DISCOVERY_ENABLED=true on the portal.
 seed-import:
 	powershell -ExecutionPolicy Bypass -File deployments/scripts/seed-import.ps1
+
+# Delete the merged portal/* branches left in the GitOps repositories by merge
+# requests opened before the portal started asking GitLab to remove them. Dry run:
+# pass -Apply to the script to actually delete (see its header for the rules).
+gitlab-prune-branches:
+	powershell -ExecutionPolicy Bypass -File deployments/scripts/gitlab-prune-branches.ps1
