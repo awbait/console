@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- The branch of an order change is removed from the repository once it is
+  merged. These branches used to pile up, one for every change of every service.
+
 ## [0.9.0] - 2026-08-28
 
 A release about ordering one service in several namespaces and about the orders

@@ -143,7 +143,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 			"order_id", r.ID, "mr_iid", rec.MRIID, "err", err)
 		return retryNotDone
 	}
-	s.supersedeMR(ctx, r, rec)
+	s.supersedeMR(ctx, r, rec, mr.SourceBranch)
 	if err := s.store.UpdateRequest(ctx, r); err != nil {
 		// The change is in Git either way; the record catching up is what drift
 		// detection would report on next.
@@ -188,13 +188,24 @@ func (s *Service) reportMergeConflicts(ctx context.Context, r *models.Request,
 }
 
 // supersedeMR closes the merge request the rewritten change replaces, in GitLab
-// and on record. Best-effort: a merge request left open is untidy, not broken,
-// and the order now points at the new one.
-func (s *Service) supersedeMR(ctx context.Context, r *models.Request, rec *models.RequestMR) {
+// and on record, and removes the branch it was opened from. Best-effort: a merge
+// request left open is untidy, not broken, and the order now points at the new one.
+//
+// The branch is only deleted here, where the portal is the one closing the merge
+// request and everything that was on the branch has just been carried into the
+// new one. A merge request a person turned down keeps its branch: whatever they
+// objected to is still written there, and it is not the portal's to throw away.
+func (s *Service) supersedeMR(ctx context.Context, r *models.Request, rec *models.RequestMR, branch string) {
 	if err := s.gl.CloseMR(ctx, rec.GitLabProjectID, rec.MRIID); err != nil {
 		s.logger().Warn("superseded mr not closed in gitlab",
 			"order_id", r.ID, "mr_iid", rec.MRIID, "err", err)
 		return
+	}
+	if branch != "" {
+		if err := s.gl.DeleteBranch(ctx, rec.GitLabProjectID, branch); err != nil {
+			s.logger().Warn("superseded mr branch not deleted",
+				"order_id", r.ID, "mr_iid", rec.MRIID, "branch", branch, "err", err)
+		}
 	}
 	rec.Status = models.MRClosed
 	rec.BlockedReason = ""
