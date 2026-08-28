@@ -11,6 +11,12 @@ All notable changes to this project are documented in this file.
   pass a status update to each other as it happens, and only one of them runs
   the background tasks. The platform status page says so when the replica you
   opened is not that one.
+- The form that changes a service lists the settings the change moves, the old
+  value next to the new one. The list is in the form itself, as you fill it in.
+- Your edit and somebody else's touched the same settings: the order page offers
+  to choose the values. It shows, for each of them, what the service holds now
+  and what you asked for, and sends your answers as one change. Everything else
+  it merges on its own, so only these settings are left to decide.
 
 ### Changed
 - An order's history no longer promises an approval. Every order used to say it
@@ -30,10 +36,9 @@ All notable changes to this project are documented in this file.
   page. The "Order" button is closed with the same reason instead of turning the
   order down after the form has been filled in and sent.
 - A service can still be changed after your edit and somebody else's touched the
-  same setting. The portal takes such a change back, names the settings that
-  disagreed in the order's history, and offers to pull the current state from
-  Git. The order used to be left holding a change nobody could apply, and it
-  accepted no others.
+  same setting. The portal takes such a change back and names the settings that
+  disagreed in the order's history. The order used to be left holding a change
+  nobody could apply, and it accepted no others.
 
 ## [0.9.0] - 2026-08-28
 

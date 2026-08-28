@@ -2,8 +2,10 @@
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -94,21 +96,28 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 	}
 
 	merged, conflicts := threeWayMerge(base, theirs, mine)
+	valuesConflicts := len(conflicts)
 	// The chart version lives in application.yaml, not in the values, but it is
 	// part of the same change and follows the same rule.
+	theirVersion, myVersion := s.chartVersionAt(ctx, proj.ID, r, branch),
+		s.chartVersionAt(ctx, proj.ID, r, mr.SourceBranch)
 	version, versionConflict := mergeVersion(
-		s.chartVersionAt(ctx, proj.ID, r, mr.DiffRefs.BaseSHA),
-		s.chartVersionAt(ctx, proj.ID, r, branch),
-		s.chartVersionAt(ctx, proj.ID, r, mr.SourceBranch),
+		s.chartVersionAt(ctx, proj.ID, r, mr.DiffRefs.BaseSHA), theirVersion, myVersion,
 	)
 	if versionConflict {
 		// Not a values field, so it gets a name of its own rather than a path into
 		// the tree. The UI names it in the reader's language.
-		conflicts = append(conflicts, mergeConflict{Path: "chartVersion"})
+		conflicts = append(conflicts, models.ValuesConflict{
+			Path: models.VersionConflictPath, Theirs: theirVersion, Mine: myVersion,
+		})
 	}
 	if len(conflicts) > 0 {
+		set := &models.ValuesConflictSet{
+			Conflicts: conflicts, Merged: merged, MergedVersion: version, MRIID: rec.MRIID,
+		}
 		s.reportMergeConflicts(ctx, r, rec, conflicts)
-		s.withdrawMR(ctx, r, rec, conflicts)
+		s.withdrawMR(ctx, r, rec, set)
+		s.markConflictDrift(ctx, r, valuesConflicts > 0, versionConflict, theirVersion)
 		return retryWithdrawn
 	}
 	if version == "" {
@@ -173,7 +182,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 // portal's own finding about two versions of a file, not a verdict GitLab is
 // still recomputing, so there is nothing to wait for it to change its mind about.
 func (s *Service) reportMergeConflicts(ctx context.Context, r *models.Request,
-	rec *models.RequestMR, conflicts []mergeConflict) {
+	rec *models.RequestMR, conflicts []models.ValuesConflict) {
 
 	paths := conflictPaths(conflicts)
 	if !s.takeMergeBlock(ctx, r, rec, "conflict:"+paths, 0) {
@@ -231,8 +240,13 @@ func (s *Service) supersedeMR(ctx context.Context, r *models.Request, rec *model
 // values on the order; and the branch really has moved, which is what the drift
 // check says next, with the button that pulls it in. What a person loses is a
 // change they would have had to redo anyway.
+//
+// The disagreement itself is written into the event, field by field, with the
+// values on both sides and the tree the portal did settle. That is what the
+// order page reads to show the two values and let somebody pick between them:
+// the paths alone name the fields, they do not carry the choice.
 func (s *Service) withdrawMR(ctx context.Context, r *models.Request,
-	rec *models.RequestMR, conflicts []mergeConflict) {
+	rec *models.RequestMR, set *models.ValuesConflictSet) {
 
 	if err := s.gl.CloseMR(ctx, rec.GitLabProjectID, rec.MRIID); err != nil {
 		// Next tick tries again; until then the order stays as it was.
@@ -246,14 +260,52 @@ func (s *Service) withdrawMR(ctx context.Context, r *models.Request,
 	// The bound is on chasing one moving branch. This change is over, and the
 	// next one starts its own count.
 	s.clearMergeRetries(r.ID)
-	paths := conflictPaths(conflicts)
+	paths := conflictPaths(set.Conflicts)
 	s.logger().Info("conflicted change withdrawn",
 		"order_id", r.ID, "mr_iid", rec.MRIID, "fields", paths)
 	s.eventWith(ctx, r, bySystem(), "change_withdrawn", "", "", map[string]any{
-		"reason": "conflict",
-		"fields": paths,
-		"mr_iid": rec.MRIID,
+		"reason":         "conflict",
+		"fields":         paths,
+		"mr_iid":         rec.MRIID,
+		"conflicts":      set.Conflicts,
+		"merged":         set.Merged,
+		"merged_version": set.MergedVersion,
 	})
+}
+
+// markConflictDrift writes down, then and there, that Git no longer holds what
+// the order says it does.
+//
+// The drift check would find the same thing on its own within a cycle - two
+// sides moved one field, and the portal is holding the side that did not get
+// committed - but "within a cycle" is too late for the page a person is looking
+// at right now: they are being offered the choice between the two values, and
+// the order has to be in the state that lets them act on it.
+func (s *Service) markConflictDrift(ctx context.Context, r *models.Request,
+	valuesConflict, versionConflict bool, gitVersion string) {
+
+	// Worded exactly as CheckDrift words it, so the reconciler agrees with this
+	// on its next pass instead of rewriting it and logging a second finding.
+	var reasons []string
+	if valuesConflict {
+		reasons = append(reasons, "values.yaml изменён в Git")
+	}
+	if versionConflict {
+		reasons = append(reasons,
+			fmt.Sprintf("версия чарта в Git: %s (в портале: %s)", gitVersion, r.ChartVersion))
+	}
+	detail := strings.Join(reasons, "; ")
+	if r.Drifted && r.DriftDetail == detail {
+		return
+	}
+	if err := s.store.SetDrift(ctx, r.ID, true, detail); err != nil {
+		s.logger().Warn("drift flag not persisted after withdrawing a change",
+			"order_id", r.ID, "err", err)
+		return
+	}
+	r.Drifted, r.DriftDetail = true, detail
+	s.event(ctx, r, bySystem(), "drift_detected", r.Status, r.Status)
+	s.publishStatus(r.ID, string(r.Status))
 }
 
 // markMRClosed writes down that a change is no longer open. Best-effort: it is
@@ -330,4 +382,83 @@ func (s *Service) clearMergeRetries(requestID string) {
 	s.mergeMu.Lock()
 	defer s.mergeMu.Unlock()
 	delete(s.mergeRetries, requestID)
+}
+
+// PendingConflict returns the disagreement an order is still sitting on: the
+// last change the portal took back because two sides moved the same fields, so
+// long as nothing has happened since to settle it.
+//
+// It is read off the history rather than kept as a column of its own. The
+// withdrawal is already written down there, values and all, and a second copy
+// of it on the order would be a second thing to keep true - one that could
+// outlive the fact it describes.
+//
+// Settled means one of two things, and both are somebody deciding: the order
+// was pulled from Git (their values won outright), or another change was opened
+// on it (the person went and edited it, whatever they typed).
+func (s *Service) PendingConflict(ctx context.Context, r *models.Request) *models.ValuesConflictSet {
+	if r == nil || r.DeletedAt != nil || r.Status == models.StatusDraft {
+		return nil
+	}
+	evs, err := s.store.ListEvents(ctx, r.ID)
+	if err != nil {
+		s.logger().Debug("pending conflict unknown: history unreadable", "order_id", r.ID, "err", err)
+		return nil
+	}
+	var set *models.ValuesConflictSet
+	for i := len(evs) - 1; i >= 0; i-- {
+		e := evs[i]
+		if e.EventType == "git_pulled" {
+			return nil
+		}
+		if e.EventType == "change_withdrawn" {
+			set = conflictSetFrom(e)
+			break
+		}
+	}
+	if set == nil {
+		return nil
+	}
+	mrs, err := s.store.ListMRs(ctx, r.ID)
+	if err != nil {
+		return nil
+	}
+	for _, mr := range mrs {
+		if mr.CreatedAt.After(set.At) {
+			return nil
+		}
+	}
+	return set
+}
+
+// conflictSetFrom reads a withdrawal event back into the set the page is served,
+// or nil when that event carries no disagreement to show - it was withdrawn for
+// some other reason, or it was written by a build that only recorded the field
+// names. Re-encoded through JSON on purpose: the payload comes back as a plain
+// tree from the database and as the original Go values from the memory store,
+// and this is the one reading that works for both.
+func conflictSetFrom(e *models.RequestEvent) *models.ValuesConflictSet {
+	if e.Payload == nil || e.Payload["reason"] != "conflict" {
+		return nil
+	}
+	raw, err := json.Marshal(e.Payload)
+	if err != nil {
+		return nil
+	}
+	var p struct {
+		Conflicts     []models.ValuesConflict `json:"conflicts"`
+		Merged        map[string]any          `json:"merged"`
+		MergedVersion string                  `json:"merged_version"`
+		MRIID         int                     `json:"mr_iid"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil || len(p.Conflicts) == 0 {
+		return nil
+	}
+	return &models.ValuesConflictSet{
+		Conflicts:     p.Conflicts,
+		Merged:        p.Merged,
+		MergedVersion: p.MergedVersion,
+		MRIID:         p.MRIID,
+		At:            e.CreatedAt,
+	}
 }

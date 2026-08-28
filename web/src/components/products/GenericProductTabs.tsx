@@ -5,23 +5,14 @@ import {
   IconPencil,
   IconPlus,
   IconTrash,
-  IconX,
 } from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Button as AriaButton,
-  Dialog,
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  Modal,
-  ModalOverlay,
-  Popover,
-} from "react-aria-components";
+import { Button as AriaButton, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { api, HttpError } from "@/api/client";
 import type { OrderRequest, ViewDocument, ViewTab } from "@/api/types";
 import { chartLabel } from "@/app/CatalogContext";
+import { ChangeSummary } from "@/form/FieldDiff";
 import {
   collectErrors,
   pruneEmpty,
@@ -32,6 +23,7 @@ import {
 } from "@/form/SchemaForm";
 import { useAsync } from "@/hooks/useAsync";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { FormDialogShell } from "../FormDialogShell";
 import { FormErrors, type SubmitError, toSubmitError } from "../FormErrors";
 import { Button, Hint, Loading } from "../ui";
 import {
@@ -59,73 +51,6 @@ export type PersistValues = (values: Values) => Promise<void> | void;
 // generic fallback built from the view id.
 function actionLabel(a: ActionPlacement): string {
   return a.label ?? `Редактировать ${a.view}`;
-}
-
-// FormDialogShell is the shared chrome of the product form dialogs, styled as a
-// full-height slide-over panel on the right (console pattern for editing list
-// entries): blurred backdrop, icon-tile header with a title/subtitle pair, a
-// scrollable body and a tinted footer pinned to the bottom.
-function FormDialogShell({
-  isOpen,
-  onClose,
-  icon,
-  title,
-  subtitle,
-  maxWidth = "max-w-xl",
-  footer,
-  children,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-  maxWidth?: string;
-  footer: (close: () => void) => React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <ModalOverlay
-      isOpen={isOpen}
-      onOpenChange={(o) => !o && onClose()}
-      // scrim, not a slate tint: the neutral ramp is inverted in the dark
-      // themes, so slate-900 there is nearly white and the dimming became a
-      // bright veil. scrim is plain black and dims harder on a black page.
-      className="scrim fixed inset-0 z-50 backdrop-blur-[2px] entering:animate-in entering:fade-in entering:duration-200 exiting:animate-out exiting:fade-out exiting:duration-200 exiting:fill-mode-forwards"
-    >
-      <Modal
-        className={`fixed inset-y-0 right-0 w-full ${maxWidth} border-l border-slate-200 bg-surface shadow-2xl outline-none entering:animate-in entering:slide-in-from-right entering:duration-300 entering:ease-out exiting:animate-out exiting:slide-out-to-right exiting:duration-200 exiting:fill-mode-forwards`}
-      >
-        <Dialog className="flex h-full flex-col outline-none">
-          {({ close }) => (
-            <>
-              <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-                  {icon}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-base font-semibold text-slate-800">{title}</h2>
-                  {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
-                </div>
-                <button
-                  type="button"
-                  onClick={close}
-                  aria-label="Закрыть"
-                  className="rounded-md p-1.5 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  <IconX size={18} stroke={2} />
-                </button>
-              </header>
-              <div className="flex-1 overflow-auto px-5 py-5">{children}</div>
-              <footer className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3.5">
-                {footer(close)}
-              </footer>
-            </>
-          )}
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
-  );
 }
 
 // rebaseFieldErrors re-roots server validation paths (absolute JSON pointers
@@ -602,6 +527,10 @@ function ItemModal({
         showErrors={showErrors}
         lockReadOnly={initial !== null}
       />
+      {/* What this edit moves. Only when an element is being changed: for a new
+          one every field is new, and listing them all would just repeat the
+          form above it. */}
+      {initial && <ChangeSummary before={initial} after={item} schema={schema} view={view} />}
       {/* One error surface for both kinds: the client-side field summary and
           the server (domain/422) error with its details. */}
       {(err || (showErrors && errors.size > 0)) && (
@@ -802,6 +731,10 @@ function ViewFormModal({
       ) : (
         <p className="text-sm text-gray-500">Нет схемы.</p>
       )}
+      {/* The form shows only the fields this view projects, but the change goes
+          to the whole order: the summary is of the values, so a field the view
+          computes from what was typed is named here too. */}
+      <ChangeSummary before={saved} after={value} schema={schema ?? undefined} view={view} />
       {(err || (showErrors && errors.size > 0)) && (
         <div ref={summaryRef} className="mt-3 scroll-mb-3">
           <FormErrors

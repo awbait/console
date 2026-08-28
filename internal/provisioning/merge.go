@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"console/pkg/models"
 )
 
 // Three-way merge of an order's values.
@@ -25,35 +27,28 @@ import (
 // policy directions), so merging entries pairwise would invent combinations
 // neither side wrote. Two sides editing the same list is a conflict.
 
-// mergeConflict is one field both sides changed, to different values.
-type mergeConflict struct {
-	// Path is the dotted field path, e.g. "gateway.hosts" - written for a person
-	// to recognise on the order form, not as a JSON pointer.
-	Path string
-	// Theirs and Mine are the two values in disagreement, for showing the choice.
-	Theirs any
-	Mine   any
-}
+// A conflict is models.ValuesConflict: the same shape the order page is served,
+// because it is the same fact. What the merge finds is what a person is shown.
 
 // threeWayMerge merges mine and theirs over their common base, field by field.
 // It returns the merged tree and every field the two sides disagree on; when
 // there is any conflict the merged tree is incomplete by definition and must
 // not be committed - conflicting fields carry theirs, so the caller can still
 // show a diff without deciding anything.
-func threeWayMerge(base, theirs, mine map[string]any) (map[string]any, []mergeConflict) {
-	merged, conflicts := mergeMaps("", base, theirs, mine)
+func threeWayMerge(base, theirs, mine map[string]any) (map[string]any, []models.ValuesConflict) {
+	merged, conflicts := mergeMaps(nil, base, theirs, mine)
 	sort.Slice(conflicts, func(i, j int) bool { return conflicts[i].Path < conflicts[j].Path })
 	return merged, conflicts
 }
 
-func mergeMaps(prefix string, base, theirs, mine map[string]any) (map[string]any, []mergeConflict) {
+func mergeMaps(prefix []string, base, theirs, mine map[string]any) (map[string]any, []models.ValuesConflict) {
 	out := map[string]any{}
-	var conflicts []mergeConflict
+	var conflicts []models.ValuesConflict
 	for _, key := range unionKeys(base, theirs, mine) {
-		path := key
-		if prefix != "" {
-			path = prefix + "." + key
-		}
+		// Copied rather than appended in place: each branch of the tree keeps its
+		// own path, and a shared backing array would let one rewrite another's.
+		field := append(append(make([]string, 0, len(prefix)+1), prefix...), key)
+		path := strings.Join(field, ".")
 		b, bok := base[key]
 		t, tok := theirs[key]
 		m, mok := mine[key]
@@ -65,7 +60,7 @@ func mergeMaps(prefix string, base, theirs, mine map[string]any) (map[string]any
 		mm, mIsMap := m.(map[string]any)
 		if tIsMap && mIsMap {
 			bm, _ := b.(map[string]any) // a non-map (or absent) base: both sides added it
-			sub, subConflicts := mergeMaps(path, bm, tm, mm)
+			sub, subConflicts := mergeMaps(field, bm, tm, mm)
 			out[key] = sub
 			conflicts = append(conflicts, subConflicts...)
 			continue
@@ -90,7 +85,9 @@ func mergeMaps(prefix string, base, theirs, mine map[string]any) (map[string]any
 				out[key] = m
 			}
 		default:
-			conflicts = append(conflicts, mergeConflict{Path: path, Theirs: t, Mine: m})
+			conflicts = append(conflicts, models.ValuesConflict{
+				Path: path, Field: field, Theirs: t, Mine: m,
+			})
 			if tok {
 				out[key] = t
 			}
@@ -131,7 +128,7 @@ func unionKeys(maps ...map[string]any) []string {
 
 // conflictPaths lists the field paths of a set of conflicts, for a log line or
 // a timeline entry.
-func conflictPaths(conflicts []mergeConflict) string {
+func conflictPaths(conflicts []models.ValuesConflict) string {
 	paths := make([]string, 0, len(conflicts))
 	for _, c := range conflicts {
 		paths = append(paths, c.Path)

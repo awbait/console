@@ -189,3 +189,46 @@ type RequestEvent struct {
 	Payload    map[string]any `json:"payload,omitempty"`
 	CreatedAt  time.Time      `json:"created_at"`
 }
+
+// ValuesConflict is one field two changes moved to different values. The portal
+// merges an order's edit with whatever the branch holds now, field by field;
+// this is what it cannot decide on its own and has to ask about.
+type ValuesConflict struct {
+	// Path is the dotted field path, e.g. "gateway.hosts" - written for a person
+	// to recognise on the order form, not as a JSON pointer.
+	Path string `json:"path"`
+	// Field is the same path in segments. A field name may itself contain a dot
+	// (an annotation key), so only the segments say where the field really is,
+	// and that is what the page needs in order to put a chosen value back.
+	Field []string `json:"field,omitempty"`
+	// Theirs is what the branch holds now, Mine what the order asked for. Absent
+	// means that side has no such field at all - one of them deleted it.
+	Theirs any `json:"theirs,omitempty"`
+	Mine   any `json:"mine,omitempty"`
+}
+
+// ValuesConflictSet is one withdrawn change's worth of disagreement: the fields
+// the two sides could not settle, and everything the portal settled on its own.
+//
+// The order page shows each conflicting field side by side and lets a person
+// pick; the choices are applied over Merged, so what neither side fought over -
+// including the other person's edits - survives the resolution.
+type ValuesConflictSet struct {
+	Conflicts []ValuesConflict `json:"conflicts"`
+	// Merged is the values tree with every field the portal could settle already
+	// settled; the fields named in Conflicts hold what the branch says.
+	Merged map[string]any `json:"merged,omitempty"`
+	// MergedVersion is the chart version by the same rule. Empty when it could
+	// not be read at all, which reads as "leave the order's version alone".
+	MergedVersion string `json:"merged_version,omitempty"`
+	// MRIID is the change that was taken back, for whoever goes looking in GitLab.
+	MRIID int `json:"mr_iid,omitempty"`
+	// At is when the portal took it back.
+	At time.Time `json:"at"`
+}
+
+// VersionConflictPath is the name the chart version goes by inside a conflict
+// set. It is not a values field - it lives in application.yaml - so it gets a
+// name of its own rather than a path into the values tree, and the page names
+// it in the reader's language.
+const VersionConflictPath = "chartVersion"
