@@ -29,13 +29,15 @@ All notable changes to this project are documented in this file.
 - An order keeps working after its version leaves the catalog. Its page used to
   open without the product tabs, and saving the values was refused as an
   unavailable version.
-- An edit closed in the team's repository instead of applied no longer takes the
-  service out of the portal's hands. The order used to go to "Отклонён" for
-  good: the service kept running, but nothing could edit, upgrade or delete it
-  any more. A closed deletion broke it the same way.
-- Orders already stuck in "Отклонён" that way are released on upgrade. The
-  portal follows their service's state again and notices changes made to it
-  outside the portal.
+- A running service stays under the portal's control when a change to it is
+  closed instead of applied. The order of such a service used to go to
+  "Отклонён" for good: the service itself kept running, but nothing could edit,
+  upgrade or delete it through the portal any more.
+- "Отклонён" now means one thing only: the service behind the order was never
+  created. A closed edit and a cancelled deletion put the order back into the
+  status it was in before them.
+- Orders already stuck in "Отклонён" are released on upgrade. The portal follows
+  their service's state again and notices edits made to it outside the portal.
 
 ## [0.8.2] - 2026-08-27
 
