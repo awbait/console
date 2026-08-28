@@ -8,7 +8,6 @@ import {
   IconArchive,
   IconArrowUpCircle,
   IconCheck,
-  IconDeviceFloppy,
   IconExternalLink,
   IconGitFork,
   IconPencil,
@@ -38,6 +37,7 @@ import { safeHref } from "@/lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
 import { dateInWords, fmtDateTime } from "@/lib/time";
+import { pendingChangeNotice } from "./pendingChange";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
 export function RequestDetailPage() {
@@ -142,6 +142,9 @@ export function RequestDetailPage() {
   // it with 409 open_mr. Surface it up front so we can disable those actions and
   // point at the MR instead of letting the user hit the error.
   const openMR = mrs.find((m) => m.mr_status === "opened") ?? null;
+  // What that change is waiting for: the portal applying it, or a person reading
+  // it first.
+  const pendingChange = pendingChangeNotice(openMR?.action, data.review);
   // A status the order does not leave on its own needs a next step spelled out.
   const nextStep = statusNextStep(r.status);
   // modifiable: provision-class affordances (create/delete) - owner or admin.
@@ -324,16 +327,19 @@ export function RequestDetailPage() {
       {/* A change of this service is on its way. For the person who ordered it
           that is all there is to say: the merge request carrying it is how the
           portal records the change, and the link to it is offered only to those
-          who go and look at it. */}
+          who go and look at it.
+
+          Two waits look the same from here and are not: most changes the portal
+          applies itself, and a few are read by a person first. This is the one
+          place that can tell them apart honestly - the change is in flight while
+          the notice is up, so it can say who is waited on. */}
       {openMR && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <div className="flex items-start gap-2">
-            <IconDeviceFloppy size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+            <pendingChange.Icon size={18} stroke={1.8} className="mt-0.5 shrink-0" />
             <div>
-              <p className="font-medium">Изменение сервиса сохраняется</p>
-              <p className="mt-0.5 text-amber-700">
-                Пока оно не применится, менять, обновлять и удалять сервис нельзя.
-              </p>
+              <p className="font-medium">{pendingChange.title}</p>
+              <p className="mt-0.5 text-amber-700">{pendingChange.hint}</p>
             </div>
           </div>
           {platformStaff && safeHref(openMR.mr_url) && (

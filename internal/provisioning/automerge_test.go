@@ -22,6 +22,18 @@ import (
 // reconcile loop decides to merge it.
 func newAutoMergeStack(t *testing.T) *stack {
 	t.Helper()
+	return newMergeStack(t, true)
+}
+
+// newManualMergeStack is the same stack with the installation's auto-merge off:
+// this portal merges nothing without a person, whatever a service says.
+func newManualMergeStack(t *testing.T) *stack {
+	t.Helper()
+	return newMergeStack(t, false)
+}
+
+func newMergeStack(t *testing.T, autoMerge bool) *stack {
+	t.Helper()
 	st := store.NewMemory()
 	c := cache.NewMemory()
 	hb := harbor.NewFake()
@@ -33,7 +45,7 @@ func newAutoMergeStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", true)
+	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", autoMerge)
 	return &stack{prov, gl, argo, hb, st, gitops}
 }
 
