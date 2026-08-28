@@ -17,11 +17,26 @@ import (
 
 // visibleSQL is the audience rule as a predicate. Its arguments are always the
 // same three, in this order: the reader's subject, their teams, their role.
+//
+// Belonging to the audience is only half of it. The other half is when the
+// reader turned up in it (user_audiences): an announcement made before somebody
+// first signed in, or the admin backlog from before they were made one, matches
+// the rule and was never addressed to them. A notification addressed to one
+// person is exempt - it names them - and a reader with no recorded floor keeps
+// everything, which is what COALESCE to the row's own time says.
 const visibleSQL = `(
-	   (n.audience = 'all')
-	or (n.audience = 'user' and n.audience_key = $1)
-	or (n.audience = 'team' and n.audience_key = ANY($2))
-	or (n.audience = 'role' and n.audience_key = $3)
+	   (n.audience = 'user' and n.audience_key = $1)
+	or (
+	        (   (n.audience = 'all')
+	         or (n.audience = 'team' and n.audience_key = ANY($2))
+	         or (n.audience = 'role' and n.audience_key = $3))
+	    and n.created_at >= coalesce((
+	            select ua.since from user_audiences ua
+	            where ua.subject = $1
+	              and ua.audience = n.audience
+	              and ua.audience_key = n.audience_key
+	        ), n.created_at)
+	   )
 )`
 
 // readSQL is true when this reader has already seen the row: marked by hand, or
@@ -67,6 +82,27 @@ func (p *Postgres) AddNotification(ctx context.Context, n *models.Notification) 
 		return p.db.QueryRow(ctx, `SELECT created_at FROM notifications WHERE id=$1`, n.ID).Scan(&n.CreatedAt)
 	}
 	return nil
+}
+
+// RecordAudiences writes the floor rows this reader does not have yet. The
+// first sighting is the one that counts, so a row already there is left alone:
+// ON CONFLICT DO NOTHING, never an UPDATE, or every appearance would push the
+// floor forward over news the reader was here for.
+func (p *Postgres) RecordAudiences(ctx context.Context, subject string, teams []string, role string, at time.Time) error {
+	if subject == "" {
+		return nil
+	}
+	_, err := p.db.Exec(ctx, `
+		INSERT INTO user_audiences (subject, audience, audience_key, since)
+		SELECT $1, a.audience, a.key, COALESCE($4, NOW())
+		FROM (
+			          SELECT 'all'::text AS audience, ''::text AS key
+			UNION ALL SELECT 'role', $3 WHERE $3 <> ''
+			UNION ALL SELECT 'team', t FROM unnest($2::text[]) AS t
+		) a
+		ON CONFLICT (subject, audience, audience_key) DO NOTHING`,
+		subject, teamList(teams), role, nullTime(at))
+	return err
 }
 
 func (p *Postgres) ListNotifications(ctx context.Context, f NotificationFilter) ([]*models.Notification, error) {

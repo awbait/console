@@ -10,9 +10,13 @@ package activity
 
 import (
 	"context"
+	"hash/fnv"
+	"io"
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -115,7 +119,7 @@ func (r *Recorder) Touch(ctx context.Context, u *models.User) {
 			r.logger().Warn("presence not recorded", "actor", u.Subject, "err", err)
 		}
 	}
-	if !r.claimTouch(ctx, u.Subject) {
+	if !r.claimTouch(ctx, u.Subject, touchFingerprint(u)) {
 		return
 	}
 	pu := &models.PlatformUser{
@@ -127,12 +131,29 @@ func (r *Recorder) Touch(ctx context.Context, u *models.User) {
 	}
 }
 
+// touchFingerprint folds what the session says about somebody - their teams and
+// their role - into the throttle. A person whose membership has just changed
+// looks like a different appearance, so the change is written on their next
+// request instead of waiting out the window. Both things that hang off the write
+// want that: the directory row, and the floor under their notifications, which
+// decides whether a new team's whole backlog counts as news for them.
+//
+// Hashed rather than spelled out: a key is short, and the exact groups have no
+// business being spread through the cache.
+func touchFingerprint(u *models.User) string {
+	teams := append([]string(nil), u.Teams...)
+	sort.Strings(teams)
+	h := fnv.New64a()
+	_, _ = io.WriteString(h, string(u.Role)+"\x00"+strings.Join(teams, "\x00"))
+	return strconv.FormatUint(h.Sum64(), 36)
+}
+
 // claimTouch reports whether this appearance is the one that gets to write the
 // directory row, and holds the throttle open for the next touchInterval. A
 // cache that cannot answer lets the write through: a directory that lags is
 // worse than an extra UPDATE.
-func (r *Recorder) claimTouch(ctx context.Context, subject string) bool {
-	key := touchKey + subject
+func (r *Recorder) claimTouch(ctx context.Context, subject, fingerprint string) bool {
+	key := touchKey + subject + ":" + fingerprint
 	if _, ok, err := r.cache.Get(ctx, key); err == nil && ok {
 		return false
 	}

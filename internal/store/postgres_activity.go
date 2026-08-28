@@ -21,7 +21,7 @@ func (p *Postgres) TouchUser(ctx context.Context, u *models.PlatformUser) error 
 	// An empty field in a fresh token must not erase what an earlier one
 	// carried: Keycloak clients differ in which claims they release, and a
 	// person whose name is known should not lose it to a token that omits it.
-	return p.db.QueryRow(ctx, `
+	if err := p.db.QueryRow(ctx, `
 		INSERT INTO users (subject, email, username, name, teams, role, first_seen, last_seen, visits)
 		VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7, NOW()), COALESCE($7, NOW()), 1)
 		ON CONFLICT (subject) DO UPDATE SET
@@ -34,7 +34,14 @@ func (p *Postgres) TouchUser(ctx context.Context, u *models.PlatformUser) error 
 			visits    = users.visits + 1
 		RETURNING first_seen, last_seen, visits`,
 		u.Subject, u.Email, u.Username, u.Name, teamList(u.Teams), string(u.Role), nullTime(u.LastSeen)).
-		Scan(&u.FirstSeen, &u.LastSeen, &u.Visits)
+		Scan(&u.FirstSeen, &u.LastSeen, &u.Visits); err != nil {
+		return err
+	}
+	// An appearance is also when the portal learns that somebody is in a team or
+	// holds a role. Recorded here rather than only when they open the bell, so
+	// that being around for a week without looking at it does not cost the week's
+	// news (see Store.RecordAudiences).
+	return p.RecordAudiences(ctx, u.Subject, u.Teams, string(u.Role), u.LastSeen)
 }
 
 func (p *Postgres) ListUsers(ctx context.Context) ([]*models.PlatformUser, error) {

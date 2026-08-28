@@ -32,8 +32,28 @@ func notificationFilter(r *http.Request) store.NotificationFilter {
 	return f
 }
 
-func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
+// reader is who is asking, with the floor under their feed recorded first.
+//
+// Their appearance is recorded too, on every request, but on another goroutine -
+// and the opening request of a session, the one whose answer fills the bell, can
+// be served before that lands. So the read says it for itself; the write is a
+// no-op once the floor is there.
+//
+// Failing to record it is logged rather than refused: the cost is a reader who
+// sees more than they should, which is what the portal did before any of this.
+func (s *Server) reader(r *http.Request) store.NotificationFilter {
 	f := notificationFilter(r)
+	if f.Subject == "" {
+		return f
+	}
+	if err := s.Store.RecordAudiences(r.Context(), f.Subject, f.Teams, f.Role, time.Time{}); err != nil {
+		s.logger().Warn("notification audiences not recorded", "actor", f.Subject, "err", err)
+	}
+	return f
+}
+
+func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
+	f := s.reader(r)
 	// `before` pages backwards through the feed: the created_at of the oldest
 	// row already on screen. An unparsable value is no bound rather than an
 	// error - the worst it does is show the newest page again.
@@ -59,7 +79,7 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleUnreadNotifications(w http.ResponseWriter, r *http.Request) {
-	count, err := s.Store.CountUnread(r.Context(), notificationFilter(r))
+	count, err := s.Store.CountUnread(r.Context(), s.reader(r))
 	if err != nil {
 		s.writeDomainErr(w, r, err)
 		return

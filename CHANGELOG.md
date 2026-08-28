@@ -16,6 +16,10 @@ All notable changes to this project are documented in this file.
   read it before it deploys. Nothing is required of you while it waits.
 
 ### Fixed
+- The bell of somebody signing in for the first time is empty. It used to open
+  on every announcement the portal had ever made. The same now holds for a role
+  or a team somebody has just been given: what they hear about is what happens
+  from then on.
 - The branch of an order change is removed from the repository once it is
   merged. These branches used to pile up, one for every change of every service.
 - Somebody who is in no team is told so on the list of orders and on the product

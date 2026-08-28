@@ -21,6 +21,7 @@ import (
 	"console/internal/publications"
 	"console/internal/store"
 	"console/pkg/models"
+	"github.com/google/uuid"
 )
 
 func newServer(t *testing.T) (*api.Server, *argocd.Fake, *provisioning.Service) {
@@ -203,5 +204,60 @@ func TestHTTPOrderSaysWhetherAPersonIsWaiting(t *testing.T) {
 	}
 	if !detail.Review.Required || detail.Review.By != provisioning.ReviewByInstallation {
 		t.Fatalf("review = %+v, want a person waited on by the installation", detail.Review)
+	}
+}
+
+// The bell of somebody who has just arrived. The floor under a feed is recorded
+// when the portal sees a person, which happens on another goroutine - and the
+// request that fetches the bell can be the one that got there first. So the read
+// records it too, and this is what says the wiring is there: without it the
+// answer is the whole past stream of announcements.
+func TestHTTPFirstBellIsEmpty(t *testing.T) {
+	srv, _, _ := newServer(t)
+	h := srv.Router()
+	ctx := context.Background()
+
+	for range 3 {
+		if err := srv.Store.AddNotification(ctx, &models.Notification{
+			ID: uuid.NewString(), Kind: "portal_updated", SubjectType: models.SubjectPlatform,
+			SubjectID: "v1", Audience: models.AudienceAll, Level: models.LevelInfo,
+		}); err != nil {
+			t.Fatalf("add notification: %v", err)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("GET", "/api/v1/notifications/unread", "core", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unread: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var unread struct {
+		Unread int `json:"unread"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &unread)
+	if unread.Unread != 0 {
+		t.Fatalf("a first bell = %d, want nothing from before this person was here", unread.Unread)
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("GET", "/api/v1/notifications", "core", nil))
+	var list []*models.Notification
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 0 {
+		t.Fatalf("feed = %d rows, want none", len(list))
+	}
+
+	// What the portal says from now on is theirs.
+	if err := srv.Store.AddNotification(ctx, &models.Notification{
+		ID: uuid.NewString(), Kind: "portal_updated", SubjectType: models.SubjectPlatform,
+		SubjectID: "v2", Audience: models.AudienceAll, Level: models.LevelInfo,
+	}); err != nil {
+		t.Fatalf("add notification: %v", err)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("GET", "/api/v1/notifications/unread", "core", nil))
+	_ = json.Unmarshal(rec.Body.Bytes(), &unread)
+	if unread.Unread != 1 {
+		t.Fatalf("unread = %d, want the one announcement since", unread.Unread)
 	}
 }

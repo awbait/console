@@ -52,13 +52,53 @@ func TestTouchThrottlesTheDirectory(t *testing.T) {
 
 	// Once the window is over (here: the throttle flag is gone), the next
 	// request writes again.
-	if err := c.Delete(ctx, touchKey+"u1"); err != nil {
+	if err := c.Delete(ctx, touchKey+"u1:"+touchFingerprint(u)); err != nil {
 		t.Fatalf("clear throttle: %v", err)
 	}
 	rec.Touch(ctx, u)
 	users, _ = st.ListUsers(ctx)
 	if users[0].Visits != 2 {
 		t.Fatalf("want a second visit after the window, got %d", users[0].Visits)
+	}
+}
+
+// A change of teams or role is not an ordinary repeat request: what hangs off
+// the write (the directory row, and the floor under this person's notifications)
+// has to see it now, not in five minutes.
+func TestTouchWritesThroughAMembershipChange(t *testing.T) {
+	rec, st, _ := newRecorder(t)
+	ctx := context.Background()
+
+	rec.Touch(ctx, user("u1", "Ada", "core"))
+	rec.Touch(ctx, user("u1", "Ada", "core")) // same session, throttled
+	users, _ := st.ListUsers(ctx)
+	if users[0].Visits != 1 {
+		t.Fatalf("the same appearance twice must count once, got %d", users[0].Visits)
+	}
+
+	joined := user("u1", "Ada", "core", "payments")
+	rec.Touch(ctx, joined)
+	users, _ = st.ListUsers(ctx)
+	if users[0].Visits != 2 {
+		t.Fatalf("a new team must be written straight away, got %d visits", users[0].Visits)
+	}
+	if len(users[0].Teams) != 2 {
+		t.Fatalf("directory teams = %v, want both", users[0].Teams)
+	}
+
+	promoted := &models.User{Subject: "u1", Name: "Ada", Teams: []string{"core", "payments"}, Role: models.RoleAdmin}
+	rec.Touch(ctx, promoted)
+	users, _ = st.ListUsers(ctx)
+	if users[0].Visits != 3 || users[0].Role != models.RoleAdmin {
+		t.Fatalf("a new role must be written straight away: %d visits, role %s", users[0].Visits, users[0].Role)
+	}
+}
+
+// The order of the teams in a token is not a change of anything.
+func TestTouchFingerprintIgnoresTeamOrder(t *testing.T) {
+	if touchFingerprint(user("u1", "Ada", "core", "payments")) !=
+		touchFingerprint(user("u1", "Ada", "payments", "core")) {
+		t.Fatal("the same teams in another order must look like the same appearance")
 	}
 }
 
