@@ -8,7 +8,12 @@ import (
 )
 
 // spaHandler serves the embedded single-page frontend:
-//   - an existing file is served as-is (hashed assets get a long immutable cache);
+//   - an existing file is served as-is: hashed assets get a long immutable
+//     cache, everything else (icons, docs, the Monaco bundle) an hour, because
+//     the name stays the same across deploys. Without a header of our own there
+//     would be none at all: the embedded FS has no modification time, so the
+//     file server sends neither Last-Modified nor ETag and the browser refetches
+//     the favicon on every page it opens;
 //   - the app shell (index.html) is served with no-cache so deploys take effect;
 //   - an unknown path without a file extension is a client-side route and falls
 //     back to the shell; a missing path WITH an extension (a stale asset) is 404.
@@ -42,6 +47,8 @@ func spaHandler(dist fs.FS) (http.Handler, error) {
 			if info != nil && !info.IsDir() {
 				if strings.HasPrefix(upath, "assets/") {
 					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					w.Header().Set("Cache-Control", "public, max-age=3600")
 				}
 				files.ServeHTTP(w, r)
 				return
