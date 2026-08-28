@@ -58,6 +58,7 @@ import {
 import { productTabs } from "@/components/products/genericView";
 import { statusMeta, statusTitle } from "@/components/StatusBadge";
 import { buttonClass, Card, Checkbox } from "@/components/ui";
+import { orderNamespace } from "@/form/namespace";
 import { useMatchMedia } from "@/hooks/useMatchMedia";
 import { safeHref } from "@/lib/href";
 import { dayLabel, fmtDateTime, fmtRelative } from "@/lib/time";
@@ -632,7 +633,7 @@ function InfoTab({
         <Field label="Версия" value={r.chart_version} />
         <Field label="Команда" value={r.team} />
         <Field label="Кластер" value={r.cluster} />
-        <Field label="Namespace" value={r.namespace} />
+        <Field label="Namespace" value={orderNamespace(r)} />
       </Fields>
       <MoreDetails>
         <div className="flex flex-col items-start gap-3 pt-2">

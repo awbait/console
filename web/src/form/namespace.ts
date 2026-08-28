@@ -111,3 +111,12 @@ export function resolveDestNamespace(
   if (parsed.source === "fixed") return parsed.value ?? "";
   return orderInput;
 }
+
+// orderNamespace is the namespace a saved order actually lands in: the stored
+// value, or the service name when it is empty - the same fallback the backend
+// applies (Request.Namespace, "empty -> service_name"). Anything that shows a
+// namespace to a person shows this: an empty cell would read as "nowhere",
+// while the order is in the cluster under its own name.
+export function orderNamespace(r: { namespace: string; service_name: string }): string {
+  return r.namespace || r.service_name;
+}

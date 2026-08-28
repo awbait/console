@@ -35,6 +35,7 @@ import {
   statusNextStep,
 } from "@/components/StatusBadge";
 import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
+import { orderNamespace } from "@/form/namespace";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
 import { fmtDateTime } from "@/lib/time";
@@ -108,25 +109,37 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // Cross-team facet filters (only used when allTeams). Empty set = no filter.
   const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
   const [productFilter, setProductFilter] = useState<Set<string>>(new Set());
+  const [namespaceFilter, setNamespaceFilter] = useState<Set<string>>(new Set());
   // The order pending delete confirmation (null = dialog closed).
   const [deleting, setDeleting] = useState<OrderRequest | null>(null);
 
-  // Distinct teams/products present in the data, for the facet filter options.
-  const teamOptions = useMemo(
-    () => [...new Set((data ?? []).map((r) => r.team))].filter(Boolean).sort(),
-    [data],
+  // Everything this table is about, before any of the filters a person sets:
+  // the team scoping and the caller's own filter (one product, on the product
+  // page). The facet options are built from it, so ticking one facet never
+  // empties the choices of another and never hides a chip mid-use.
+  const scoped = useMemo(
+    () => (data ?? []).filter((r) => allTeams || !team || r.team === team).filter((r) => (filter ? filter(r) : true)),
+    [data, allTeams, team, filter],
   );
+
+  // Distinct teams/products/namespaces present, for the facet filter options.
+  const teamOptions = useMemo(() => [...new Set(scoped.map((r) => r.team))].filter(Boolean).sort(), [scoped]);
   const productOptions = useMemo(
-    () => [...new Set((data ?? []).map((r) => r.chart_name))].filter(Boolean).sort(),
-    [data],
+    () => [...new Set(scoped.map((r) => r.chart_name))].filter(Boolean).sort(),
+    [scoped],
+  );
+  // By the effective namespace, the one the column shows: an order without an
+  // explicit one would otherwise become an option with no name.
+  const namespaceOptions = useMemo(
+    () => [...new Set(scoped.map(orderNamespace))].filter(Boolean).sort(),
+    [scoped],
   );
 
   const rows = useMemo(() => {
-    const base = (data ?? [])
-      .filter((r) => allTeams || !team || r.team === team)
+    const base = scoped
       .filter((r) => teamFilter.size === 0 || teamFilter.has(r.team))
       .filter((r) => productFilter.size === 0 || productFilter.has(r.chart_name))
-      .filter((r) => (filter ? filter(r) : true))
+      .filter((r) => namespaceFilter.size === 0 || namespaceFilter.has(orderNamespace(r)))
       // A state this build does not know has no group to filter by, and hiding
       // an order nobody can name is worse than showing it.
       .filter((r) => {
@@ -141,7 +154,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       if (ad !== bd) return ad - bd;
       return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
-  }, [data, team, filter, shown, newestFirst, allTeams, teamFilter, productFilter]);
+  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter]);
 
   if (loading) return <SkeletonRows rows={6} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -173,12 +186,14 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     newestFirst &&
     teamFilter.size === 0 &&
     productFilter.size === 0 &&
+    namespaceFilter.size === 0 &&
     ALL_GROUPS.every((g) => shown.has(g) === !DEFAULT_HIDDEN.includes(g));
   const resetFilters = () => {
     setShown(new Set(ALL_GROUPS.filter((g) => !DEFAULT_HIDDEN.includes(g))));
     setNewestFirst(true);
     setTeamFilter(new Set());
     setProductFilter(new Set());
+    setNamespaceFilter(new Set());
   };
 
   return (
@@ -224,6 +239,17 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           </>
         )}
         <StatusFilter shown={shown} onChange={setShown} />
+        {/* One namespace in the table means the filter can only ever say what
+            is already on every row, so it is not offered at all. */}
+        {namespaceOptions.length > 1 && (
+          <SearchFilter
+            label="Неймспейсы"
+            searchPlaceholder="Найти неймспейс..."
+            options={namespaceOptions}
+            selected={namespaceFilter}
+            onChange={setNamespaceFilter}
+          />
+        )}
         <button
           onClick={() => setNewestFirst((v) => !v)}
           className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -252,12 +278,17 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
             {allTeams && <Column className="px-4 py-2.5 text-left">Команда</Column>}
             <Column className="px-4 py-2.5 text-left">Продукт</Column>
             <Column isRowHeader className="px-4 py-2.5 text-left">Имя</Column>
+            {/* Where the order landed, next to what it is called: the two
+                together are what a person matches against the cluster. */}
+            <Column className="px-4 py-2.5 text-left">Неймспейс</Column>
             {/* The word next to the status icon costs the width a column used
                 to take. The label is what a row can lose first: the service
                 name beside it identifies the order just as well, and the order
-                page shows the label in full. */}
+                page shows the label in full. The author goes next, on a laptop
+                screen: who ordered it is asked far less often than where it
+                runs, and the order page answers it. */}
             <Column className="hidden px-4 py-2.5 text-left 2xl:table-cell">Метка</Column>
-            <Column className="px-4 py-2.5 text-left">Создатель</Column>
+            <Column className="hidden px-4 py-2.5 text-left xl:table-cell">Создатель</Column>
             <Column className="px-4 py-2.5 text-right">Дата создания</Column>
             <Column className="whitespace-nowrap px-4 py-2.5 text-left">Статус</Column>
             <Column className="w-12 px-4 py-2.5">
@@ -344,10 +375,18 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       })()}
                     </span>
                   </Cell>
+                  {/* An order without an explicit namespace still lands in one,
+                      named after the service; the cell says where it is, not
+                      what the field holds. */}
+                  <Cell className="px-4 py-3 text-left font-mono text-[13px] text-slate-600">
+                    {orderNamespace(r)}
+                  </Cell>
                   <Cell className="hidden px-4 py-3 text-left text-slate-600 2xl:table-cell">
                     {r.display_name || "-"}
                   </Cell>
-                  <Cell className="px-4 py-3 text-left text-slate-500">{r.created_by_name}</Cell>
+                  <Cell className="hidden px-4 py-3 text-left text-slate-500 xl:table-cell">
+                    {r.created_by_name}
+                  </Cell>
                   <Cell className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
                     {fmtDateTime(r.created_at)}
                   </Cell>
