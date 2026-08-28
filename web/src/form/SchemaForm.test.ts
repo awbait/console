@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { collectErrors, enumLabel, enumOptions } from "./SchemaForm";
+import { collectErrors, enumLabel, enumOptions, newArrayItem } from "./SchemaForm";
 
 // A chart may hide a field for part of the values: the ingress-gateway schema
 // hides a listener's domain once the protocol is TCP or UDP. What the form does
@@ -79,5 +79,42 @@ describe("enum option labels", () => {
   it("names a number the same way", () => {
     const code = { type: "integer", enum: [301, 302], enumNames: ["Постоянное", "Временное"] };
     expect(enumLabel(code, 302)).toBe("Временное");
+  });
+});
+
+// A list of plain values (egress-gateway's externalIPs) is not a list of cards:
+// its new row goes straight into a text input, so it must start blank. An empty
+// object there was rendered as "[object Object]" and the person had to erase it.
+describe("a new array row", () => {
+  const root = { definitions: { ip: { type: "string" } } };
+
+  it("starts blank in a list of strings", () => {
+    expect(newArrayItem({ type: "array", items: { type: "string" } }, root)).toBeUndefined();
+  });
+
+  it("starts blank behind a $ref to a plain value", () => {
+    expect(newArrayItem({ type: "array", items: { $ref: "#/definitions/ip" } }, root)).toBeUndefined();
+  });
+
+  it("is a container in a list of objects", () => {
+    const arr = { type: "array", items: { type: "object", properties: { name: { type: "string" } } } };
+    expect(newArrayItem(arr, root)).toEqual({});
+  });
+
+  it("carries the item defaults", () => {
+    const arr = {
+      type: "array",
+      items: { type: "object", properties: { protocol: { type: "string", default: "TLS" } } },
+    };
+    expect(newArrayItem(arr, root)).toEqual({ protocol: "TLS" });
+  });
+
+  it("prefers the chart's snippet", () => {
+    const arr = {
+      type: "array",
+      items: { type: "object", properties: { name: { type: "string" } } },
+      defaultSnippets: [{ label: "one", body: [{ name: "core" }] }],
+    };
+    expect(newArrayItem(arr, root)).toEqual({ name: "core" });
   });
 });

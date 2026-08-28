@@ -29,6 +29,11 @@ All notable changes to this project are documented in this file.
   product tabs again and the values save.
 - Fixed an order getting stuck in "Rejected" after the merge request for an edit
   or a deletion of the service was closed without merging.
+- The add button in a list of plain values, such as a gateway's external
+  addresses, creates a blank row. The new row used to arrive holding the text
+  [object Object], which had to be erased.
+- A row of such a list left empty is now marked as a required field. It used to
+  disappear silently when the form was saved.
 
 ## [0.8.2] - 2026-08-27
 
