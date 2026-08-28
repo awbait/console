@@ -160,6 +160,10 @@ export interface SystemStatus {
   components: ComponentStatus[];
   capabilities: CapabilityStatus[];
   reconcilers?: ReconcilerStatus[];
+  // Whether the replica that answered is the one running the background tasks.
+  // When it is not, it has no reconcilers to report and the status page says so
+  // instead of showing an empty list.
+  leader: boolean;
   grafana_url?: string;
 }
 

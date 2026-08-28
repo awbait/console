@@ -20,20 +20,29 @@ var orderStatuses = []models.RequestStatus{
 }
 
 // RunMetricsRefresher periodically refreshes the order gauges until ctx is
-// cancelled. It refreshes once immediately, then on each tick. Single-replica
-// MVP, so it runs in-process alongside the poller. Component health is not
-// refreshed here: the status monitor (internal/status.Monitor) probes the
+// cancelled. It refreshes once immediately, then on each tick. Component health
+// is not refreshed here: the status monitor (internal/status.Monitor) probes the
 // components and records their gauges itself.
+//
+// It runs alongside the poller, on the replica that holds the background loops
+// (see Server.Leader), and for the same reason: these gauges count the same rows
+// of the same database on every replica. A standby publishes no order series at
+// all, so adding the replicas up in a query counts every order once rather than
+// once per replica.
 func (s *Server) RunMetricsRefresher(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	s.RefreshMetrics(ctx)
+	if s.leading() {
+		s.RefreshMetrics(ctx)
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			s.RefreshMetrics(ctx)
+			if s.leading() {
+				s.RefreshMetrics(ctx)
+			}
 		}
 	}
 }

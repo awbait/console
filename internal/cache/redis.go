@@ -15,13 +15,22 @@ type Redis struct {
 
 var _ Cache = (*Redis)(nil)
 
-// NewRedis connects to Redis using a redis:// URL.
-func NewRedis(url string) (*Redis, error) {
+// NewClient opens the Redis connection from a redis:// URL. It is one client
+// for the whole portal: the cache, the sessions, the events bus between
+// replicas and the leader lease all go through it, so they share one connection
+// pool and one address to be wrong about.
+func NewClient(url string) (*redis.Client, error) {
 	opt, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, err
 	}
-	return &Redis{cli: redis.NewClient(opt)}, nil
+	return redis.NewClient(opt), nil
+}
+
+// NewRedis wraps an open client as the cache. Closing it closes the client, so
+// whoever else was handed it (see NewClient) is done with it too.
+func NewRedis(cli *redis.Client) *Redis {
+	return &Redis{cli: cli}
 }
 
 func (r *Redis) Get(ctx context.Context, key string) ([]byte, bool, error) {

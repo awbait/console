@@ -281,8 +281,10 @@ func (r *Runner) Trigger(reason string) {
 }
 
 // Run blocks, running the set once immediately and then every Interval, until
-// the context is cancelled. Single-replica MVP, so it runs in-process next to
-// the poller and the health monitor.
+// the context is cancelled. Every replica runs it: the configuration page shows
+// what the replica answering it can see. Telling the platform team about a round
+// is the part that must happen once, and that is the announcer's business (see
+// SetAnnouncer and how main wires it).
 func (r *Runner) Run(ctx context.Context) {
 	t := time.NewTicker(Interval)
 	defer t.Stop()

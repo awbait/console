@@ -1,7 +1,15 @@
-// Package events is a tiny in-process pub/sub used to push status changes to
-// SSE clients. MVP runs a single replica, so an in-memory bus is enough.
-// NOTE: scaling to 2+ replicas requires swapping this for Redis Pub/Sub
-// (see spec "status update strategy" / techdebt).
+// Package events is the portal's pub/sub: a status change is written once and
+// heard by every browser that is looking at it, through the SSE endpoints.
+//
+// There are two buses behind one interface. In-process (Memory) is the whole
+// bus when the portal runs as one replica: the publisher and the subscriber are
+// in the same program, and nothing has to leave it. Redis carries the same
+// events between replicas, because a browser is connected to one of them and
+// the change is made on another.
+//
+// Which one is in use follows the cache backend, and that is the whole rule:
+// with CACHE=redis the replicas share a bus, without it each one only hears
+// itself. See internal/leader for the other half of running more than one.
 package events
 
 import "sync"
@@ -13,19 +21,41 @@ type Event struct {
 	Data  map[string]any `json:"data"`
 }
 
-// Bus is an in-memory topic pub/sub.
-type Bus struct {
+// TopicReconcile asks whoever runs the background loops to sweep now, instead
+// of waiting for the next tick. It is not an event a browser subscribes to: it
+// travels the same bus because the replica that receives a webhook is not
+// necessarily the one that reconciles (see internal/leader).
+const TopicReconcile = "reconcile"
+
+// Bus is what a publisher and a subscriber see. Memory and Redis implement it;
+// the domains hold this interface, so which bus is wired is a decision main
+// makes once.
+type Bus interface {
+	// Publish delivers an event to every subscriber of its topic. It does not
+	// block: a subscriber that is not reading fast enough misses the event, and
+	// SSE clients re-fetch on connect.
+	Publish(e Event)
+	// Subscribe returns a channel of events for a topic and the func that ends
+	// the subscription. Calling it twice is safe.
+	Subscribe(topic string) (<-chan Event, func())
+}
+
+// Memory is an in-process topic pub/sub. It is the whole bus for a single
+// replica, and the local half of the Redis one.
+type Memory struct {
 	mu   sync.RWMutex
 	subs map[string]map[chan Event]struct{}
 }
 
-// New returns an empty bus.
-func New() *Bus {
-	return &Bus{subs: map[string]map[chan Event]struct{}{}}
+var _ Bus = (*Memory)(nil)
+
+// New returns an empty in-process bus.
+func New() *Memory {
+	return &Memory{subs: map[string]map[chan Event]struct{}{}}
 }
 
 // Subscribe returns a channel of events for a topic and an unsubscribe func.
-func (b *Bus) Subscribe(topic string) (<-chan Event, func()) {
+func (b *Memory) Subscribe(topic string) (<-chan Event, func()) {
 	ch := make(chan Event, 16)
 	b.mu.Lock()
 	if b.subs[topic] == nil {
@@ -50,7 +80,7 @@ func (b *Bus) Subscribe(topic string) (<-chan Event, func()) {
 }
 
 // Publish delivers an event to all subscribers of its topic (non-blocking).
-func (b *Bus) Publish(e Event) {
+func (b *Memory) Publish(e Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for ch := range b.subs[e.Topic] {

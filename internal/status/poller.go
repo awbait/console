@@ -60,12 +60,19 @@ func backoffFor(interval time.Duration, failures int) time.Duration {
 	return d
 }
 
-// Poller runs the reconcilers on an interval. MVP is single-replica, so this
-// runs in-process with no leader election (see spec techdebt note).
+// Poller runs the reconcilers on an interval, on one replica at a time. Which
+// one is not its business: it asks before every sweep (see SetLeader), and a
+// replica that is not leading does nothing at all - not even the sweep a
+// webhook asked for, because the leader was told about that webhook too and is
+// the one holding the orders it would advance.
 type Poller struct {
 	interval    time.Duration
 	reconcilers []Reconciler
 	log         *slog.Logger
+	// leads reports whether this replica may reconcile. Nil means it always
+	// may, which is what a single-replica portal and every test want. Wired
+	// once at startup, before Run.
+	leads func() bool
 	// mu guards the per-reconciler state maps below: tick() writes them from the
 	// Run goroutine, Snapshot() reads them from an HTTP handler goroutine.
 	mu sync.Mutex
@@ -101,6 +108,13 @@ func NewPoller(interval time.Duration, log *slog.Logger, reconcilers ...Reconcil
 	}
 }
 
+// SetLeader wires the question "may this replica reconcile". Call it before
+// Run; leaving it unset means yes, always.
+func (p *Poller) SetLeader(leads func() bool) { p.leads = leads }
+
+// leading reports whether this replica may reconcile right now.
+func (p *Poller) leading() bool { return p.leads == nil || p.leads() }
+
 // ReconcilerState is a point-in-time view of one reconciler's health, for the
 // status page. LastSuccess is zero if it has never succeeded.
 type ReconcilerState struct {
@@ -114,7 +128,14 @@ type ReconcilerState struct {
 
 // Snapshot returns the current health of every reconciler, in run order. Safe to
 // call concurrently with the poller loop.
+//
+// On a replica that is not leading it returns nothing at all, rather than a list
+// of loops that have never run: they are running, on the replica that holds
+// them, and a row saying otherwise would be read as a broken portal.
 func (p *Poller) Snapshot() []ReconcilerState {
+	if !p.leading() {
+		return nil
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	out := make([]ReconcilerState, 0, len(p.reconcilers))
@@ -176,6 +197,12 @@ func (p *Poller) Run(ctx context.Context) {
 }
 
 func (p *Poller) tick(ctx context.Context) {
+	if !p.leading() {
+		// Another replica holds the work. Nothing is recorded either: the status
+		// page of a standby replica has no reconcilers to report, which is the
+		// truth about it (see Snapshot).
+		return
+	}
 	for _, r := range p.reconcilers {
 		name := nameOf(r)
 		// Skip reconcilers in backoff after consecutive failures, so a broken

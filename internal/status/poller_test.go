@@ -177,6 +177,47 @@ func TestTriggerNonBlockingAndNilSafe(t *testing.T) {
 	p.Trigger("c")
 }
 
+// TestStandbyReplicaDoesNotReconcile: a replica that does not hold the lease
+// runs nothing, not even the sweep a webhook asked for. The leader was told
+// about that webhook too, and it is the one that would advance the order.
+func TestStandbyReplicaDoesNotReconcile(t *testing.T) {
+	rec := &countingReconciler{}
+	p := NewPoller(time.Hour, slog.Default(), Named("provisioning", rec))
+	leading := false
+	p.SetLeader(func() bool { return leading })
+
+	p.tick(context.Background())
+	p.Trigger("gitlab: merge request merged")
+	p.tick(context.Background())
+	if got := rec.calls; got != 0 {
+		t.Fatalf("a standby replica reconciled %d times, want 0", got)
+	}
+	if got := p.Snapshot(); len(got) != 0 {
+		t.Fatalf("a standby replica reported %d loops of its own, want none: %+v", len(got), got)
+	}
+
+	// The lease moves here: the same poller now does the work.
+	leading = true
+	p.tick(context.Background())
+	if got := rec.calls; got != 1 {
+		t.Fatalf("reconciled %d times after taking the lease, want 1", got)
+	}
+	if got := p.Snapshot(); len(got) != 1 {
+		t.Fatalf("reported %d loops after taking the lease, want 1", len(got))
+	}
+}
+
+// TestPollerWithoutAnElectorAlwaysRuns: a single replica has nobody to defer to.
+func TestPollerWithoutAnElectorAlwaysRuns(t *testing.T) {
+	rec := &countingReconciler{}
+	p := NewPoller(time.Hour, slog.Default(), Named("provisioning", rec))
+
+	p.tick(context.Background())
+	if got := rec.calls; got != 1 {
+		t.Fatalf("reconciled %d times with no elector wired, want 1", got)
+	}
+}
+
 // waitFor polls cond up to ~2s, failing the test if it never holds.
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()

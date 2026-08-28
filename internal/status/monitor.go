@@ -130,8 +130,9 @@ func (m *Monitor) Trigger(reason string) {
 // Run blocks, probing once immediately and then on every tick, until the context
 // is cancelled. Between ticks it probes early in two cases: a component failed
 // its last probe but has not reached downThreshold yet (the second opinion that
-// confirms or clears an outage), and a caller asked via Trigger. Single-replica
-// MVP, so it runs in-process like the poller.
+// confirms or clears an outage), and a caller asked via Trigger. Every replica
+// runs its own monitor, unlike the poller: probing is reading, and the status
+// page has to answer for the replica a person actually reached.
 func (m *Monitor) Run(ctx context.Context) {
 	t := time.NewTicker(m.interval)
 	defer t.Stop()

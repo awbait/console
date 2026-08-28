@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+
 	"console/internal/activity"
 	"console/internal/api"
 	"console/internal/argocd"
@@ -21,10 +24,12 @@ import (
 	"console/internal/buildinfo"
 	"console/internal/cache"
 	"console/internal/catalog"
+	"console/internal/checks"
 	"console/internal/config"
 	"console/internal/events"
 	"console/internal/gitlab"
 	"console/internal/harbor"
+	"console/internal/leader"
 	"console/internal/notify"
 	"console/internal/observability"
 	"console/internal/provisioning"
@@ -58,18 +63,49 @@ func main() {
 
 func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// --- cache ---
-	var c cache.Cache
+	// Redis is also what several replicas of the portal share: the sessions in
+	// it, the events bus that carries a change to the browser connected to
+	// another replica, and the lease that decides which replica runs the
+	// background loops. One client for all of them, so there is one connection
+	// pool and one address to be wrong about.
+	var (
+		c    cache.Cache
+		rcli *redis.Client
+	)
 	switch cfg.Cache {
 	case "redis":
-		rc, err := cache.NewRedis(cfg.RedisURL)
+		cli, err := cache.NewClient(cfg.RedisURL)
 		if err != nil {
 			return err
 		}
-		c = rc
+		rcli, c = cli, cache.NewRedis(cli)
 	default:
 		c = cache.NewMemory()
 	}
 	defer c.Close()
+
+	// --- between the replicas ---
+	// Without Redis there is nothing to share, so the portal is on its own: its
+	// events never leave the process and it always runs the background loops.
+	// That is correct for one replica and wrong for two, which is why more than
+	// one replica needs CACHE=redis.
+	instance := instanceID()
+	var (
+		bus     events.Bus
+		elector leader.Elector
+	)
+	if rcli != nil {
+		redisBus := events.NewRedis(rcli, events.DefaultChannel, instance, observability.Component(log, "events"))
+		redisLeader := leader.NewRedis(rcli, leader.DefaultKey, instance, observability.Component(log, "leader"))
+		go redisBus.Run(ctx)
+		go redisLeader.Run(ctx)
+		bus, elector = redisBus, redisLeader
+		log.Info("replicas coordinate through redis", "instance", instance)
+	} else {
+		bus, elector = events.New(), leader.Solo()
+		log.Info("single replica: events stay in this process and it always runs the background loops",
+			"note", "running more than one replica requires CACHE=redis")
+	}
 
 	// --- store ---
 	var st store.Store
@@ -126,7 +162,6 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if err := gitops.SetInstanceTemplate(cfg.GitLabInstanceTmpl); err != nil {
 		return err
 	}
-	bus := events.New()
 	catalogSvc := catalog.New(hb, c)
 	if cfg.GitLabAutoMerge {
 		// The poller merges the portal's own MRs with no human review. Fine for
@@ -186,7 +221,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 
-	// --- poller (single replica, in-process) ---
+	// --- poller (one replica at a time; see internal/leader) ---
 	reconcilers := []status.Reconciler{status.Named("provisioning", provSvc)} // advance order states
 	if cfg.DriftDetection {
 		reconcilers = append(reconcilers, status.Named("drift", driftReconciler{provSvc})) // flag Git-side drift
@@ -216,16 +251,23 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		pollInterval = 0
 	}
 	poller := status.NewPoller(pollInterval, observability.Component(log, "poller"), reconcilers...)
+	// Only the replica holding the lease reconciles. The others still tick: they
+	// are one lost lease away from being the one that does.
+	poller.SetLeader(elector.IsLeader)
 	pollerDone := make(chan struct{})
 	go func() {
 		defer close(pollerDone)
 		poller.Run(ctx)
 	}()
+	// A request to sweep now travels the bus rather than going straight into the
+	// poller, because the replica that receives a webhook is not necessarily the
+	// one that reconciles. With a single replica the two are the same thing.
+	go forwardReconcileRequests(ctx, bus, poller)
 
 	// --- webhooks ---
 	// Both modes accept inbound GitLab/Harbor webhooks that trigger an immediate
 	// reconcile sweep. Routes register only for sources whose secret is set.
-	webhookHandler := webhooks.New(poller, observability.Component(log, "webhooks"),
+	webhookHandler := webhooks.New(reconcileRequest{bus}, observability.Component(log, "webhooks"),
 		cfg.GitLabWebhookToken, cfg.HarborWebhookKey)
 	// Register the portal's own hook in GitLab (GITLAB_WEBHOOK_URL set), so no
 	// human has to add it after a deploy. Whether a failure here is fatal depends
@@ -282,7 +324,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc,
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
-		Activity: activityRec,
+		Activity: activityRec, Leader: elector.IsLeader,
 		// Which groups grant a role rather than being a team. The interface
 		// names such an owner by its role instead of printing the group path.
 		RoleGroups: roleGroups(cfg),
@@ -319,11 +361,15 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// token reaches its expiry, a webhook is switched off after failed
 	// deliveries, a project is deleted. That is told to the platform team
 	// instead of waiting on a page for somebody to open it.
-	configChecks.SetAnnouncer(notifySvc.ConfigWatch())
+	// Every replica runs the checks - the configuration page shows what the one
+	// answering it can see - but the platform team is told about a round once,
+	// by the replica that holds the background loops.
+	configChecks.SetAnnouncer(announceIfLeading{elector, notifySvc.ConfigWatch()})
 	go configChecks.Run(ctx)
 
-	// Refresh order gauges in-process (single replica), reusing the poller
-	// interval. The metrics server below exposes the result.
+	// Refresh order gauges on the poller interval, on the replica that holds the
+	// loops. The others export no order series at all, so adding the replicas up
+	// in a query still counts every order once.
 	go srv.RunMetricsRefresher(ctx, cfg.StatusPollInterval)
 
 	httpServer := &http.Server{
@@ -377,6 +423,63 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		log.Warn("poller did not drain within shutdown grace")
 	}
 	return nil
+}
+
+// instanceID names this replica on the events bus and in the leader lease. The
+// hostname is the pod name in Kubernetes, which is what a log line is read
+// against; the random tail keeps two runs on the same host apart, so a
+// restarted replica never inherits the lease its predecessor was holding.
+func instanceID() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "portal"
+	}
+	return host + "-" + uuid.NewString()[:8]
+}
+
+// reconcileRequest turns a webhook delivery into a request, on the events bus,
+// for whoever runs the background loops to sweep now.
+type reconcileRequest struct{ bus events.Bus }
+
+func (t reconcileRequest) Trigger(reason string) {
+	t.bus.Publish(events.Event{
+		Topic: events.TopicReconcile,
+		Type:  "reconcile_requested",
+		Data:  map[string]any{"reason": reason},
+	})
+}
+
+// forwardReconcileRequests is the other end: it hands what arrives on the bus to
+// the local poller, which sweeps if this replica is leading and ignores it if it
+// is not. Blocks until ctx is cancelled.
+func forwardReconcileRequests(ctx context.Context, bus events.Bus, poller *status.Poller) {
+	ch, unsub := bus.Subscribe(events.TopicReconcile)
+	defer unsub()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-ch:
+			reason, _ := e.Data["reason"].(string)
+			poller.Trigger(reason)
+		}
+	}
+}
+
+// announceIfLeading passes a finished round of configuration checks on only from
+// the replica that runs the background loops. Every replica runs the checks, so
+// without this a broken token would be announced to the platform team once per
+// replica.
+type announceIfLeading struct {
+	elector leader.Elector
+	inner   checks.Announcer
+}
+
+func (a announceIfLeading) Round(ctx context.Context, results []checks.CheckResult) {
+	if !a.elector.IsLeader() {
+		return
+	}
+	a.inner.Round(ctx, results)
 }
 
 // driftReconciler adapts Service.CheckDrift to the poller's status.Reconciler
