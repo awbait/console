@@ -19,7 +19,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { qk } from "@/api/queryKeys";
-import type { OrderRequest, RequestStatus } from "@/api/types";
+import { isLive } from "@/api/orderStatus";
+import type { OrderRequest } from "@/api/types";
 import { useCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
@@ -38,9 +39,6 @@ import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
 import { fmtDateTime } from "@/lib/time";
 import { subscribe } from "@/lib/sse";
-
-// Live order statuses (create-MR merged): only these can be upgraded to a new version.
-const LIVE_STATUSES: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];
 
 interface Props {
   title: string;
@@ -97,7 +95,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // Approved version newer than the order's version -> an upgrade is available
   // (only for live, non-drifted orders).
   const upgradeFor = (r: OrderRequest): string | null => {
-    if (!LIVE_STATUSES.includes(r.status) || r.drifted) return null;
+    if (!isLive(r.status) || r.drifted) return null;
     const v = charts.find((c) => c.project === r.chart_project && c.name === r.chart_name)
       ?.publication?.approved_view_version;
     return v && isNewer(v, r.chart_version) ? v : null;

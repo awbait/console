@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
+import { isLive } from "@/api/orderStatus";
 import { changeInFlightText } from "@/api/errorText";
 import type { ViewDocument } from "@/api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
@@ -155,7 +156,7 @@ export function RequestDetailPage() {
 
   const catalogChart = findCatalogChart(charts, r.chart_project, r.chart_name);
   const pub = catalogChart?.publication;
-  const liveStatus = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"].includes(r.status);
+  const liveStatus = isLive(r.status);
   // Allowed upgrade versions (single source of truth; also validates ?to= on the
   // order page): the orderable allowlist newer than current for multi-version
   // publications, with a fall back to the legacy approved-version heuristic.

@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { api } from "../api/client";
+import { isLive } from "../api/orderStatus";
 import type { OrderRequest, RequestStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
 import { ProductIcon } from "../components/icons";
@@ -71,7 +72,6 @@ function StatCard({
 }
 
 // Live (deployed or deploying) order statuses - these represent real services.
-const LIVE: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];
 // Statuses that signal an unhealthy deployment a supporter should look into.
 const UNHEALTHY: RequestStatus[] = ["DEGRADED", "ARGO_MISSING"];
 
@@ -89,7 +89,7 @@ export function SupportOverviewPage() {
   if (error) return <ErrorBox error={error} onRetry={reload} />;
 
   const orders = data ?? [];
-  const live = orders.filter((r) => LIVE.includes(r.status));
+  const live = orders.filter((r) => isLive(r.status));
   const healthy = orders.filter((r) => r.status === "HEALTHY").length;
   const deploying = orders.filter((r) => r.status === "DEPLOYING" || r.status === "MR_CREATED").length;
   const attention = orders.filter(needsAttention);
