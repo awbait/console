@@ -29,8 +29,8 @@ All notable changes to this project are documented in this file.
 - An order keeps working after its version leaves the catalog. Its page used to
   open without the product tabs, and saving the values was refused as an
   unavailable version.
-- An order no longer gets stuck in "Отклонён" for good when the merge request
-  for an edit or a deletion of the service is closed without merging.
+- Fixed an order getting stuck in "Rejected" after the merge request for an edit
+  or a deletion of the service was closed without merging.
 
 ## [0.8.2] - 2026-08-27
 
