@@ -2,6 +2,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { HttpError } from "../api/client";
 import type { FieldError } from "../api/types";
 import { schemaViolationText } from "../form/fieldErrors";
+import { fieldBreadcrumb, nodeAt, type Schema } from "../form/fieldPath";
 import { fieldAnchorId } from "../form/SchemaForm";
 
 // SubmitError is a normalized submission failure: the human message plus the
@@ -31,69 +32,11 @@ function revealField(path: string) {
   focusable?.focus({ preventScroll: true });
 }
 
-type Schema = Record<string, any>;
-
-// deref follows $ref (merging siblings), like the form's resolver, so we can
-// walk the schema to find field titles.
-function deref(node: Schema | undefined, root: Schema): Schema {
-  let n: Schema = node ?? {};
-  let guard = 0;
-  while (n && typeof n === "object" && typeof n.$ref === "string" && guard++ < 20) {
-    const { $ref, ...rest } = n;
-    let t: any = root;
-    if ($ref.startsWith("#/")) for (const p of $ref.slice(2).split("/")) t = t?.[decodeURIComponent(p)];
-    n = { ...(t ?? {}), ...rest };
-  }
-  return n;
-}
-
-// nodeAt resolves the schema node at a JSON Pointer into the values.
-function nodeAt(pointer: string, root: Schema): Schema | undefined {
-  let node: Schema | undefined = deref(root, root);
-  for (const seg of pointer.split("/").filter(Boolean).map(decodeURIComponent)) {
-    if (!node) return undefined;
-    node = /^\d+$/.test(seg)
-      ? deref(node.items ?? {}, root)
-      : node.properties?.[seg]
-        ? deref(node.properties[seg], root)
-        : undefined;
-  }
-  return node;
-}
-
 // afterLabel is a canonical message put behind a field name: "Порт: не меньше
 // 1." The messages themselves are written to stand alone (fieldErrors.ts), and
 // the rows here always name the field first, whichever side found the problem.
 function afterLabel(msg: string): string {
   return msg.charAt(0).toLowerCase() + msg.slice(1);
-}
-
-// breadcrumb turns a JSON Pointer into a friendly path that mirrors the form:
-// it prefers view-override titles (e.g. "Gateway"), drops the array index of a
-// ui:widget:"single" field (one item, index is noise), and shows other array
-// indices as human "#N". Without a schema it falls back to raw keys.
-function breadcrumb(pointer: string, root?: Schema, view?: Schema): string {
-  const segs = pointer.split("/").filter(Boolean).map(decodeURIComponent);
-  let node: Schema | undefined = root ? deref(root, root) : undefined;
-  let curView: Schema | undefined = view;
-  let skipIndex = false;
-  let out = "";
-  for (const seg of segs) {
-    if (/^\d+$/.test(seg)) {
-      if (skipIndex) skipIndex = false; // single widget: omit the [0]
-      else out += out ? ` #${Number(seg) + 1}` : `#${Number(seg) + 1}`;
-      node = node && root ? deref(node.items ?? {}, root) : undefined;
-    } else {
-      const override = curView?.overrides?.[seg] as Schema | undefined;
-      const schemaTitle = root && node?.properties?.[seg] ? deref(node.properties[seg], root).title : undefined;
-      const text = override?.title ?? schemaTitle ?? seg;
-      out = out ? `${out} › ${text}` : text;
-      skipIndex = override?.["ui:widget"] === "single";
-      node = node?.properties?.[seg] && root ? deref(node.properties[seg], root) : undefined;
-      curView = override?.["ui:view"] as Schema | undefined;
-    }
-  }
-  return out;
 }
 
 // expand turns one field error into a display row.
@@ -108,7 +51,7 @@ function breadcrumb(pointer: string, root?: Schema, view?: Schema): string {
 // подходит." would only push that headline out of the way.
 function expand(d: FieldError, root?: Schema, view?: Schema): { field: string; message: string }[] {
   if (!d.path && !d.keyword) return [];
-  const base = breadcrumb(d.path, root, view);
+  const base = fieldBreadcrumb(d.path, root, view);
   const node = root ? nodeAt(d.path, root) : undefined;
   return [{ field: base || "значения", message: afterLabel(schemaViolationText(d.keyword, node)) }];
 }
@@ -137,7 +80,7 @@ export function FormErrors({
   );
   const clientRows: { field: string; message: string; path?: string }[] = fieldErrors
     ? [...fieldErrors].map(([path, msg]) => ({
-        field: breadcrumb(path, schema, view) || "значения",
+        field: fieldBreadcrumb(path, schema, view) || "значения",
         message: afterLabel(msg),
         path,
       }))
