@@ -96,6 +96,10 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		"merge_requests": mrs,
 		"events":         evs,
 		"argocd_url":     s.argocdAppURL(req),
+		// Whether a change of this order waits for a person. The page cannot work
+		// it out on its own: the version's document travels to the SPA, but the
+		// installation's half of the rule never leaves the portal.
+		"review": s.Prov.OrderReview(r.Context(), req),
 	})
 }
 

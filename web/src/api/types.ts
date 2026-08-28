@@ -119,10 +119,20 @@ export interface RequestEvent {
   created_at: string;
 }
 
+// Whether a change of this order reaches the cluster on its own or waits for a
+// person to read it, and who asks for that: this installation of the portal, or
+// the service itself. Absent from a build of the backend that predates it, which
+// reads as "nobody is waiting" - the same thing the page said before.
+export interface OrderReview {
+  required: boolean;
+  by?: "installation" | "service";
+}
+
 export interface RequestDetail {
   request: OrderRequest;
   merge_requests: RequestMR[] | null;
   events: RequestEvent[] | null;
+  review?: OrderReview;
   // Deep link to the order's ArgoCD Application; empty/absent when ArgoCD is not
   // configured or the app doesn't exist yet (draft).
   argocd_url?: string;

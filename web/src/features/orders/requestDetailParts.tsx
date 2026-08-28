@@ -383,27 +383,34 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
 // What a status change means, phrased as an event. StatusBadge keeps its own
 // wording on purpose: a badge answers "where is the order now", a timeline row
 // answers "what happened to it".
+//
+// No row here promises an approval. Most services are merged by the portal with
+// nobody reading anything, so "отправлен на согласование" described a wait that
+// was not happening and named a decision nobody was going to take. Where a
+// person really does read the change, the order page says so while the change is
+// in flight (RequestDetailPage) - which is when it can be said truthfully, since
+// a row of the history outlives the wait it would be describing.
 const STATUS_EVENT: Record<string, string> = {
   DRAFT: "Черновик создан",
-  MR_CREATED: "Заказ отправлен на согласование",
-  MR_MERGED: "Заказ согласован",
-  MR_CLOSED: "Согласование отклонено",
+  MR_CREATED: "Заказ отправлен",
+  MR_MERGED: "Изменение применено",
+  MR_CLOSED: "Заказ отклонён",
   DEPLOYING: "Заказ разворачивается",
   HEALTHY: "Заказ развёрнут",
   DEGRADED: "Заказ работает с ошибками",
   ARGO_MISSING: "Заказ не найден в кластере",
   DELETE_REQUESTED: "Запрошено удаление заказа",
-  DELETE_MR_MERGED: "Удаление согласовано",
+  DELETE_MR_MERGED: "Удаление применено",
   DELETED: "Заказ удалён",
 };
 
 // One merge request is opened per action, and its action says which action that
 // was. That is the difference between an edit and a first order, which the
 // status alone cannot tell apart - both are the same FSM edge into MR_CREATED.
-// A first order says it went for approval, because the row above it already
-// said it was created; an edit has no such row and names itself.
+// A first order says it was sent, because the row above it already said it was
+// created; an edit has no such row and names itself.
 const MR_ACTION_EVENT: Record<string, string> = {
-  create: "Заказ отправлен на согласование",
+  create: "Заказ отправлен",
   update: "Заказ отредактирован",
   delete: "Запрошено удаление заказа",
 };

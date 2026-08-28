@@ -179,23 +179,54 @@ func (s *Service) tendOpenMR(ctx context.Context, r *models.Request, mr *models.
 	return false
 }
 
-// mayAutoMerge reports whether the portal may merge this order's change itself.
-// The installation's GITLAB_AUTO_MERGE is the ceiling; the version's view
-// document may refuse below it, which is how a service whose every change has to
-// be read by a person (network policies, anything the security team owns) says
-// so - in the service's own document rather than in the portal's configuration.
-func (s *Service) mayAutoMerge(ctx context.Context, r *models.Request) bool {
+// Who asks for a person to read this order's changes (Review.By).
+const (
+	// ReviewByInstallation: this portal merges nothing without a person
+	// (GITLAB_AUTO_MERGE is off), whatever the service says.
+	ReviewByInstallation = "installation"
+	// ReviewByService: the version's own document refuses unattended merges.
+	ReviewByService = "service"
+)
+
+// Review says how an order's changes reach the cluster: on their own, or only
+// after a person has read them, and who asks for that. It exists so the order
+// page can tell the truth about the wait instead of promising an approval that,
+// where the portal merges its own changes, never happens.
+type Review struct {
+	Required bool   `json:"required"`
+	By       string `json:"by,omitempty"` // meaningless unless Required
+}
+
+// OrderReview answers that for one order. The installation's GITLAB_AUTO_MERGE
+// is the ceiling; the version's view document may refuse below it, which is how
+// a service whose every change has to be read by a person (network policies,
+// anything the security team owns) says so - in the service's own document
+// rather than in the portal's configuration.
+func (s *Service) OrderReview(ctx context.Context, r *models.Request) Review {
 	if !s.autoMerge {
-		return false
+		return Review{Required: true, By: ReviewByInstallation}
 	}
 	view := s.orderView(ctx, r.ChartProject, r.ChartName, r.ChartVersion)
 	if views.AutoMergeAllowed(view, true) {
+		return Review{}
+	}
+	return Review{Required: true, By: ReviewByService}
+}
+
+// mayAutoMerge reports whether the portal may merge this order's change itself.
+// The same question the order page asks, answered from the same place: what the
+// poller does and what the page promises cannot drift apart.
+func (s *Service) mayAutoMerge(ctx context.Context, r *models.Request) bool {
+	rev := s.OrderReview(ctx, r)
+	if !rev.Required {
 		return true
 	}
-	// Debug, and every tick: an order sitting in MR_CREATED with nothing
-	// happening is exactly what someone comes to the log to explain.
-	s.logger().Debug("auto-merge declined by the service",
-		"order_id", r.ID, "chart", r.ChartName, "version", r.ChartVersion)
+	if rev.By == ReviewByService {
+		// Debug, and every tick: an order sitting in MR_CREATED with nothing
+		// happening is exactly what someone comes to the log to explain.
+		s.logger().Debug("auto-merge declined by the service",
+			"order_id", r.ID, "chart", r.ChartName, "version", r.ChartVersion)
+	}
 	return false
 }
 

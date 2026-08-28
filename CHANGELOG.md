@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 - The portal has an icon of its own. Its tab, bookmark and history entry are now
   easy to pick out among the others.
 
+### Changed
+- An order's history no longer promises an approval. Every order used to say it
+  had been sent for one, while changes to most services are applied by the
+  portal with nobody reading them.
+- The order page says a change is waiting to be read where a person really does
+  read it before it deploys. Nothing is required of you while it waits.
+
 ### Fixed
 - The branch of an order change is removed from the repository once it is
   merged. These branches used to pile up, one for every change of every service.

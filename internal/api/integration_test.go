@@ -170,3 +170,38 @@ func TestHTTPCreateAndReconcile(t *testing.T) {
 		t.Fatalf("want HEALTHY, got %s", detail.Request.Status)
 	}
 }
+
+// The order page cannot work this out on its own: the version's document travels
+// to it, but the installation's half of the rule never leaves the portal. So the
+// order detail carries the answer, and this stack merges nothing without a
+// person (provisioning auto-merge off in newServer).
+func TestHTTPOrderSaysWhetherAPersonIsWaiting(t *testing.T) {
+	srv, _, _ := newServer(t)
+	h := srv.Router()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("POST", "/api/v1/requests", "core", map[string]any{
+		"chart": "platform/postgres", "version": "15.4.2", "team": "core",
+		"service_name": "pg2", "values": map[string]any{"auth": map[string]any{"database": "app"}},
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d body=%s", rec.Code, rec.Body.String())
+	}
+	var req models.Request
+	_ = json.Unmarshal(rec.Body.Bytes(), &req)
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("GET", "/api/v1/requests/"+req.ID, "core", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get: %d", rec.Code)
+	}
+	var detail struct {
+		Review provisioning.Review `json:"review"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if !detail.Review.Required || detail.Review.By != provisioning.ReviewByInstallation {
+		t.Fatalf("review = %+v, want a person waited on by the installation", detail.Review)
+	}
+}

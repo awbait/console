@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"console/internal/provisioning"
 	"console/pkg/models"
 )
 
@@ -124,4 +125,59 @@ func TestSilentVersionFollowsTheInstallation(t *testing.T) {
 	if got := mrStatus(ctx, t, s, req.ID); got != models.MRMerged {
 		t.Fatalf("MR status = %q, want %q", got, models.MRMerged)
 	}
+}
+
+// The order page asks the same question the poller merges by, and it has to get
+// the same answer: a page promising that somebody will read the change, where
+// the portal is about to merge it unread, is the wording this exists to stop.
+func TestOrderReviewFollowsTheSameRuleAsTheMerge(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("nobody waits where the portal merges its own changes", func(t *testing.T) {
+		s := newAutoMergeStack(t)
+		seedVersionedPub(t, s, "platform", "postgres", "15.4.2",
+			[]byte(`{"views":{"order":{"identity":"/auth/database"}}}`))
+		req, _ := orderWithOpenMR(ctx, t, s)
+
+		if rev := s.prov.OrderReview(ctx, req); rev.Required {
+			t.Fatalf("review = %+v, want none: this change merges without a person", rev)
+		}
+		s.tick(ctx)
+		if got := mrStatus(ctx, t, s, req.ID); got != models.MRMerged {
+			t.Fatalf("MR status = %q, want %q: the page said nobody was waiting", got, models.MRMerged)
+		}
+	})
+
+	t.Run("the service asks for a person", func(t *testing.T) {
+		s := newAutoMergeStack(t)
+		seedVersionedPub(t, s, "platform", "postgres", "15.4.2", []byte(reviewedChart))
+		req, _ := orderWithOpenMR(ctx, t, s)
+
+		rev := s.prov.OrderReview(ctx, req)
+		if !rev.Required || rev.By != provisioning.ReviewByService {
+			t.Fatalf("review = %+v, want the service asking for it", rev)
+		}
+		s.tick(ctx)
+		if got := mrStatus(ctx, t, s, req.ID); got != models.MROpened {
+			t.Fatalf("MR status = %q, want %q: the change waits for the person the page named", got, models.MROpened)
+		}
+	})
+
+	t.Run("the installation asks for a person, whatever the service says", func(t *testing.T) {
+		s := newManualMergeStack(t)
+		// A version that would happily be merged unattended: the installation
+		// still refuses, and that is what the order has to say.
+		seedVersionedPub(t, s, "platform", "postgres", "15.4.2",
+			[]byte(`{"views":{"order":{"identity":"/auth/database"}},"approval":{"autoMerge":true}}`))
+		req, _ := orderWithOpenMR(ctx, t, s)
+
+		rev := s.prov.OrderReview(ctx, req)
+		if !rev.Required || rev.By != provisioning.ReviewByInstallation {
+			t.Fatalf("review = %+v, want the installation asking for it", rev)
+		}
+		s.tick(ctx)
+		if got := mrStatus(ctx, t, s, req.ID); got != models.MROpened {
+			t.Fatalf("MR status = %q, want %q", got, models.MROpened)
+		}
+	})
 }
