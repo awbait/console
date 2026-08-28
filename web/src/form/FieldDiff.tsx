@@ -41,14 +41,29 @@ function ValueCell({ value }: { value: unknown }) {
   return <span className="break-words font-mono text-xs">{formatValue(value)}</span>;
 }
 
+// Mark is the dot that says a panel is one of two answers, and which one is
+// given. Only where there is a choice: the same two panels shown after the fact
+// are not asking anything, and a dot there would say they are.
+function Mark({ chosen }: { chosen: boolean }) {
+  return (
+    <span
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+        chosen ? "border-brand-500 bg-brand-500 text-white" : "border-slate-300 bg-surface"
+      }`}
+    >
+      {chosen && <IconCheck size={11} stroke={3} />}
+    </span>
+  );
+}
+
 // sideBody is what a side shows either way: the label of the side and the value
-// under it.
-function sideBody(label: string, value: unknown, chosen: boolean) {
+// under it. chosen is null outside a choice, where there is nothing to mark.
+function sideBody(label: string, value: unknown, chosen: boolean | null) {
   return (
     <>
-      <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+      <span className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+        {chosen !== null && <Mark chosen={chosen} />}
         {label}
-        {chosen && <IconCheck size={13} stroke={2.4} className="text-brand-600" />}
       </span>
       <span className="mt-1 block text-slate-700">
         <ValueCell value={value} />
@@ -131,11 +146,11 @@ export function FieldDiff({
             ) : (
               <div className="mt-1.5 flex flex-col gap-2 text-sm sm:flex-row sm:items-stretch">
                 <div className={`${SIDE_BASE} border-slate-200 bg-slate-50`}>
-                  {sideBody(beforeLabel, row.before, false)}
+                  {sideBody(beforeLabel, row.before, null)}
                 </div>
                 <Arrow />
                 <div className={`${SIDE_BASE} border-brand-200 bg-brand-50/60`}>
-                  {sideBody(afterLabel, row.after, false)}
+                  {sideBody(afterLabel, row.after, null)}
                 </div>
               </div>
             )}

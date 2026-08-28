@@ -85,4 +85,8 @@ describe("formatValue", () => {
   test("an empty list says so instead of showing nothing", () => {
     expect(formatValue([])).toBe("пусто");
   });
+
+  test("a list of entries is one line per entry, so two sides can be compared", () => {
+    expect(formatValue([{ name: "a" }, { name: "b" }])).toBe('{"name":"a"}\n{"name":"b"}');
+  });
 });

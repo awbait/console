@@ -91,18 +91,21 @@ export function formatValue(v: unknown): string {
   if (v === null) return "не задано";
   if (Array.isArray(v)) {
     if (v.length === 0) return "пусто";
-    // A list of plain values reads as a list; a list of objects has no short
-    // form, so it keeps its JSON.
+    // A list of plain values reads as a list. A list of entries has no short
+    // form, so it keeps its JSON - one entry per line, each on one line.
+    // Indented JSON is what this used to be, and a list of three entries then
+    // filled the panel it stands in, with the difference between the two sides
+    // spread over a screenful.
     return v.every((x) => x === null || typeof x !== "object")
       ? v.map((x) => formatValue(x)).join(", ")
-      : JSON.stringify(v, null, 2);
+      : v.map((x) => JSON.stringify(x)).join("\n");
   }
-  if (typeof v === "object") return JSON.stringify(v, null, 2);
+  if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
 
-// isBlock reports whether a formatted value needs room of its own: the JSON of
-// a list of objects is not something to squeeze onto one line.
+// isBlock reports whether a formatted value needs lines of its own: a list of
+// entries is one line per entry, and those lines have to stay lines.
 export function isBlock(v: unknown): boolean {
   return typeof v === "object" && v !== null && formatValue(v).includes("\n");
 }

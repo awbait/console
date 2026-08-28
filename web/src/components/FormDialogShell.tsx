@@ -1,6 +1,6 @@
 import { IconX } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import { Dialog, Modal, ModalOverlay } from "react-aria-components";
+import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 
 // FormDialogShell is the shared chrome of the dialogs that edit an order,
 // styled as a full-height slide-over panel on the right (console pattern for
@@ -46,7 +46,16 @@ export function FormDialogShell({
                   {icon}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-base font-semibold text-slate-800">{title}</h2>
+                  {/* The library's Heading, not a plain h2: that is how the dialog
+                      learns its own name, and without it every one of these
+                      panels opens unnamed for a screen reader. */}
+                  <Heading
+                    slot="title"
+                    level={2}
+                    className="truncate text-base font-semibold text-slate-800"
+                  >
+                    {title}
+                  </Heading>
                   {subtitle && <p className="truncate text-xs text-slate-400">{subtitle}</p>}
                 </div>
                 <button
