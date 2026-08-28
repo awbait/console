@@ -135,7 +135,8 @@ func TestConflictedMRIsRewrittenOntoTheBranch(t *testing.T) {
 }
 
 // When both changes moved the same field there is nothing to merge silently:
-// the portal names the field and leaves the change alone.
+// the portal names the field, takes its own change back and leaves the order
+// free to be changed again.
 func TestConflictedMROnTheSameFieldIsReported(t *testing.T) {
 	ctx := context.Background()
 	s := newAutoMergeStack(t)
@@ -156,10 +157,10 @@ func TestConflictedMROnTheSameFieldIsReported(t *testing.T) {
 		t.Fatalf("list mrs: %v", err)
 	}
 	if len(mrs) != 2 {
-		t.Fatalf("want the change left as it was (2 merge requests), got %d", len(mrs))
+		t.Fatalf("want no change rewritten (2 merge requests), got %d", len(mrs))
 	}
-	if mrs[1].Status != models.MROpened {
-		t.Errorf("conflicted MR is %s, want it left open", mrs[1].Status)
+	if mrs[1].Status != models.MRClosed {
+		t.Errorf("conflicted MR is %s, want it withdrawn", mrs[1].Status)
 	}
 	blocked := countEvents(ctx, t, s, r.ID, "merge_blocked")
 	if len(blocked) != 1 {
@@ -168,10 +169,74 @@ func TestConflictedMROnTheSameFieldIsReported(t *testing.T) {
 	if fields, _ := blocked[0].Payload["fields"].(string); !strings.Contains(fields, "auth.database") {
 		t.Errorf("blocked event names %q, want the conflicting field", fields)
 	}
+	// The order's history says what became of the change, and names the same
+	// field, so the reader does not have to line up two rows to find out.
+	withdrawn := countEvents(ctx, t, s, r.ID, "change_withdrawn")
+	if len(withdrawn) != 1 {
+		t.Fatalf("want one change_withdrawn event, got %d", len(withdrawn))
+	}
+	if fields, _ := withdrawn[0].Payload["fields"].(string); !strings.Contains(fields, "auth.database") {
+		t.Errorf("withdrawn event names %q, want the conflicting field", fields)
+	}
+	// The branch is not the portal's to throw away: what the person asked for is
+	// still written there, and the closed merge request still shows it.
+	glMR, err := s.gl.GetMR(ctx, mr.GitLabProjectID, mr.MRIID)
+	if err != nil {
+		t.Fatalf("get withdrawn mr: %v", err)
+	}
+	if got := valuesOnRef(ctx, t, s, r, glMR.SourceBranch); !strings.Contains(got, "database: mine") {
+		t.Errorf("the withdrawn change is gone from its branch:\n%s", got)
+	}
+}
+
+// The point of withdrawing it: the order stops being stuck behind a change
+// nobody can apply. It goes back to being the live service it never stopped
+// being, and takes the next change straight away.
+func TestWithdrawnConflictFreesTheOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := liveOrder(ctx, t, s)
+
+	mr := openUpdateMR(ctx, t, s, r, map[string]any{
+		"auth": map[string]any{"database": "mine"},
+	})
+	editOnBranch(ctx, t, s, r, "auth:\n  database: theirs\n")
+	if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "conflict"); err != nil {
+		t.Fatalf("set merge status: %v", err)
+	}
+
+	s.tick(ctx) // withdraws the change and moves the order off it
+	s.tick(ctx)
+
+	if got := mustStatus(ctx, t, s.st, r.ID); got != models.StatusHealthy {
+		t.Fatalf("after a withdrawn change want HEALTHY, got %s", got)
+	}
+	// The branch really did move, and the portal still holds what was asked for
+	// rather than what is deployed. The drift check is what says so, and the
+	// order page turns that into "подтянуть из Git".
+	if err := s.prov.CheckDrift(ctx); err != nil {
+		t.Fatalf("drift check: %v", err)
+	}
+	after, err := s.st.GetRequest(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if !after.Drifted {
+		t.Errorf("want the order flagged as drifted, detail %q", after.DriftDetail)
+	}
+	// And this is what used to be impossible: another change of the same order.
+	if _, err := s.prov.Update(ctx, member("core"), r.ID, provisioning.UpdateInput{
+		Values: map[string]any{"auth": map[string]any{"database": "agreed"}},
+	}); err != nil {
+		t.Fatalf("edit after a withdrawn change: %v", err)
+	}
 }
 
 // The poller comes back every few seconds: a disagreement must be announced
 // once, and the change must not be rewritten again and again.
+//
+// Withdrawing it ends the loop by itself - a closed change is not tended - but
+// the count is what holds if closing it never gets through.
 func TestConflictedMRIsNotRetriedForever(t *testing.T) {
 	ctx := context.Background()
 	s := newAutoMergeStack(t)

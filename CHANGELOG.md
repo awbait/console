@@ -29,6 +29,11 @@ All notable changes to this project are documented in this file.
 - Somebody who is in no team is told so on the list of orders and on the product
   page. The "Order" button is closed with the same reason instead of turning the
   order down after the form has been filled in and sent.
+- A service can still be changed after your edit and somebody else's touched the
+  same setting. The portal takes such a change back, names the settings that
+  disagreed in the order's history, and offers to pull the current state from
+  Git. The order used to be left holding a change nobody could apply, and it
+  accepted no others.
 
 ## [0.9.0] - 2026-08-28
 

@@ -27,9 +27,11 @@ const (
 	// on record, files that could not be read, too many attempts already). The
 	// caller falls back to announcing a merge it cannot get past.
 	retryNotDone retryOutcome = iota
-	// retryReported - both changes moved the same field, so the portal named
-	// those fields and left the change where it is.
-	retryReported
+	// retryWithdrawn - both changes moved the same field, so the portal named
+	// those fields and took its own change back rather than leave the order
+	// holding one that can never merge. The merge request is closed, and the
+	// order is free to be changed again.
+	retryWithdrawn
 	// retryReopened - the change was merged with the branch and reopened. The
 	// merge request the order was pointing at is closed; the order now has a new
 	// one, and whatever else was about to act on the old one must stand down.
@@ -43,7 +45,8 @@ const (
 // to merge it on the text. The portal, unlike Git, knows this file is a tree of
 // fields: it merges the two edits field by field and reopens the change from
 // the current branch. A field both sides moved is left to a person - that is a
-// real disagreement, not a formatting accident.
+// real disagreement, not a formatting accident - and the change is taken back so
+// the order does not sit behind one nobody can apply.
 //
 // Everything it needs comes from Git, so an attempt that gets nowhere leaves
 // nothing behind and the next tick tries again.
@@ -105,7 +108,8 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 	}
 	if len(conflicts) > 0 {
 		s.reportMergeConflicts(ctx, r, rec, conflicts)
-		return retryReported
+		s.withdrawMR(ctx, r, rec, conflicts)
+		return retryWithdrawn
 	}
 	if version == "" {
 		version = r.ChartVersion
@@ -207,10 +211,57 @@ func (s *Service) supersedeMR(ctx context.Context, r *models.Request, rec *model
 				"order_id", r.ID, "mr_iid", rec.MRIID, "branch", branch, "err", err)
 		}
 	}
-	rec.Status = models.MRClosed
+	// It was not refused, it was replaced: nothing is waiting on it any more.
 	rec.BlockedReason = ""
+	s.markMRClosed(ctx, r, rec)
+}
+
+// withdrawMR takes back a change the portal cannot apply and nobody asked it to
+// keep proposing: the merge request is closed, and the order stops pointing at
+// an open change.
+//
+// Closing it is the whole point. An order with a change open refuses every next
+// one (ErrOpenMR), so a change that can never merge - two people moved the same
+// field, and only they can say which value is right - used to leave the service
+// unchangeable through the portal until somebody with repository access went and
+// closed it by hand.
+//
+// Nothing is thrown away by it. The branch stays where it is, so the closed
+// merge request still carries what was proposed; the portal still holds the same
+// values on the order; and the branch really has moved, which is what the drift
+// check says next, with the button that pulls it in. What a person loses is a
+// change they would have had to redo anyway.
+func (s *Service) withdrawMR(ctx context.Context, r *models.Request,
+	rec *models.RequestMR, conflicts []mergeConflict) {
+
+	if err := s.gl.CloseMR(ctx, rec.GitLabProjectID, rec.MRIID); err != nil {
+		// Next tick tries again; until then the order stays as it was.
+		s.logger().Warn("conflicted mr not withdrawn",
+			"order_id", r.ID, "mr_iid", rec.MRIID, "err", err)
+		return
+	}
+	// BlockedReason is left as it is: on a closed merge request it is the record
+	// of why it was closed.
+	s.markMRClosed(ctx, r, rec)
+	// The bound is on chasing one moving branch. This change is over, and the
+	// next one starts its own count.
+	s.clearMergeRetries(r.ID)
+	paths := conflictPaths(conflicts)
+	s.logger().Info("conflicted change withdrawn",
+		"order_id", r.ID, "mr_iid", rec.MRIID, "fields", paths)
+	s.eventWith(ctx, r, bySystem(), "change_withdrawn", "", "", map[string]any{
+		"reason": "conflict",
+		"fields": paths,
+		"mr_iid": rec.MRIID,
+	})
+}
+
+// markMRClosed writes down that a change is no longer open. Best-effort: it is
+// closed in GitLab either way, and the next tick reads its state back from there.
+func (s *Service) markMRClosed(ctx context.Context, r *models.Request, rec *models.RequestMR) {
+	rec.Status = models.MRClosed
 	if err := s.store.UpdateMR(ctx, rec); err != nil {
-		s.logger().Warn("superseded mr state not persisted",
+		s.logger().Warn("closed mr state not persisted",
 			"order_id", r.ID, "mr_iid", rec.MRIID, "err", err)
 	}
 }

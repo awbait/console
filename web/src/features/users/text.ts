@@ -21,6 +21,7 @@ const ORDER_ACTIONS: Record<string, string> = {
   status_changed: "изменил состояние заказа",
   merge_blocked: "остановил изменение до решения человека",
   merge_retried: "пересобрал изменение",
+  change_withdrawn: "отменил изменение, которое не удалось применить",
 };
 
 const PUBLICATION_ACTIONS: Record<string, string> = {

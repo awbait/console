@@ -5,6 +5,7 @@
 import Editor from "@monaco-editor/react";
 import {
   IconAlertTriangle,
+  IconArrowBackUp,
   IconArrowRight,
   IconChevronLeft,
   IconChevronRight,
@@ -378,6 +379,11 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
     Icon: IconAlertTriangle,
     tint: "amber",
   },
+  change_withdrawn: {
+    label: "Изменение отменено, сервис остался как был",
+    Icon: IconArrowBackUp,
+    tint: "slate",
+  },
 };
 
 // What a status change means, phrased as an event. StatusBadge keeps its own
@@ -429,6 +435,7 @@ const NOTABLE_EVENTS = new Set([
   "deleted",
   "drift_detected",
   "merge_blocked",
+  "change_withdrawn",
 ]);
 const NOTABLE_STATUSES = new Set([
   "MR_CREATED",
@@ -460,7 +467,13 @@ function eventLabel(e: TimelineEvent): string {
   const label = EVENT_META[e.event_type]?.label ?? e.event_type;
   if (e.event_type === "merge_blocked") {
     const why = mergeBlockReason(String(e.payload?.reason ?? ""));
-    return why ? `${label}: ${why}` : label;
+    if (!why) return label;
+    // When two changes moved the same settings, the portal knows which ones.
+    // Naming them is the difference between "что-то разошлось" and knowing
+    // which line of the service to look at: they are written the way they are
+    // shown on the order form.
+    const fields = String(e.payload?.fields ?? "");
+    return fields ? `${label}: ${why} (${fields})` : `${label}: ${why}`;
   }
   return label;
 }
