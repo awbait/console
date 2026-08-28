@@ -14,6 +14,7 @@ All notable changes to this project are documented in this file.
 - Added a hint to the order page on what to do next when the service is down or
   the order was rejected.
 - Added the status name next to its icon in the orders table.
+- Added a Namespace column to the orders table.
 
 ### Changed
 - Renamed the order statuses and described each of them in the "Statuses and
