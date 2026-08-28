@@ -10,6 +10,7 @@ import { isUnclaimed, publisherLabel } from "../api/types";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
+import { noTeamNotice } from "../auth/access";
 import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Changelog, withContent } from "../components/Changelog";
@@ -131,7 +132,11 @@ export function ChartDetailPage() {
   // Ordering also needs the platform behind it: an approved form is useless
   // while the order cannot be filed at all.
   const orderOutage = blockedReason("ordering");
-  const orderable = !!pub?.published && !!pub?.has_order_view && !orderOutage;
+  // The catalog is open to everybody, including somebody in no team, and the
+  // button here is the first thing they would press. Closed with their own
+  // reason, ahead of the two below: neither waiting nor an approval changes it.
+  const noTeam = noTeamNotice(user);
+  const orderable = !!pub?.published && !!pub?.has_order_view && !orderOutage && !noTeam;
   const categoryLabel = categories.find((c) => c.id === pub?.category_id)?.label;
   // A version newer than the approved one is in Harbor: time for the owner to
   // refresh the data (mark the "Manage" button with a dot).
@@ -222,7 +227,9 @@ export function ChartDetailPage() {
               Заказать
             </LinkButton>
           ) : (
-            <span title={orderOutage ?? "Форма заказа не согласована для этого чарта"}>
+            <span
+              title={noTeam?.short ?? orderOutage ?? "Форма заказа не согласована для этого чарта"}
+            >
               <Button variant="primary" isDisabled>
                 Заказать
               </Button>
