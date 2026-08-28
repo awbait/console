@@ -4,19 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-28
+
+A release about seeing a change before it is sent: the form lists the settings
+it moves, and where two changes moved the same ones, the order page shows both
+values and lets you pick between them. The portal also runs in more than one
+replica now.
+
 ### Added
-- The portal has an icon of its own. Its tab, bookmark and history entry are now
-  easy to pick out among the others.
-- The portal runs in more than one replica. It needs `CACHE=redis`: the replicas
-  pass a status update to each other as it happens, and only one of them runs
-  the background tasks. The platform status page says so when the replica you
-  opened is not that one.
 - The form that changes a service lists the settings the change moves, the old
   value next to the new one. The list is in the form itself, as you fill it in.
 - Your edit and somebody else's touched the same settings: the order page offers
   to choose the values. It shows, for each of them, what the service holds now
   and what you asked for, and sends your answers as one change. Everything else
   it merges on its own, so only these settings are left to decide.
+- The portal runs in more than one replica. It needs `CACHE=redis`: the replicas
+  pass a status update to each other as it happens, and only one of them runs
+  the background tasks. The platform status page says so when the replica you
+  opened is not that one.
+- The portal has an icon of its own. Its tab, bookmark and history entry are now
+  easy to pick out among the others.
 
 ### Changed
 - An order's history no longer promises an approval. Every order used to say it
@@ -26,6 +33,9 @@ All notable changes to this project are documented in this file.
   read it before it deploys. Nothing is required of you while it waits.
 
 ### Fixed
+- A service can still be changed after your edit and somebody else's touched the
+  same setting. The order used to be left holding a change nobody could apply,
+  and it accepted no others.
 - The bell of somebody signing in for the first time is empty. It used to open
   on every announcement the portal had ever made. The same now holds for a role
   or a team somebody has just been given: what they hear about is what happens
@@ -35,10 +45,6 @@ All notable changes to this project are documented in this file.
 - Somebody who is in no team is told so on the list of orders and on the product
   page. The "Order" button is closed with the same reason instead of turning the
   order down after the form has been filled in and sent.
-- A service can still be changed after your edit and somebody else's touched the
-  same setting. The portal takes such a change back and names the settings that
-  disagreed in the order's history. The order used to be left holding a change
-  nobody could apply, and it accepted no others.
 
 ## [0.9.0] - 2026-08-28
 
@@ -549,7 +555,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/awbait/console/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/awbait/console/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/awbait/console/compare/v0.8.0...v0.8.1
