@@ -126,7 +126,16 @@ function walkErrors(
     const arr = Array.isArray(value) ? value : [];
     if (typeof s.minItems === "number" && arr.length < s.minItems)
       out.set(base, fieldMsg.minItems(s.minItems));
-    arr.forEach((it, i) => walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, `${base}/${i}`, out));
+    const items = deref(s.items ?? {}, root);
+    const card = items.type === "object" && items.properties;
+    arr.forEach((it, i) => {
+      const ipath = `${base}/${i}`;
+      // A row of plain values is one input: left empty it is dropped on save, so
+      // say it needs filling instead of letting the row quietly disappear. A row
+      // of fields answers for its own required keys one level down.
+      if (!card && emptyVal(it)) out.set(ipath, fieldMsg.required);
+      else walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, ipath, out);
+    });
     return;
   }
   leafErrors(s, value, base, out);
@@ -275,11 +284,22 @@ export function seedDefaults(node: Schema, root: Schema): unknown {
   return undefined;
 }
 
-function newArrayItem(arr: Schema, root: Schema): unknown {
+// newArrayItem builds the row the add button appends: the chart's first snippet,
+// else the item schema's own defaults, else an empty row.
+export function newArrayItem(arr: Schema, root: Schema): unknown {
   const snippet = arr.defaultSnippets?.[0]?.body?.[0];
   if (snippet !== undefined) return structuredClone(snippet);
-  const seeded = seedDefaults(arr.items ?? {}, root);
-  return seeded === undefined ? {} : seeded;
+  const items = deref(arr.items ?? {}, root);
+  const seeded = seedDefaults(items, root);
+  if (seeded !== undefined) return seeded;
+  // Only a row that holds fields needs a container to put them in. A string,
+  // number or enum row starts empty: an {} there reaches the text input as
+  // String({}), and the new row reads "[object Object]" instead of blank.
+  const holdsFields =
+    (items.type === "object" && items.properties) ||
+    Array.isArray(items.oneOf) ||
+    (items.additionalProperties && typeof items.additionalProperties === "object");
+  return holdsFields ? {} : undefined;
 }
 
 // matchVariant picks which oneOf option the current value corresponds to,
