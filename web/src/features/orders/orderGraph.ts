@@ -6,6 +6,7 @@
 // canvas itself needs a DOM, these do not.
 
 import yaml from "js-yaml";
+import { isLive } from "@/api/orderStatus";
 import type { OrderRequest, RequestMR, ViewDocument } from "@/api/types";
 import { productTabs } from "@/components/products/genericView";
 import { type GraphMapping, readEntries } from "../graph/mapping";
@@ -29,16 +30,6 @@ export type GraphLock =
   | { reason: "status"; text: string }
   | { reason: "forbidden"; text: string };
 
-// Statuses an update can be opened from: the create merge request has to be
-// merged first, which is the same rule the backend enforces (CanTransition into
-// MR_CREATED, see internal/provisioning/service.go).
-const EDITABLE_STATUSES = new Set([
-  "MR_MERGED",
-  "DEPLOYING",
-  "HEALTHY",
-  "DEGRADED",
-  "ARGO_MISSING",
-]);
 
 // graphLock decides whether the graph is a drawing surface or a picture. Every
 // case that says "picture" says why, because a canvas that silently refuses to
@@ -79,7 +70,9 @@ export function graphLock(
       text: "Сервис изменили в обход портала. Сначала подтяните его текущее состояние, иначе правки лягут поверх чужих.",
     };
   }
-  if (!EDITABLE_STATUSES.has(r.status)) {
+  // An update can only be opened once the create change is merged, which is the
+  // same rule the backend enforces from the other side.
+  if (!isLive(r.status)) {
     return {
       reason: "status",
       text: "Сервис ещё разворачивается. Граф можно будет менять, когда он заработает.",

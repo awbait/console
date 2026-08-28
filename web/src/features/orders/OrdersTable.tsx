@@ -19,7 +19,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { qk } from "@/api/queryKeys";
-import type { OrderRequest, RequestStatus } from "@/api/types";
+import { isLive } from "@/api/orderStatus";
+import type { OrderRequest } from "@/api/types";
 import { useCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
@@ -31,7 +32,6 @@ import {
   StatusBadge,
   type StatusGroupKey,
   statusGroup,
-  statusMeta,
   statusNextStep,
 } from "@/components/StatusBadge";
 import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
@@ -39,9 +39,6 @@ import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
 import { fmtDateTime } from "@/lib/time";
 import { subscribe } from "@/lib/sse";
-
-// Live order statuses (create-MR merged): only these can be upgraded to a new version.
-const LIVE_STATUSES: RequestStatus[] = ["MR_MERGED", "DEPLOYING", "HEALTHY", "DEGRADED", "ARGO_MISSING"];
 
 interface Props {
   title: string;
@@ -98,7 +95,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // Approved version newer than the order's version -> an upgrade is available
   // (only for live, non-drifted orders).
   const upgradeFor = (r: OrderRequest): string | null => {
-    if (!LIVE_STATUSES.includes(r.status) || r.drifted) return null;
+    if (!isLive(r.status) || r.drifted) return null;
     const v = charts.find((c) => c.project === r.chart_project && c.name === r.chart_name)
       ?.publication?.approved_view_version;
     return v && isNewer(v, r.chart_version) ? v : null;
@@ -408,9 +405,10 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
 // (deleted orders off by default). It lists the same groups the badges show, so what
 // a person picks here is worded exactly like what they read in the table.
 //
-// It doubles as the legend: every group is spelled out with what it means, so
-// the one place that already names all eight states also explains them, and the
-// table does not have to carry a legend of its own.
+// Nothing explains the states here. It was tried and it was noise: the badges
+// carry words now, and a line of prose under each one turns a filter a person
+// opens to tick a box into a page to read. What each state means lives in the
+// help ("Статусы и развёртывание").
 function StatusFilter({
   shown,
   onChange,
@@ -441,12 +439,12 @@ function StatusFilter({
               key={key}
               id={key}
               textValue={key}
-              className="flex cursor-pointer items-start gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
+              className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm outline-none focus:bg-slate-50"
             >
               {({ isSelected }) => (
                 <>
                   <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                       isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
                     }`}
                   >
@@ -455,24 +453,12 @@ function StatusFilter({
                   {/* Any state of the group renders the group's own badge:
                       the badge is what a person is picking here, and it must
                       not spin in a menu. */}
-                  <span className="min-w-0">
-                    <StatusBadge status={statuses[0]} noSpin />
-                    <span className="mt-1 block max-w-[17rem] text-xs text-slate-500">
-                      {statusMeta(statuses[0]).note}
-                    </span>
-                  </span>
+                  <StatusBadge status={statuses[0]} noSpin />
                 </>
               )}
             </MenuItem>
           ))}
         </Menu>
-        <Link
-          to="/docs/statuses"
-          target="_blank"
-          className="block border-t border-slate-100 px-3 py-2 text-xs font-medium text-brand-700 outline-none hover:bg-slate-50 focus-visible:bg-slate-50"
-        >
-          Подробнее о статусах
-        </Link>
       </Popover>
     </MenuTrigger>
   );
