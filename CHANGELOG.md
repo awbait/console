@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- The portal has an icon of its own. Its tab, bookmark and history entry are now
+  easy to pick out among the others.
+
 ### Fixed
 - The branch of an order change is removed from the repository once it is
   merged. These branches used to pile up, one for every change of every service.
