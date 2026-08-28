@@ -42,6 +42,8 @@ const REASONS: Record<string, string> = {
   "instance_dir_template.bad_template": "Шаблон не разбирается.",
   "app_name_template.not_unique":
     "Шаблон не различает сервисы. Два заказа дадут одно имя приложения, и Argo CD применит только один.",
+  "app_name_template.namespace_collision":
+    "Шаблон не различает namespace. Один сервис, заказанный в два namespace, даст одно имя приложения, и Argo CD применит только один.",
   "app_name_template.team_collision":
     "Шаблон не различает команды. Заказы разных команд могут дать одно имя приложения.",
   "app_name_template.chart_collision":
@@ -121,11 +123,13 @@ const REASONS: Record<string, string> = {
 const ACTIONS: Record<string, string> = {
   "instance_dir_template.not_unique":
     "Добавьте в шаблон {{.ServiceName}}. Заказы, созданные раньше, остаются в своих папках.",
-  "instance_dir_template.bad_template": "Проверьте шаблон: он должен быть шаблоном Go, например {{.Namespace}}-{{.ServiceName}}.",
+  "instance_dir_template.bad_template": "Проверьте шаблон: он должен быть шаблоном Go, например {{.Chart}}-{{.ServiceName}}.",
   "app_name_template.not_unique": "Добавьте в шаблон {{.ServiceName}}.",
+  "app_name_template.namespace_collision": "Добавьте в шаблон {{.Namespace}}.",
   "app_name_template.team_collision": "Добавьте в шаблон {{.Team}}.",
   "app_name_template.chart_collision": "Добавьте в шаблон {{.Chart}}.",
-  "app_name_template.bad_template": "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.ServiceName}}.",
+  "app_name_template.bad_template":
+    "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}.",
 
   "gitlab_token.missing_scope": "Выпустите токен с правами api и пропишите его заново.",
   "gitlab_token.expired": "Выпустите новый токен и пропишите его заново.",

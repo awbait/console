@@ -365,17 +365,17 @@ func TestDraftIdentityChange(t *testing.T) {
 	s := newStack(t)
 	u := member("core")
 
-	// An existing active order occupies the identity "pg1".
+	// An existing active order occupies the identity "pg1" in namespace "apps".
 	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "pg1", Values: validValues(),
+		Team: "core", ServiceName: "pg1", Namespace: "apps", Values: validValues(),
 	}); err != nil {
 		t.Fatalf("create live: %v", err)
 	}
 
 	draft, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "pg2", Values: validValues(), Draft: true,
+		Team: "core", ServiceName: "pg2", Namespace: "apps", Values: validValues(), Draft: true,
 	})
 	if err != nil {
 		t.Fatalf("create draft: %v", err)
@@ -392,9 +392,9 @@ func TestDraftIdentityChange(t *testing.T) {
 		t.Fatalf("got service=%q app=%q", upd.ServiceName, upd.ArgoCDAppName)
 	}
 
-	// Renaming onto a taken identity conflicts.
+	// Renaming onto an identity taken in the same namespace conflicts.
 	if _, err := s.prov.Update(ctx, u, draft.ID, provisioning.UpdateInput{
-		ServiceName: "pg1", Values: validValues(),
+		ServiceName: "pg1", Namespace: "apps", Values: validValues(),
 	}); !errors.Is(err, models.ErrConflict) {
 		t.Fatalf("want conflict, got %v", err)
 	}

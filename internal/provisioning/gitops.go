@@ -51,8 +51,8 @@ type GitOps struct {
 	// service never comes up. Empty means "argocd", the upstream default.
 	AppNamespace string
 	// InstanceTmpl renders the folder one ordered instance owns inside the chart
-	// repo - the last segment of {cluster}/{instance}. Nil means the plain
-	// service name, the layout every order had before this was configurable.
+	// repo - the last segment of {cluster}/{namespace}/{instance}. Nil means the
+	// plain service name, the layout every order had before this was configurable.
 	// Set with SetInstanceTemplate.
 	InstanceTmpl *template.Template
 }
@@ -130,10 +130,12 @@ func (g *GitOps) RepoPath(team, chart string) string {
 // chart is part of the name so two different charts ordered with the same
 // service_name into one namespace do not produce two application.yaml files that
 // define the same-named Application CR (which would make their app-of-apps repos
-// fight over a single object). Mirrors the active-service key (team, chart,
-// service, cluster).
-func (g *GitOps) AppName(team, chart, service string) string {
-	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, ServiceName: service})
+// fight over a single object). The namespace is part of it for the same reason,
+// from the other side: one team may order one chart under one name into two
+// namespaces, and those are two applications. Mirrors the active-service key
+// (team, chart, service, cluster, namespace).
+func (g *GitOps) AppName(team, chart, namespace, service string) string {
+	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service})
 }
 
 // TeamFromSubgroup reverses SubgroupTmpl to recover the team from a subgroup
@@ -172,16 +174,22 @@ func (g *GitOps) InstanceName(r *models.Request) string {
 }
 
 // NewInstancePath is the folder an order is given at creation, relative to the
-// chart repo root: {cluster}/{instance}. Grouping by cluster keeps instances of
-// the same service in different clusters apart (cluster is part of the
-// active-service identity). It is stored on the order and read from there
-// afterwards - see InstanceDir.
+// chart repo root: {cluster}/{namespace}/{instance}. Both levels above the
+// instance are parts of the active-service identity, and the layout carries
+// them so two orders that differ only there cannot land on one folder and
+// overwrite each other's files. Keeping the namespace a folder of its own,
+// rather than a piece of the instance name, is what makes that hold whatever
+// GITLAB_INSTANCE_DIR_TEMPLATE renders. It is stored on the order and read from
+// there afterwards - see InstanceDir.
 func (g *GitOps) NewInstancePath(r *models.Request) string {
-	name := g.InstanceName(r)
-	if r.Cluster == "" {
-		return name
+	segments := make([]string, 0, 3)
+	if r.Cluster != "" {
+		segments = append(segments, r.Cluster)
 	}
-	return r.Cluster + "/" + name
+	if r.Namespace != "" {
+		segments = append(segments, r.Namespace)
+	}
+	return strings.Join(append(segments, g.InstanceName(r)), "/")
 }
 
 // InstanceDir is the folder an order owns inside its chart repo. It is whatever

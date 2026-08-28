@@ -36,7 +36,7 @@ func newTemplatedStack(t *testing.T, tmpl string) (*provisioning.Service, *gitla
 
 func TestOrderCommitsIntoTheTemplatedFolder(t *testing.T) {
 	ctx := context.Background()
-	prov, gl, st, _ := newTemplatedStack(t, "{{.Namespace}}-{{.ServiceName}}")
+	prov, gl, st, _ := newTemplatedStack(t, "{{.Chart}}-{{.ServiceName}}")
 
 	r, err := prov.Create(ctx, member("core"), provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
@@ -47,7 +47,7 @@ func TestOrderCommitsIntoTheTemplatedFolder(t *testing.T) {
 	}
 
 	// The folder is recorded on the order, not recomputed on every use.
-	if got, want := r.InstancePath, "in-cluster/payments-pg1"; got != want {
+	if got, want := r.InstancePath, "in-cluster/payments/postgres-pg1"; got != want {
 		t.Fatalf("InstancePath = %q, want %q", got, want)
 	}
 	saved, err := st.GetRequest(ctx, r.ID)
@@ -63,17 +63,17 @@ func TestOrderCommitsIntoTheTemplatedFolder(t *testing.T) {
 		t.Fatalf("repo: %v", err)
 	}
 	for _, name := range []string{"application.yaml", "values.yaml"} {
-		if _, ferr := gl.GetFile(ctx, proj.ID, "in-cluster/payments-pg1/"+name, "main"); ferr != nil {
+		if _, ferr := gl.GetFile(ctx, proj.ID, "in-cluster/payments/postgres-pg1/"+name, "main"); ferr != nil {
 			t.Fatalf("%s not committed into the templated folder: %v", name, ferr)
 		}
 	}
 	// The values reference in application.yaml points at the same folder, or Argo
 	// CD renders the chart with no values at all.
-	app, err := gl.GetFile(ctx, proj.ID, "in-cluster/payments-pg1/application.yaml", "main")
+	app, err := gl.GetFile(ctx, proj.ID, "in-cluster/payments/postgres-pg1/application.yaml", "main")
 	if err != nil {
 		t.Fatalf("application.yaml: %v", err)
 	}
-	if !strings.Contains(string(app), "$values/in-cluster/payments-pg1/values.yaml") {
+	if !strings.Contains(string(app), "$values/in-cluster/payments/postgres-pg1/values.yaml") {
 		t.Fatalf("values reference does not follow the folder:\n%s", app)
 	}
 }
@@ -93,7 +93,7 @@ func TestTemplateChangeLeavesExistingOrdersAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if got, want := r.InstancePath, "in-cluster/pg1"; got != want {
+	if got, want := r.InstancePath, "in-cluster/payments/pg1"; got != want {
 		t.Fatalf("InstancePath = %q, want %q", got, want)
 	}
 
@@ -101,7 +101,7 @@ func TestTemplateChangeLeavesExistingOrdersAlone(t *testing.T) {
 	// its files, which is where a recomputed path would go wrong most quietly:
 	// an empty folder listing closes the order out and leaves the service
 	// running with nobody tracking it.
-	if err := gitops.SetInstanceTemplate("{{.Namespace}}-{{.ServiceName}}"); err != nil {
+	if err := gitops.SetInstanceTemplate("{{.Chart}}-{{.ServiceName}}"); err != nil {
 		t.Fatal(err)
 	}
 	for range 4 {
@@ -118,14 +118,14 @@ func TestTemplateChangeLeavesExistingOrdersAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repo: %v", err)
 	}
-	if _, ferr := gl.GetFile(ctx, proj.ID, "in-cluster/pg1/application.yaml", "main"); ferr == nil {
+	if _, ferr := gl.GetFile(ctx, proj.ID, "in-cluster/payments/pg1/application.yaml", "main"); ferr == nil {
 		t.Fatal("the order's own manifests are still in Git after a delete")
 	}
 	got, err := st.GetRequest(ctx, r.ID)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.InstancePath != "in-cluster/pg1" {
+	if got.InstancePath != "in-cluster/payments/pg1" {
 		t.Fatalf("InstancePath moved to %q", got.InstancePath)
 	}
 }
@@ -138,7 +138,7 @@ func TestLegacyOrderWithoutInstancePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := gitops.SetInstanceTemplate("{{.Namespace}}-{{.ServiceName}}"); err != nil {
+	if err := gitops.SetInstanceTemplate("{{.Chart}}-{{.ServiceName}}"); err != nil {
 		t.Fatal(err)
 	}
 	legacy := &models.Request{Team: "core", ChartName: "postgres", ServiceName: "pg1",

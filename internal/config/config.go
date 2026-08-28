@@ -115,7 +115,7 @@ type Config struct {
 	GitLabAutoMerge     bool          `env:"GITLAB_AUTO_MERGE" envDefault:"false" desc:"Merge the portal's own merge requests without waiting for a human. A service whose version asks for a review is merged by a person even so, and no service can merge itself where this is off."`
 	GitLabGitopsGroup   string        `env:"GITLAB_GITOPS_GROUP" envDefault:"managed-services" desc:"Top-level group the GitOps repositories live in."`
 	GitLabSubgroupTmpl  string        `env:"GITLAB_TEAM_SUBGROUP_TEMPLATE" envDefault:"team-{{.Team}}" desc:"Template for a team's subgroup path inside that group."`
-	GitLabInstanceTmpl  string        `env:"GITLAB_INSTANCE_DIR_TEMPLATE" desc:"Template for the folder one ordered service gets inside its repository, under the cluster folder. Knows the team, the chart, the service name, the namespace and the cluster. Empty means the service name alone. It has to give every service of one team and chart its own folder, or two of them end up writing the same files. An order keeps the folder it was created in, so changing this only affects new orders." example:"{{.Namespace}}-{{.ServiceName}}"`
+	GitLabInstanceTmpl  string        `env:"GITLAB_INSTANCE_DIR_TEMPLATE" desc:"Template for the folder one ordered service gets inside its repository, under the cluster and namespace folders. Knows the team, the chart, the service name, the namespace and the cluster. Empty means the service name alone. It has to give every service of one team, chart and namespace its own folder, or two of them end up writing the same files. An order keeps the folder it was created in, so changing this only affects new orders." example:"{{.Chart}}-{{.ServiceName}}"`
 	GitLabCreateGroup   bool          `env:"GITLAB_CREATE_TEAM_SUBGROUP" envDefault:"true" desc:"Create a team's subgroup on the first order when it is missing. Turn it off where subgroups are provisioned elsewhere: then a team without one cannot order until somebody creates it. Creating a subgroup needs the token to own the top-level group."`
 	GitLabDefaultBranch string        `env:"GITLAB_DEFAULT_BRANCH" envDefault:"main" desc:"Branch order changes are merged into and Argo CD tracks."`
 	GitLabWebhookToken  string        `env:"GITLAB_WEBHOOK_TOKEN" desc:"Secret verifying notifications from GitLab. Set the same value as the webhook secret token there; empty leaves the portal to find merges by polling."`
@@ -131,8 +131,10 @@ type Config struct {
 	ArgoCDNamespace string `env:"ARGOCD_NAMESPACE" envDefault:"argocd" desc:"Namespace Argo CD runs in. The portal writes it into every application.yaml it commits, because Argo CD only picks up applications from its own namespace."`
 	ArgoCDCluster string `env:"ARGOCD_DEFAULT_CLUSTER" envDefault:"in-cluster" desc:"Cluster orders are deployed to unless they say otherwise."`
 	// Includes the chart so two different charts ordered under the same service
-	// name into one namespace do not collide on a single Application.
-	ArgoCDAppNameTmpl string `env:"ARGOCD_APP_NAME_TEMPLATE" envDefault:"{{.Team}}-{{.Chart}}-{{.ServiceName}}" desc:"Template for the name of the generated Argo CD application. Knows the team, the chart and the service name."`
+	// name into one namespace do not collide on a single Application, and the
+	// namespace so one chart ordered under one name into two namespaces does not
+	// either - that is two services, and two applications.
+	ArgoCDAppNameTmpl string `env:"ARGOCD_APP_NAME_TEMPLATE" envDefault:"{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}" desc:"Template for the name of the generated Argo CD application. Knows the team, the chart, the namespace and the service name. It has to give every service its own name, namespaces included: one team may run one service of one chart in several namespaces, and two of them under one name means two applications fighting over the same objects. An order keeps the name it was created with, so changing this only affects new orders."`
 	// The chart repoURL in the committed application.yaml becomes
 	// "{ChartRegistry}/{chart_project}", so this must be a host both the portal
 	// and the Argo CD pods can resolve.

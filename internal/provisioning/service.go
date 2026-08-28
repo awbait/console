@@ -332,15 +332,17 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 	return views.BindNamespace(values, view, namespace)
 }
 
-// checkNamespaceIdentity returns a friendly ValidationError when another active
-// order of the same chart already deploys the same resource identity into the
-// same namespace+cluster. The DB partial unique index is the race-safe backstop;
-// this pre-check exists only to turn a bare 409 into an actionable message.
 // checkServiceName mirrors the uniq_active_service index (team, chart_name,
-// service_name, cluster among active orders). Without it the collision surfaces
-// as the index's bare "conflict", which tells the user nothing - and for a chart
-// whose view sources the identity from the values (the policies graph names the
-// order after its first policy) it is not even obvious which field to change.
+// service_name, cluster, effective namespace among active orders). Without it
+// the collision surfaces as the index's bare "conflict", which tells the user
+// nothing - and for a chart whose view sources the identity from the values
+// (the policies graph names the order after its first policy) it is not even
+// obvious which field to change.
+//
+// The namespace is part of the key, so the same name in another namespace is
+// allowed and only a repeat within one namespace is refused. That is also what
+// the refusal has to say: the namespace is the field a person changes to get
+// two of the same thing side by side.
 func (s *Service) checkServiceName(ctx context.Context, r *models.Request) error {
 	if r.ServiceName == "" {
 		return nil
@@ -353,15 +355,20 @@ func (s *Service) checkServiceName(ctx context.Context, r *models.Request) error
 		if ex.ID == r.ID || ex.DeletedAt != nil {
 			continue
 		}
-		if ex.Cluster == r.Cluster && ex.ServiceName == r.ServiceName {
+		if ex.Cluster == r.Cluster && ex.ServiceName == r.ServiceName &&
+			ex.DestNamespace() == r.DestNamespace() {
 			return conflict(
-				"имя %q уже занято другим заказом этого продукта в кластере %q (%q). Выберите другое имя",
-				r.ServiceName, r.Cluster, ex.DisplayName)
+				"Имя «%s» уже занято заказом «%s» в namespace «%s». Укажите другое имя или другой namespace.",
+				r.ServiceName, ex.DisplayName, r.DestNamespace())
 		}
 	}
 	return nil
 }
 
+// checkNamespaceIdentity returns a friendly ValidationError when another active
+// order of the same chart already deploys the same resource identity into the
+// same namespace+cluster. The DB partial unique index is the race-safe backstop;
+// this pre-check exists only to turn a bare 409 into an actionable message.
 func (s *Service) checkNamespaceIdentity(ctx context.Context, r *models.Request) error {
 	if r.Namespace == "" || r.ResourceIdentity == "" {
 		return nil
@@ -472,7 +479,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if cluster == "" {
 		cluster = s.defaultCluster
 	}
-	// Cluster lands in commit paths ({cluster}/{service}) and the rendered
+	// Cluster lands in commit paths ({cluster}/{namespace}/{service}) and the rendered
 	// application.yaml destination; validate it like service_name so it cannot
 	// carry "../" or newlines into Git paths/manifests.
 	if !nameRe.MatchString(cluster) || len(cluster) > 63 {
@@ -494,7 +501,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		EditorState:   in.EditorState,
 		Status:        models.StatusDraft,
 	}
-	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.ServiceName) // computed once
+	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName) // computed once
 	// Same idea as the application name: rendered from a template once, at
 	// creation, and carried on the row. Re-rendering it later would follow a
 	// changed GITLAB_INSTANCE_DIR_TEMPLATE and point the portal at a folder its
@@ -708,7 +715,6 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 			return nil, &ValidationError{Message: MsgServiceName}
 		}
 		r.ServiceName = in.ServiceName
-		r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.ServiceName)
 	}
 	if in.DisplayName != "" {
 		r.DisplayName = in.DisplayName
@@ -732,6 +738,12 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		return nil, err
 	}
 	r.Namespace = ns
+	// The application name and the folder are rendered from the name, the
+	// namespace and the cluster, and a draft may still change all three. They are
+	// re-rendered here and nowhere else: a draft has nothing in Git yet, while an
+	// order that does keeps what it was created with - see NewInstancePath.
+	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName)
+	r.InstancePath = s.gitops.NewInstancePath(r)
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false)
 	if err != nil {
 		return nil, err

@@ -54,10 +54,13 @@ func TestAppNameTemplate(t *testing.T) {
 		want   Verdict
 		reason string
 	}{
-		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.ServiceName}}", VerdictSilent, reasonUnique},
-		{"no service name", "{{.Team}}-{{.Chart}}", VerdictFail, reasonNotUnique},
-		{"no team", "{{.Chart}}-{{.ServiceName}}", VerdictWarn, reasonTeamCollision},
-		{"no chart", "{{.Team}}-{{.ServiceName}}", VerdictWarn, reasonChartCollision},
+		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}", VerdictSilent, reasonUnique},
+		{"no service name", "{{.Team}}-{{.Chart}}-{{.Namespace}}", VerdictFail, reasonNotUnique},
+		// One team may run one chart under one name in two namespaces. A template
+		// that leaves the namespace out names both of them the same.
+		{"no namespace", "{{.Team}}-{{.Chart}}-{{.ServiceName}}", VerdictFail, reasonNSCollision},
+		{"no team", "{{.Chart}}-{{.Namespace}}-{{.ServiceName}}", VerdictWarn, reasonTeamCollision},
+		{"no chart", "{{.Team}}-{{.Namespace}}-{{.ServiceName}}", VerdictWarn, reasonChartCollision},
 		{"broken template", "{{.Team", VerdictFail, reasonBadTemplate},
 	}
 	for _, tc := range cases {
@@ -71,7 +74,10 @@ func TestAppNameTemplate(t *testing.T) {
 }
 
 func TestStaticSetIsComplete(t *testing.T) {
-	cfg := &config.Config{StatusUpdateMode: config.StatusModeHybrid, ArgoCDAppNameTmpl: "{{.Team}}-{{.Chart}}-{{.ServiceName}}"}
+	cfg := &config.Config{
+		StatusUpdateMode:  config.StatusModeHybrid,
+		ArgoCDAppNameTmpl: "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}",
+	}
 	set := Static(cfg)
 	want := []string{IDInstanceDirTmpl, IDAppNameTmpl}
 	if len(set) != len(want) {

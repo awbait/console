@@ -15,6 +15,8 @@ All notable changes to this project are documented in this file.
   the order was rejected.
 - Added the status name next to its icon in the orders table.
 - Added a Namespace column to the orders table.
+- The same product can now be ordered under one name into different
+  namespaces.
 
 ### Changed
 - Renamed the order statuses and described each of them in the "Statuses and

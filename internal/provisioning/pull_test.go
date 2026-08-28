@@ -20,7 +20,7 @@ func TestPullFromGit(t *testing.T) {
 	}
 
 	// Someone edits values.yaml directly in Git, then the portal pulls it in.
-	commit(ctx, t, s.gl, proj.ID, "in-cluster/pg1/values.yaml", "auth:\n  database: changed_in_git\n")
+	commit(ctx, t, s.gl, proj.ID, "in-cluster/pg1/pg1/values.yaml", "auth:\n  database: changed_in_git\n")
 	if err := s.prov.CheckDrift(ctx); err != nil {
 		t.Fatalf("CheckDrift: %v", err)
 	}
