@@ -24,6 +24,9 @@ func TestCanTransition(t *testing.T) {
 		{models.StatusMRMerged, models.StatusMRCreated},
 		{models.StatusDeploying, models.StatusMRCreated},
 		{models.StatusDegraded, models.StatusMRCreated},
+		// a deletion called off leaves the service running, so the order goes
+		// back to being live instead of into a dead end
+		{models.StatusDeleteRequested, models.StatusMRMerged},
 	}
 	for _, e := range ok {
 		if !CanTransition(e[0], e[1]) {
@@ -38,6 +41,11 @@ func TestCanTransition(t *testing.T) {
 		// delete forbidden until the create MR is merged
 		{models.StatusMRCreated, models.StatusDeleteRequested},
 		{models.StatusDraft, models.StatusDeleteRequested},
+		// MR_CLOSED means the first order was turned down and no service was
+		// created. Nothing else ends there, and nothing leaves it.
+		{models.StatusDeleteRequested, models.StatusMRClosed},
+		{models.StatusMRClosed, models.StatusMRCreated},
+		{models.StatusMRClosed, models.StatusDeleteRequested},
 	}
 	for _, e := range bad {
 		if CanTransition(e[0], e[1]) {

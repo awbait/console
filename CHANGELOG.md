@@ -5,30 +5,26 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- A version of a service can be taken out of support. "Снять с поддержки" on the
-  chart's management page takes it out of the catalog with a reason, and nothing
-  about it can be changed until "Вернуть в работу" puts it back.
-- An order running on a version that was taken out of support says so on its
-  page, with the reason and the version to move to. The service keeps running
-  and its values stay editable.
-- The teams running a version are notified when it is taken out of support. The
-  message carries the owner's reason and the version to move to.
-- An order that will not move on its own says what to do about it. A service
-  that is down and a rejected order explain the next step on the order page.
+- Added a "Take out of support" button to the service management page that
+  removes a version from the catalog with a reason.
+- Added a notice to the order page when its version has been taken out of
+  support, with the reason and the version to move to.
+- Added a notification for the teams whose services run on a version taken out
+  of support.
+- Added a hint to the order page on what to do next when the service is down or
+  the order was rejected.
+- Added the status name next to its icon in the orders table.
 
 ### Changed
-- The orders table spells the status out in a word next to its icon. The icon
-  alone had to be hovered over to be read, and on a phone or a tablet it could
-  not be read at all. On a narrow screen the "Метка" column gives way to it.
-- Order states are named after what happens to the service: "Принят" replaces
-  "Сохраняем", "Отклонён" replaces "Отклонено". What each state means is written
-  out in the "Статусы" filter above the table and in the "Статусы и
-  развёртывание" help page.
+- Renamed the order statuses and put a description of each into the "Statuses"
+  filter above the orders table and into the "Statuses and deployment" help
+  page.
 
 ### Fixed
-- An order keeps working after its version leaves the catalog. Its page used to
-  open without the product tabs, and saving the values was refused as an
-  unavailable version.
+- Fixed opening an order whose version has left the catalog: the page shows the
+  product tabs again and the values save.
+- Fixed an order getting stuck in "Rejected" after the merge request for an edit
+  or a deletion of the service was closed without merging.
 
 ## [0.8.2] - 2026-08-27
 

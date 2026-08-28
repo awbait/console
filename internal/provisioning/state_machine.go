@@ -7,8 +7,10 @@ var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 	models.StatusDraft: {
 		models.StatusMRCreated: true,
 	},
+	// A change closed instead of merged lands the order in one of these two, and
+	// which one depends on what the change was for - see closedChangeTarget.
 	models.StatusMRCreated: {
-		models.StatusMRClosed: true,
+		models.StatusMRClosed: true, // the first order was turned down: no service was ever created
 		models.StatusMRMerged: true,
 	},
 	// Once the create MR is merged (the instance exists in Git), the order can be
@@ -45,9 +47,13 @@ var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 		models.StatusMRCreated:       true,
 		models.StatusDeleteRequested: true,
 	},
+	// A deletion that was called off leaves the service running, so the order
+	// goes back to being live rather than into MR_CLOSED, where it used to be
+	// stuck for good: nothing leaves MR_CLOSED, so the service could no longer be
+	// edited, upgraded or even deleted, and the poller stopped watching it.
 	models.StatusDeleteRequested: {
 		models.StatusDeleteMRMerged: true,
-		models.StatusMRClosed:       true, // delete MR cancelled
+		models.StatusMRMerged:       true, // deletion cancelled: the service is still there
 	},
 	models.StatusDeleteMRMerged: {
 		models.StatusDeleted: true,
