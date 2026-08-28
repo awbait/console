@@ -86,6 +86,16 @@ func inGroupSet(group string, set map[string]struct{}) bool {
 
 // BuildUser derives the portal user (teams + role) from OIDC claims. Exactly one
 // role is assigned, with precedence admin > support > security > member > auditor.
+//
+// Auditor is the floor, and it is what somebody gets whose groups matched
+// nothing here - either because they really are in no team, or because the
+// prefix the teams are read by does not match the ones the realm sends. The
+// portal keeps letting them in rather than refusing the login, because the
+// second cause is a setting of ours and refusing would turn one wrong prefix
+// into everybody locked out. What it must not do is stay quiet about it: a
+// person with no team is told so on the screens where they first meet it (see
+// web/src/auth/access.ts), and an administrator sees the same fact as a check
+// on the configuration page (internal/checks/keycloak.go).
 func (r RBAC) BuildUser(sub, email, username, name string, groups []string) *models.User {
 	u := &models.User{Subject: sub, Email: email, Username: username, Name: name, Role: models.RoleAuditor}
 

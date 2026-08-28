@@ -8,6 +8,7 @@ import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "@/a
 import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
 import { usePlatformHealth } from "@/app/PlatformHealthContext";
 import { useTeam } from "@/app/TeamContext";
+import { noTeamNotice } from "@/auth/access";
 import { useUser } from "@/auth/UserContext";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { FormErrors } from "@/components/FormErrors";
@@ -322,12 +323,13 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     }
   }
 
-  if (!user || (user.teams?.length ?? 0) === 0) {
+  // The form is reachable by its address even where no button leads to it, so
+  // the same explanation the closed button carries is said here in full.
+  const noTeam = noTeamNotice(user);
+  if (noTeam) {
     return (
       <Card>
-        <p className="text-sm text-gray-600">
-          You need to be a member of a team (group <code>team-*</code>) to order services.
-        </p>
+        <p className="text-sm text-slate-600">{noTeam.ordering}</p>
       </Card>
     );
   }

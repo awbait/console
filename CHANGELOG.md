@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file.
 ### Fixed
 - The branch of an order change is removed from the repository once it is
   merged. These branches used to pile up, one for every change of every service.
+- Somebody who is in no team is told so on the list of orders and on the product
+  page. The "Order" button is closed with the same reason instead of turning the
+  order down after the form has been filled in and sent.
 
 ## [0.9.0] - 2026-08-28
 
