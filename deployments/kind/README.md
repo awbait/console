@@ -89,7 +89,7 @@ make web
 
 | Что | URL | Логин |
 |---|---|---|
-| Портал (SPA, Vite) | http://localhost:5173 | Keycloak OIDC: `alice`/`alice`, `padmin`/`padmin`, `support`/`support`, `security`/`security` |
+| Портал (SPA, Vite) | http://localhost:5173 | Keycloak OIDC: `alice`/`alice`, `padmin`/`padmin`, `support`/`support`, `security`/`security`, `nobody`/`nobody` (ни в одной группе) |
 | Backend portal | http://localhost:8080 | `/health`, `/ready`, `/metrics` |
 | Argo CD | http://127.0.0.1:8083 | `admin` / `admin12345` |
 | Harbor | https://127.0.0.1:8084 | `admin` / `Harbor12345` |

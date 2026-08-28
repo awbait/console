@@ -92,6 +92,16 @@
       "lastName": "Security",
       "credentials": [{ "type": "password", "value": "security", "temporary": false }],
       "groups": ["/security"]
+    },
+    {
+      "username": "nobody",
+      "enabled": true,
+      "email": "nobody@example.com",
+      "emailVerified": true,
+      "firstName": "Nora",
+      "lastName": "Nobody",
+      "credentials": [{ "type": "password", "value": "nobody", "temporary": false }],
+      "groups": []
     }
   ]
 }
