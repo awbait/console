@@ -164,11 +164,14 @@ func (s *Service) tendOpenMR(ctx context.Context, r *models.Request, mr *models.
 	if gitlab.ClassifyMerge(detailed) == gitlab.MergeBlocked && detailed == "conflict" {
 		// A conflict is the one blocked state the portal can clear by itself: the
 		// change is still good, it was written against a branch that has since
-		// moved. Only a field both changes moved needs a person.
+		// moved. A field both changes moved is the one case it cannot, and there
+		// the change is taken back rather than left blocking the order.
 		switch s.retryConflictedMR(ctx, r, mr) {
 		case retryReopened:
 			return true
-		case retryReported:
+		case retryWithdrawn:
+			// The record now says closed, and the switch that follows in
+			// reconcileOne takes the order off it. Nothing here to merge.
 			return false
 		}
 	}

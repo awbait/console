@@ -113,8 +113,9 @@ export interface RequestEvent {
   event_type: string;
   from_status?: RequestStatus;
   to_status?: RequestStatus;
-  // Extra detail the status columns cannot carry, shaped per event type: today
-  // only merge_blocked uses it, to say why a change could not be applied.
+  // Extra detail the status columns cannot carry, shaped per event type: why a
+  // change could not be applied (merge_blocked, change_withdrawn), and the
+  // fields two changes disagreed on.
   payload?: Record<string, unknown>;
   created_at: string;
 }
