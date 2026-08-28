@@ -27,18 +27,24 @@ func instanceOf(cluster, service string) *models.Request {
 		Cluster: cluster, Namespace: "apps"}
 }
 
-// TestInstancePathsIncludeCluster locks in the repo layout: {cluster}/{service}/...
-func TestInstancePathsIncludeCluster(t *testing.T) {
+// TestInstancePathsIncludeClusterAndNamespace locks in the repo layout:
+// {cluster}/{namespace}/{service}/... Both levels above the instance are parts
+// of the identity an order is unique by, so two orders that differ only there
+// cannot share a folder.
+func TestInstancePathsIncludeClusterAndNamespace(t *testing.T) {
 	g := newGitOps(t)
 	prod := instanceOf("prod", "pg1")
 
-	if got, want := g.NewInstancePath(prod), "prod/pg1"; got != want {
+	if got, want := g.NewInstancePath(prod), "prod/apps/pg1"; got != want {
 		t.Errorf("NewInstancePath = %q, want %q", got, want)
 	}
-	if got, want := g.AppPath(prod), "prod/pg1/application.yaml"; got != want {
+	// The files live in the folder the order was given, which is what an order
+	// carries from creation on.
+	prod.InstancePath = g.NewInstancePath(prod)
+	if got, want := g.AppPath(prod), "prod/apps/pg1/application.yaml"; got != want {
 		t.Errorf("AppPath = %q, want %q", got, want)
 	}
-	if got, want := g.ValuesPath(prod), "prod/pg1/values.yaml"; got != want {
+	if got, want := g.ValuesPath(prod), "prod/apps/pg1/values.yaml"; got != want {
 		t.Errorf("ValuesPath = %q, want %q", got, want)
 	}
 
@@ -47,8 +53,18 @@ func TestInstancePathsIncludeCluster(t *testing.T) {
 		t.Error("instances in different clusters must not collide")
 	}
 
+	// The same service ordered into another namespace of one cluster, too: this
+	// is the ordinary case of dev beside stage, not a collision.
+	other := instanceOf("prod", "pg1")
+	other.Namespace = "apps-stage"
+	if g.NewInstancePath(other) == g.NewInstancePath(prod) {
+		t.Error("instances in different namespaces must not collide")
+	}
+
 	// Empty cluster falls back to the flat legacy layout.
-	if got, want := g.AppPath(instanceOf("", "pg1")), "pg1/application.yaml"; got != want {
+	flat := instanceOf("", "pg1")
+	flat.Namespace = ""
+	if got, want := g.AppPath(flat), "pg1/application.yaml"; got != want {
 		t.Errorf("AppPath(empty cluster) = %q, want %q", got, want)
 	}
 }
@@ -63,7 +79,7 @@ func TestInstanceTemplate(t *testing.T) {
 	if err := g.SetInstanceTemplate("{{.Namespace}}-{{.ServiceName}}"); err != nil {
 		t.Fatalf("SetInstanceTemplate: %v", err)
 	}
-	if got, want := g.NewInstancePath(r), "in-cluster/apps-pg1"; got != want {
+	if got, want := g.NewInstancePath(r), "in-cluster/apps/apps-pg1"; got != want {
 		t.Fatalf("NewInstancePath = %q, want %q", got, want)
 	}
 
@@ -80,7 +96,7 @@ func TestInstanceTemplate(t *testing.T) {
 	}
 	empty := instanceOf("in-cluster", "pg1")
 	empty.Team = ""
-	if got, want := g.NewInstancePath(empty), "in-cluster/pg1"; got != want {
+	if got, want := g.NewInstancePath(empty), "in-cluster/apps/pg1"; got != want {
 		t.Fatalf("empty render = %q, want the service name %q", got, want)
 	}
 

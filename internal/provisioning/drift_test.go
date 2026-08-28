@@ -48,8 +48,8 @@ func TestCheckDrift(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProject: %v", err)
 	}
-	const valuesPath = "in-cluster/pg1/values.yaml"
-	const appPath = "in-cluster/pg1/application.yaml"
+	const valuesPath = "in-cluster/pg1/pg1/values.yaml"
+	const appPath = "in-cluster/pg1/pg1/application.yaml"
 
 	// 2) someone edits values.yaml directly in Git => drift detected.
 	commit(ctx, t, s.gl, proj.ID, valuesPath, "auth:\n  database: HACKED\n")

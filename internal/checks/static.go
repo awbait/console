@@ -38,16 +38,17 @@ const (
 // that use them are about a webhook, not about a template, but the sentences
 // they map to are the portal's own configuration either way.
 const (
-	reasonURLWithoutToken = "url_without_token" // GitLab is told where to deliver, and the portal registers nothing without a secret
-	reasonTokenWithoutURL = "token_without_url" // the portal will accept deliveries nobody registered
-	reasonSchemeMismatch  = "scheme_mismatch"   // https hook against an http portal, or the other way round
-	reasonHostMismatch    = "host_mismatch"     // the hook points at a different host than the portal's own address
-	reasonPathMismatch    = "path_mismatch"     // the hook points at something that is not the portal's webhook endpoint
-	reasonNotUnique       = "not_unique"        // the template gives two different services the same name
-	reasonTeamCollision   = "team_collision"    // the template gives two teams the same application name
-	reasonChartCollision  = "chart_collision"   // the template gives two charts the same application name
-	reasonBadTemplate     = "bad_template"      // the template does not parse
-	reasonUnique          = "unique"            // it does tell services apart, which is not news
+	reasonURLWithoutToken = "url_without_token"   // GitLab is told where to deliver, and the portal registers nothing without a secret
+	reasonTokenWithoutURL = "token_without_url"   // the portal will accept deliveries nobody registered
+	reasonSchemeMismatch  = "scheme_mismatch"     // https hook against an http portal, or the other way round
+	reasonHostMismatch    = "host_mismatch"       // the hook points at a different host than the portal's own address
+	reasonPathMismatch    = "path_mismatch"       // the hook points at something that is not the portal's webhook endpoint
+	reasonNotUnique       = "not_unique"          // the template gives two different services the same name
+	reasonNSCollision     = "namespace_collision" // the template gives two namespaces the same application name
+	reasonTeamCollision   = "team_collision"      // the template gives two teams the same application name
+	reasonChartCollision  = "chart_collision"     // the template gives two charts the same application name
+	reasonBadTemplate     = "bad_template"        // the template does not parse
+	reasonUnique          = "unique"              // it does tell services apart, which is not news
 )
 
 // GitLabWebhookPath and HarborWebhookPath are where the portal receives each
@@ -77,11 +78,13 @@ func Static(cfg *config.Config) []Check {
 }
 
 // instanceDirTemplate checks that the folder template gives every service of one
-// team and chart a folder of its own. Two services landing in the same folder
-// overwrite each other's values.yaml and application.yaml, and the portal has no
-// way to notice: both orders look successful and one service quietly becomes the
-// other. An empty template is the bare service name, which is unique by
-// construction.
+// team, chart and namespace a folder of its own. Two services landing in the
+// same folder overwrite each other's values.yaml and application.yaml, and the
+// portal has no way to notice: both orders look successful and one service
+// quietly becomes the other. Namespaces need no check of their own here - the
+// layout puts each one in a folder of its own, above whatever this renders (see
+// GitOps.NewInstancePath). An empty template is the bare service name, which is
+// unique by construction.
 func instanceDirTemplate(tmpl string) Result {
 	if strings.TrimSpace(tmpl) == "" {
 		return silent(reasonUnique)
@@ -104,23 +107,28 @@ func instanceDirTemplate(tmpl string) Result {
 
 // appNameTemplate checks the Argo CD application name the same way. Two orders
 // rendering one name means two application.yaml files defining the same
-// Application, and Argo CD applies whichever it read last. Service names must
-// separate them (a failure); team and chart should too, because a name that
-// repeats across teams turns one team's order into another team's outage.
+// Application, and Argo CD applies whichever it read last. Service names and
+// namespaces must separate them (a failure each: one team may order one chart
+// under one name into two namespaces, and those are two services); team and
+// chart should too, because a name that repeats across teams turns one team's
+// order into another team's outage.
 func appNameTemplate(tmpl string) Result {
 	t, err := template.New("appname").Parse(tmpl)
 	if err != nil {
 		return verdict(VerdictFail, reasonBadTemplate, nil)
 	}
-	base := tmplSample{Team: "core", Chart: "postgres", ServiceName: "one"}
-	byService, byTeam, byChart := base, base, base
+	base := tmplSample{Team: "core", Chart: "postgres", ServiceName: "one", Namespace: "apps"}
+	byService, byNamespace, byTeam, byChart := base, base, base, base
 	byService.ServiceName = "two"
+	byNamespace.Namespace = "other"
 	byTeam.Team = "billing"
 	byChart.Chart = "redis"
 	name := renderTmpl(t, base)
 	switch {
 	case renderTmpl(t, byService) == name:
 		return verdict(VerdictFail, reasonNotUnique, nil)
+	case renderTmpl(t, byNamespace) == name:
+		return verdict(VerdictFail, reasonNSCollision, nil)
 	case renderTmpl(t, byTeam) == name:
 		return verdict(VerdictWarn, reasonTeamCollision, nil)
 	case renderTmpl(t, byChart) == name:

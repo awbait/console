@@ -119,7 +119,7 @@ type Request struct {
 	Status        RequestStatus   `json:"status"`
 	ArgoCDAppName string          `json:"argocd_app_name"`
 	// InstancePath is the folder this order owns inside its chart repo, relative
-	// to the repo root (e.g. "in-cluster/pg1"). Computed once at creation from
+	// to the repo root (e.g. "in-cluster/payments/pg1"). Computed once at creation from
 	// GITLAB_INSTANCE_DIR_TEMPLATE and never recomputed: the template is a
 	// setting, and a setting that changed would otherwise move every existing
 	// order's folder out from under it - the portal would then write, read drift
@@ -140,6 +140,19 @@ type Request struct {
 	// Imported is true for orders discovered in Git (their application.yaml was
 	// created outside the portal and adopted by the import reconciler).
 	Imported bool `json:"imported"`
+}
+
+// DestNamespace is the namespace this order actually deploys into: the stored
+// one, or the service name when it is empty. Everything that compares, groups
+// or displays an order's namespace goes through this - the empty value is a
+// fallback, not an absence, and reading it literally puts two orders that land
+// in one namespace on either side of a uniqueness key. The unique index
+// uniq_active_service and the frontend (orderNamespace) apply the same rule.
+func (r *Request) DestNamespace() string {
+	if r.Namespace != "" {
+		return r.Namespace
+	}
+	return r.ServiceName
 }
 
 // RequestMR links an order to a GitLab merge request.

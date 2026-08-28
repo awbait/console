@@ -146,20 +146,21 @@ func TestServiceNameConflictExplains(t *testing.T) {
 
 	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "taken", DisplayName: "Занятый", Values: validValues(), Draft: true,
+		Team: "core", ServiceName: "taken", DisplayName: "Занятый", Namespace: "apps",
+		Values: validValues(), Draft: true,
 	}); err != nil {
 		t.Fatalf("create first: %v", err)
 	}
 	other, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "free", Values: validValues(), Draft: true,
+		Team: "core", ServiceName: "free", Namespace: "apps", Values: validValues(), Draft: true,
 	})
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
 
 	_, err = s.prov.Update(ctx, u, other.ID, provisioning.UpdateInput{
-		ServiceName: "taken", Values: validValues(),
+		ServiceName: "taken", Namespace: "apps", Values: validValues(),
 	})
 	if !errors.Is(err, models.ErrConflict) {
 		t.Fatalf("want conflict, got %v", err)
@@ -171,7 +172,7 @@ func TestServiceNameConflictExplains(t *testing.T) {
 	// Creating under a taken name explains itself too.
 	_, err = s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "taken", Values: validValues(), Draft: true,
+		Team: "core", ServiceName: "taken", Namespace: "apps", Values: validValues(), Draft: true,
 	})
 	if !errors.Is(err, models.ErrConflict) || err.Error() == "conflict" {
 		t.Fatalf("create with a taken name: %v", err)

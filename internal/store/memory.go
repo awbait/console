@@ -68,9 +68,15 @@ func (m *Memory) stamp() time.Time {
 	return t
 }
 
-// activeKey is the uniqueness key for non-deleted requests.
+// activeKey is the uniqueness key for non-deleted requests. The namespace is
+// part of it: one team may run the same service of the same chart in two
+// namespaces (dev and stage of one thing), and only a second order into the
+// same namespace is a collision. Compared by the effective namespace, so an
+// order that left the field empty lands on the same key as one that named the
+// service's own namespace outright.
 func activeKey(r *models.Request) string {
-	return r.Team + "\x00" + r.ChartName + "\x00" + r.ServiceName + "\x00" + r.Cluster
+	return r.Team + "\x00" + r.ChartName + "\x00" + r.ServiceName + "\x00" + r.Cluster +
+		"\x00" + r.DestNamespace()
 }
 
 // namespaceKey mirrors the partial unique index uniq_active_namespace_identity:

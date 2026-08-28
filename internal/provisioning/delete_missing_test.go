@@ -23,8 +23,8 @@ func TestDeleteWhenGitFilesMissing(t *testing.T) {
 	}
 	// Wipe the instance's files directly in Git (simulate external removal).
 	if err := s.gl.CommitFiles(ctx, proj.ID, "main", "remove", []gitlab.FileAction{
-		{Action: "delete", FilePath: "in-cluster/pg1/application.yaml"},
-		{Action: "delete", FilePath: "in-cluster/pg1/values.yaml"},
+		{Action: "delete", FilePath: "in-cluster/pg1/pg1/application.yaml"},
+		{Action: "delete", FilePath: "in-cluster/pg1/pg1/values.yaml"},
 	}); err != nil {
 		t.Fatalf("wipe files: %v", err)
 	}
