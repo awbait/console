@@ -4,19 +4,26 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-28
+
+A release about ordering one service in several namespaces and about the orders
+table: it shows the namespace of every order and the name of its status. A
+version of a service can be taken out of support, and the teams running on it
+hear about it.
+
 ### Added
+- The same product can now be ordered under one name into different
+  namespaces.
+- Added a Namespace column to the orders table.
+- Added the status name next to its icon in the orders table.
+- Added a hint to the order page on what to do next when the service is down or
+  the order was rejected.
 - Added a "Take out of support" button to the service management page that
   removes a version from the catalog with a reason.
 - Added a notice to the order page when its version has been taken out of
   support, with the reason and the version to move to.
 - Added a notification for the teams whose services run on a version taken out
   of support.
-- Added a hint to the order page on what to do next when the service is down or
-  the order was rejected.
-- Added the status name next to its icon in the orders table.
-- Added a Namespace column to the orders table.
-- The same product can now be ordered under one name into different
-  namespaces.
 - Added a "Take from version" button to the version builder that fills the
   editor with the document of another version of the same chart.
 
@@ -506,7 +513,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/awbait/console/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/awbait/console/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/awbait/console/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/awbait/console/compare/v0.7.0...v0.8.0
