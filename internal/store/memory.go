@@ -25,8 +25,11 @@ type Memory struct {
 	notifications []*models.Notification
 	notifRead     map[string]map[string]bool // subject -> notification id -> read
 	notifCursor   map[string]time.Time       // subject -> "everything before this is read"
-	now           func() time.Time
-	lastStamp     time.Time
+	// notifSince is the floor under each reader's feed: when the portal first
+	// saw them in an audience (see RecordAudiences).
+	notifSince map[string]map[audienceRef]time.Time
+	now        func() time.Time
+	lastStamp  time.Time
 }
 
 var _ Store = (*Memory)(nil)
@@ -42,6 +45,7 @@ func NewMemory() *Memory {
 		users:       map[string]*models.PlatformUser{},
 		notifRead:   map[string]map[string]bool{},
 		notifCursor: map[string]time.Time{},
+		notifSince:  map[string]map[audienceRef]time.Time{},
 		now:         time.Now,
 	}
 }
@@ -314,6 +318,63 @@ func (m *Memory) AddNotification(ctx context.Context, n *models.Notification) er
 	return nil
 }
 
+// audienceRef is one audience a reader belongs to: the rule and what it names.
+type audienceRef struct {
+	audience models.NotificationAudience
+	key      string
+}
+
+func (m *Memory) RecordAudiences(ctx context.Context, subject string, teams []string, role string, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recordAudiences(subject, teams, role, at)
+	return nil
+}
+
+// recordAudiences is RecordAudiences with m.mu held.
+func (m *Memory) recordAudiences(subject string, teams []string, role string, at time.Time) {
+	if subject == "" {
+		return
+	}
+	if at.IsZero() {
+		at = m.stamp()
+	}
+	since := m.notifSince[subject]
+	if since == nil {
+		since = map[audienceRef]time.Time{}
+		m.notifSince[subject] = since
+	}
+	// First sighting only: the floor marks when somebody turned up in an
+	// audience, so a later appearance must not move it forward over news they
+	// were there for.
+	remember := func(a models.NotificationAudience, key string) {
+		if _, ok := since[audienceRef{a, key}]; !ok {
+			since[audienceRef{a, key}] = at
+		}
+	}
+	remember(models.AudienceAll, "")
+	if role != "" {
+		remember(models.AudienceRole, role)
+	}
+	for _, t := range teams {
+		remember(models.AudienceTeam, t)
+	}
+}
+
+// afterFloor answers whether this notification is at least as new as the moment
+// the reader turned up in the audience it addresses (callers hold m.mu).
+//
+// A notification addressed to one person is exempt: it names them, so it cannot
+// predate them. And a reader nobody has recorded has no floor at all - see
+// Store.RecordAudiences.
+func (m *Memory) afterFloor(n *models.Notification, f NotificationFilter) bool {
+	if n.Audience == models.AudienceUser {
+		return true
+	}
+	since, ok := m.notifSince[f.Subject][audienceRef{n.Audience, n.AudienceKey}]
+	return !ok || !n.CreatedAt.Before(since)
+}
+
 // visible answers the audience rule for one reader (callers hold m.mu).
 func visible(n *models.Notification, f NotificationFilter) bool {
 	switch n.Audience {
@@ -344,7 +405,7 @@ func (m *Memory) ListNotifications(ctx context.Context, f NotificationFilter) ([
 	defer m.mu.Unlock()
 	var out []*models.Notification
 	for _, n := range m.notifications {
-		if !visible(n, f) {
+		if !visible(n, f) || !m.afterFloor(n, f) {
 			continue
 		}
 		if !f.Before.IsZero() && !n.CreatedAt.Before(f.Before) {
@@ -366,7 +427,7 @@ func (m *Memory) CountUnread(ctx context.Context, f NotificationFilter) (int, er
 	defer m.mu.Unlock()
 	count := 0
 	for _, n := range m.notifications {
-		if visible(n, f) && !m.readBy(n, f.Subject) {
+		if visible(n, f) && m.afterFloor(n, f) && !m.readBy(n, f.Subject) {
 			count++
 		}
 	}

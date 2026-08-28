@@ -19,6 +19,10 @@ func (m *Memory) TouchUser(ctx context.Context, u *models.PlatformUser) error {
 	if seen.IsZero() {
 		seen = m.stamp()
 	}
+	// An appearance is also when the portal learns that somebody is in a team or
+	// holds a role: see Postgres, and Store.RecordAudiences for why the feed
+	// needs it.
+	m.recordAudiences(u.Subject, u.Teams, string(u.Role), seen)
 	cur, ok := m.users[u.Subject]
 	if !ok {
 		cp := clone(u)

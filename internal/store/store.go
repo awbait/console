@@ -85,6 +85,25 @@ type Store interface {
 	// present is dropped silently: the background loop revisits the same order
 	// every few seconds and only the first pass is news.
 	AddNotification(ctx context.Context, n *models.Notification) error
+	// RecordAudiences notes when the portal first saw this reader in each of the
+	// audiences they read by: everyone, their role, each of their teams. Written
+	// once per audience and never moved afterwards, it is the floor under their
+	// feed - news older than the moment somebody turned up in an audience was
+	// addressed to whoever was in it then, not to them.
+	//
+	// Without it a first sign-in opens onto the whole past stream of "everyone"
+	// announcements, and being made an admin hands over the entire admin backlog.
+	// `at` is when they were seen; zero means now.
+	//
+	// It is called both when an appearance is recorded (TouchUser does it) and
+	// when the feed is read, and each of those closes a hole the other leaves:
+	// the first catches somebody who is around for days without opening the bell,
+	// the second the opening request of a session, which fetches the bell while
+	// the appearance is still being written on another goroutine.
+	//
+	// A reader it has never been called for has no floor at all: nothing is
+	// hidden from somebody the portal cannot say is new.
+	RecordAudiences(ctx context.Context, subject string, teams []string, role string, at time.Time) error
 	// ListNotifications returns what the reader may see, newest first, older
 	// than `before` when it is non-zero. Each row carries its own read flag.
 	ListNotifications(ctx context.Context, f NotificationFilter) ([]*models.Notification, error)
