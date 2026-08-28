@@ -13,10 +13,9 @@ All notable changes to this project are documented in this file.
   of support.
 - Added a hint to the order page on what to do next when the service is down or
   the order was rejected.
+- Added the status name next to its icon in the orders table.
 
 ### Changed
-- The orders table now spells the status out next to its icon, and hides the
-  "Label" column on a narrow screen to make room for it.
 - Renamed the order statuses and put a description of each into the "Statuses"
   filter above the orders table and into the "Statuses and deployment" help
   page.
