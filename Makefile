@@ -79,7 +79,7 @@ PORTAL_RUN ?= go run -ldflags "$(GO_LDFLAGS)" ./cmd/portal
 watch:
 	@command -v air >/dev/null || { \
 		echo "air is not installed: go install github.com/air-verse/air@latest"; exit 1; }
-	$(MAKE) run-oidc PORTAL_RUN='air --build.cmd "go build -ldflags \"$(GO_LDFLAGS)\" -o tmp/portal ./cmd/portal" --build.bin tmp/portal'
+	$(MAKE) run-oidc PORTAL_RUN='air --build.cmd "go build -ldflags \"$(GO_LDFLAGS)\" -o tmp/portal ./cmd/portal" --build.entrypoint tmp/portal'
 
 # Frontend dev server (Vite) on :5173 with live reload; proxies /api -> :8080.
 # --host binds all interfaces (incl. IPv4); without it Vite is IPv6-only, which

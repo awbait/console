@@ -19,8 +19,12 @@ tmp_dir = "tmp"
 [build]
   # Windows is the stand's own platform; the Makefile target overrides both of
   # these for Linux and macOS (see `make watch`).
-  cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File deployments/scripts/build-portal.ps1"
-  bin = "tmp/portal.exe"
+  #
+  # "powershell.exe" spelled out: air checks the extension of the program in
+  # `cmd` and warns that CMD will not run a file without one.
+  cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File deployments/scripts/build-portal.ps1"
+  # entrypoint, not the older `bin`, which air now says it is about to drop.
+  entrypoint = ["tmp/portal.exe"]
   include_ext = ["go"]
   # The SPA has its own watcher (`make web`), migrations are embedded and read at
   # startup, and the rest is not Go.

@@ -11,8 +11,9 @@
 #
 # -BindHost is the hostname the BROWSER uses to reach Keycloak/portal/SPA.
 # Use "localhost" when browsing on this machine, or a LAN IP (e.g. 10.10.100.33)
-# when opening the SPA via that address. The same host must be allowed in the
-# realm's redirectUris/webOrigins (see deployments/keycloak/realm-internal.json).
+# when opening the SPA via that address. A host other than localhost is
+# registered in the realm by this script - the shipped realm knows localhost
+# only (deployments/keycloak/realm-internal.json).
 #
 # The portal restarts itself on every saved .go file when air is installed
 # (go install github.com/air-verse/air@latest). -NoWatch runs it once instead.
@@ -34,6 +35,66 @@ try {
   docker compose up -d keycloak | Out-Null
 } finally {
   Pop-Location
+}
+
+# ...and wait for it to actually serve. `docker compose up -d` comes back as soon
+# as the container is created, but Keycloak needs another half a minute before it
+# answers. Docker publishes :8081 immediately, so the connection is accepted and
+# then dropped, and the portal - which reads the discovery document at startup -
+# dies on it with a bare "EOF". Waiting here turns that race into a wait.
+$discovery = "http://${BindHost}:8081/realms/internal/.well-known/openid-configuration"
+Write-Host "Waiting for Keycloak: $discovery" -ForegroundColor Yellow
+$ready = $false
+foreach ($attempt in 1..60) {
+  try {
+    Invoke-RestMethod -Uri $discovery -TimeoutSec 3 -ErrorAction Stop | Out-Null
+    $ready = $true
+    break
+  } catch {
+    Start-Sleep -Seconds 2
+  }
+}
+if (-not $ready) {
+  Write-Host "Keycloak is not answering at $discovery." -ForegroundColor Red
+  Write-Host "Look at 'docker compose -f deployments/docker-compose.yml logs keycloak'." -ForegroundColor Red
+  exit 1
+}
+
+# Teach the realm the address the browser will come back from. The realm file is
+# imported once, into a realm that already exists by the time anyone needs a
+# second host, so a LAN address has to be registered through the admin API
+# instead - otherwise the login ends on Keycloak's "Invalid parameter:
+# redirect_uri". Login is the only thing this affects, so a failure here is a
+# warning: the portal still starts.
+if ($BindHost -ne "localhost") {
+  try {
+    $form = @{ grant_type = "password"; client_id = "admin-cli"; username = "admin"; password = "admin" }
+    $token = (Invoke-RestMethod -Method Post -ContentType "application/x-www-form-urlencoded" `
+      -Uri "http://${BindHost}:8081/realms/master/protocol/openid-connect/token" -Body $form).access_token
+    $headers = @{ Authorization = "Bearer $token" }
+    $clients = "http://${BindHost}:8081/admin/realms/internal/clients"
+    $client = (Invoke-RestMethod -Uri "${clients}?clientId=portal" -Headers $headers)[0]
+    # Both ports: :5173 is the Vite origin the SPA logs in from, :8080 the portal
+    # itself for anyone browsing it directly.
+    $uris = @("http://${BindHost}:5173/api/v1/auth/callback", "http://${BindHost}:8080/api/v1/auth/callback")
+    $absent = @($uris | Where-Object { $client.redirectUris -notcontains $_ })
+    if ($absent.Count -gt 0) {
+      $client.redirectUris = @($client.redirectUris + $uris | Select-Object -Unique)
+      $client.webOrigins = @($client.webOrigins + "http://${BindHost}:5173" + "http://${BindHost}:8080" | Select-Object -Unique)
+      # Logout targets live in one string, separated by "##".
+      $key = "post.logout.redirect.uris"
+      $logout = @()
+      if ($client.attributes.$key) { $logout = $client.attributes.$key -split "##" }
+      $logout = @($logout + "http://${BindHost}:5173/" + "http://${BindHost}:8080/" | Where-Object { $_ } | Select-Object -Unique)
+      $client.attributes | Add-Member -NotePropertyName $key -NotePropertyValue ($logout -join "##") -Force
+      Invoke-RestMethod -Method Put -Uri "$clients/$($client.id)" -Headers $headers `
+        -Body ($client | ConvertTo-Json -Depth 20) -ContentType "application/json" | Out-Null
+      Write-Host "Registered http://${BindHost}:5173 and :8080 in the realm's portal client" -ForegroundColor Green
+    }
+  } catch {
+    Write-Host "Could not register ${BindHost} in the realm: $($_.Exception.Message)" -ForegroundColor DarkYellow
+    Write-Host "Login through that address will fail with 'Invalid parameter: redirect_uri'." -ForegroundColor DarkYellow
+  }
 }
 
 $env:AUTH_MODE = "oidc"
