@@ -29,13 +29,13 @@ All notable changes to this project are documented in this file.
 - An order keeps working after its version leaves the catalog. Its page used to
   open without the product tabs, and saving the values was refused as an
   unavailable version.
-- A running service stays under the portal's control when a change to it is
-  closed instead of applied. The order of such a service used to go to
-  "Отклонён" for good: the service itself kept running, but nothing could edit,
-  upgrade or delete it through the portal any more.
-- "Отклонён" now means one thing only: the service behind the order was never
-  created. A closed edit and a cancelled deletion put the order back into the
-  status it was in before them.
+- An edit or a deletion of an already deployed service goes out as a merge
+  request. If that merge request was closed without merging, the order got stuck
+  in "Отклонён" for good: the service itself kept running, but nothing could
+  edit, upgrade or delete it through the portal any more. The order now goes
+  back to the status it was in before the change.
+- "Отклонён" is only for an order whose merge request to create the service was
+  closed. The status now means exactly what it says: there is no service.
 - Orders already stuck in "Отклонён" are released on upgrade. The portal follows
   their service's state again and notices edits made to it outside the portal.
 
