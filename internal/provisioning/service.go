@@ -660,7 +660,14 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	// The visual editor's own state is not in Git at all - a moved node or a
 	// workload parked outside the values is still worth persisting, it just
 	// does not need a merge request.
-	if valuesYAML == r.ValuesYAML && version == r.ChartVersion {
+	//
+	// A drifted order is the exception, because there the premise fails: Git no
+	// longer holds these values, so the diff is not empty and re-asserting them
+	// is a real change. That is how somebody settles a disagreement in favour of
+	// their own values after the portal took their change back: keeping their
+	// own side of every field leaves the order exactly as it already was, and
+	// Git is the one that has to be brought back to it.
+	if valuesYAML == r.ValuesYAML && version == r.ChartVersion && !r.Drifted {
 		if len(in.EditorState) > 0 && !bytes.Equal(in.EditorState, r.EditorState) {
 			r.EditorState = in.EditorState
 			if err := s.store.UpdateRequest(ctx, r); err != nil {

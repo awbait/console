@@ -342,3 +342,129 @@ func TestMergedValuesMustStillValidate(t *testing.T) {
 		t.Fatalf("want no rewrite, got %d", len(got))
 	}
 }
+
+// withdrawnConflict brings an order to the state the resolution screen is for:
+// two changes moved auth.database apart and the portal took its own back.
+func withdrawnConflict(ctx context.Context, t *testing.T, s *stack) *models.Request {
+	t.Helper()
+	r := liveOrder(ctx, t, s)
+	mr := openUpdateMR(ctx, t, s, r, map[string]any{
+		"auth": map[string]any{"database": "mine"},
+	})
+	// The other change moves the same field, and one nobody else touched.
+	editOnBranch(ctx, t, s, r, "auth:\n  database: theirs\n  username: theirs\n")
+	if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "conflict"); err != nil {
+		t.Fatalf("set merge status: %v", err)
+	}
+	s.tick(ctx)
+	s.tick(ctx)
+	live, err := s.st.GetRequest(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	return live
+}
+
+// Naming the fields is not enough to act on. The order page has to show the two
+// values and let somebody pick between them, so both values travel with the
+// finding, along with everything the portal settled on its own.
+func TestWithdrawnConflictIsOfferedForResolution(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := withdrawnConflict(ctx, t, s)
+
+	set := s.prov.PendingConflict(ctx, r)
+	if set == nil {
+		t.Fatal("no conflict offered after a change was withdrawn over one")
+	}
+	if len(set.Conflicts) != 1 || set.Conflicts[0].Path != "auth.database" {
+		t.Fatalf("conflicts = %+v, want the one field that moved apart", set.Conflicts)
+	}
+	c := set.Conflicts[0]
+	if c.Theirs != "theirs" || c.Mine != "mine" {
+		t.Errorf("conflict values = theirs %v / mine %v, want both sides", c.Theirs, c.Mine)
+	}
+	if len(c.Field) != 2 || c.Field[0] != "auth" || c.Field[1] != "database" {
+		t.Errorf("conflict segments = %v, want a path a machine can follow", c.Field)
+	}
+	// The choice is applied over this, so the other person's untouched edit has
+	// to be in it: that is the half of the merge nobody needs to be asked about.
+	auth, _ := set.Merged["auth"].(map[string]any)
+	if auth == nil || auth["username"] != "theirs" {
+		t.Errorf("merged values = %+v, want the edits the portal settled itself", set.Merged)
+	}
+	if auth["database"] != "theirs" {
+		t.Errorf("merged auth.database = %v, want the branch's value until somebody chooses",
+			auth["database"])
+	}
+}
+
+// The page that offers the choice needs the order in a state that accepts one.
+// Waiting for the drift pass to notice would leave it, for a cycle, claiming
+// Git holds the service exactly as the portal has it, which it does not.
+func TestWithdrawnConflictMarksTheOrderDrifted(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := withdrawnConflict(ctx, t, s)
+
+	if !r.Drifted {
+		t.Fatalf("order not flagged drifted right after the withdrawal, detail %q", r.DriftDetail)
+	}
+	// And the drift pass agrees with it instead of rewriting it, so the history
+	// does not fill up with the same finding twice.
+	before := len(countEvents(ctx, t, s, r.ID, "drift_detected"))
+	if err := s.prov.CheckDrift(ctx); err != nil {
+		t.Fatalf("drift check: %v", err)
+	}
+	if after := len(countEvents(ctx, t, s, r.ID, "drift_detected")); after != before {
+		t.Errorf("drift reported %d times, want the withdrawal's finding to stand", after)
+	}
+}
+
+// Keeping your own side of every field is a decision like any other, and it is
+// the one the portal used to refuse: the values it ends up with are the ones it
+// already holds, but Git no longer holds them, so there is a change to make.
+func TestConflictResolvedWithOwnValuesStillOpensAChange(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := withdrawnConflict(ctx, t, s)
+
+	// What the page sends when every field is answered "mine": the merged tree
+	// with this order's own value put back into it.
+	resolved := map[string]any{"auth": map[string]any{"database": "mine", "username": "theirs"}}
+	if _, err := s.prov.Update(ctx, member("core"), r.ID, provisioning.UpdateInput{
+		Values: resolved,
+	}); err != nil {
+		t.Fatalf("resolve in favour of the order's own values: %v", err)
+	}
+	if got := mustStatus(ctx, t, s.st, r.ID); got != models.StatusMRCreated {
+		t.Fatalf("status = %s, want a change opened", got)
+	}
+	// And the disagreement stops being offered once a change carries the answer.
+	after, err := s.st.GetRequest(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if s.prov.PendingConflict(ctx, after) != nil {
+		t.Error("conflict still offered after a change was opened to settle it")
+	}
+}
+
+// Pulling Git's state in settles it the other way: their values won outright,
+// and there is nothing left to choose between.
+func TestPendingConflictClearedByPull(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := withdrawnConflict(ctx, t, s)
+
+	if _, err := s.prov.PullFromGit(ctx, member("core"), r.ID); err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	after, err := s.st.GetRequest(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if s.prov.PendingConflict(ctx, after) != nil {
+		t.Error("conflict still offered after the order was pulled from Git")
+	}
+}

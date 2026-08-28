@@ -100,6 +100,10 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		// it out on its own: the version's document travels to the SPA, but the
 		// installation's half of the rule never leaves the portal.
 		"review": s.Prov.OrderReview(r.Context(), req),
+		// The fields a change of this order got stuck on, when the portal took one
+		// back because two people had moved the same ones. Null while there is
+		// nothing to decide, which is nearly always.
+		"conflict": s.Prov.PendingConflict(r.Context(), req),
 	})
 }
 
