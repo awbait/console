@@ -1,5 +1,5 @@
 import { IconAlertTriangle, IconArrowRight, IconArrowsSort, IconArrowUpCircle, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPackages, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Cell,
@@ -62,6 +62,27 @@ interface Props {
 // Deleted orders are hidden by default.
 const DEFAULT_HIDDEN: StatusGroupKey[] = ["deleted"];
 const ALL_GROUPS = STATUS_GROUPS.map((g) => g.key);
+
+// The status and the actions stay put while the rest of the row slides under
+// them: the status is read on every row and the actions are used from it.
+//
+// A sticky cell paints nothing by itself, so each one carries the background of
+// what it stands in - the header strip, or the row with its hover and focus (the
+// row is a `group` for that). "Действия" sits at the edge, "Статус" stands on
+// its width, which is why that column is pinned to a fixed 4rem (w-16): its
+// content is a single icon button, well inside those bounds, so the column
+// cannot grow and leave a gap between the two.
+const PINNED_HEAD = "sticky z-10 bg-slate-50";
+const PINNED_CELL = "sticky z-10 bg-surface group-hover:bg-slate-50 group-focus-visible:bg-slate-50";
+const ACTIONS_W = "w-16";
+const AT_ACTIONS = "right-0";
+const AT_STATUS = "right-16";
+// The edge of the pinned pair, shown only while something is still hidden to
+// the right of it. It has to read as one layer lying over another - a hairline
+// alone looks like an ordinary column rule - so the border carries a shadow
+// falling onto the columns that pass underneath. With nothing left to scroll
+// the edge goes away: there is no layer above anything then.
+const PINNED_EDGE = "border-l border-slate-200 shadow-[-10px_0_12px_-4px_rgba(15,23,42,0.22)]";
 
 export function OrdersTable({ title, filter, orderTo, orderDisabledReason, emptyHint, allTeams }: Props) {
   // Fetch including deleted so the status filter can reveal them on demand.
@@ -155,6 +176,45 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
   }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter]);
+
+  // Is anything still hidden to the right of the pinned pair? That is the only
+  // moment their edge means something, so it is drawn only then.
+  const scroller = useRef<HTMLDivElement>(null);
+  const [pinnedEdge, setPinnedEdge] = useState(false);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const update = () => setPinnedEdge(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    // The window can be resized without the rows changing, and the columns can
+    // change without the window moving (the cross-team view has one more).
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+
+    // A wheel over the table moves the table. A browser sends a plain wheel
+    // down the page and leaves a sideways scroller to shift+wheel, which is not
+    // what a person expects with the cursor on a row half of which is hidden.
+    // At either end of the table the wheel goes back to the page, so the table
+    // never traps the reader on the way down.
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0 || e.deltaX !== 0 || e.shiftKey) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0) return;
+      const at = el.scrollLeft;
+      // Already against the end it is turning towards: the page takes the wheel.
+      if (e.deltaY > 0 ? at >= max - 1 : at <= 0) return;
+      e.preventDefault();
+      el.scrollLeft = Math.min(max, Math.max(0, at + e.deltaY));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener("scroll", update);
+      el.removeEventListener("wheel", onWheel);
+      ro.disconnect();
+    };
+  }, [rows.length, loading, allTeams]);
 
   if (loading) return <SkeletonRows rows={6} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -268,12 +328,23 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         )}
       </div>
 
-      {/* The status now carries a word, not just a dot, so the row is wider than
-          it was. On a narrow screen the table scrolls sideways instead of
-          squeezing the columns into unreadable stacks. */}
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm">
-        <Table aria-label={title} className="w-full text-sm">
-          <TableHeader className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+      {/* Every column is here at every width, and nothing wraps: a row is read
+          across, and a value broken over two lines or a column missing without
+          a word about it both cost more than the sideways scroll do. What does
+          not fit slides under the pinned status and actions. */}
+      <div
+        ref={scroller}
+        className="overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm"
+      >
+        {/* Separated borders, not collapsed ones: with collapsed borders a
+            browser paints neither the border nor the shadow of a cell, and the
+            pinned pair needs both to read as a layer over the rest. The rules
+            between rows move onto the cells for the same reason. */}
+        <Table
+          aria-label={title}
+          className="w-full min-w-max border-separate border-spacing-0 whitespace-nowrap text-sm"
+        >
+          <TableHeader className="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 [&_th]:border-b [&_th]:border-slate-200">
             <Column className="px-4 py-2.5 text-left">Категория</Column>
             {allTeams && <Column className="px-4 py-2.5 text-left">Команда</Column>}
             <Column className="px-4 py-2.5 text-left">Продукт</Column>
@@ -281,23 +352,22 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
             {/* Where the order landed, next to what it is called: the two
                 together are what a person matches against the cluster. */}
             <Column className="px-4 py-2.5 text-left">Неймспейс</Column>
-            {/* The word next to the status icon costs the width a column used
-                to take. The label is what a row can lose first: the service
-                name beside it identifies the order just as well, and the order
-                page shows the label in full. The author goes next, on a laptop
-                screen: who ordered it is asked far less often than where it
-                runs, and the order page answers it. */}
-            <Column className="hidden px-4 py-2.5 text-left 2xl:table-cell">Метка</Column>
-            <Column className="hidden px-4 py-2.5 text-left xl:table-cell">Создатель</Column>
+            <Column className="px-4 py-2.5 text-left">Метка</Column>
+            <Column className="px-4 py-2.5 text-left">Создатель</Column>
             <Column className="px-4 py-2.5 text-right">Дата создания</Column>
-            <Column className="whitespace-nowrap px-4 py-2.5 text-left">Статус</Column>
-            <Column className="w-12 px-4 py-2.5">
+            <Column
+              className={`px-4 py-2.5 text-left ${PINNED_HEAD} ${AT_STATUS} ${pinnedEdge ? PINNED_EDGE : ""}`}
+            >
+              Статус
+            </Column>
+            <Column className={`${ACTIONS_W} px-4 py-2.5 ${PINNED_HEAD} ${AT_ACTIONS}`}>
               <span className="sr-only">Действия</span>
             </Column>
           </TableHeader>
           <TableBody
             renderEmptyState={() => (
-              <div className="px-4 py-12 text-center text-sm text-slate-500">
+              // The rows do not wrap; a sentence in an empty table does.
+              <div className="whitespace-normal px-4 py-12 text-center text-sm text-slate-500">
                 {emptyHint ?? (
                   <div className="flex flex-col items-center gap-3">
                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -320,7 +390,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                 <Row
                   key={r.id}
                   onAction={() => navigate(isDraft ? `/requests/${r.id}/edit` : `/requests/${r.id}`)}
-                  className="cursor-pointer border-b border-slate-100 outline-none last:border-0 hover:bg-slate-50 focus-visible:bg-slate-50"
+                  className="group cursor-pointer outline-none hover:bg-slate-50 focus-visible:bg-slate-50 [&>*]:border-b [&>*]:border-slate-100 last:[&>*]:border-b-0"
                 >
                   <Cell className="px-4 py-3 text-left text-slate-500">
                     {categoryOf(r.chart_project, r.chart_name) ?? r.chart_project}
@@ -381,25 +451,25 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                   <Cell className="px-4 py-3 text-left font-mono text-[13px] text-slate-600">
                     {orderNamespace(r)}
                   </Cell>
-                  <Cell className="hidden px-4 py-3 text-left text-slate-600 2xl:table-cell">
+                  <Cell className="px-4 py-3 text-left text-slate-600">
                     {r.display_name || "-"}
                   </Cell>
-                  <Cell className="hidden px-4 py-3 text-left text-slate-500 xl:table-cell">
-                    {r.created_by_name}
-                  </Cell>
-                  <Cell className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                  <Cell className="px-4 py-3 text-left text-slate-500">{r.created_by_name}</Cell>
+                  <Cell className="px-4 py-3 text-right text-slate-600">
                     {fmtDateTime(r.created_at)}
                   </Cell>
                   {/* The status is read as a word: a coloured dot alone needed a
                       hover to say anything, and on a touch screen there is no
                       hover at all. The tooltip is left for the dead ends, where
                       what to do next does not fit on a badge. */}
-                  <Cell className="whitespace-nowrap px-4 py-3 text-left">
+                  <Cell
+                    className={`px-4 py-3 text-left ${PINNED_CELL} ${AT_STATUS} ${pinnedEdge ? PINNED_EDGE : ""}`}
+                  >
                     <span title={statusNextStep(r.status)?.hint}>
                       <StatusBadge status={r.status} />
                     </span>
                   </Cell>
-                  <Cell className="px-4 py-3 text-right">
+                  <Cell className={`px-4 py-3 text-right ${PINNED_CELL} ${AT_ACTIONS}`}>
                     <RowActions
                       isDraft={isDraft}
                       onOpen={() => navigate(`/requests/${r.id}`)}
