@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -25,6 +26,17 @@ type Client struct {
 	token       string
 	gitopsGroup string // top GitOps group to scan for application.yaml manifests
 	http        *http.Client
+
+	// Log is the structured logger; wired by main. Nil-safe via logger(), which
+	// is what tests and one-off tools get.
+	Log *slog.Logger
+}
+
+func (c *Client) logger() *slog.Logger {
+	if c.Log != nil {
+		return c.Log
+	}
+	return slog.Default()
 }
 
 var _ Port = (*Client)(nil)

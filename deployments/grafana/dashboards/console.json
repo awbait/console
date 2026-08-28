@@ -697,6 +697,79 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Replicas",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 80 },
+      "id": 28
+    },
+    {
+      "type": "stat",
+      "title": "Replicas running the background loops",
+      "description": "Exactly one replica reconciles at a time. A lasting 0 means nothing advances orders; a lasting 2 means two replicas are racing each other.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 81 },
+      "id": 29,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(console_leader)",
+          "legendFormat": "leaders",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events between replicas",
+      "description": "Status changes carried over the shared bus. A dropped event is a browser on another replica that was not told about a change it is looking at.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 81 },
+      "id": 30,
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" },
+          "unit": "ops",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (direction, result) (rate(console_bus_events_total[5m]))",
+          "legendFormat": "{{direction}} / {{result}}",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

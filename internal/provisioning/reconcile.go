@@ -14,7 +14,7 @@ import (
 
 // Reconcile advances every active order based on its MR and ArgoCD state.
 // It is mode-agnostic (works against real or fake upstreams) and idempotent,
-// so the single-replica poller can call it on every tick.
+// so the poller can call it on every tick.
 func (s *Service) Reconcile(ctx context.Context) error {
 	active, err := s.store.ListActive(ctx)
 	if err != nil {

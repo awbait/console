@@ -65,7 +65,11 @@ type SystemStatus struct {
 	Components   []ComponentStatus        `json:"components"`
 	Capabilities []status.CapabilityState `json:"capabilities"`
 	Reconcilers  []ReconcilerStatus       `json:"reconcilers,omitempty"`
-	GrafanaURL   string                   `json:"grafana_url,omitempty"`
+	// Leader is whether the replica that answered runs the background loops. It
+	// is what tells an admin looking at an empty list of loops that they are
+	// running elsewhere rather than not running at all.
+	Leader     bool   `json:"leader"`
+	GrafanaURL string `json:"grafana_url,omitempty"`
 }
 
 // PlatformHealth is the payload of GET /api/v1/platform/health: what the portal
@@ -174,6 +178,7 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		Components:   comps,
 		Capabilities: status.Evaluate(states),
 		Reconcilers:  s.reconcilerStatuses(),
+		Leader:       s.leading(),
 		GrafanaURL:   s.System.GrafanaURL,
 	})
 }
@@ -188,13 +193,21 @@ func (s *Server) componentStates() []status.ComponentState {
 	return s.Health.Snapshot()
 }
 
+// leading reports whether this replica runs the background loops. Unset (tests,
+// a single replica) means it does: there is nobody else to be running them.
+func (s *Server) leading() bool { return s.Leader == nil || s.Leader() }
+
 // reconcilerStatuses maps the poller snapshot into the status-page shape. Returns
-// nil when no poller is wired (e.g. in tests), so the field is omitted.
+// nil when no poller is wired (e.g. in tests) or when this replica is not the one
+// running them, so the field is omitted.
 func (s *Server) reconcilerStatuses() []ReconcilerStatus {
 	if s.Reconcilers == nil {
 		return nil
 	}
 	states := s.Reconcilers.Snapshot()
+	if len(states) == 0 {
+		return nil
+	}
 	out := make([]ReconcilerStatus, 0, len(states))
 	for _, st := range states {
 		rs := ReconcilerStatus{Name: st.Name, LastRunMs: st.LastRunMs}

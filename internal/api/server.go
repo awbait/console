@@ -46,7 +46,7 @@ type Server struct {
 	Pubs    *publications.Service
 	Store   store.Store
 	Cache   cache.Cache
-	Bus     *events.Bus
+	Bus     events.Bus
 	Log     *slog.Logger
 	// ArgoCDURL is the ArgoCD UI base (ARGOCD_URL); empty when not configured
 	// (e.g. fake mode). Used to build per-app deep links in the request detail.
@@ -69,6 +69,12 @@ type Server struct {
 	// Reconcilers exposes the background poller's per-loop health to the status
 	// page (GET /api/v1/status). Optional: nil omits the reconcilers section.
 	Reconcilers reconcilerSnapshotter
+
+	// Leader reports whether this replica is the one running the background
+	// loops (see internal/leader), so the status page can say that an empty
+	// list of loops means "another replica has them" rather than "none run".
+	// Optional: nil answers yes, which is the truth of a single replica.
+	Leader func() bool
 
 	// Config is the loaded runtime configuration, served read-only on the admin
 	// configuration page (GET /api/v1/config). Optional: nil answers 503 there

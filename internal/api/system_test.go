@@ -192,4 +192,47 @@ func TestSystemStatusRestrictedToAdmin(t *testing.T) {
 	if len(got.Capabilities) != len(status.Capabilities) {
 		t.Fatalf("admin status carries %d capabilities, want %d", len(got.Capabilities), len(status.Capabilities))
 	}
+	if !got.Leader {
+		t.Fatal("a portal with nobody to share the work with must report itself as running the loops")
+	}
+}
+
+// fixedReconcilers stands in for the poller with a snapshot the test controls.
+// A standby replica reports none, which is what the poller itself does.
+type fixedReconcilers []status.ReconcilerState
+
+func (f fixedReconcilers) Snapshot() []status.ReconcilerState { return f }
+
+// TestSystemStatusOnAStandbyReplica: the background loops run on one replica,
+// and the status page of another has to say so rather than show an empty list
+// that reads as "nothing is running".
+func TestSystemStatusOnAStandbyReplica(t *testing.T) {
+	srv, _, _ := newServer(t)
+	srv.Health = fixedHealth{{Name: "harbor", Kind: "integration", Mode: "real", OK: true}}
+	srv.Reconcilers = fixedReconcilers{}
+	srv.Leader = func() bool { return false }
+
+	r := devReq("GET", "/api/v1/status", "core", nil)
+	r.Header.Set("X-Dev-Role", string(models.RoleAdmin))
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin status: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var got api.SystemStatus
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if got.Leader {
+		t.Fatal("a standby replica claims to run the background loops")
+	}
+	if len(got.Reconcilers) != 0 {
+		t.Fatalf("a standby replica reported %d loops of its own, want none", len(got.Reconcilers))
+	}
+	// The rest of the page is still its own: components are probed by every
+	// replica, and the person is looking at the one they reached.
+	if !got.Healthy || len(got.Components) != 1 {
+		t.Fatalf("standby status lost the components it does answer for: %+v", got)
+	}
 }

@@ -86,17 +86,77 @@ type hookRef struct {
 // already points at the same URL. Group, system and project hooks share the
 // shape (GET lists, POST creates, PUT <id> updates), so one method covers all
 // three. Idempotent: a rerun rewrites the hook instead of adding a duplicate.
+//
+// GitLab has no "create if absent", so listing and then creating is a race, and
+// replicas of the portal start at the same moment on a fresh deployment: each
+// one lists an empty collection and each one creates. So a create is followed
+// by a second pass that leaves exactly one hook per URL, and the pass runs
+// again on every later start, which also clears up a collection that raced
+// before this existed. Two hooks on one URL are the same hook twice by
+// definition - it is the portal's own address - so dropping the spares loses
+// nothing.
 func (c *Client) ensureHook(ctx context.Context, base string, h Hook) error {
-	var existing []hookRef
-	if err := c.do(ctx, http.MethodGet, base, nil, nil, &existing); err != nil {
+	existing, err := c.listHooks(ctx, base)
+	if err != nil {
 		return err
 	}
-	for _, e := range existing {
-		if e.URL == h.URL {
-			return c.do(ctx, http.MethodPut, fmt.Sprintf("%s/%d", base, e.ID), nil, h.payload(), nil)
+	if keep := lowestID(existing, h.URL); keep != 0 {
+		if err := c.do(ctx, http.MethodPut, fmt.Sprintf("%s/%d", base, keep), nil, h.payload(), nil); err != nil {
+			return err
+		}
+		return c.dropSpareHooks(ctx, base, existing, h.URL, keep)
+	}
+	if err := c.do(ctx, http.MethodPost, base, nil, h.payload(), nil); err != nil {
+		return err
+	}
+	// Re-read: another replica may have created its own between the list above
+	// and this create. Whoever creates last runs this pass over everything that
+	// came before it, so the collection converges on one hook.
+	after, err := c.listHooks(ctx, base)
+	if err != nil {
+		// The hook is registered, which is what the caller asked for. Tidying up
+		// after it is not worth failing the registration over; the next start
+		// runs the same pass.
+		return nil
+	}
+	return c.dropSpareHooks(ctx, base, after, h.URL, lowestID(after, h.URL))
+}
+
+func (c *Client) listHooks(ctx context.Context, base string) ([]hookRef, error) {
+	var out []hookRef
+	err := c.do(ctx, http.MethodGet, base, nil, nil, &out)
+	return out, err
+}
+
+// lowestID picks which of several hooks on one URL to keep: the oldest, so
+// every replica racing here picks the same one without talking to the others.
+// Zero means there is none yet.
+func lowestID(hooks []hookRef, url string) int {
+	keep := 0
+	for _, e := range hooks {
+		if e.URL == url && (keep == 0 || e.ID < keep) {
+			keep = e.ID
 		}
 	}
-	return c.do(ctx, http.MethodPost, base, nil, h.payload(), nil)
+	return keep
+}
+
+// dropSpareHooks removes every hook on the URL except the one being kept. A
+// delete that fails is not an error for the caller: the hook it was called
+// about is registered, and a spare left behind means duplicate deliveries, not
+// a broken webhook.
+func (c *Client) dropSpareHooks(ctx context.Context, base string, hooks []hookRef, url string, keep int) error {
+	for _, e := range hooks {
+		if e.URL != url || e.ID == keep {
+			continue
+		}
+		if err := c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/%d", base, e.ID), nil, nil, nil); err != nil {
+			c.logger().Warn("duplicate gitlab webhook left in place", "url", url, "hook_id", e.ID, "err", err)
+			continue
+		}
+		c.logger().Info("duplicate gitlab webhook removed", "url", url, "hook_id", e.ID)
+	}
+	return nil
 }
 
 // EnsureGroupHook registers the hook on the GitOps group (Premium+). A missing

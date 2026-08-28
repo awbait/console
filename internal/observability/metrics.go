@@ -155,7 +155,40 @@ var (
 		Name: "console_publication_version_events_total",
 		Help: "Total publication version FSM events, by type.",
 	}, []string{"event"})
+
+	// busEvents counts events crossing the shared bus between replicas, by
+	// direction (out|in) and result (ok|dropped|error). Only the Redis bus
+	// reports it: with one replica there is nothing to cross. A rising "dropped"
+	// means a browser on another replica was not told about a change it is
+	// looking at, which is what an alert would be written against.
+	busEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "console_bus_events_total",
+		Help: "Total events carried between replicas, by direction and result.",
+	}, []string{"direction", "result"})
+
+	// leader is 1 on the replica that runs the background loops and 0 on the
+	// others. Summed across replicas it must be 1: a lasting 0 means nothing is
+	// reconciling, and a lasting 2 means two replicas are racing each other.
+	leader = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "console_leader",
+		Help: "1 if this replica currently runs the background loops, 0 otherwise.",
+	})
 )
+
+// ObserveBusEvent records one event on the shared bus: which way it went and
+// what became of it.
+func ObserveBusEvent(direction, result string) {
+	busEvents.WithLabelValues(direction, result).Inc()
+}
+
+// SetLeader records whether this replica currently runs the background loops.
+func SetLeader(is bool) {
+	v := 0.0
+	if is {
+		v = 1
+	}
+	leader.Set(v)
+}
 
 // ObservePublicationVersionEvent records one per-version publication FSM event.
 func ObservePublicationVersionEvent(event string) {

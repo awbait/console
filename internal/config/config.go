@@ -77,7 +77,11 @@ type Config struct {
 	CookieSecure bool `env:"COOKIE_SECURE" envDefault:"true" desc:"Send the session cookie over HTTPS only. Turn it off only for a plain-HTTP stand that is not localhost."`
 
 	Store string `env:"STORE" envDefault:"memory" desc:"Where orders, publications and categories are kept."`
-	Cache string `env:"CACHE" envDefault:"memory" desc:"Where cached chart files are kept."`
+	// Redis is also what more than one replica of the portal needs: the sessions,
+	// the events that reach a browser connected to another replica, and the lease
+	// that decides which replica runs the background tasks all live in it. With
+	// memory a replica shares nothing and assumes it is alone.
+	Cache string `env:"CACHE" envDefault:"memory" desc:"Where cached chart files are kept. Redis is also what several replicas of the portal share, so running more than one needs it."`
 
 	// AuthMode must be "oidc" (the only runtime mode). The no-Keycloak "dev" mode
 	// is a test stub only and is rejected at startup.

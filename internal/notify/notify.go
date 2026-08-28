@@ -21,11 +21,11 @@ import (
 
 // Service records notifications and tells the connected browsers that something
 // arrived. The signal carries no content: a client hears "there is news" and
-// reads the feed, which is what keeps this working unchanged once the bus is
-// backed by Redis instead of one process (see the horizontal-scaling issue).
+// reads the feed, which is what lets the same signal cross between replicas
+// without carrying anything private on the way (see internal/events).
 type Service struct {
 	store store.Store
-	bus   *events.Bus
+	bus   events.Bus
 	log   *slog.Logger
 	// adminTeam is the group that owns what the platform team owns: the charts
 	// nobody has adopted, and the services the platform runs itself. It is a
@@ -37,7 +37,7 @@ type Service struct {
 
 // New builds a notify service. The bus may be nil (tests, one-off tools): then
 // nothing is signalled and clients find the notification when they next look.
-func New(st store.Store, bus *events.Bus, log *slog.Logger) *Service {
+func New(st store.Store, bus events.Bus, log *slog.Logger) *Service {
 	return &Service{store: st, bus: bus, log: log}
 }
 

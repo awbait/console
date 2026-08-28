@@ -124,6 +124,10 @@ export function StatusPage() {
   const storage = components.filter((c) => c.kind === "storage");
   const capabilities = data?.capabilities ?? [];
   const reconcilers = data?.reconcilers ?? [];
+  // One replica of the portal runs the background tasks. Until an answer
+  // arrives we assume this is it, so the page never mentions another replica
+  // before it knows there is more than one.
+  const leading = data?.leader ?? true;
 
   const capCount = tally(capabilities, (c) => c.ok);
   const intCount = tally(integrations, (c) => c.status === "ok");
@@ -204,7 +208,13 @@ export function StatusPage() {
               <Tile
                 label="Фоновые задачи"
                 count={loopCount}
-                caption={loopCount.broken === 0 ? "выполняются штатно" : "со сбоями"}
+                caption={
+                  !leading
+                    ? "их выполняет другая реплика"
+                    : loopCount.broken === 0
+                      ? "выполняются штатно"
+                      : "со сбоями"
+                }
                 Icon={IconRepeat}
               />
             </div>
@@ -245,11 +255,21 @@ export function StatusPage() {
               title="Фоновые задачи"
               hint="Портал работает не только на запросы пользователей: эти задачи повторяются сами и держат данные в актуальном виде. История запусков и графики - в Grafana."
             >
-              <Grid cols={2}>
-                {reconcilers.map((r) => (
-                  <ReconcilerCard key={r.name} r={r} />
-                ))}
-              </Grid>
+              {leading ? (
+                <Grid cols={2}>
+                  {reconcilers.map((r) => (
+                    <ReconcilerCard key={r.name} r={r} />
+                  ))}
+                </Grid>
+              ) : (
+                // The tasks run on one replica and this page was opened on
+                // another. An empty list would read as "nothing is running", so
+                // it is replaced by the reason there is nothing to list.
+                <p className="rounded-lg border border-slate-200 bg-surface p-4 text-sm text-slate-500 shadow-sm">
+                  Эти задачи сейчас выполняет другая реплика портала. Их состояние показывает она,
+                  а сводка по всем репликам есть в Grafana.
+                </p>
+              )}
             </Section>
           </>
         )}

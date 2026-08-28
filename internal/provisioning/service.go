@@ -59,7 +59,7 @@ type Service struct {
 	argo           argocd.Port
 	catalog        *catalog.Service
 	gitops         *GitOps
-	bus            *events.Bus
+	bus            events.Bus
 	defaultCluster string
 	defaultBranch  string
 	// autoMerge makes the poller merge open portal MRs itself (no human gate).
@@ -111,7 +111,7 @@ func (s *Service) logger() *slog.Logger {
 
 // New builds a provisioning service.
 func New(st store.Store, gl gitlab.Port, argo argocd.Port, cat *catalog.Service,
-	g *GitOps, bus *events.Bus, defaultCluster, defaultBranch string, autoMerge bool) *Service {
+	g *GitOps, bus events.Bus, defaultCluster, defaultBranch string, autoMerge bool) *Service {
 	return &Service{store: st, gl: gl, argo: argo, catalog: cat, gitops: g,
 		bus: bus, defaultCluster: defaultCluster, defaultBranch: defaultBranch, autoMerge: autoMerge,
 		mergeRetries: map[string]int{}}

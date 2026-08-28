@@ -7,6 +7,10 @@ All notable changes to this project are documented in this file.
 ### Added
 - The portal has an icon of its own. Its tab, bookmark and history entry are now
   easy to pick out among the others.
+- The portal runs in more than one replica. It needs `CACHE=redis`: the replicas
+  pass a status update to each other as it happens, and only one of them runs
+  the background tasks. The platform status page says so when the replica you
+  opened is not that one.
 
 ### Changed
 - An order's history no longer promises an approval. Every order used to say it
