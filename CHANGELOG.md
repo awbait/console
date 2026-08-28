@@ -19,6 +19,8 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Renamed the order statuses and described each of them in the "Statuses and
   deployment" help page.
+- The orders table shows every column at any screen width: Status and Actions
+  stay in place while the other columns scroll under them with the mouse wheel.
 
 ### Fixed
 - Fixed opening an order whose version has left the catalog: the page shows the
