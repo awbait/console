@@ -183,6 +183,75 @@ func TestClientCreateAndGetMR(t *testing.T) {
 	}
 }
 
+// A portal branch carries one change and nothing else, so GitLab is told to
+// remove it: at creation, which covers whoever presses merge, and at the merge
+// call, which is the only thing that reaches merge requests opened before.
+func TestClientAsksGitLabToRemoveTheSourceBranch(t *testing.T) {
+	ctx := context.Background()
+	var created map[string]any
+	var mergeQuery string
+	c, _ := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v4/projects/11/merge_requests":
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &created)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"iid": 3, "project_id": 11, "state": "opened",
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v4/projects/11/merge_requests/3/merge":
+			mergeQuery = r.URL.RawQuery
+			_ = json.NewEncoder(w).Encode(map[string]any{"iid": 3, "state": "merged"})
+		default:
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusInternalServerError)
+		}
+	})
+
+	if _, err := c.CreateMR(ctx, 11, "portal/x", "main", "Create x"); err != nil {
+		t.Fatalf("CreateMR: %v", err)
+	}
+	if created["remove_source_branch"] != true {
+		t.Errorf("merge request opened without remove_source_branch: %#v", created)
+	}
+	if err := c.MergeMR(ctx, 11, 3); err != nil {
+		t.Fatalf("MergeMR: %v", err)
+	}
+	if !strings.Contains(mergeQuery, "should_remove_source_branch=true") {
+		t.Errorf("merge query = %q, want it to ask for the branch removal", mergeQuery)
+	}
+}
+
+func TestClientDeleteBranch(t *testing.T) {
+	ctx := context.Background()
+	var deleted string
+	c, _ := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "unexpected "+r.Method, http.StatusInternalServerError)
+			return
+		}
+		deleted = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := c.DeleteBranch(ctx, 11, "portal/update-pg-a1b2"); err != nil {
+		t.Fatalf("DeleteBranch: %v", err)
+	}
+	// The slash in the branch name is one escaped path segment, not a path.
+	if deleted != "/api/v4/projects/11/repository/branches/portal%2Fupdate-pg-a1b2" {
+		t.Errorf("deleted %q", deleted)
+	}
+}
+
+// A branch that is already gone is the result the caller asked for: GitLab
+// removes merged branches by itself, so the portal must not treat that as a
+// failure it has to report.
+func TestClientDeleteBranchMissingIsNotAnError(t *testing.T) {
+	c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"404 Branch Not Found"}`, http.StatusNotFound)
+	})
+	if err := c.DeleteBranch(context.Background(), 11, "portal/gone"); err != nil {
+		t.Fatalf("want nil for a missing branch, got %v", err)
+	}
+}
+
 func TestClientListApplicationManifests(t *testing.T) {
 	c, _ := newServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {

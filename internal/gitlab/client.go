@@ -184,6 +184,19 @@ func (c *Client) CreateBranch(ctx context.Context, projectID int, branch, ref st
 		fmt.Sprintf("/projects/%d/repository/branches", projectID), q, nil, nil)
 }
 
+// DeleteBranch removes a branch. A branch that is not there counts as deleted:
+// the caller asked for it to be gone, and GitLab removing it on merge by itself
+// is the ordinary way that happens.
+func (c *Client) DeleteBranch(ctx context.Context, projectID int, branch string) error {
+	err := c.do(ctx, http.MethodDelete,
+		fmt.Sprintf("/projects/%d/repository/branches/%s", projectID, url.PathEscape(branch)),
+		nil, nil, nil)
+	if errors.Is(err, models.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 func (c *Client) CommitFiles(ctx context.Context, projectID int, branch, message string, actions []FileAction) error {
 	body := map[string]any{
 		"branch":         branch,
@@ -233,6 +246,10 @@ func (c *Client) CreateMR(ctx context.Context, projectID int, source, target, ti
 		"source_branch": source,
 		"target_branch": target,
 		"title":         title,
+		// The branch exists only to carry this change. Asking for it at creation
+		// makes GitLab remove it on merge, whoever presses the button, so nothing
+		// has to come back later and tidy up.
+		"remove_source_branch": true,
 	}
 	var m MR
 	if err := c.do(ctx, http.MethodPost,
@@ -254,8 +271,13 @@ func (c *Client) GetMR(ctx context.Context, projectID, iid int) (*MR, error) {
 func (c *Client) MergeMR(ctx context.Context, projectID, iid int) error {
 	// GitLab merges immediately when the MR is mergeable. Just after creation the
 	// merge_status may still be "checking" (405) - the poller retries next tick.
+	//
+	// The removal is asked for here as well as at creation: merge requests opened
+	// before the portal started setting remove_source_branch are still out there,
+	// and this is what clears their branches.
+	q := url.Values{"should_remove_source_branch": {"true"}}
 	return c.do(ctx, http.MethodPut,
-		fmt.Sprintf("/projects/%d/merge_requests/%d/merge", projectID, iid), nil, nil, nil)
+		fmt.Sprintf("/projects/%d/merge_requests/%d/merge", projectID, iid), q, nil, nil)
 }
 
 func (c *Client) CloseMR(ctx context.Context, projectID, iid int) error {

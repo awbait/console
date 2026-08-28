@@ -126,6 +126,9 @@ type Port interface {
 
 	// CreateBranch creates a branch from ref on a project.
 	CreateBranch(ctx context.Context, projectID int, branch, ref string) error
+	// DeleteBranch removes a branch. Deleting one that is already gone is not an
+	// error: merged branches are removed by GitLab itself.
+	DeleteBranch(ctx context.Context, projectID int, branch string) error
 	// CommitFiles commits a set of file actions onto a branch.
 	CommitFiles(ctx context.Context, projectID int, branch, message string, actions []FileAction) error
 	// ListTree returns file paths under a directory on a branch (for delete).

@@ -185,6 +185,29 @@ func (f *Fake) CreateBranch(ctx context.Context, projectID int, branch, ref stri
 	return nil
 }
 
+// DeleteBranch drops a branch. Missing is fine: the branch is gone either way,
+// and GitLab removes a merged one by itself.
+func (f *Fake) DeleteBranch(ctx context.Context, projectID int, branch string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projByID[projectID]
+	if !ok {
+		return models.ErrNotFound
+	}
+	if branch == p.proj.DefaultBranch {
+		return fmt.Errorf("gitlab: branch %q is the default branch", branch)
+	}
+	dropBranch(p, branch)
+	return nil
+}
+
+// dropBranch removes a branch and the fork point recorded for it. Caller holds
+// the lock. The frozen commit stays: a merge request still points at it by SHA.
+func dropBranch(p *fakeProject, branch string) {
+	delete(p.branches, branch)
+	delete(p.baseSHA, branch)
+}
+
 func (f *Fake) CommitFiles(ctx context.Context, projectID int, branch, message string, actions []FileAction) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -335,6 +358,23 @@ func (f *Fake) Healthz(ctx context.Context) error { return nil }
 
 // --- test/demo controls (not part of Port) ---
 
+// Branches lists the branches a project has right now, sorted. Tests read it to
+// check that the branches a change was carried on do not outlive it.
+func (f *Fake) Branches(projectID int) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projByID[projectID]
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(p.branches))
+	for b := range p.branches {
+		out = append(out, b)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // SetDetailedMergeStatus makes the fake report a mergeability status for an MR,
 // the way GitLab does (see ClassifyMerge). Empty is the default and means "not
 // reported", so tests that do not care keep the plain always-mergeable fake.
@@ -384,6 +424,10 @@ func (f *Fake) MergeMR(ctx context.Context, projectID, iid int) error {
 		dst[k] = v
 	}
 	m.mr.State = models.MRMerged
+	// The portal opens every merge request with remove_source_branch, so a merged
+	// branch is gone the moment it lands. Mirrored here, or the fake would be the
+	// only place where portal/* branches pile up.
+	dropBranch(p, m.source)
 	return nil
 }
 
