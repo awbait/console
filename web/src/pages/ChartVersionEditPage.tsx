@@ -20,6 +20,9 @@ import {
   Heading,
   ListBox,
   ListBoxItem,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Modal,
   ModalOverlay,
   Popover,
@@ -44,6 +47,7 @@ import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FormErrors } from "../components/FormErrors";
 import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
 import {
@@ -51,6 +55,7 @@ import {
   useViewDocumentHints,
   viewModelPath,
 } from "../features/publications/monacoHints";
+import { VIEW_TEMPLATE, type ViewSource, viewSources } from "../features/publications/viewSources";
 import {
   EditorTab,
   PreviewBoundary,
@@ -66,17 +71,6 @@ import { deprecationText, RejectedChip, STATUS_LABELS, versionHint } from "./Cha
 // that a pause for thought inside a sentence does not become a request, short
 // enough that what is lost by a browser crash is a sentence, not an evening.
 const AUTOSAVE_MS = 2000;
-
-// View-document template for a new draft.
-const VIEW_TEMPLATE = `{
-  "views": {
-    "order": {
-      "include": [],
-      "overrides": {}
-    }
-  }
-}
-`;
 
 // Editor for one published version's view document: Monaco + live validation +
 // form preview. Deep-linkable: /catalog/:project/:name/manage/:version. The
@@ -224,6 +218,29 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
     loaded.current = true;
   }, [versions, version]);
   const dirty = saved !== null && text !== saved;
+
+  // Versions this one can take a document from. A chart's new version usually
+  // differs from the last by a field or two, and the rest of the document was
+  // being carried over through the clipboard, which is where pieces of it went
+  // missing. The version just below is first in the list and the usual answer,
+  // but it is a list: an admin fixing an old version may well want the document
+  // of a later one.
+  const sources = useMemo(() => viewSources(versions, version), [versions, version]);
+  // Whether there is anything here to lose. The template counts as empty: it is
+  // what an unwritten version starts from, and typing over it is not work.
+  const editorEmpty = text.trim() === VIEW_TEMPLATE.trim();
+  // The version whose document is waiting on an answer (null = nothing asked).
+  const [confirmSource, setConfirmSource] = useState<ViewSource | null>(null);
+  // Which document the left panel is showing. Tracked because the offer above
+  // the editor is about the view document alone: over the chart's own schema,
+  // which nobody here can change, it would mean nothing.
+  const [tab, setTab] = useState("view");
+  // Only fills the editor. What lands there is a draft like any other: it is
+  // saved, checked and submitted for approval by the same buttons, and the
+  // complaints under the editor answer for it within the second.
+  function takeFrom(src: ViewSource) {
+    setText(JSON.stringify(src.doc, null, 2));
+  }
 
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "save" | "submit" | "withdraw" | "undeprecate">(null);
@@ -519,11 +536,31 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
         style={{ ["--split" as string]: `${splitPct}%` } as React.CSSProperties}
       >
         <Card className="flex flex-col gap-2 lg:min-h-0 lg:min-w-0 lg:shrink-0 lg:basis-[var(--split)]">
-          <Tabs className="flex min-h-0 flex-1 flex-col">
-            <TabList aria-label="Документы" className="flex gap-1 border-b border-gray-200">
-              <EditorTab id="view">view.schema.json</EditorTab>
-              <EditorTab id="schema">values.schema.json</EditorTab>
-            </TabList>
+          <Tabs
+            className="flex min-h-0 flex-1 flex-col"
+            selectedKey={tab}
+            onSelectionChange={(k) => setTab(String(k))}
+          >
+            {/* The tabs and, at the far end of their line, what can be done to
+                the document under them. It belongs here rather than beside
+                "Сохранить черновик": that pair acts on the version, this one
+                fills the editor, and the editor is what it sits over. */}
+            <div className="flex items-center gap-2 border-b border-gray-200">
+              <TabList aria-label="Документы" className="flex gap-1">
+                <EditorTab id="view">view.schema.json</EditorTab>
+                <EditorTab id="schema">values.schema.json</EditorTab>
+              </TabList>
+              {/* Offered only where there is something to take: a chart whose
+                  only version this is, or whose other versions never got past
+                  the empty template, has nothing to give. */}
+              {editable && tab === "view" && sources.length > 0 && (
+                <TakeFromVersion
+                  sources={sources}
+                  isDisabled={busy !== null}
+                  onPick={(src) => (editorEmpty ? takeFrom(src) : setConfirmSource(src))}
+                />
+              )}
+            </div>
             <TabPanel id="view" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
               <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
                 <Editor
@@ -643,7 +680,79 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
           )}
         </Card>
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmSource !== null}
+        onOpenChange={(open) => !open && setConfirmSource(null)}
+        title={`Взять документ версии ${confirmSource?.version}?`}
+        confirmLabel="Взять"
+        message={
+          <>
+            То, что сейчас в редакторе, будет заменено документом версии{" "}
+            <strong>{confirmSource?.version}</strong>. Замена происходит в редакторе: сохранённый
+            документ этой версии останется прежним, пока вы не сохраните черновик.
+          </>
+        }
+        onConfirm={() => {
+          if (confirmSource) takeFrom(confirmSource);
+        }}
+      />
     </div>
+  );
+}
+
+// TakeFromVersion offers the document of another version of the same chart.
+// A menu rather than one button per version: there are as many candidates as the
+// chart has versions, and only one of them is taken.
+//
+// It stands at the end of the tab row, so it is worded and sized like a label
+// there rather than as a third button beside "Сохранить черновик": those two
+// decide the fate of the version, this one only fills the editor.
+//
+// Nothing is said about the versions listed beyond their numbers: every one of
+// them offers an approved document (viewSources sees to that), so a word about
+// the state would be the same word on every line.
+function TakeFromVersion({
+  sources,
+  isDisabled,
+  onPick,
+}: {
+  sources: ViewSource[];
+  isDisabled: boolean;
+  onPick: (src: ViewSource) => void;
+}) {
+  return (
+    <MenuTrigger>
+      <AriaButton
+        isDisabled={isDisabled}
+        className="ml-auto mr-1 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 outline-none transition-colors hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:opacity-50 data-[pressed]:bg-slate-200"
+      >
+        Взять из версии
+        <IconChevronDown size={12} stroke={2} className="text-slate-400" aria-hidden />
+      </AriaButton>
+      {/* The same list the version switcher above is: a version and one word
+          about it, in the type size of the row it drops out of. */}
+      <Popover className="rounded-md border border-slate-200 bg-surface shadow-lg outline-none entering:animate-in entering:fade-in">
+        <Menu
+          className="max-h-72 overflow-auto p-1 outline-none"
+          onAction={(key) => {
+            const src = sources.find((s) => s.version === String(key));
+            if (src) onPick(src);
+          }}
+        >
+          {sources.map((s) => (
+            <MenuItem
+              key={s.version}
+              id={s.version}
+              textValue={s.version}
+              className="flex cursor-pointer items-baseline gap-2 rounded px-2 py-1 font-mono text-xs outline-none focus:bg-brand-50"
+            >
+              {s.version}
+            </MenuItem>
+          ))}
+        </Menu>
+      </Popover>
+    </MenuTrigger>
   );
 }
 

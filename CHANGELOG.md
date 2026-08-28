@@ -17,6 +17,8 @@ All notable changes to this project are documented in this file.
 - Added a Namespace column to the orders table.
 - The same product can now be ordered under one name into different
   namespaces.
+- Added a "Take from version" button to the version builder that fills the
+  editor with the document of another version of the same chart.
 
 ### Changed
 - Renamed the order statuses and described each of them in the "Statuses and
