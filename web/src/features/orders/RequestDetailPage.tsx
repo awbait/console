@@ -9,6 +9,7 @@ import {
   IconArrowUpCircle,
   IconCheck,
   IconExternalLink,
+  IconGitCompare,
   IconGitFork,
   IconPencil,
   IconRefresh,
@@ -32,11 +33,13 @@ import { ProductIcon } from "@/components/icons";
 import { NotFound } from "@/components/NotFound";
 import { StatusBadge, statusGroup, statusNextStep } from "@/components/StatusBadge";
 import { Button, Card, Select, SkeletonRows } from "@/components/ui";
+import { ruPlural } from "@/form/fieldErrors";
 import { useAsync } from "@/hooks/useAsync";
 import { safeHref } from "@/lib/href";
 import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
 import { dateInWords, fmtDateTime } from "@/lib/time";
+import { ConflictDialog } from "./ConflictDialog";
 import { pendingChangeNotice } from "./pendingChange";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
@@ -63,6 +66,7 @@ export function RequestDetailPage() {
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [conflictOpen, setConflictOpen] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   // "Upgrade available" is shown once per order: localStorage holds the version
@@ -156,6 +160,11 @@ export function RequestDetailPage() {
   const platformStaff = isPlatformStaff(user);
   const isDraft = r.status === "DRAFT";
   const driftMissing = r.drifted && /отсутству/i.test(r.drift_detail ?? "");
+  // A change of this order was taken back because it and somebody else's moved
+  // the same settings. That is a drift the reader can actually do something
+  // about, field by field, so its notice replaces the general one - two amber
+  // banners about the same divergence would only compete for the same click.
+  const conflict = data.conflict?.conflicts?.length ? data.conflict : null;
 
   const catalogChart = findCatalogChart(charts, r.chart_project, r.chart_name);
   const pub = catalogChart?.publication;
@@ -287,7 +296,34 @@ export function RequestDetailPage() {
           </div>
         </div>
       )}
-      {r.drifted && (
+      {conflict && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="flex items-start gap-2">
+            <IconGitCompare size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Ваше изменение не применилось</p>
+              <p className="mt-0.5 text-amber-700">
+                Пока оно готовилось, эти же настройки поменяли другим изменением. Остальное портал свёл
+                сам, осталось выбрать значения для{" "}
+                {conflict.conflicts.length === 1
+                  ? "одной настройки"
+                  : `${conflict.conflicts.length} ${ruPlural(conflict.conflicts.length, "настройки", "настроек", "настроек")}`}
+                .
+              </p>
+            </div>
+          </div>
+          {editable && !openMR && (
+            <button
+              onClick={() => setConflictOpen(true)}
+              className="shrink-0 cursor-pointer inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-surface px-3 py-1.5 text-xs font-medium text-amber-800 outline-none hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              <IconGitCompare size={14} stroke={1.8} />
+              Выбрать значения
+            </button>
+          )}
+        </div>
+      )}
+      {r.drifted && !conflict && (
         <div className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <div className="flex items-start gap-2">
             <IconAlertTriangle size={18} stroke={1.8} className="mt-0.5 shrink-0" />
@@ -480,6 +516,16 @@ export function RequestDetailPage() {
         versions={upgradeVersions}
         onConfirm={(to) => navigate(`/requests/${r.id}/upgrade?to=${encodeURIComponent(to)}`)}
       />
+
+      {conflict && conflictOpen && (
+        <ConflictDialog
+          request={r}
+          conflict={conflict}
+          isOpen
+          onClose={() => setConflictOpen(false)}
+          onResolved={reload}
+        />
+      )}
 
       <Card className="grid grid-cols-3 gap-4">
         <Meta label="Создатель">

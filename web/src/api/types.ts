@@ -129,11 +129,43 @@ export interface OrderReview {
   by?: "installation" | "service";
 }
 
+// One field two changes moved to different values. The portal merges an order's
+// edit with whatever the repository holds now, field by field; this is what it
+// cannot decide on its own and has to ask about.
+export interface ValuesConflict {
+  // The dotted field path, e.g. "auth.database". "chartVersion" is the one
+  // entry that is not a values field at all: it is the product's version.
+  path: string;
+  // The same path in segments - a field name may itself contain a dot, and only
+  // the segments say where the field really is. Absent for "chartVersion".
+  field?: string[];
+  // theirs is what the repository holds now, mine what this order asked for.
+  // Absent means that side has no such field at all: one of them removed it.
+  theirs?: unknown;
+  mine?: unknown;
+}
+
+// A withdrawn change's worth of disagreement. Absent while there is nothing to
+// decide, which is nearly always.
+export interface ValuesConflictSet {
+  conflicts: ValuesConflict[];
+  // Everything the portal settled by itself, the other person's edits to fields
+  // nobody fought over included. The choices are applied over this, so those
+  // edits survive the resolution.
+  merged?: Record<string, unknown>;
+  merged_version?: string;
+  mr_iid?: number;
+  at: string;
+}
+
 export interface RequestDetail {
   request: OrderRequest;
   merge_requests: RequestMR[] | null;
   events: RequestEvent[] | null;
   review?: OrderReview;
+  // The fields a change of this order got stuck on, when the portal took one
+  // back because two people had moved the same ones.
+  conflict?: ValuesConflictSet | null;
   // Deep link to the order's ArgoCD Application; empty/absent when ArgoCD is not
   // configured or the app doesn't exist yet (draft).
   argocd_url?: string;
