@@ -209,11 +209,21 @@ function Connect-Harbor {
 
   # --password-stdin instead of --password: the latter warns and leaves the
   # secret in the process list and the shell history.
-  $Password | & docker login $Registry --username $User --password-stdin
-  if ($LASTEXITCODE -ne 0) {
-    throw "docker login $Registry failed for user '$User'. Check the credentials and that the host resolves."
+  # Retried: right after Docker Desktop starts, the engine already answers
+  # `docker info` (so Assert-Docker lets us through), but its auth endpoint
+  # still returns 500 for a few more seconds.
+  for ($try = 1; $try -le 3; $try++) {
+    $Password | & docker login $Registry --username $User --password-stdin
+    if ($LASTEXITCODE -eq 0) {
+      Write-Ok "logged in to $Registry as $User"
+      return
+    }
+    if ($try -lt 3) {
+      Write-Skip "login did not go through (attempt $try), retrying in 5s"
+      Start-Sleep -Seconds 5
+    }
   }
-  Write-Ok "logged in to $Registry as $User"
+  throw "docker login $Registry failed for user '$User'. Check the credentials and that the host resolves."
 }
 
 # True when the tag already exists in the registry. Runs after the login, so a
