@@ -210,6 +210,10 @@ MetalLB (LoadBalancer-IP), без них Gateway не станет `Programmed`,
 8. `kubectl describe application core-demo-gw -n argocd` -> два source (OCI chart 3.1.0 + git `$values`), `Synced`/`Progressing`.
 9. `GET /api/v1/requests/<id>` -> `MR_MERGED` -> `DEPLOYING` -> `Progressing`/`HEALTHY`.
 10. Удаление: `DELETE /requests/<id>` -> MR убирает папку -> directory-app prune -> child `Application` удаляется -> портал `DELETED`.
+    Родительский `repo-<chart>-<hash>` при этом остаётся в Argo CD пустым, без
+    детей: он привязан к репозиторию, а не к заказу (см.
+    [риск 8](#известные-риски--тонкие-места)). Проверка, что ушёл именно заказ:
+    `kubectl get applications -n argocd -l idp.service=demo-gw` -> пусто.
 
 ## Известные риски / тонкие места
 
@@ -269,3 +273,30 @@ MetalLB (LoadBalancer-IP), без них Gateway не станет `Programmed`,
    `host.docker.internal:<port>`), либо положись на каталог-поллинг: в `hybrid`
    поллинг остаётся подстраховкой, так что discovery всё равно отработает, просто
    не мгновенно. GitLab-вебхуки работают в обоих вариантах стенда.
+8. **Пустое `repo-*` остаётся после удаления заказа - так и задумано.**
+   `repo-<chart>-<hash>` это не приложение заказа (те называются по
+   `ARGOCD_APP_NAME_TEMPLATE`, по умолчанию
+   `{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}`), а directory-app
+   репозитория, который заводит bootstrap-ApplicationSet (`applicationset.yaml`).
+   Он привязан к репозиторию `managed-services/<team>/<chart>`: портал создаёт
+   такой репозиторий на пару team+chart (`ensureRepo`) и никогда его не удаляет -
+   в нём лежат values и история MR всех заказов этой команды по этому чарту. Пока
+   репозиторий есть в группе, SCM-генератор его находит, и приложение стоит, пусть
+   и без детей. Пустым оно остаётся намеренно: `allowEmpty: true` в `syncPolicy`
+   добавлен ровно затем, чтобы prune последнего заказа проходил, а не упирался в
+   отказ Argo «auto-sync will wipe out all resources».
+
+   Приложения заказов портал помечает лейблами `managed-by: portal`, `idp.team`,
+   `idp.chart`, `idp.service` (`internal/provisioning/gitops.go`), а на `repo-*`
+   их нет. Поэтому на вопрос «что тут от заказов» отвечает селектор:
+
+   ```powershell
+   kubectl get applications -n argocd -l managed-by=portal      # только заказы
+   kubectl get applications -n argocd -l idp.service=<service>  # один заказ
+   ```
+
+   Плата: список приложений в Argo CD растёт на каждый заведённый репозиторий и
+   после удаления всех заказов по нему не уменьшается. Если же после удаления
+   висит сам дочерний `Application` (`Terminating`), это другая история -
+   застрявший finalizer, и заказ тогда не закроется, потому что портал ждёт
+   исчезновения приложения.
