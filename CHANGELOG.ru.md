@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-04
+
+Релиз про значения, которые портал проставляет в заказ за заказчика. Документ
+версии теперь может ссылаться на сам заказ и на переменные, которые администратор
+держит в одном месте, а форма заказа может открываться с уже заполненными полями.
+
 ### Добавлено
 - Значения, которые портал проставляет в заказ за заказчика, понимают ссылки на
   сам заказ: `{{.Team}}` подставит команду, `{{.User.Name}}` - автора,
@@ -580,7 +586,8 @@ GitOps-провижининг, согласование публикаций и 
 - Сборка и релизы на GitHub Actions: проверки PR, тег и GitHub Release, сборка
   образов портала и коллектора.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/awbait/console/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/awbait/console/compare/v0.8.1...v0.8.2
