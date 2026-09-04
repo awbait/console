@@ -8,6 +8,15 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # "edited" is here for pull requests stacked on one another. Such a pull
+    # request is opened against the branch below it, so this workflow - which
+    # only watches pull requests into main - never runs for it. When the branch
+    # below is merged, GitHub retargets the pull request to main and fires
+    # "edited", and nothing else: no push, no reopen. Without this line the
+    # required check has no run to report and the pull request stays blocked
+    # until somebody closes and reopens it by hand. Listing types replaces the
+    # default set, so the three defaults are spelled out again.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
