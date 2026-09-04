@@ -27,6 +27,10 @@ All notable changes to this project are documented in this file.
 - The buttons of the find panel in the editor (Ctrl+F) take a click again. A
   button's tooltip used to appear over the button itself and was cut off at the
   edge of the editor panel.
+- A suggestion in the version constructor no longer doubles the quotes. Picking
+  one where a field name or a pointer to it is written used to insert it with
+  quotes of its own on top of those already typed, leaving `""/naming/env""` in
+  the document.
 
 ## [0.10.0] - 2026-08-28
 
