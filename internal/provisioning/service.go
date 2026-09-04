@@ -351,7 +351,7 @@ func stampOf(r *models.Request) stampContext {
 // value. Chart-agnostic: the rules live in the chart's view document, not here.
 // A missing view/publication leaves values as-is. The error is a view document
 // asking for something the portal cannot give it.
-func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, version, namespace string, values map[string]any, sc stampContext) (map[string]any, error) {
+func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, version, namespace string, values map[string]any, sc stampContext, schemaJSON []byte) (map[string]any, error) {
 	view := s.orderView(ctx, chartProject, chartName, version)
 	if len(view) == 0 {
 		return values, nil
@@ -369,7 +369,7 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 		ChartVersion: version,
 		User:         views.TemplateUser{Name: sc.UserName, Subject: sc.UserSubject},
 		Vars:         vars,
-	})
+	}, schemaJSON)
 	if err != nil {
 		// The person ordering cannot fix this, and the owner who can is not the
 		// one seeing the refusal: leave the platform a line naming the version.
@@ -1007,12 +1007,19 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	if values == nil {
 		values = map[string]any{}
 	}
+	// The chart schema is read before the stamp, not after: it decides the type a
+	// stamped value takes (a port is a number, and a template renders text), and
+	// the same bytes are then reused for the validation below.
+	schemaBytes, err := s.catalog.GetSchema(ctx, project, name, version)
+	if err != nil && validate && !errors.Is(err, models.ErrNotFound) {
+		return "", fmt.Errorf("%w: harbor schema: %v", ErrUpstream, err)
+	}
 	// Stamp order-time values the chart declares in its view: fixed "defaults"
 	// (e.g. namespace.creator=console) and the "namespace" binding (mirror the
 	// destination namespace into the field a self-provisioning chart names it by).
 	// Applied before validation so the stamped values are schema-checked too.
 	// Chart-agnostic: the rules live in the chart's view document, not here.
-	values, serr := s.applyViewStamps(ctx, project, name, version, namespace, values, sc)
+	values, serr := s.applyViewStamps(ctx, project, name, version, namespace, values, sc, schemaBytes)
 	if serr != nil {
 		return "", serr
 	}
@@ -1023,7 +1030,6 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 		}
 		return string(out), nil
 	}
-	schemaBytes, err := s.catalog.GetSchema(ctx, project, name, version)
 	if err == nil && len(schemaBytes) > 0 {
 		c := jsonschema.NewCompiler()
 		if aerr := c.AddResource("values.schema.json", bytes.NewReader(schemaBytes)); aerr == nil {
@@ -1033,8 +1039,6 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 				}
 			}
 		}
-	} else if err != nil && !errors.Is(err, models.ErrNotFound) {
-		return "", fmt.Errorf("%w: harbor schema: %v", ErrUpstream, err)
 	}
 	if verr := s.checkGraphNotEmpty(ctx, project, name, version, values); verr != nil {
 		return "", verr

@@ -8,7 +8,8 @@ All notable changes to this project are documented in this file.
 - Values the portal fills in for the customer now understand references to the
   order itself: `{{.Team}}` puts in the team, `{{.User.Name}}` the author,
   `{{.ServiceName}}` the service name. The `defaults` block used to take fixed
-  values only. The whole list is in the documentation, "Order form constructor".
+  values only. A value arrives as what the chart field declares: a number field
+  gets a number. The whole list is in the documentation, "Order form constructor".
 - Platform variables: named values an admin keeps in the portal, in the "Variables"
   section of the admin panel. A version document references one as
   `{{.Vars.OPS_DOMAIN}}`, and the portal fills it in when it saves an order. A

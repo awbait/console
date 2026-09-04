@@ -123,7 +123,7 @@ func TestTemplateRefsAllResolve(t *testing.T) {
 
 func TestApplyDefaultsRendersTemplates(t *testing.T) {
 	view := []byte(`{"defaults":{"/labels/team":"{{.Team}}","/labels/owner":"{{.User.Name}}","/labels/host":"{{.ServiceName}}.example.com","/labels/fixed":"console","/labels/n":7}}`)
-	out, _, err := ApplyDefaults(map[string]any{}, view, sampleData())
+	out, _, err := ApplyDefaults(map[string]any{}, view, sampleData(), nil)
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestApplyDefaultsRendersTemplates(t *testing.T) {
 // found much later by somebody wondering what was meant to be there.
 func TestApplyDefaultsRefusesBrokenTemplate(t *testing.T) {
 	view := []byte(`{"defaults":{"/labels/team":"{{.Teem}}"}}`)
-	_, _, err := ApplyDefaults(map[string]any{}, view, sampleData())
+	_, _, err := ApplyDefaults(map[string]any{}, view, sampleData(), nil)
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -196,7 +196,7 @@ func TestCheckTemplateAgainstKnownVariables(t *testing.T) {
 	if err := CheckTemplate("{{.Vars.OPS}}", nil); err != nil {
 		t.Fatalf("without a list a variable reference must pass: %v", err)
 	}
-	if err := CheckTemplate("{{.Vars.OPS}}", KnownVars{"OPS": true}); err != nil {
+	if err := CheckTemplate("{{.Vars.OPS}}", KnownVars{"OPS": "example.com"}); err != nil {
 		t.Fatalf("known variable flagged: %v", err)
 	}
 	if err := CheckTemplate("{{.Vars.OPS}}", KnownVars{}); err == nil {
@@ -205,7 +205,7 @@ func TestCheckTemplateAgainstKnownVariables(t *testing.T) {
 	// ".Vars" alone and a deeper path name no variable, and are reported as the
 	// unknown references they are.
 	for _, s := range []string{"{{.Vars}}", "{{.Vars.A.B}}"} {
-		if err := CheckTemplate(s, KnownVars{"A": true}); err == nil {
+		if err := CheckTemplate(s, KnownVars{"A": "x"}); err == nil {
 			t.Fatalf("%q must be flagged", s)
 		}
 	}
@@ -226,7 +226,7 @@ func TestVariablesUsed(t *testing.T) {
 
 func TestRenderInitial(t *testing.T) {
 	view := []byte(`{"initial":{"/contacts/responsible":"{{.User.Name}}","/contacts/team":"{{.Team}}","/replicas":2}}`)
-	got, err := RenderInitial(view, sampleData())
+	got, err := RenderInitial(view, sampleData(), nil)
 	if err != nil {
 		t.Fatalf("RenderInitial: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestRenderInitial(t *testing.T) {
 	}
 
 	// No block: an empty seed, not a nil map the caller has to guard.
-	empty, err := RenderInitial([]byte(`{"views":{"order":{}}}`), sampleData())
+	empty, err := RenderInitial([]byte(`{"views":{"order":{}}}`), sampleData(), nil)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("RenderInitial without the block = %#v, %v", empty, err)
 	}

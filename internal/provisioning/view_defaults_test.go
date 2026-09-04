@@ -229,3 +229,60 @@ func TestOrderStampsIntoListItem(t *testing.T) {
 		t.Fatalf("the item's own fields must survive:\n%s", r.ValuesYAML)
 	}
 }
+
+// TestOrderStampsNumberFromVariable: a template renders text, and the chart's
+// "replicas" is an integer. The value has to reach the order as a number, or the
+// chart's own schema refuses the order and blames a field nobody filled in.
+func TestOrderStampsNumberFromVariable(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	if err := s.st.UpsertVariable(ctx, &models.Variable{Name: "REPLICAS", Value: "3"}); err != nil {
+		t.Fatalf("seed variable: %v", err)
+	}
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/primary/replicas":"{{.Vars.REPLICAS}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	// Draft:false, so the values go through the chart's schema validation.
+	r, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: draft("app"),
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !strings.Contains(r.ValuesYAML, "replicas: 3") {
+		t.Fatalf("want a number in the values:\n%s", r.ValuesYAML)
+	}
+}
+
+// TestOrderRefusesTextInNumberField: the same field, a variable holding text.
+// The refusal comes from the portal and says which field and what it takes,
+// instead of the chart validator complaining about the customer's form.
+func TestOrderRefusesTextInNumberField(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	if err := s.st.UpsertVariable(ctx, &models.Variable{Name: "REPLICAS", Value: "abc"}); err != nil {
+		t.Fatalf("seed variable: %v", err)
+	}
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/primary/replicas":"{{.Vars.REPLICAS}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	_, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: draft("app"),
+	})
+	if err == nil {
+		t.Fatal("text in a number field must refuse the order")
+	}
+	var verr *provisioning.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("want a validation error, got %T: %v", err, err)
+	}
+	for _, want := range []string{"/primary/replicas", "целое число", "владельцу"} {
+		if !strings.Contains(verr.Message, want) {
+			t.Fatalf("message %q does not mention %q", verr.Message, want)
+		}
+	}
+}
