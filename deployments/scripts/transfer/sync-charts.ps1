@@ -7,16 +7,24 @@
   console-charts publishes no releases and no tags: the charts live on a branch,
   and each chart carries its own SemVer in its Chart.yaml. So the unit of
   transfer here is a chart, not a release, and "already carried" means "the
-  GitLab copy is byte-identical to the GitHub one".
+  GitLab copy matches the GitHub one", give or take the two rewrites below.
 
   On the GitLab side every chart has its own project, and some of them have a
   locally rewritten values.yaml holding the installation's base values. Those
   files are named in the `keep` list and survive the sync untouched; everything
   else in the project is replaced by the GitHub version.
 
+  The other rewrite is dependencies. On GitHub the charts sit side by side in
+  one repo, so a dependency there is `file://../<chart>`; one chart per GitLab
+  project leaves nothing for that path to point at. So every such reference is
+  repointed at the dependency's Harbor project, which is where the GitLab
+  pipeline, and -PushToHarbor, resolve it from. The dependency has to be in
+  Harbor first: the map is in dependency order for that reason.
+
     download the GitHub zip -> per chart: clone GitLab -> replace all but
-    `keep` -> nothing changed? skip -> branch + commit + push with an MR ->
-    optionally helm package + push to Harbor -> clean up.
+    `keep` -> repoint dependencies at Harbor -> nothing changed? skip ->
+    branch + commit + push with an MR -> optionally helm dependency update +
+    package + push to Harbor -> clean up.
 
   The source arrives as a zip archive over plain https, not as a git clone:
   the machines that run this have no git access to GitHub, and a read-only
@@ -130,6 +138,86 @@ function Get-ChartMeta {
     Name    = $name.Matches[0].Groups[1].Value.Trim().Trim('"', "'")
     Version = $ver.Matches[0].Groups[1].Value.Trim().Trim('"', "'")
   }
+}
+
+# The dependencies of a chart, as name and version. Same reasoning as
+# Get-ChartMeta: a block written by us, read two fields deep, does not justify a
+# YAML parser. The block ends at the next top-level key.
+function Get-ChartDependencies {
+  param([string]$ChartDir)
+  $file = Join-Path $ChartDir 'Chart.yaml'
+  if (-not (Test-Path $file)) { return @() }
+
+  $deps    = @()
+  $current = $null
+  $inBlock = $false
+  foreach ($line in (Get-Content -Path $file -Encoding UTF8)) {
+    if (-not $inBlock) {
+      if ($line -match '^dependencies:') { $inBlock = $true }
+      continue
+    }
+    if ($line -match '^\s*$' -or $line -match '^\s*#') { continue }
+    if ($line -match '^[^\s-]') { break }
+    if ($line -match '^\s*-\s*name:\s*(.+)$') {
+      if ($current) { $deps += $current }
+      $current = [pscustomobject]@{ Name = $Matches[1].Trim().Trim('"', "'"); Version = '' }
+      continue
+    }
+    if ($current -and $line -match '^\s*version:\s*(.+)$') {
+      $current.Version = $Matches[1].Trim().Trim('"', "'")
+    }
+  }
+  if ($current) { $deps += $current }
+  return ,$deps
+}
+
+# Where a chart lives in Harbor: its own harborProject if the map gives it one,
+# the shared default otherwise.
+function Get-HarborProject {
+  param([object]$Config, [string]$ChartName)
+  $entry = $Config.charts.$ChartName
+  if ($entry -and $entry.PSObject.Properties.Name -contains 'harborProject' -and $entry.harborProject) {
+    return $entry.harborProject
+  }
+  return $Config.harborProject
+}
+
+# On GitHub every chart sits next to its siblings in one repo, so a dependency
+# there reads `file://../<chart>`. In GitLab each chart is a project of its own
+# and that sibling directory does not exist, so the reference is repointed at
+# Harbor on the way over: the dependency is published there as an OCI chart, and
+# `name:` still names it, so the repository is the project, without the chart.
+function Convert-DependenciesToOci {
+  param([string]$ChartDir, [object]$Config)
+  $file = Join-Path $ChartDir 'Chart.yaml'
+  if (-not (Test-Path $file)) { return @() }
+
+  $text = Get-Content -Path $file -Raw -Encoding UTF8
+  $hits = ([regex] 'file://\.\./(?<dep>[A-Za-z0-9._-]+)').Matches($text)
+  if ($hits.Count -eq 0) { return @() }
+
+  $repointed = @()
+  $sb  = New-Object Text.StringBuilder
+  $pos = 0
+  foreach ($hit in $hits) {
+    $dep    = $hit.Groups['dep'].Value
+    $target = "oci://$($Config.harborHost)/$(Get-HarborProject -Config $Config -ChartName $dep)"
+    [void]$sb.Append($text.Substring($pos, $hit.Index - $pos))
+    [void]$sb.Append($target)
+    $pos = $hit.Index + $hit.Length
+    $repointed += [pscustomobject]@{
+      Name   = $dep
+      Target = $target
+      Known  = [bool]($Config.charts.PSObject.Properties.Name -contains $dep)
+    }
+  }
+  [void]$sb.Append($text.Substring($pos))
+
+  # Written back byte for byte apart from the replaced references. Set-Content
+  # would also rewrite every line ending and add a BOM, and that diff would bury
+  # the one line that actually changed.
+  [IO.File]::WriteAllText($file, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
+  return ,$repointed
 }
 
 # Commit the ref points at, asked over plain https: gh first (it carries auth
@@ -322,6 +410,17 @@ try {
       Copy-Item -Path $from -Destination $to -Recurse -Force
     }
 
+    # Repointed after the kept files are back, so a Chart.yaml that GitLab owns
+    # gets the same treatment as one that arrived from GitHub, and before the
+    # diff below, so "nothing changed" is judged on what will be committed.
+    foreach ($dep in @(Convert-DependenciesToOci -ChartDir $clone -Config $cfg)) {
+      if ($dep.Known) {
+        Write-Ok "dependency $($dep.Name) -> $($dep.Target)"
+      } else {
+        Write-Warn "dependency $($dep.Name) is not in the map; repointed at the default project: $($dep.Target)"
+      }
+    }
+
     Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'add', '-A') -What 'git add' | Out-Null
     $changes = & git -C $clone status --porcelain
     if (-not $changes) {
@@ -379,11 +478,7 @@ try {
 
     # --- optional: straight into Harbor ---
     if ($PushToHarbor) {
-      $hProject = $cfg.harborProject
-      if ($entry.PSObject.Properties.Name -contains 'harborProject' -and $entry.harborProject) {
-        $hProject = $entry.harborProject
-      }
-      $ociRepo = "oci://$harborHost/$hProject"
+      $ociRepo = "oci://$harborHost/$(Get-HarborProject -Config $cfg -ChartName $chart)"
 
       $showArgs = @('show', 'chart', "$ociRepo/$($meta.Name)", '--version', $meta.Version)
       if ($InsecureTls) { $showArgs += '--insecure-skip-tls-verify' }
@@ -391,6 +486,37 @@ try {
       if ($LASTEXITCODE -eq 0 -and -not $Force) {
         Write-Skip "$ociRepo/$($meta.Name):$($meta.Version) is already in Harbor, not pushing"
         continue
+      }
+
+      # The dependencies now point at Harbor, so they have to be there before
+      # this chart can be packaged. A full run publishes them first - the map is
+      # in dependency order - so this bites a run narrowed to one chart, and
+      # helm would report it from three levels down.
+      $deps    = @(Get-ChartDependencies -ChartDir $clone)
+      $missing = @()
+      foreach ($dep in $deps) {
+        $depRepo = "oci://$harborHost/$(Get-HarborProject -Config $cfg -ChartName $dep.Name)"
+        $depArgs = @('show', 'chart', "$depRepo/$($dep.Name)", '--version', $dep.Version)
+        if ($InsecureTls) { $depArgs += '--insecure-skip-tls-verify' }
+        Invoke-Quiet helm $depArgs | Out-Null
+        if ($LASTEXITCODE -ne 0) { $missing += "$($dep.Name) $($dep.Version) ($depRepo)" }
+      }
+      if ($missing) {
+        Write-Warn "not in Harbor yet: $($missing -join '; '). Transfer those charts first, then rerun this one."
+        $failed += "${chart}: dependency missing in Harbor"
+        continue
+      }
+
+      if ($deps) {
+        # Fetches the dependencies into charts/ and writes Chart.lock, neither of
+        # which is committed: the push above already happened, and upstream keeps
+        # both out of git. --skip-refresh because the dependencies are OCI and
+        # nothing here needs the user's chart repository cache, which on a stand
+        # machine is as likely as not to be stale.
+        Write-Step "$chart : helm dependency update"
+        $updateArgs = @('dependency', 'update', $clone, '--skip-refresh')
+        if ($InsecureTls) { $updateArgs += '--insecure-skip-tls-verify' }
+        Invoke-Native -Exe 'helm' -Arguments $updateArgs -What 'helm dependency update' | Out-Null
       }
 
       Write-Step "$chart : helm package + push to $ociRepo"
