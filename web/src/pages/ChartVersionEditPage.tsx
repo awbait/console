@@ -164,7 +164,10 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   // format comes from the portal, the fields to point at from the chart above.
   // Both are hints, so a failure here costs the hints and nothing else.
   const { data: viewFormat } = useAsync(() => api.getViewSchema(), [], qk.viewSchema());
-  useViewDocumentHints(viewFormat, schema);
+  // What the document may reference in "defaults" and "initial": the fixed
+  // catalogue plus the platform variables that exist right now.
+  const { data: viewRefs } = useAsync(() => api.viewRefs(), [], qk.viewRefs());
+  useViewDocumentHints(viewFormat, schema, viewRefs);
 
   const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);

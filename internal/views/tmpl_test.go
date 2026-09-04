@@ -223,3 +223,48 @@ func TestVariablesUsed(t *testing.T) {
 		t.Fatalf("a document without variables uses none, got %v", used)
 	}
 }
+
+func TestRenderInitial(t *testing.T) {
+	view := []byte(`{"initial":{"/contacts/responsible":"{{.User.Name}}","/contacts/team":"{{.Team}}","/replicas":2}}`)
+	got, err := RenderInitial(view, sampleData())
+	if err != nil {
+		t.Fatalf("RenderInitial: %v", err)
+	}
+	contacts := got["contacts"].(map[string]any)
+	if contacts["responsible"] != "Иванов Иван" || contacts["team"] != "payments" {
+		t.Fatalf("unexpected contacts: %#v", contacts)
+	}
+	if got["replicas"] != float64(2) {
+		t.Fatalf("replicas = %#v, want 2", got["replicas"])
+	}
+
+	// No block: an empty seed, not a nil map the caller has to guard.
+	empty, err := RenderInitial([]byte(`{"views":{"order":{}}}`), sampleData())
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("RenderInitial without the block = %#v, %v", empty, err)
+	}
+}
+
+// The form is not filled in yet, so a value can only be built from what it
+// already knows. A document asking for the namespace is refused where it is
+// written rather than seeding an empty string in front of a person.
+func TestInitialRefusesWhatTheFormDoesNotKnowYet(t *testing.T) {
+	issues := ValidateStructure([]byte(`{"views":{"order":{}},"initial":{"/a":"{{.Namespace}}"}}`))
+	if len(issues) == 0 {
+		t.Fatal("a reference the form cannot answer must be flagged")
+	}
+	if issues[0].Path != "/initial/a" {
+		t.Fatalf("issue path = %q, want /initial/a", issues[0].Path)
+	}
+	for _, ok := range []string{"{{.Team}}", "{{.User.Name}}", "{{.Chart}}", "{{.ChartVersion}}"} {
+		doc := []byte(`{"views":{"order":{}},"initial":{"/a":"` + ok + `"}}`)
+		if issues := ValidateStructure(doc); len(issues) > 0 {
+			t.Fatalf("%s flagged in initial: %+v", ok, issues)
+		}
+	}
+	// The same reference is fine in defaults, which is stamped when the order is
+	// saved and by then knows the answer.
+	if issues := ValidateStructure([]byte(`{"views":{"order":{}},"defaults":{"/a":"{{.Namespace}}"}}`)); len(issues) > 0 {
+		t.Fatalf("defaults must still take it: %+v", issues)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"console/internal/auth"
+	"console/internal/views"
 	"console/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
@@ -52,6 +53,25 @@ func (s *Server) handleDeleteVariable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusNoContent, nil)
+}
+
+// handleViewRefs answers with what a version document may reference in its
+// "defaults" and "initial" blocks: the fixed catalogue plus the variables that
+// exist right now. The constructor completes from it, so the list it offers is
+// the same list the portal resolves against.
+func (s *Server) handleViewRefs(w http.ResponseWriter, r *http.Request) {
+	refs := views.TemplateRefs()
+	vars, err := s.Pubs.ListVariables(r.Context())
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	for _, v := range vars {
+		refs = append(refs, views.TemplateRef{
+			Ref: ".Vars." + v.Name, Desc: v.Description, AtOrderForm: true,
+		})
+	}
+	writeJSON(w, http.StatusOK, refs)
 }
 
 // handleVariableUsage answers where a variable is referenced, so the admin page

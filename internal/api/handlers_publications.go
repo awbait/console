@@ -655,6 +655,28 @@ func (s *Server) handleCheckChart(w http.ResponseWriter, r *http.Request) {
 // handleGetChartView returns a chart's approved view. With ?version=X it returns
 // that orderable version's view; without it, the recommended version's view
 // (falling back to the highest orderable+APPROVED one).
+// handleOrderInitial answers with the values a new order form should open with:
+// the version's "initial" block, rendered for this person and the team they are
+// ordering for. Best effort by design - a form that cannot get them is still a
+// form somebody can fill in by hand.
+func (s *Server) handleOrderInitial(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	project, name := chi.URLParam(r, "project"), chi.URLParam(r, "name")
+	values, err := s.Pubs.OrderInitialValues(r.Context(), u, project, name,
+		r.URL.Query().Get("version"), r.URL.Query().Get("team"))
+	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			// No published view is not a failure here: there is simply nothing
+			// to prefill.
+			writeJSON(w, http.StatusOK, map[string]any{"values": map[string]any{}})
+			return
+		}
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"values": values})
+}
+
 func (s *Server) handleGetChartView(w http.ResponseWriter, r *http.Request) {
 	project, name := chi.URLParam(r, "project"), chi.URLParam(r, "name")
 	view, err := s.Pubs.ActiveViewVersion(r.Context(), project, name, r.URL.Query().Get("version"))

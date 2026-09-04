@@ -133,6 +133,40 @@ func (s *Service) checkAgainstVariables(ctx context.Context) []views.Option {
 	return []views.Option{views.WithVariables(names)}
 }
 
+// OrderInitialValues renders the "initial" block of a version's approved view:
+// the values a NEW order form opens with, filled in but editable.
+//
+// The rendering happens here rather than in the browser so there is one template
+// engine and one catalogue of references. The context is only what an unfilled
+// form knows: the team it is being made for, the chart, the person opening it,
+// and the platform variables. A document that asks for more is refused by the
+// version constructor, so nothing here has to guess.
+func (s *Service) OrderInitialValues(ctx context.Context, u *models.User, project, name, version, team string) (map[string]any, error) {
+	view, err := s.ActiveViewVersion(ctx, project, name, version)
+	if err != nil {
+		return nil, err
+	}
+	data := views.TemplateData{
+		Team: team, Chart: name, ChartVersion: version,
+		User: views.TemplateUser{Name: u.Name, Subject: u.Subject},
+	}
+	if len(views.VariablesUsed(view)) > 0 {
+		list, lerr := s.store.ListVariables(ctx)
+		if lerr != nil {
+			return nil, lerr
+		}
+		data.Vars = make(map[string]string, len(list))
+		for _, v := range list {
+			data.Vars[v.Name] = v.Value
+		}
+	}
+	values, err := views.RenderInitial(view, data)
+	if err != nil {
+		return nil, invalid("%s", err.Error())
+	}
+	return values, nil
+}
+
 // listOf writes at most n names as one phrase, saying how many are left.
 func listOf(items []string, n int) string {
 	if len(items) <= n {

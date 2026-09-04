@@ -128,6 +128,11 @@ func Validate(viewJSON, schemaJSON []byte, options ...Option) []Issue {
 		issues = append(issues, checkDefaults(defaults, schema, o.vars)...)
 	}
 
+	// initial: values the order form opens with, filled in but editable.
+	if initial, ok := doc["initial"].(map[string]any); ok {
+		issues = append(issues, checkInitial(initial, schema, o.vars)...)
+	}
+
 	// graph: the visual values editor this version turns on, and where its
 	// fields live in the values.
 	if graph, ok := doc["graph"].(map[string]any); ok {
@@ -156,6 +161,30 @@ func checkDefaults(m map[string]any, schema map[string]any, vars KnownVars) []Is
 		}
 		if err := CheckTemplate(s, vars); err != nil {
 			issues = append(issues, Issue{"/defaults" + ptr, upperFirst(err.Error())})
+		}
+	}
+	return issues
+}
+
+// checkInitial checks the "initial" block the way defaults are checked, plus the
+// one rule that is only true here: the form is not filled in yet, so a value can
+// only be built from what the form already knows.
+func checkInitial(m map[string]any, schema map[string]any, vars KnownVars) []Issue {
+	var issues []Issue
+	for _, ptr := range sortedKeys(m) {
+		if !strings.HasPrefix(ptr, "/") {
+			continue // the schema already said the key is not a pointer
+		}
+		if schema != nil && !pointerResolves(ptr, schema, schema) {
+			issues = append(issues, Issue{"/initial" + ptr,
+				fmt.Sprintf("Путь %q не находит поле в values.schema.json", ptr)})
+		}
+		s, ok := m[ptr].(string)
+		if !ok {
+			continue // the schema already said the value is a scalar
+		}
+		if err := CheckFormTimeTemplate(s, vars); err != nil {
+			issues = append(issues, Issue{"/initial" + ptr, upperFirst(err.Error())})
 		}
 	}
 	return issues

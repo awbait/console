@@ -1,5 +1,6 @@
 import { deref } from "@/form/SchemaForm";
 import { getLocation, parse as parseJsonc } from "jsonc-parser";
+import type { TemplateRef } from "@/api/types";
 import { type ChartField, chartFields, nodeAt, properties, rowOf } from "./chartFields";
 
 // What to offer where the cursor stands in a view document.
@@ -41,10 +42,15 @@ const KIND_LABEL: Record<ChartField["kind"], string> = {
 
 // hintsAt returns what belongs at this offset, or null where the chart has
 // nothing to say and the format schema is answer enough.
-export function hintsAt(text: string, offset: number, chart: Schema | null): Hints | null {
+export function hintsAt(
+  text: string,
+  offset: number,
+  chart: Schema | null,
+  refs?: TemplateRef[] | null,
+): Hints | null {
   const loc = getLocation(text, offset);
   const doc = (parseJsonc(text, [], { allowTrailingComma: true }) ?? {}) as Schema;
-  const items = suggest(loc.path, !!loc.isAtPropertyKey, doc, chart);
+  const items = suggest(loc.path, !!loc.isAtPropertyKey, doc, chart, refs ?? null);
   if (items.length === 0) return null;
 
   // Inside a string the value replaces what is between the quotes; anywhere else
@@ -58,14 +64,20 @@ export function hintsAt(text: string, offset: number, chart: Schema | null): Hin
   return { items, from: offset, to: offset, quote: true };
 }
 
-function suggest(path: (string | number)[], atKey: boolean, doc: Schema, chart: Schema | null): Suggestion[] {
+function suggest(
+  path: (string | number)[],
+  atKey: boolean,
+  doc: Schema,
+  chart: Schema | null,
+  refs: TemplateRef[] | null,
+): Suggestion[] {
   const [head, index, key] = path;
   const tail = path[path.length - 2];
 
   // A key, not a value: the two places where the name itself comes from the
   // chart. Everywhere else the format schema already lists the keys.
   if (atKey) {
-    if (head === "defaults" && path.length === 2) {
+    if ((head === "defaults" || head === "initial") && path.length === 2) {
       return fields(chart, chart, { arrays: "index", absolute: true }, "scalar");
     }
     if (head === "views" && tail === "overrides") {
@@ -74,6 +86,12 @@ function suggest(path: (string | number)[], atKey: boolean, doc: Schema, chart: 
     return [];
   }
 
+  // The value of a default or a starting value: what the portal can put there.
+  // "initial" is rendered while the order form is still being filled in, so it
+  // only takes references the form can already answer.
+  if ((head === "defaults" || head === "initial") && path.length === 2) {
+    return references(refs, head === "initial");
+  }
   if (head === "views" && typeof index === "string") {
     return viewSuggestions(path, doc, chart);
   }
@@ -89,6 +107,16 @@ function suggest(path: (string | number)[], atKey: boolean, doc: Schema, chart: 
     return fields(chart, chart, { arrays: "index", absolute: true }, "array");
   }
   return [];
+}
+
+// references offers "{{.Team}}" and the rest of what the portal knows, straight
+// from the list the portal itself resolves against (GET /view-refs), so the
+// editor cannot offer a reference the order would then refuse.
+function references(refs: TemplateRef[] | null, formTimeOnly: boolean): Suggestion[] {
+  if (!refs) return [];
+  return refs
+    .filter((r) => !formTimeOnly || r.at_order_form)
+    .map((r) => ({ value: `{{${r.ref}}}`, detail: r.desc }));
 }
 
 // A view names fields of the schema node it projects: the root of the chart, or

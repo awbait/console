@@ -6,9 +6,9 @@
   "type": "object",
   "required": ["views"],
   "propertyNames": {
-    "enum": ["$comment", "version", "views", "tabs", "actions", "defaults", "graph", "approval"],
-    "errorMessage": "На верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\"",
-    "x-extraMessage": "Лишнее поле {key}: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"graph\", \"approval\" и \"version\""
+    "enum": ["$comment", "version", "views", "tabs", "actions", "defaults", "initial", "graph", "approval"],
+    "errorMessage": "На верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"initial\", \"graph\", \"approval\" и \"version\"",
+    "x-extraMessage": "Лишнее поле {key}: на верхнем уровне допустимы только \"views\", \"tabs\", \"actions\", \"defaults\", \"initial\", \"graph\", \"approval\" и \"version\""
   },
   "properties": {
     "$comment": { "$ref": "#/definitions/comment" },
@@ -54,6 +54,19 @@
       "additionalProperties": {
         "type": ["string", "number", "boolean", "null"],
         "errorMessage": "Значение по умолчанию должно быть скаляром (строка/число/булево)"
+      }
+    },
+    "initial": {
+      "description": "Значения, с которыми открывается форма нового заказа: поле видно и его можно поправить. Ключ - JSON pointer на поле values, значение - скаляр. В строке можно сослаться на то, что форма уже знает: \"{{.Team}}\", \"{{.User.Name}}\", \"{{.Vars.ИМЯ}}\"",
+      "type": "object",
+      "errorMessage": "Блок \"initial\" должен быть объектом: {\"/contacts/responsible\": \"{{.User.Name}}\"}",
+      "propertyNames": {
+        "pattern": "^/",
+        "errorMessage": "Ключ должен быть JSON pointer'ом, строкой вида \"/contacts/responsible\""
+      },
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"],
+        "errorMessage": "Стартовое значение должно быть скаляром (строка/число/булево)"
       }
     },
     "graph": {

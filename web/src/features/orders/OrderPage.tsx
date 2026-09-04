@@ -22,6 +22,7 @@ import { actionViews, productTabs } from "@/components/products/genericView";
 import { Button, Card, ErrorBox, Loading } from "@/components/ui";
 import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { collectErrors, pruneEmpty } from "@/form/SchemaForm";
+import { mergeUnder } from "@/form/valuesMerge";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { countGraphRules } from "../graph/mapping";
@@ -279,6 +280,31 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     pluginStateRef.current = draft.editor_state ?? null;
     hydrated.current = true;
   }, [editing, draft]);
+
+  // Seed a NEW order from the version's "initial" block: values the form opens
+  // with, filled in and editable (the portal renders them - one template engine,
+  // see internal/views/initial.go). Once per form: re-seeding after the person
+  // has started would overwrite what they decided. Best effort - a form without
+  // them is still a form that can be filled in by hand.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (editing || seeded.current || !project || !name || !effectiveVersion || !activeTeam) return;
+    seeded.current = true;
+    let alive = true;
+    api
+      .orderInitial(project, name, effectiveVersion, activeTeam)
+      .then((r) => {
+        const seed = r.values ?? {};
+        if (!alive || Object.keys(seed).length === 0) return;
+        // Merge under what is already there: the person may have typed while
+        // this was in flight, and their input wins.
+        setValues((cur) => mergeUnder(cur, seed as Values));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [editing, project, name, effectiveVersion, activeTeam]);
 
   // The extra values editor this chart version turns on, straight from its view
   // document: a version with no "graph" block simply has no third tab.
