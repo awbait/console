@@ -44,7 +44,7 @@
       "items": { "$ref": "#/definitions/action" }
     },
     "defaults": {
-      "description": "Значения, которые портал проставляет в заказ сам, поверх присланного из формы. Ключ - JSON pointer на поле values, значение - скаляр",
+      "description": "Значения, которые портал проставляет в заказ сам, поверх присланного из формы. Ключ - JSON pointer на поле values, значение - скаляр. В строке можно сослаться на то, что портал знает о заказе: \"{{.Team}}\", \"{{.User.Name}}\", \"{{.ServiceName}}\"",
       "type": "object",
       "errorMessage": "Блок \"defaults\" должен быть объектом: {\"/namespace/creator\": \"console\"}",
       "propertyNames": {

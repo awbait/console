@@ -10,7 +10,10 @@ func TestApplyDefaultsOverwritesAndCreates(t *testing.T) {
 
 	t.Run("overwrites existing value", func(t *testing.T) {
 		values := map[string]any{"namespace": map[string]any{"namespaceName": "demo", "creator": "lk"}}
-		out := ApplyDefaults(values, view)
+		out, err := ApplyDefaults(values, view, TemplateData{})
+		if err != nil {
+			t.Fatalf("ApplyDefaults: %v", err)
+		}
 		ns := out["namespace"].(map[string]any)
 		if ns["creator"] != "console" {
 			t.Fatalf("creator = %v, want console", ns["creator"])
@@ -24,7 +27,10 @@ func TestApplyDefaultsOverwritesAndCreates(t *testing.T) {
 	})
 
 	t.Run("creates missing intermediate objects", func(t *testing.T) {
-		out := ApplyDefaults(map[string]any{}, view)
+		out, err := ApplyDefaults(map[string]any{}, view, TemplateData{})
+		if err != nil {
+			t.Fatalf("ApplyDefaults: %v", err)
+		}
 		ns, ok := out["namespace"].(map[string]any)
 		if !ok || ns["creator"] != "console" {
 			t.Fatalf("creator not stamped into fresh map: %#v", out)
@@ -32,7 +38,10 @@ func TestApplyDefaultsOverwritesAndCreates(t *testing.T) {
 	})
 
 	t.Run("nil values map", func(t *testing.T) {
-		out := ApplyDefaults(nil, view)
+		out, err := ApplyDefaults(nil, view, TemplateData{})
+		if err != nil {
+			t.Fatalf("ApplyDefaults: %v", err)
+		}
 		if out == nil {
 			t.Fatal("want non-nil map")
 		}
@@ -43,7 +52,10 @@ func TestApplyDefaultsSkipsNonObjectPath(t *testing.T) {
 	// /a/b where a is a scalar: must not clobber a, must not panic.
 	view := []byte(`{"defaults":{"/a/b":"v"}}`)
 	values := map[string]any{"a": "scalar"}
-	out := ApplyDefaults(values, view)
+	out, err := ApplyDefaults(values, view, TemplateData{})
+	if err != nil {
+		t.Fatalf("ApplyDefaults: %v", err)
+	}
 	if out["a"] != "scalar" {
 		t.Fatalf("a = %v, want scalar (unchanged)", out["a"])
 	}

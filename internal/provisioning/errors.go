@@ -67,6 +67,11 @@ const (
 	MsgBadValues     = "Не удалось прочитать значения заказа: "
 	MsgEditorTooBig  = "На холсте слишком много элементов, портал не смог его сохранить."
 	MsgEditorBadJSON = "Не удалось сохранить холст. Откройте граф заново и повторите."
+	// A view document asked for a value the portal cannot give it. Nobody
+	// filling the form can fix this, so the message says whose it is and keeps
+	// the detail: the owner reads it in a screenshot and knows what to correct.
+	MsgViewDefaults      = "Портал не смог заполнить значения, которые проставляет сам: "
+	MsgViewDefaultsOwner = "Так описан сервис: сообщите об этом его владельцу."
 )
 
 // ValidationError is a 422 with a human-readable reason and, when it comes from

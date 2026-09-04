@@ -127,7 +127,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 	// The merged values are two people's work combined, which neither of them
 	// ever submitted as a whole: check them against the chart's schema before
 	// committing. A combination the chart refuses is a case for a person.
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, merged, true)
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, merged, true, stampOf(r))
 	if err != nil {
 		s.logger().Warn("merge retry refused: merged values do not validate",
 			"order_id", r.ID, "mr_iid", rec.MRIID, "err", err)

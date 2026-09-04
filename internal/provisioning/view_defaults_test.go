@@ -2,6 +2,7 @@ package provisioning_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -63,5 +64,86 @@ func TestOrderWithoutViewKeepsValues(t *testing.T) {
 	}
 	if strings.Contains(r.ValuesYAML, "creator") {
 		t.Fatalf("unexpected stamped value without a view:\n%s", r.ValuesYAML)
+	}
+}
+
+// TestOrderRendersTemplatedDefaults: a default may reference what the portal
+// knows about the order instead of carrying a literal.
+func TestOrderRendersTemplatedDefaults(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{` +
+		`"/auth/creator":"{{.User.Name}}","/auth/team":"{{.Team}}",` +
+		`"/auth/host":"{{.ServiceName}}.{{.Cluster}}.example.com"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	r, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Cluster: "in-cluster", Namespace: "ns-a",
+		Values: draft("app"), Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	for _, want := range []string{"creator: User One", "team: core", "host: alpha.in-cluster.example.com"} {
+		if !strings.Contains(r.ValuesYAML, want) {
+			t.Fatalf("want %q in values:\n%s", want, r.ValuesYAML)
+		}
+	}
+}
+
+// TestTemplatedDefaultKeepsOrderAuthor: the author a template stamps is the one
+// who made the order, not whoever is saving it now. Support edits other teams'
+// orders and background retries rewrite the same values, so reading the session
+// here would quietly hand the order to somebody else, in Git.
+func TestTemplatedDefaultKeepsOrderAuthor(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/auth/creator":"{{.User.Name}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	r, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: draft("app"), Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	edited, err := s.prov.Update(ctx, support(), r.ID, provisioning.UpdateInput{Values: draft("app2")})
+	if err != nil {
+		t.Fatalf("update by support: %v", err)
+	}
+	if !strings.Contains(edited.ValuesYAML, "creator: User One") {
+		t.Fatalf("author must survive somebody else's edit, values:\n%s", edited.ValuesYAML)
+	}
+}
+
+// TestOrderRefusesUnknownTemplateRef: a view document asking for a value the
+// portal does not have refuses the order instead of writing an empty string,
+// and says which field is at fault and whose problem it is.
+func TestOrderRefusesUnknownTemplateRef(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/auth/creator":"{{.Teem}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	_, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: draft("app"), Draft: true,
+	})
+	if err == nil {
+		t.Fatal("order with a broken default must be refused")
+	}
+	var verr *provisioning.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("want a validation error, got %T: %v", err, err)
+	}
+	if !strings.Contains(verr.Message, "/auth/creator") {
+		t.Fatalf("message must name the field: %s", verr.Message)
 	}
 }
