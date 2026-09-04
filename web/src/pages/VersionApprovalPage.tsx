@@ -207,7 +207,7 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
               </EditorTab>
             </TabList>
             <TabPanel id="doc" className="flex min-h-0 flex-1 flex-col pt-3 outline-none">
-              <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
+              <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
                 <Editor
                   height="100%"
                   defaultLanguage="json"
@@ -225,7 +225,7 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
             </TabPanel>
             <TabPanel id="diff" className="flex min-h-0 flex-1 flex-col pt-3 outline-none">
               {approved ? (
-                <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
+                <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
                   <DiffEditor
                     height="100%"
                     language="json"

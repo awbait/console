@@ -1,0 +1,33 @@
+/* Tooltips of the editor's own buttons, and the frame we draw around an editor.
+   Imported by lib/monaco.ts, which main.tsx pulls in once before any editor. */
+
+/* Monaco hangs the tooltip of a widget button (the close, next, previous and
+   replace buttons of the find widget, Ctrl+F) in the editor's own container,
+   next to .monaco-editor, and lets the container size it. In a panel narrower
+   than the page that costs the tooltip its place: it is measured on one line,
+   positioned above the button by that height, and only then moved to its left
+   offset - where the little room left to the panel edge wraps the text onto a
+   second line. The tooltip grows downwards onto the button it describes, so the
+   pointer lands on the tooltip, the tooltip hides, the button is back under the
+   pointer, and the pair flickers instead of taking the click.
+   Sizing the tooltip by its own content keeps the measurement honest. */
+.workbench-hover-container {
+  width: max-content;
+}
+
+/* The frame around an editor draws the border and the radius but must not clip:
+   those tooltips live inside it and legitimately hang over its edge. The editor
+   rounds and clips itself instead, which is all the frame's clipping was for.
+   The selectors walk the wrapper of @monaco-editor/react (section > div) down to
+   the editor's outermost node, so in a diff editor the two halves nested deeper
+   keep their square inner edges. */
+.editor-frame > section,
+.editor-frame > section > div {
+  border-radius: inherit;
+}
+
+.editor-frame > section > div > .monaco-editor,
+.editor-frame > section > div > .monaco-diff-editor {
+  border-radius: inherit;
+  overflow: hidden;
+}

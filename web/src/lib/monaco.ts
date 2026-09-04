@@ -7,5 +7,6 @@
 // This is a side-effect module: import it once, before any editor mounts (main.tsx).
 // BASE_URL is the app's base path (default "/"), so workers resolve correctly too.
 import { loader } from "@monaco-editor/react";
+import "./monaco.css";
 
 loader.config({ paths: { vs: `${import.meta.env.BASE_URL}monaco/vs` } });
