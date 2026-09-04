@@ -17,7 +17,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+	"unicode"
 )
 
 // Issue is a single validation problem; Path points into the view document
@@ -95,7 +97,10 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	}
 
 	// defaults: values the portal stamps into an order at create/update time.
-	if defaults, ok := doc["defaults"].(map[string]any); ok && schema != nil {
+	// Checked even without the chart schema: the templates inside are the
+	// document's own business, and a broken one has to be caught here rather
+	// than by the first person who orders the service.
+	if defaults, ok := doc["defaults"].(map[string]any); ok {
 		issues = append(issues, checkDefaults(defaults, schema)...)
 	}
 
@@ -107,20 +112,50 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	return issues
 }
 
-// checkDefaults cross-checks the pointers the "defaults" block writes to: each
-// key must find a field in values.schema.json.
+// checkDefaults checks the "defaults" block on both sides: the pointer it
+// writes to must find a field in values.schema.json (skipped when the chart
+// schema is not at hand), and the value, when it references what the portal
+// knows about an order, must reference something that exists.
 func checkDefaults(m map[string]any, schema map[string]any) []Issue {
 	var issues []Issue
-	for ptr := range m {
+	for _, ptr := range sortedKeys(m) {
 		if !strings.HasPrefix(ptr, "/") {
 			continue // the schema already said the key is not a pointer
 		}
-		if !pointerResolves(ptr, schema, schema) {
+		if schema != nil && !pointerResolves(ptr, schema, schema) {
 			issues = append(issues, Issue{"/defaults" + ptr,
 				fmt.Sprintf("Путь %q не находит поле в values.schema.json", ptr)})
 		}
+		s, ok := m[ptr].(string)
+		if !ok {
+			continue // the schema already said the value is a scalar
+		}
+		if err := CheckTemplate(s); err != nil {
+			issues = append(issues, Issue{"/defaults" + ptr, upperFirst(err.Error())})
+		}
 	}
 	return issues
+}
+
+// sortedKeys keeps the order of complaints stable: two runs over the same
+// document have to name the same problem first.
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// upperFirst capitalizes a message that is a sentence on its own here, but a
+// clause when the same error is shown next to the order it refused.
+func upperFirst(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
+	}
+	return string(unicode.ToUpper(r[0])) + string(r[1:])
 }
 
 // checkTabs cross-checks product tabs: that ids are free and unique, that the

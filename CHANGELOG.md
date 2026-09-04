@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Values the portal fills in for the customer now understand references to the
+  order itself: `{{.Team}}` puts in the team, `{{.User.Name}}` the author,
+  `{{.ServiceName}}` the service name. The `defaults` block used to take fixed
+  values only. The whole list is in the documentation, "Order form constructor".
+
 ## [0.10.0] - 2026-08-28
 
 A release about seeing a change before it is sent: the form lists the settings

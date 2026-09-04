@@ -316,20 +316,59 @@ func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName,
 	return ns, nil
 }
 
+// stampContext is what the view document's templates are allowed to know about
+// the order being written: "{{.Team}}", "{{.User.Name}}" and the rest of
+// views.TemplateRefs.
+//
+// It describes the order, not the session. The same values are re-stamped by
+// the merge retry loop, by the import reconciler and by support editing
+// somebody else's order, so the author has to come from the order row
+// (created_by / created_by_name) - otherwise a field naming the author changes
+// hands, in Git, on a save nobody thought of as an edit. Only a brand new order
+// takes the author from the session, because there it IS the author.
+type stampContext struct {
+	Team        string
+	ServiceName string
+	Cluster     string
+	UserName    string
+	UserSubject string
+}
+
+// stampOf reads the substitution context off an existing order.
+func stampOf(r *models.Request) stampContext {
+	return stampContext{
+		Team: r.Team, ServiceName: r.ServiceName, Cluster: r.Cluster,
+		UserName: r.CreatedByName, UserSubject: r.CreatedBy,
+	}
+}
+
 // applyViewStamps stamps order-time values from the order version's approved
-// view into values: the "defaults" block (JSON pointer -> fixed value, e.g.
-// namespace.creator=console) and the "namespace" binding (mirrors the order's
-// destination namespace into the values field a self-provisioning chart names it
-// by, e.g. managed-namespace's /namespace/namespaceName). Both overwrite any
-// present value. Chart-agnostic: the rules live in the chart's view document, not
-// here. A missing view/publication leaves values as-is.
-func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, version, namespace string, values map[string]any) map[string]any {
+// view into values: the "defaults" block (JSON pointer -> value, e.g.
+// namespace.creator=console, possibly referencing the order through a template)
+// and the "namespace" binding (mirrors the order's destination namespace into
+// the values field a self-provisioning chart names it by, e.g.
+// managed-namespace's /namespace/namespaceName). Both overwrite any present
+// value. Chart-agnostic: the rules live in the chart's view document, not here.
+// A missing view/publication leaves values as-is. The error is a view document
+// asking for something the portal cannot give it.
+func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, version, namespace string, values map[string]any, sc stampContext) (map[string]any, error) {
 	view := s.orderView(ctx, chartProject, chartName, version)
 	if len(view) == 0 {
-		return values
+		return values, nil
 	}
-	values = views.ApplyDefaults(values, view)
-	return views.BindNamespace(values, view, namespace)
+	values, err := views.ApplyDefaults(values, view, views.TemplateData{
+		Team:         sc.Team,
+		ServiceName:  sc.ServiceName,
+		Namespace:    namespace,
+		Cluster:      sc.Cluster,
+		Chart:        chartName,
+		ChartVersion: version,
+		User:         views.TemplateUser{Name: sc.UserName, Subject: sc.UserSubject},
+	})
+	if err != nil {
+		return values, err
+	}
+	return views.BindNamespace(values, view, namespace), nil
 }
 
 // checkServiceName mirrors the uniq_active_service index (team, chart_name,
@@ -464,9 +503,23 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err != nil {
 		return nil, err
 	}
+	cluster := in.Cluster
+	if cluster == "" {
+		cluster = s.defaultCluster
+	}
+	// Cluster lands in commit paths ({cluster}/{namespace}/{service}) and the rendered
+	// application.yaml destination; validate it like service_name so it cannot
+	// carry "../" or newlines into Git paths/manifests. Resolved before the values
+	// are marshalled, because a view template may stamp it into them.
+	if !nameRe.MatchString(cluster) || len(cluster) > 63 {
+		return nil, &ValidationError{Message: MsgCluster}
+	}
 	// A draft may hold incomplete values; defer schema validation to Submit.
 	// namespace is passed so a view "namespace" mirror can stamp it into values.
-	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft)
+	// The order does not exist yet, so the author of a template's "{{.User.Name}}"
+	// is the person creating it - the one time the session IS the order's author.
+	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft,
+		stampContext{Team: in.Team, ServiceName: in.ServiceName, Cluster: cluster, UserName: u.Name, UserSubject: u.Subject})
 	if err != nil {
 		return nil, err
 	}
@@ -474,16 +527,6 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	displayName := in.DisplayName
 	if displayName == "" {
 		displayName = in.ServiceName
-	}
-	cluster := in.Cluster
-	if cluster == "" {
-		cluster = s.defaultCluster
-	}
-	// Cluster lands in commit paths ({cluster}/{namespace}/{service}) and the rendered
-	// application.yaml destination; validate it like service_name so it cannot
-	// carry "../" or newlines into Git paths/manifests.
-	if !nameRe.MatchString(cluster) || len(cluster) > 63 {
-		return nil, &ValidationError{Message: MsgCluster}
 	}
 	r := &models.Request{
 		ID:            newID(),
@@ -572,7 +615,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if uerr := yaml.Unmarshal([]byte(r.ValuesYAML), &values); uerr != nil {
 		return nil, &ValidationError{Message: MsgBadValues + uerr.Error()}
 	}
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, values, true)
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, values, true, stampOf(r))
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +688,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
 		return nil, err
 	}
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true)
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
 	if err != nil {
 		return nil, err
 	}
@@ -751,7 +794,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	// order that does keeps what it was created with - see NewInstancePath.
 	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName)
 	r.InstancePath = s.gitops.NewInstancePath(r)
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false)
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false, stampOf(r))
 	if err != nil {
 		return nil, err
 	}
@@ -924,7 +967,7 @@ func (s *Service) guardOpenMR(ctx context.Context, id string) error {
 // validateAndMarshal marshals values to YAML. When validate is true it first
 // checks them against the chart's JSON schema (drafts pass false, since their
 // values may still be incomplete).
-func (s *Service) validateAndMarshal(ctx context.Context, project, name, version, namespace string, values map[string]any, validate bool) (string, error) {
+func (s *Service) validateAndMarshal(ctx context.Context, project, name, version, namespace string, values map[string]any, validate bool, sc stampContext) (string, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
@@ -933,7 +976,14 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	// destination namespace into the field a self-provisioning chart names it by).
 	// Applied before validation so the stamped values are schema-checked too.
 	// Chart-agnostic: the rules live in the chart's view document, not here.
-	values = s.applyViewStamps(ctx, project, name, version, namespace, values)
+	values, serr := s.applyViewStamps(ctx, project, name, version, namespace, values, sc)
+	if serr != nil {
+		// The person ordering cannot fix this, and the owner who can is not the
+		// one seeing the refusal: leave the platform a line naming the version.
+		s.logger().Warn("view defaults render failed",
+			"chart", name, "chart_project", project, "chart_version", version, "err", serr)
+		return "", &ValidationError{Message: MsgViewDefaults + serr.Error() + " " + MsgViewDefaultsOwner}
+	}
 	if !validate {
 		out, merr := yaml.Marshal(values)
 		if merr != nil {
