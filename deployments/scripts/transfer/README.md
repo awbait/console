@@ -99,7 +99,7 @@ powershell -File deployments\scripts\transfer\sync-charts.ps1 -Charts ingress-ga
 | `keep` | файлы, которые остаются гитлабовскими; переопределяется на уровне чарта |
 | `harborProject` | проект Harbor по умолчанию (`oci://<host>/<project>/<chart>`) |
 | `charts.<имя>.project` | путь проекта чарта в GitLab, обязателен |
-| `charts.<имя>.keep` | свой список сохраняемых файлов вместо общего |
+| `charts.<имя>.keep` | свой список сохраняемых файлов вместо общего; пустой (`[]`) - перетереть всё, включая values.yaml |
 | `charts.<имя>.harborProject` | свой проект Harbor вместо общего |
 
 Формат JSON, а не YAML, намеренно: `ConvertFrom-Json` встроен в PowerShell, и
@@ -107,7 +107,13 @@ powershell -File deployments\scripts\transfer\sync-charts.ps1 -Charts ingress-ga
 
 ### Что делает перенос
 
-Для каждого чарта из карты:
+Источник скрипт скачивает zip-архивом по https (`github.com/<repo>/archive/<sha>.zip`),
+а не клонирует: машинам стенда git-доступ к GitHub не нужен, читаемого дерева
+достаточно. Архив качается по SHA коммита, в который резолвится `ref`, так что в
+GitLab уезжает ровно тот коммит, который назван в MR. Git нужен только для
+GitLab-стороны.
+
+Дальше для каждого чарта из карты:
 
 1. Клонируется проект чарта из GitLab (ветка `targetBranch`). Проект должен
    существовать: скрипт его не создаёт, а говорит, что клон не удался, и идёт

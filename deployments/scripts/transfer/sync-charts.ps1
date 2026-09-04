@@ -14,9 +14,13 @@
   files are named in the `keep` list and survive the sync untouched; everything
   else in the project is replaced by the GitHub version.
 
-    clone GitHub -> per chart: clone GitLab -> replace all but `keep` ->
-    nothing changed? skip -> branch + commit + push with an MR ->
+    download the GitHub zip -> per chart: clone GitLab -> replace all but
+    `keep` -> nothing changed? skip -> branch + commit + push with an MR ->
     optionally helm package + push to Harbor -> clean up.
+
+  The source arrives as a zip archive over plain https, not as a git clone:
+  the machines that run this have no git access to GitHub, and a read-only
+  tree is all the sync needs. Git is still required for the GitLab side.
 
   Where each chart goes is not guessed: charts-map.json states it. A chart with
   an empty `project` is a configuration error and the script says which one.
@@ -128,6 +132,24 @@ function Get-ChartMeta {
   }
 }
 
+# Commit the ref points at, asked over plain https: gh first (it carries auth
+# and survives rate limits), the public API as the fallback - the same order
+# sync-images.ps1 uses for releases. The source zip is then downloaded by this
+# sha, so what lands in GitLab is exactly the commit resolved here.
+function Get-CommitSha {
+  param([string]$Repo, [string]$Ref)
+
+  if (Test-Command 'gh') {
+    $sha = Invoke-Quiet gh @('api', "repos/$Repo/commits/$Ref", '--jq', '.sha')
+    if ($LASTEXITCODE -eq 0 -and $sha) { return "$sha".Trim() }
+  }
+
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $commit = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/commits/$Ref" -Headers @{ 'User-Agent' = 'console-sync-charts' }
+  if (-not $commit.sha) { throw "could not resolve $Repo@$Ref" }
+  return $commit.sha
+}
+
 # --- config -----------------------------------------------------------------
 
 if (-not (Test-Path $ConfigPath)) {
@@ -181,7 +203,6 @@ if ($PushToHarbor) {
 
 $workDir = Join-Path ([IO.Path]::GetTempPath()) "console-charts-transfer-$PID"
 New-Item -ItemType Directory -Path $workDir -Force | Out-Null
-$sourceDir = Join-Path $workDir 'source'
 
 $synced   = @()
 $upToDate = @()
@@ -189,14 +210,25 @@ $failed   = @()
 $loggedIn = $false
 
 try {
-  Write-Step "Cloning $sourceRepo@$sourceRef"
-  Invoke-Native -Exe 'git' -Arguments @(
-    'clone', '--quiet', '--depth', '1', '--branch', $sourceRef,
-    "https://github.com/$sourceRepo.git", $sourceDir
-  ) -What 'git clone (source)' | Out-Null
-  $sourceSha = (Invoke-Native -Exe 'git' -Arguments @('-C', $sourceDir, 'rev-parse', '--short', 'HEAD') -What 'git rev-parse')
-  $sourceSha = "$sourceSha".Trim()
+  Write-Step "Resolving $sourceRepo@$sourceRef"
+  $fullSha   = Get-CommitSha -Repo $sourceRepo -Ref $sourceRef
+  $sourceSha = $fullSha.Substring(0, 7)
   Write-Ok "$sourceRepo@$sourceRef is at $sourceSha"
+
+  Write-Step 'Downloading the source archive'
+  $zip = Join-Path $workDir 'source.zip'
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  # Progress rendering makes Invoke-WebRequest an order of magnitude slower.
+  $prevProgress = $ProgressPreference
+  $ProgressPreference = 'SilentlyContinue'
+  Invoke-WebRequest -Uri "https://github.com/$sourceRepo/archive/$fullSha.zip" -OutFile $zip -UseBasicParsing
+  $ProgressPreference = $prevProgress
+  # The archive holds a single top directory named <repo>-<sha>; that is the tree.
+  $unpacked = Join-Path $workDir 'source'
+  Expand-Archive -Path $zip -DestinationPath $unpacked
+  $sourceDir = (Get-ChildItem -Path $unpacked -Directory | Select-Object -First 1).FullName
+  if (-not $sourceDir) { throw "the source archive of $sourceRepo@$sourceRef unpacked into nothing" }
+  Write-Ok 'source tree unpacked'
 
   if ($PushToHarbor -and -not $DryRun) {
     Write-Step "helm registry login $harborHost"
@@ -213,8 +245,13 @@ try {
     $project = $entry.project.Trim('/')
     # Not named $keep: PowerShell variable names are case-insensitive, so that
     # would be the -Keep switch and an array does not go into a switch.
+    # A present `keep` always wins over the default, an empty one included:
+    # "keep": [] is how a chart says its GitLab values.yaml is disposable and
+    # everything gets replaced. Only an absent key falls back to the default.
     $keepFiles = $defaultKeep
-    if ($entry.PSObject.Properties.Name -contains 'keep' -and $entry.keep) { $keepFiles = @($entry.keep) }
+    if ($entry.PSObject.Properties.Name -contains 'keep') {
+      $keepFiles = @(@($entry.keep) | Where-Object { $_ })
+    }
 
     Write-Host ''
     Write-Step "$chart -> $project"
@@ -226,7 +263,8 @@ try {
       $failed += "${chart}: absent in the source repo"
       continue
     }
-    Write-Ok "chart version $($meta.Version), keeping: $($keepFiles -join ', ')"
+    $keepLabel = if ($keepFiles) { $keepFiles -join ', ' } else { 'nothing' }
+    Write-Ok "chart version $($meta.Version), keeping: $keepLabel"
 
     # --- clone the GitLab side ---
     $clone = Join-Path $workDir "gitlab\$chart"
