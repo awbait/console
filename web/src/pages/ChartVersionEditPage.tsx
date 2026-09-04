@@ -565,7 +565,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
               )}
             </div>
             <TabPanel id="view" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
-              <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
+              <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
                 <Editor
                   height="100%"
                   defaultLanguage="json"
@@ -580,10 +580,11 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                     wordWrap: "on",
                     readOnly: !editable,
                     // A description and a suggestion list are both wider than
-                    // this panel, and the panel clips what sticks out of it (it
-                    // has to, to keep the editor inside its rounded border).
-                    // This lets them hang over the page instead of being cut in
-                    // half, which is the whole point of showing them.
+                    // this panel, and the editor clips what sticks out of it (it
+                    // has to, to keep itself inside the rounded frame - see
+                    // lib/monaco.css). This lets them hang over the page instead
+                    // of being cut in half, which is the whole point of showing
+                    // them.
                     fixedOverflowWidgets: true,
                   }}
                 />
@@ -633,7 +634,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
             <TabPanel id="schema" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
               {schema ? (
                 <>
-                  <div className="min-h-[400px] flex-1 overflow-hidden rounded-md border border-slate-200 lg:min-h-0">
+                  <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
                     <Editor
                       height="100%"
                       defaultLanguage="json"

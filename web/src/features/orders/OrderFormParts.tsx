@@ -274,7 +274,7 @@ export function OrderValuesCard({
           <p className="text-sm text-gray-500">No schema for this version - switch to Raw YAML.</p>
         )
       ) : (
-        <div className="overflow-hidden rounded-md border border-gray-200">
+        <div className="editor-frame rounded-md border border-gray-200">
           <Editor
             height="320px"
             defaultLanguage="yaml"

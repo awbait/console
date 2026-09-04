@@ -282,7 +282,7 @@ function ValuesModalButton({ request: r }: { request: RequestDetail["request"] }
                     <IconX size={18} stroke={2} />
                   </button>
                 </header>
-                <div className="overflow-hidden rounded-b-lg">
+                <div className="editor-frame rounded-b-lg">
                   <Editor
                     height="480px"
                     defaultLanguage="yaml"

@@ -24,6 +24,9 @@ All notable changes to this project are documented in this file.
 - A value the portal fills in lands in fields that live inside a list, such as
   the gateway's IP address. Such a value used to be dropped silently: the
   document validated, and nothing appeared in the order.
+- The buttons of the find panel in the editor (Ctrl+F) take a click again. A
+  button's tooltip used to appear over the button itself and was cut off at the
+  edge of the editor panel.
 
 ## [0.10.0] - 2026-08-28
 

@@ -65,7 +65,7 @@ export function VersionReview({
         <Chip className="bg-slate-100 text-slate-600">v{version.chart_version}</Chip>
       </div>
       {version.approved_view_json ? (
-        <div className="overflow-hidden rounded-md border border-slate-200">
+        <div className="editor-frame rounded-md border border-slate-200">
           <DiffEditor
             height="400px"
             language="json"
