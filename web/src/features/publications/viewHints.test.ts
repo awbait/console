@@ -152,3 +152,43 @@ describe("where the text is replaced", () => {
     expect(at(`{"views":{"order":{"|"}}}`)).toBeNull();
   });
 });
+
+// What the portal can put into a default or a starting value. The list is the
+// portal's own (GET /view-refs), so the editor cannot offer a reference the
+// order would then refuse.
+describe("references in defaults and initial", () => {
+  const refs = [
+    { ref: ".Team", desc: "Команда заказа", at_order_form: true },
+    { ref: ".Namespace", desc: "Неймспейс заказа", at_order_form: false },
+    { ref: ".Vars.OPS_DOMAIN", desc: "Домен стенда", at_order_form: true },
+  ];
+  const atRef = (withCursor: string) => {
+    const offset = withCursor.indexOf("|");
+    return hintsAt(withCursor.replace("|", ""), offset, chart, refs);
+  };
+
+  test("a default takes every reference", () => {
+    const hints = atRef('{"defaults":{"/naming/env":"|"}}');
+    expect(hints?.items.map((i) => i.value)).toEqual([
+      "{{.Team}}",
+      "{{.Namespace}}",
+      "{{.Vars.OPS_DOMAIN}}",
+    ]);
+    expect(hints?.items[0].detail).toBe("Команда заказа");
+  });
+
+  test("a starting value only takes what the order form already knows", () => {
+    const hints = atRef('{"initial":{"/naming/env":"|"}}');
+    expect(hints?.items.map((i) => i.value)).toEqual(["{{.Team}}", "{{.Vars.OPS_DOMAIN}}"]);
+  });
+
+  test("the key of a starting value is still a chart field", () => {
+    const hints = atRef('{"initial":{"|"}}');
+    expect(hints?.items.map((i) => i.value)).toContain("/naming/env");
+  });
+
+  test("without the list the editor stays as it was", () => {
+    const offset = '{"defaults":{"/naming/env":"'.length;
+    expect(hintsAt('{"defaults":{"/naming/env":""}}', offset, chart)).toBeNull();
+  });
+});

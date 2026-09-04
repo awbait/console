@@ -198,7 +198,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/charts/check", s.handleCheckChart) // check a chart at an arbitrary path
 			r.Get("/charts/{project}/{name}", s.handleGetChart)
 			r.Get("/charts/{project}/{name}/changelog/aggregated", s.handleAggregatedChangelog)
-			r.Get("/charts/{project}/{name}/view", s.handleGetChartView) // active approved view (static wins over {version})
+			r.Get("/charts/{project}/{name}/view", s.handleGetChartView)    // active approved view (static wins over {version})
+			r.Get("/charts/{project}/{name}/initial", s.handleOrderInitial) // values a new order form opens with
+			r.Get("/view-refs", s.handleViewRefs)                           // what a document may reference in defaults/initial
 			r.Get("/charts/{project}/{name}/{version}", s.handleGetVersion)
 			r.Get("/charts/{project}/{name}/{version}/values", s.handleGetValues)
 			r.Get("/charts/{project}/{name}/{version}/readme", s.handleGetReadme)

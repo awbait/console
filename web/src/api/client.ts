@@ -27,6 +27,7 @@ import type {
   RequestDetail,
   SystemStatus,
   UpdateOrderBody,
+  TemplateRef,
   User,
   Variable,
   ViewDocument,
@@ -204,6 +205,20 @@ export const api = {
       if (e instanceof HttpError && e.status === 404) return null;
       throw e;
     }),
+
+  // What a version document may reference in "defaults" and "initial", for the
+  // constructor's completions: one list, the same the portal resolves against.
+  viewRefs: () => req<TemplateRef[]>("GET", "/view-refs"),
+  // The values a new order form opens with (the version's "initial" block,
+  // rendered for this person and team). Best effort: a form that does not get
+  // them is still a form somebody can fill in.
+  orderInitial: (project: string, name: string, version: string, team: string, signal?: AbortSignal) =>
+    req<{ values: Record<string, unknown> }>(
+      "GET",
+      `/charts/${enc(project)}/${enc(name)}/initial?version=${enc(version)}&team=${enc(team)}`,
+      undefined,
+      signal,
+    ),
 
   // platform variables: read by anybody signed in (the version constructor
   // offers them), written by admins.

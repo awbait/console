@@ -14,6 +14,10 @@ All notable changes to this project are documented in this file.
   `{{.Vars.OPS_DOMAIN}}`, and the portal fills it in when it saves an order. A
   value shared by every service is now changed in one place instead of in each
   service's document. These are not secrets: the value goes into values.yaml in Git.
+- An order form can open with fields already filled in. A version document lists
+  them in its new `initial` block, and unlike `defaults` the value stays visible
+  and editable, so the customer keeps the last word. The version constructor
+  suggests what can go into both blocks as you type.
 
 ## [0.10.0] - 2026-08-28
 

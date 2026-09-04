@@ -125,3 +125,46 @@ func TestVersionViewRefusesUnknownVariable(t *testing.T) {
 		t.Fatalf("the same document must pass once the variable exists: %v", err)
 	}
 }
+
+// The values a new order form opens with: rendered by the portal from the
+// version's approved document, for the person opening the form and the team
+// they are ordering for.
+func TestOrderInitialValues(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	if err := svc.SetVariable(ctx, admin(), &models.Variable{Name: "OPS_DOMAIN", Value: "example.com"}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	p := newPub(t, svc, member("core"), "postgres")
+	view := json.RawMessage(`{"views":{"order":{}},"initial":{` +
+		`"/contacts/responsible":"{{.User.Name}}","/contacts/team":"{{.Team}}",` +
+		`"/ingress/domain":"{{.Vars.OPS_DOMAIN}}"}}`)
+	publishVersion(t, svc, member("core"), p.ID, "1.0.0", view)
+
+	values, err := svc.OrderInitialValues(ctx, member("core"), "platform", "postgres", "1.0.0", "core")
+	if err != nil {
+		t.Fatalf("initial: %v", err)
+	}
+	contacts, _ := values["contacts"].(map[string]any)
+	if contacts["responsible"] != "Member" || contacts["team"] != "core" {
+		t.Fatalf("unexpected contacts: %#v", values)
+	}
+	ingress, _ := values["ingress"].(map[string]any)
+	if ingress["domain"] != "example.com" {
+		t.Fatalf("variable not rendered: %#v", values)
+	}
+}
+
+// A version without the block seeds nothing, and says so with an empty object
+// rather than an error the form would have to swallow.
+func TestOrderInitialValuesWithoutBlock(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setup(t)
+	p := newPub(t, svc, member("core"), "postgres")
+	publishVersion(t, svc, member("core"), p.ID, "1.0.0", json.RawMessage(`{"views":{"order":{}}}`))
+
+	values, err := svc.OrderInitialValues(ctx, member("core"), "platform", "postgres", "1.0.0", "core")
+	if err != nil || len(values) != 0 {
+		t.Fatalf("want an empty seed, got %#v (%v)", values, err)
+	}
+}

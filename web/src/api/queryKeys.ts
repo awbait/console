@@ -22,6 +22,7 @@ export const qk = {
     version,
   ],
   viewSchema: (): QueryKey => ["view-schema"],
+  viewRefs: (): QueryKey => ["view-refs"],
   changelog: (project: string, name: string): QueryKey => ["changelog", project, name],
   teams: (): QueryKey => ["teams"],
   // Platform variables: the admin page and the version constructor both read

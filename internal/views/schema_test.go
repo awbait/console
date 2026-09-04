@@ -21,7 +21,7 @@ func TestDocumentSchemaIsUsableJSON(t *testing.T) {
 		t.Fatalf("draft is %v, want draft-07 (what the editor's JSON service reads)", doc["$schema"])
 	}
 	props, _ := doc["properties"].(map[string]any)
-	for _, block := range []string{"views", "tabs", "actions", "defaults", "graph", "approval"} {
+	for _, block := range []string{"views", "tabs", "actions", "defaults", "initial", "graph", "approval"} {
 		node, _ := props[block].(map[string]any)
 		if s, _ := node["description"].(string); s == "" {
 			t.Fatalf("block %q has no description, so the editor has nothing to show on hover", block)

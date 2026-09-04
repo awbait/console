@@ -1,6 +1,7 @@
 import { useMonaco } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
+import type { TemplateRef } from "@/api/types";
 import { hintsAt } from "./viewHints";
 
 // The editor side of the version constructor: what Monaco has to be told before
@@ -29,12 +30,20 @@ const VIEW_MODEL_SUFFIX = "view-document.json";
 // useViewDocumentHints teaches the editor this document and this chart. Both
 // arrive over the network, so both may be null for a moment; until they do, the
 // editor behaves as it always has.
-export function useViewDocumentHints(format: object | null, chart: object | null): void {
+export function useViewDocumentHints(
+  format: object | null,
+  chart: object | null,
+  refs: TemplateRef[] | null = null,
+): void {
   const monaco = useMonaco();
   // The chart changes with the version switcher, the providers do not: reading
   // it through a ref keeps a switch from tearing down and re-registering them.
   const chartRef = useRef(chart);
   chartRef.current = chart;
+  // What a document may reference in defaults/initial, read the same way: it
+  // arrives from the portal and grows when an admin adds a variable.
+  const refsRef = useRef(refs);
+  refsRef.current = refs;
 
   useEffect(() => {
     if (!monaco || !format) return;
@@ -63,7 +72,12 @@ export function useViewDocumentHints(format: object | null, chart: object | null
       triggerCharacters: ['"', "/"],
       provideCompletionItems(model, position) {
         if (!isView(model)) return { suggestions: [] };
-        const hints = hintsAt(model.getValue(), model.getOffsetAt(position), chartRef.current);
+        const hints = hintsAt(
+          model.getValue(),
+          model.getOffsetAt(position),
+          chartRef.current,
+          refsRef.current,
+        );
         if (!hints) return { suggestions: [] };
         const range = monaco.Range.fromPositions(
           model.getPositionAt(hints.from),

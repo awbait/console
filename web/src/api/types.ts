@@ -350,6 +350,16 @@ export interface AboutInfo {
 export type PublicationStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 
 // Catalog category (grouping in the catalog and left menu).
+// What a version document may reference inside its "defaults" and "initial"
+// blocks: the fixed catalogue plus one entry per platform variable. at_order_form
+// marks a reference the order form can already answer, which is what "initial"
+// is allowed to use.
+export interface TemplateRef {
+  ref: string;
+  desc: string;
+  at_order_form: boolean;
+}
+
 // A platform variable: a named value an admin keeps in the portal for version
 // documents to reference as "{{.Vars.OPS}}". Not a secret store - the value is
 // stamped into an order and lands in Git.

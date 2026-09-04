@@ -65,6 +65,11 @@ type TemplateUser struct {
 type TemplateRef struct {
 	Ref  string `json:"ref"`
 	Desc string `json:"desc"`
+	// AtOrderForm marks a reference the order form already knows the answer to
+	// while it is being filled in. Only those work in the "initial" block: the
+	// namespace, the cluster and the service name are still being typed when the
+	// form opens, so a value seeded from them would be seeded from nothing.
+	AtOrderForm bool `json:"at_order_form"`
 }
 
 // TemplateRefs is the whole catalogue, in the order it is offered. It is the one
@@ -72,14 +77,14 @@ type TemplateRef struct {
 // read it, so a reference cannot exist in one of them and not the others.
 func TemplateRefs() []TemplateRef {
 	return []TemplateRef{
-		{".Team", "Команда, от имени которой сделан заказ"},
-		{".ServiceName", "Имя сервиса в заказе"},
-		{".Namespace", "Неймспейс, в который уезжает заказ"},
-		{".Cluster", "Кластер, в который уезжает заказ"},
-		{".Chart", "Имя чарта"},
-		{".ChartVersion", "Версия чарта"},
-		{".User.Name", "ФИО автора заказа"},
-		{".User.Subject", "Идентификатор автора заказа в OIDC"},
+		{".Team", "Команда, от имени которой сделан заказ", true},
+		{".ServiceName", "Имя сервиса в заказе", false},
+		{".Namespace", "Неймспейс, в который уезжает заказ", false},
+		{".Cluster", "Кластер, в который уезжает заказ", false},
+		{".Chart", "Имя чарта", true},
+		{".ChartVersion", "Версия чарта", true},
+		{".User.Name", "ФИО автора заказа", true},
+		{".User.Subject", "Идентификатор автора заказа в OIDC", true},
 	}
 }
 
@@ -195,14 +200,16 @@ func VariablesUsed(viewJSON []byte) []string {
 		}
 		return "", nil
 	}
-	for _, val := range Defaults(viewJSON) {
-		s, ok := val.(string)
-		if !ok {
-			continue
+	for _, block := range []map[string]any{Defaults(viewJSON), Initial(viewJSON)} {
+		for _, val := range block {
+			s, ok := val.(string)
+			if !ok {
+				continue
+			}
+			// A document that does not parse still names what it names up to the
+			// point it breaks: this is a scan, not a check.
+			_, _ = walkTemplate(s, collect)
 		}
-		// A document that does not parse still names what it names up to the
-		// point it breaks: this is a scan, not a check.
-		_, _ = walkTemplate(s, collect)
 	}
 	out := make([]string, 0, len(seen))
 	for name := range seen {
@@ -210,6 +217,37 @@ func VariablesUsed(viewJSON []byte) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// atOrderForm reports whether a reference is answerable while the order form is
+// being filled in. Variables are: they are the platform's, not the order's.
+func atOrderForm(ref string) bool {
+	if _, ok := varName(ref); ok {
+		return true
+	}
+	for _, r := range TemplateRefs() {
+		if r.Ref == ref {
+			return r.AtOrderForm
+		}
+	}
+	return false
+}
+
+// CheckFormTimeTemplate is CheckTemplate for the "initial" block, which is
+// rendered before an order exists. A reference the form cannot answer yet is
+// named rather than left to render as an empty string in front of a person.
+func CheckFormTimeTemplate(s string, known KnownVars) error {
+	if err := CheckTemplate(s, known); err != nil {
+		return err
+	}
+	_, err := walkTemplate(s, func(ref string) (string, error) {
+		if !atOrderForm(ref) {
+			return "", fmt.Errorf("ссылка «%s%s%s» в форме заказа ещё не известна: её значение выбирают в самой форме",
+				tmplOpen, ref, tmplClose)
+		}
+		return "", nil
+	})
+	return err
 }
 
 // walkTemplate is the single pass both rendering and checking go through, so
