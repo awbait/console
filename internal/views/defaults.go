@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -29,17 +30,17 @@ func Defaults(viewJSON []byte) map[string]any {
 
 // ApplyDefaults stamps the view document's defaults (pointer -> value) into the
 // values map, OVERWRITING any value already present at each pointer.
-// Intermediate objects are created as needed. A pointer that would have to
-// descend through a non-object (an array index, or a key already holding a
-// scalar/array) is skipped, so defaults target object fields. Returns the
-// (mutated) values map.
+// Intermediate objects are created as needed and array indexes address items
+// that are already there (see setPointer). Returns the (mutated) values map and
+// the pointers that found nothing to write into - a list nobody blames the
+// order for, but which the portal logs rather than swallowing.
 //
 // A string value may reference what the portal knows about the order being
 // written ("{{.Team}}", "{{.User.Name}}" - see tmpl.go). A reference nothing
 // answers to fails the whole stamp instead of writing an empty string: the
 // result goes to Git and into the cluster, where a value that quietly went
 // missing is found much later and by accident.
-func ApplyDefaults(values map[string]any, viewJSON []byte, data TemplateData) (map[string]any, error) {
+func ApplyDefaults(values map[string]any, viewJSON []byte, data TemplateData) (map[string]any, []string, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
@@ -51,45 +52,74 @@ func ApplyDefaults(values map[string]any, viewJSON []byte, data TemplateData) (m
 		ptrs = append(ptrs, ptr)
 	}
 	sort.Strings(ptrs)
+	var skipped []string
 	for _, ptr := range ptrs {
 		val := defs[ptr]
 		if s, ok := val.(string); ok {
 			rendered, err := RenderTemplate(s, data)
 			if err != nil {
-				return values, fmt.Errorf("поле «%s»: %w", ptr, err)
+				return values, skipped, fmt.Errorf("поле «%s»: %w", ptr, err)
 			}
 			val = rendered
 		}
-		setPointer(values, ptr, val)
+		if !setPointer(values, ptr, val) {
+			skipped = append(skipped, ptr)
+		}
 	}
-	return values, nil
+	return values, skipped, nil
 }
 
-// setPointer sets val at an RFC6901 object pointer in m, creating intermediate
-// maps. It does not descend into arrays: a numeric segment, or a segment whose
-// key already holds a non-object, aborts the set (defaults address object
-// fields only).
-func setPointer(m map[string]any, pointer string, val any) {
+// setPointer sets val at an RFC6901 pointer in m and reports whether it wrote
+// anything. Intermediate objects are created as needed.
+//
+// A numeric segment addresses an item of a list that is already there:
+// "/gateways/0/ipAddress" writes into the gateway the order has. Missing items
+// are NOT invented - how many gateways an order has is the order's business,
+// and a default cannot add one - so a pointer past the end of a list writes
+// nothing and says so. Same for a segment whose key is occupied by a scalar:
+// clobbering somebody's value with an object is worse than not writing.
+func setPointer(m map[string]any, pointer string, val any) bool {
 	if pointer == "" || !strings.HasPrefix(pointer, "/") {
-		return
+		return false
 	}
 	segs := strings.Split(strings.TrimPrefix(pointer, "/"), "/")
-	cur := m
+	var cur any = m
 	for i, seg := range segs {
 		// RFC6901 unescaping: ~1 -> "/", ~0 -> "~" (order matters).
 		seg = strings.ReplaceAll(strings.ReplaceAll(seg, "~1", "/"), "~0", "~")
-		if i == len(segs)-1 {
-			cur[seg] = val
-			return
-		}
-		next, ok := cur[seg].(map[string]any)
-		if !ok {
-			if _, exists := cur[seg]; exists {
-				return // occupied by a non-object; do not clobber it
+		last := i == len(segs)-1
+		switch node := cur.(type) {
+		case map[string]any:
+			if last {
+				node[seg] = val
+				return true
 			}
-			next = map[string]any{}
-			cur[seg] = next
+			next, exists := node[seg]
+			if !exists {
+				// Nothing here yet: an object can be created, a list cannot -
+				// the next segment says which one the pointer wants.
+				if isIndex(segs[i+1]) {
+					return false
+				}
+				fresh := map[string]any{}
+				node[seg] = fresh
+				cur = fresh
+				continue
+			}
+			cur = next
+		case []any:
+			idx, err := strconv.Atoi(seg)
+			if err != nil || idx < 0 || idx >= len(node) {
+				return false
+			}
+			if last {
+				node[idx] = val
+				return true
+			}
+			cur = node[idx]
+		default:
+			return false // a scalar on the way: not ours to replace
 		}
-		cur = next
 	}
+	return false
 }

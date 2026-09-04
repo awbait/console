@@ -360,7 +360,7 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 	if err != nil {
 		return values, err
 	}
-	values, err = views.ApplyDefaults(values, view, views.TemplateData{
+	values, skipped, err := views.ApplyDefaults(values, view, views.TemplateData{
 		Team:         sc.Team,
 		ServiceName:  sc.ServiceName,
 		Namespace:    namespace,
@@ -376,6 +376,14 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 		s.logger().Warn("view defaults render failed",
 			"chart", chartName, "chart_project", chartProject, "chart_version", version, "err", err)
 		return values, &ValidationError{Message: MsgViewDefaults + err.Error() + " " + MsgViewDefaultsOwner}
+	}
+	// A pointer that found nothing to write into is not the order's fault and
+	// does not stop it: the list it addresses may legitimately be shorter here.
+	// It is still somebody's mistake in the document, so it does not stay quiet.
+	if len(skipped) > 0 {
+		s.logger().Warn("view defaults skipped",
+			"chart", chartName, "chart_project", chartProject, "chart_version", version,
+			"pointers", strings.Join(skipped, " "))
 	}
 	return views.BindNamespace(values, view, namespace), nil
 }

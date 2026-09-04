@@ -123,7 +123,7 @@ func TestTemplateRefsAllResolve(t *testing.T) {
 
 func TestApplyDefaultsRendersTemplates(t *testing.T) {
 	view := []byte(`{"defaults":{"/labels/team":"{{.Team}}","/labels/owner":"{{.User.Name}}","/labels/host":"{{.ServiceName}}.example.com","/labels/fixed":"console","/labels/n":7}}`)
-	out, err := ApplyDefaults(map[string]any{}, view, sampleData())
+	out, _, err := ApplyDefaults(map[string]any{}, view, sampleData())
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestApplyDefaultsRendersTemplates(t *testing.T) {
 // found much later by somebody wondering what was meant to be there.
 func TestApplyDefaultsRefusesBrokenTemplate(t *testing.T) {
 	view := []byte(`{"defaults":{"/labels/team":"{{.Teem}}"}}`)
-	_, err := ApplyDefaults(map[string]any{}, view, sampleData())
+	_, _, err := ApplyDefaults(map[string]any{}, view, sampleData())
 	if err == nil {
 		t.Fatal("want an error")
 	}

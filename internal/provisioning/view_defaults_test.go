@@ -198,3 +198,34 @@ func TestOrderRefusesMissingVariable(t *testing.T) {
 		t.Fatalf("message must name the variable: %s", verr.Message)
 	}
 }
+
+// TestOrderStampsIntoListItem is the case this portal's charts actually write:
+// the value being stamped lives inside a list ("/gateways/0/ipAddress"), not at
+// the top level. It used to be dropped without a word, so a document looked
+// right, validated, and did nothing.
+func TestOrderStampsIntoListItem(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	if err := s.st.UpsertVariable(ctx, &models.Variable{Name: "OPS_IP", Value: "10.0.0.7"}); err != nil {
+		t.Fatalf("seed variable: %v", err)
+	}
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/gateways/0/ipAddress":"{{.Vars.OPS_IP}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	values := draft("app")
+	values["gateways"] = []any{map[string]any{"name": "gw1"}}
+	r, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: values, Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !strings.Contains(r.ValuesYAML, "ipAddress: 10.0.0.7") {
+		t.Fatalf("value not stamped into the list item:\n%s", r.ValuesYAML)
+	}
+	if !strings.Contains(r.ValuesYAML, "name: gw1") {
+		t.Fatalf("the item's own fields must survive:\n%s", r.ValuesYAML)
+	}
+}

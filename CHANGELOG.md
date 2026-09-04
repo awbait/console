@@ -19,6 +19,11 @@ All notable changes to this project are documented in this file.
   and editable, so the customer keeps the last word. The version constructor
   suggests what can go into both blocks as you type.
 
+### Fixed
+- A value the portal fills in lands in fields that live inside a list, such as
+  the gateway's IP address. Such a value used to be dropped silently: the
+  document validated, and nothing appeared in the order.
+
 ## [0.10.0] - 2026-08-28
 
 A release about seeing a change before it is sent: the form lists the settings
