@@ -2,7 +2,6 @@ package views
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 )
 
@@ -43,11 +42,12 @@ func Initial(viewJSON []byte) map[string]any {
 // the chart, the person opening it, the platform variables. Anything else is
 // still being typed, which is why checkInitial refuses a document that asks for
 // it rather than letting it render as an empty string here.
-func RenderInitial(viewJSON []byte, data TemplateData) (map[string]any, error) {
+func RenderInitial(viewJSON []byte, data TemplateData, schemaJSON []byte) (map[string]any, error) {
 	initial := Initial(viewJSON)
 	if len(initial) == 0 {
 		return map[string]any{}, nil
 	}
+	schema := parseSchema(schemaJSON)
 	values := map[string]any{}
 	ptrs := make([]string, 0, len(initial))
 	for ptr := range initial {
@@ -55,13 +55,9 @@ func RenderInitial(viewJSON []byte, data TemplateData) (map[string]any, error) {
 	}
 	sort.Strings(ptrs)
 	for _, ptr := range ptrs {
-		val := initial[ptr]
-		if s, ok := val.(string); ok {
-			rendered, err := RenderTemplate(s, data)
-			if err != nil {
-				return values, fmt.Errorf("поле «%s»: %w", ptr, err)
-			}
-			val = rendered
+		val, err := renderValue(initial[ptr], ptr, data, schema)
+		if err != nil {
+			return values, err
 		}
 		setPointer(values, ptr, val)
 	}

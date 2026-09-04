@@ -162,10 +162,11 @@ func RenderTemplate(s string, d TemplateData) (string, error) {
 	return walkTemplate(s, d.resolve)
 }
 
-// KnownVars is the set of platform variable names a document may reference.
-// A nil set means the caller has no list at hand and only the shape of a
-// "{{.Vars.X}}" reference is checked.
-type KnownVars map[string]bool
+// KnownVars is the platform variables a document may reference, by name, with
+// the value each holds right now. A nil map means the caller has no list at
+// hand: then only the shape of a "{{.Vars.X}}" reference is checked, not that
+// the variable exists or that its value fits the field.
+type KnownVars map[string]string
 
 // CheckTemplate reports what is wrong with s without needing an order to render
 // it against. The version constructor asks this while the document is being
@@ -174,7 +175,10 @@ type KnownVars map[string]bool
 func CheckTemplate(s string, known KnownVars) error {
 	_, err := walkTemplate(s, func(ref string) (string, error) {
 		if name, ok := varName(ref); ok {
-			if known == nil || known[name] {
+			if known == nil {
+				return "", nil
+			}
+			if _, exists := known[name]; exists {
 				return "", nil
 			}
 			return "", varNotSet(name)

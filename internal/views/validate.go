@@ -40,15 +40,16 @@ type Option func(*opts)
 
 type opts struct{ vars KnownVars }
 
-// WithVariables tells the checker which platform variables exist, so a
-// "{{.Vars.OPS}}" naming one that does not is caught while the document is being
+// WithVariables tells the checker which platform variables exist and what each
+// holds, so a "{{.Vars.OPS}}" naming one that does not - or one whose value does
+// not fit the field it is written into - is caught while the document is being
 // written instead of when somebody orders the service. Without it such a
-// reference is only checked for shape. An empty list means there are none.
-func WithVariables(names []string) Option {
+// reference is only checked for shape. An empty map means there are none.
+func WithVariables(vars map[string]string) Option {
 	return func(o *opts) {
-		set := make(KnownVars, len(names))
-		for _, n := range names {
-			set[n] = true
+		set := make(KnownVars, len(vars))
+		for name, value := range vars {
+			set[name] = value
 		}
 		o.vars = set
 	}
@@ -161,6 +162,10 @@ func checkDefaults(m map[string]any, schema map[string]any, vars KnownVars) []Is
 		}
 		if err := CheckTemplate(s, vars); err != nil {
 			issues = append(issues, Issue{"/defaults" + ptr, upperFirst(err.Error())})
+			continue
+		}
+		if err := checkValueType(m[ptr], schemaTypeAt(ptr, schema), vars); err != nil {
+			issues = append(issues, Issue{"/defaults" + ptr, upperFirst(err.Error())})
 		}
 	}
 	return issues
@@ -184,6 +189,10 @@ func checkInitial(m map[string]any, schema map[string]any, vars KnownVars) []Iss
 			continue // the schema already said the value is a scalar
 		}
 		if err := CheckFormTimeTemplate(s, vars); err != nil {
+			issues = append(issues, Issue{"/initial" + ptr, upperFirst(err.Error())})
+			continue
+		}
+		if err := checkValueType(m[ptr], schemaTypeAt(ptr, schema), vars); err != nil {
 			issues = append(issues, Issue{"/initial" + ptr, upperFirst(err.Error())})
 		}
 	}

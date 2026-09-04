@@ -40,10 +40,11 @@ func Defaults(viewJSON []byte) map[string]any {
 // answers to fails the whole stamp instead of writing an empty string: the
 // result goes to Git and into the cluster, where a value that quietly went
 // missing is found much later and by accident.
-func ApplyDefaults(values map[string]any, viewJSON []byte, data TemplateData) (map[string]any, []string, error) {
+func ApplyDefaults(values map[string]any, viewJSON []byte, data TemplateData, schemaJSON []byte) (map[string]any, []string, error) {
 	if values == nil {
 		values = map[string]any{}
 	}
+	schema := parseSchema(schemaJSON)
 	defs := Defaults(viewJSON)
 	// Sorted, so a document with two broken defaults always names the same one
 	// first: map order would otherwise make the complaint change between saves.
@@ -54,19 +55,49 @@ func ApplyDefaults(values map[string]any, viewJSON []byte, data TemplateData) (m
 	sort.Strings(ptrs)
 	var skipped []string
 	for _, ptr := range ptrs {
-		val := defs[ptr]
-		if s, ok := val.(string); ok {
-			rendered, err := RenderTemplate(s, data)
-			if err != nil {
-				return values, skipped, fmt.Errorf("поле «%s»: %w", ptr, err)
-			}
-			val = rendered
+		val, err := renderValue(defs[ptr], ptr, data, schema)
+		if err != nil {
+			return values, skipped, err
 		}
 		if !setPointer(values, ptr, val) {
 			skipped = append(skipped, ptr)
 		}
 	}
 	return values, skipped, nil
+}
+
+// renderValue turns one entry of a "defaults" or "initial" block into the value
+// that goes into the order: references expanded, and the result converted to
+// what the field declares (see valuetype.go). Both failures name the field,
+// because the person who has to fix them is reading a list of fields.
+func renderValue(val any, ptr string, data TemplateData, schema map[string]any) (any, error) {
+	s, ok := val.(string)
+	if !ok {
+		return val, nil
+	}
+	rendered, err := RenderTemplate(s, data)
+	if err != nil {
+		return nil, fmt.Errorf("поле «%s»: %w", ptr, err)
+	}
+	converted, err := coerce(rendered, schemaTypeAt(ptr, schema))
+	if err != nil {
+		return nil, fmt.Errorf("поле «%s»: %w", ptr, err)
+	}
+	return converted, nil
+}
+
+// parseSchema reads values.schema.json for the type lookups. A schema the
+// portal cannot read simply means no conversion: the chart's own validation
+// still has the last word.
+func parseSchema(schemaJSON []byte) map[string]any {
+	if len(schemaJSON) == 0 {
+		return nil
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(schemaJSON, &schema); err != nil {
+		return nil
+	}
+	return schema
 }
 
 // setPointer sets val at an RFC6901 pointer in m and reports whether it wrote

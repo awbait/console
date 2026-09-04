@@ -10,7 +10,7 @@ func TestApplyDefaultsOverwritesAndCreates(t *testing.T) {
 
 	t.Run("overwrites existing value", func(t *testing.T) {
 		values := map[string]any{"namespace": map[string]any{"namespaceName": "demo", "creator": "lk"}}
-		out, _, err := ApplyDefaults(values, view, TemplateData{})
+		out, _, err := ApplyDefaults(values, view, TemplateData{}, nil)
 		if err != nil {
 			t.Fatalf("ApplyDefaults: %v", err)
 		}
@@ -27,7 +27,7 @@ func TestApplyDefaultsOverwritesAndCreates(t *testing.T) {
 	})
 
 	t.Run("creates missing intermediate objects", func(t *testing.T) {
-		out, _, err := ApplyDefaults(map[string]any{}, view, TemplateData{})
+		out, _, err := ApplyDefaults(map[string]any{}, view, TemplateData{}, nil)
 		if err != nil {
 			t.Fatalf("ApplyDefaults: %v", err)
 		}
@@ -38,7 +38,7 @@ func TestApplyDefaultsOverwritesAndCreates(t *testing.T) {
 	})
 
 	t.Run("nil values map", func(t *testing.T) {
-		out, _, err := ApplyDefaults(nil, view, TemplateData{})
+		out, _, err := ApplyDefaults(nil, view, TemplateData{}, nil)
 		if err != nil {
 			t.Fatalf("ApplyDefaults: %v", err)
 		}
@@ -52,7 +52,7 @@ func TestApplyDefaultsSkipsNonObjectPath(t *testing.T) {
 	// /a/b where a is a scalar: must not clobber a, must not panic.
 	view := []byte(`{"defaults":{"/a/b":"v"}}`)
 	values := map[string]any{"a": "scalar"}
-	out, _, err := ApplyDefaults(values, view, TemplateData{})
+	out, _, err := ApplyDefaults(values, view, TemplateData{}, nil)
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestApplyDefaultsWritesIntoListItems(t *testing.T) {
 		map[string]any{"name": "one"},
 		map[string]any{"name": "two"},
 	}}
-	out, skipped, err := ApplyDefaults(values, view, TemplateData{})
+	out, skipped, err := ApplyDefaults(values, view, TemplateData{}, nil)
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestApplyDefaultsReportsWhatItCouldNotWrite(t *testing.T) {
 		"gateways": []any{map[string]any{"name": "one"}},
 		"a":        "already a scalar",
 	}
-	out, skipped, err := ApplyDefaults(values, view, TemplateData{})
+	out, skipped, err := ApplyDefaults(values, view, TemplateData{}, nil)
 	if err != nil {
 		t.Fatalf("ApplyDefaults: %v", err)
 	}

@@ -58,6 +58,7 @@ func (f *Fake) seed() {
     "primary": {
       "type": "object",
       "properties": {
+        "replicas": {"type": "integer", "title": "Replicas"},
         "persistence": {
           "type": "object",
           "properties": {

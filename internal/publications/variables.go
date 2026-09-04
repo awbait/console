@@ -121,16 +121,26 @@ func referencesVariable(view []byte, name string) bool {
 // returns options rather than names so "could not read" stays distinct from
 // "there are none", which would flag every reference.
 func (s *Service) checkAgainstVariables(ctx context.Context) []views.Option {
-	list, err := s.store.ListVariables(ctx)
+	vars, err := s.variableValues(ctx)
 	if err != nil {
 		s.logger().Warn("variables unreadable, view checked without them", "err", err)
 		return nil
 	}
-	names := make([]string, 0, len(list))
-	for _, v := range list {
-		names = append(names, v.Name)
+	return []views.Option{views.WithVariables(vars)}
+}
+
+// variableValues reads the variables as name -> value, the shape both the
+// checker and the order stamp want.
+func (s *Service) variableValues(ctx context.Context) (map[string]string, error) {
+	list, err := s.store.ListVariables(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return []views.Option{views.WithVariables(names)}
+	vars := make(map[string]string, len(list))
+	for _, v := range list {
+		vars[v.Name] = v.Value
+	}
+	return vars, nil
 }
 
 // OrderInitialValues renders the "initial" block of a version's approved view:
@@ -151,16 +161,21 @@ func (s *Service) OrderInitialValues(ctx context.Context, u *models.User, projec
 		User: views.TemplateUser{Name: u.Name, Subject: u.Subject},
 	}
 	if len(views.VariablesUsed(view)) > 0 {
-		list, lerr := s.store.ListVariables(ctx)
+		vars, lerr := s.variableValues(ctx)
 		if lerr != nil {
 			return nil, lerr
 		}
-		data.Vars = make(map[string]string, len(list))
-		for _, v := range list {
-			data.Vars[v.Name] = v.Value
+		data.Vars = vars
+	}
+	// The chart schema decides the type a seeded value takes: a port seeded from
+	// a variable has to reach the form as a number, not as text in a number box.
+	var schema []byte
+	if s.schemas != nil {
+		if b, serr := s.schemas.GetSchema(ctx, project, name, version); serr == nil {
+			schema = b
 		}
 	}
-	values, err := views.RenderInitial(view, data)
+	values, err := views.RenderInitial(view, data, schema)
 	if err != nil {
 		return nil, invalid("%s", err.Error())
 	}
