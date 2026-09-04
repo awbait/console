@@ -28,6 +28,7 @@ import type {
   SystemStatus,
   UpdateOrderBody,
   User,
+  Variable,
   ViewDocument,
   ViewIssue,
 } from "./types";
@@ -203,6 +204,18 @@ export const api = {
       if (e instanceof HttpError && e.status === 404) return null;
       throw e;
     }),
+
+  // platform variables: read by anybody signed in (the version constructor
+  // offers them), written by admins.
+  listVariables: () => req<Variable[]>("GET", "/variables"),
+  setVariable: (v: Variable) =>
+    req<Variable>("PUT", `/variables/${enc(v.name)}`, {
+      value: v.value,
+      description: v.description,
+    }),
+  deleteVariable: (name: string) => req<void>("DELETE", `/variables/${enc(name)}`),
+  variableUsage: (name: string) =>
+    req<{ used_by: string[] }>("GET", `/variables/${enc(name)}/usage`),
 
   // catalog categories (CRUD - admin)
   listCategories: () => req<Category[]>("GET", "/categories"),

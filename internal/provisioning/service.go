@@ -356,7 +356,11 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 	if len(view) == 0 {
 		return values, nil
 	}
-	values, err := views.ApplyDefaults(values, view, views.TemplateData{
+	vars, err := s.templateVars(ctx, view)
+	if err != nil {
+		return values, err
+	}
+	values, err = views.ApplyDefaults(values, view, views.TemplateData{
 		Team:         sc.Team,
 		ServiceName:  sc.ServiceName,
 		Namespace:    namespace,
@@ -364,11 +368,35 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 		Chart:        chartName,
 		ChartVersion: version,
 		User:         views.TemplateUser{Name: sc.UserName, Subject: sc.UserSubject},
+		Vars:         vars,
 	})
 	if err != nil {
-		return values, err
+		// The person ordering cannot fix this, and the owner who can is not the
+		// one seeing the refusal: leave the platform a line naming the version.
+		s.logger().Warn("view defaults render failed",
+			"chart", chartName, "chart_project", chartProject, "chart_version", version, "err", err)
+		return values, &ValidationError{Message: MsgViewDefaults + err.Error() + " " + MsgViewDefaultsOwner}
 	}
 	return views.BindNamespace(values, view, namespace), nil
+}
+
+// templateVars reads the platform variables, but only for a document that names
+// one: most do not, and an order write should not query a table it has no
+// question for. An unreadable table refuses the write rather than stamping the
+// values a document did not ask for.
+func (s *Service) templateVars(ctx context.Context, view []byte) (map[string]string, error) {
+	if len(views.VariablesUsed(view)) == 0 {
+		return nil, nil
+	}
+	list, err := s.store.ListVariables(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("variables: %w", err)
+	}
+	vars := make(map[string]string, len(list))
+	for _, v := range list {
+		vars[v.Name] = v.Value
+	}
+	return vars, nil
 }
 
 // checkServiceName mirrors the uniq_active_service index (team, chart_name,
@@ -978,11 +1006,7 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	// Chart-agnostic: the rules live in the chart's view document, not here.
 	values, serr := s.applyViewStamps(ctx, project, name, version, namespace, values, sc)
 	if serr != nil {
-		// The person ordering cannot fix this, and the owner who can is not the
-		// one seeing the refusal: leave the platform a line naming the version.
-		s.logger().Warn("view defaults render failed",
-			"chart", name, "chart_project", project, "chart_version", version, "err", serr)
-		return "", &ValidationError{Message: MsgViewDefaults + serr.Error() + " " + MsgViewDefaultsOwner}
+		return "", serr
 	}
 	if !validate {
 		out, merr := yaml.Marshal(values)

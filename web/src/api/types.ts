@@ -350,6 +350,17 @@ export interface AboutInfo {
 export type PublicationStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 
 // Catalog category (grouping in the catalog and left menu).
+// A platform variable: a named value an admin keeps in the portal for version
+// documents to reference as "{{.Vars.OPS}}". Not a secret store - the value is
+// stamped into an order and lands in Git.
+export interface Variable {
+  name: string;
+  value: string;
+  description: string;
+  updated_by?: string;
+  updated_at?: string;
+}
+
 export interface Category {
   id: string; // slug
   label: string;

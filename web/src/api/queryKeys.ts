@@ -24,6 +24,9 @@ export const qk = {
   viewSchema: (): QueryKey => ["view-schema"],
   changelog: (project: string, name: string): QueryKey => ["changelog", project, name],
   teams: (): QueryKey => ["teams"],
+  // Platform variables: the admin page and the version constructor both read
+  // them, so a switch between the two hits the cache instead of the network.
+  variables: (): QueryKey => ["variables"],
   requests: (): QueryKey => ["requests"],
   platformHealth: (): QueryKey => ["platform-health"],
 };

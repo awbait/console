@@ -147,3 +147,54 @@ func TestOrderRefusesUnknownTemplateRef(t *testing.T) {
 		t.Fatalf("message must name the field: %s", verr.Message)
 	}
 }
+
+// TestOrderStampsPlatformVariable: a default may reference a value the platform
+// team keeps in the portal, so a domain that moves does not cost every service
+// owner an edit of their own document.
+func TestOrderStampsPlatformVariable(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	if err := s.st.UpsertVariable(ctx, &models.Variable{Name: "OPS_DOMAIN", Value: "example.com"}); err != nil {
+		t.Fatalf("seed variable: %v", err)
+	}
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/auth/host":"{{.ServiceName}}.{{.Vars.OPS_DOMAIN}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	r, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: draft("app"), Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if !strings.Contains(r.ValuesYAML, "host: alpha.example.com") {
+		t.Fatalf("variable not stamped, values:\n%s", r.ValuesYAML)
+	}
+}
+
+// TestOrderRefusesMissingVariable: a document outliving the variable it names
+// refuses the order and says the variable is missing, rather than stamping an
+// empty string and deploying a service named after nothing.
+func TestOrderRefusesMissingVariable(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},"defaults":{"/auth/host":"{{.Vars.GONE}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	_, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a", Values: draft("app"), Draft: true,
+	})
+	if err == nil {
+		t.Fatal("an order naming a missing variable must be refused")
+	}
+	var verr *provisioning.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("want a validation error, got %T: %v", err, err)
+	}
+	if !strings.Contains(verr.Message, "GONE") {
+		t.Fatalf("message must name the variable: %s", verr.Message)
+	}
+}

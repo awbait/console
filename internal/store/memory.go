@@ -22,6 +22,7 @@ type Memory struct {
 	pubEvents     []*models.PublicationEvent
 	pubEventSeq   int64
 	users         map[string]*models.PlatformUser // sign-in directory, keyed by OIDC subject
+	variables     map[string]*models.Variable     // platform variables, keyed by name
 	notifications []*models.Notification
 	notifRead     map[string]map[string]bool // subject -> notification id -> read
 	notifCursor   map[string]time.Time       // subject -> "everything before this is read"
@@ -43,6 +44,7 @@ func NewMemory() *Memory {
 		pubs:        map[string]*models.ChartPublication{},
 		pubVersions: map[string]*models.PublicationVersion{},
 		users:       map[string]*models.PlatformUser{},
+		variables:   map[string]*models.Variable{},
 		notifRead:   map[string]map[string]bool{},
 		notifCursor: map[string]time.Time{},
 		notifSince:  map[string]map[audienceRef]time.Time{},

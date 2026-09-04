@@ -30,15 +30,39 @@ type Issue struct {
 }
 
 // ValidateStructure checks only the document format (without the chart schema).
-func ValidateStructure(viewJSON []byte) []Issue {
-	return Validate(viewJSON, nil)
+func ValidateStructure(viewJSON []byte, options ...Option) []Issue {
+	return Validate(viewJSON, nil, options...)
+}
+
+// Option narrows what Validate is able to say. Everything it turns on is
+// knowledge the views package cannot have on its own and the caller does.
+type Option func(*opts)
+
+type opts struct{ vars KnownVars }
+
+// WithVariables tells the checker which platform variables exist, so a
+// "{{.Vars.OPS}}" naming one that does not is caught while the document is being
+// written instead of when somebody orders the service. Without it such a
+// reference is only checked for shape. An empty list means there are none.
+func WithVariables(names []string) Option {
+	return func(o *opts) {
+		set := make(KnownVars, len(names))
+		for _, n := range names {
+			set[n] = true
+		}
+		o.vars = set
+	}
 }
 
 // Validate checks the view document. When schemaJSON is non-empty, it also
 // cross-checks include/exclude/overrides/identity against values.schema.json
 // fields (an unknown schema structure is skipped silently, we check only what
 // we can prove).
-func Validate(viewJSON, schemaJSON []byte) []Issue {
+func Validate(viewJSON, schemaJSON []byte, options ...Option) []Issue {
+	var o opts
+	for _, apply := range options {
+		apply(&o)
+	}
 	var doc map[string]any
 	if err := json.Unmarshal(viewJSON, &doc); err != nil {
 		return []Issue{{Path: "", Message: "Невалидный JSON: " + err.Error()}}
@@ -101,7 +125,7 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 	// document's own business, and a broken one has to be caught here rather
 	// than by the first person who orders the service.
 	if defaults, ok := doc["defaults"].(map[string]any); ok {
-		issues = append(issues, checkDefaults(defaults, schema)...)
+		issues = append(issues, checkDefaults(defaults, schema, o.vars)...)
 	}
 
 	// graph: the visual values editor this version turns on, and where its
@@ -116,7 +140,7 @@ func Validate(viewJSON, schemaJSON []byte) []Issue {
 // writes to must find a field in values.schema.json (skipped when the chart
 // schema is not at hand), and the value, when it references what the portal
 // knows about an order, must reference something that exists.
-func checkDefaults(m map[string]any, schema map[string]any) []Issue {
+func checkDefaults(m map[string]any, schema map[string]any, vars KnownVars) []Issue {
 	var issues []Issue
 	for _, ptr := range sortedKeys(m) {
 		if !strings.HasPrefix(ptr, "/") {
@@ -130,7 +154,7 @@ func checkDefaults(m map[string]any, schema map[string]any) []Issue {
 		if !ok {
 			continue // the schema already said the value is a scalar
 		}
-		if err := CheckTemplate(s); err != nil {
+		if err := CheckTemplate(s, vars); err != nil {
 			issues = append(issues, Issue{"/defaults" + ptr, upperFirst(err.Error())})
 		}
 	}

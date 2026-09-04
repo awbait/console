@@ -147,6 +147,15 @@ type Store interface {
 	// type and team. For the gauges, which need totals rather than rows.
 	CountActivity(ctx context.Context, since time.Time) ([]*models.ActivityCount, error)
 
+	// Platform variables: named values a version document references as
+	// "{{.Vars.OPS}}". Read on every order write that mentions one, so the list
+	// is small by design and always read whole.
+	ListVariables(ctx context.Context) ([]*models.Variable, error)
+	// UpsertVariable creates the row or replaces the value and description of an
+	// existing one. The name is the key: renaming is deleting and creating.
+	UpsertVariable(ctx context.Context, v *models.Variable) error
+	DeleteVariable(ctx context.Context, name string) error // ErrNotFound when there is nothing to delete
+
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id
 	UpdateCategory(ctx context.Context, c *models.Category) error

@@ -9,6 +9,11 @@ All notable changes to this project are documented in this file.
   order itself: `{{.Team}}` puts in the team, `{{.User.Name}}` the author,
   `{{.ServiceName}}` the service name. The `defaults` block used to take fixed
   values only. The whole list is in the documentation, "Order form constructor".
+- Platform variables: named values an admin keeps in the portal, in the "Variables"
+  section of the admin panel. A version document references one as
+  `{{.Vars.OPS_DOMAIN}}`, and the portal fills it in when it saves an order. A
+  value shared by every service is now changed in one place instead of in each
+  service's document. These are not secrets: the value goes into values.yaml in Git.
 
 ## [0.10.0] - 2026-08-28
 
