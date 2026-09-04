@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-04
+
+A release about the values the portal fills into an order for the customer. A
+version document can now point them at the order itself and at variables an
+admin keeps in one place, and an order form can open with fields already filled
+in.
+
 ### Added
 - Values the portal fills in for the customer now understand references to the
   order itself: `{{.Team}}` puts in the team, `{{.User.Name}}` the author,
@@ -583,7 +590,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/awbait/console/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/awbait/console/compare/v0.8.1...v0.8.2
