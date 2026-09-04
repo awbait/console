@@ -78,7 +78,7 @@ func TestRenderTemplateRefuses(t *testing.T) {
 			}
 			// The same document is checked in the constructor, where there is no
 			// order to render against: both sides must agree on what is broken.
-			if CheckTemplate(c.in) == nil {
+			if CheckTemplate(c.in, nil) == nil {
 				t.Fatalf("CheckTemplate(%q) must fail too", c.in)
 			}
 		})
@@ -88,7 +88,7 @@ func TestRenderTemplateRefuses(t *testing.T) {
 // The complaint names what to type instead, because the person reading it is
 // writing a view document and has just misspelled a reference.
 func TestUnknownRefListsWhatExists(t *testing.T) {
-	err := CheckTemplate("{{.Teem}}")
+	err := CheckTemplate("{{.Teem}}", nil)
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -101,7 +101,7 @@ func TestUnknownRefListsWhatExists(t *testing.T) {
 
 func TestCheckTemplateAccepts(t *testing.T) {
 	for _, s := range []string{"console", "{{.Team}}", "{{.User.Subject}}-{{.Chart}}", "{{ $labels.x }}"} {
-		if err := CheckTemplate(s); err != nil {
+		if err := CheckTemplate(s, nil); err != nil {
 			t.Fatalf("CheckTemplate(%q) = %v, want nil", s, err)
 		}
 	}
@@ -165,5 +165,61 @@ func TestValidateFlagsBrokenTemplateInDefaults(t *testing.T) {
 	}
 	if ok := ValidateStructure([]byte(`{"views":{"order":{"identity":"/n"}},"defaults":{"/n/owner":"{{.Team}}"}}`)); len(ok) > 0 {
 		t.Fatalf("valid template flagged: %+v", ok)
+	}
+}
+
+func TestRenderTemplateVariables(t *testing.T) {
+	d := sampleData()
+	d.Vars = map[string]string{"OPS_DOMAIN": "example.com"}
+
+	got, err := RenderTemplate("{{.ServiceName}}.{{.Vars.OPS_DOMAIN}}", d)
+	if err != nil {
+		t.Fatalf("RenderTemplate: %v", err)
+	}
+	if got != "pg1.example.com" {
+		t.Fatalf("got %q, want pg1.example.com", got)
+	}
+
+	// A variable nobody has created is a different failure from a misspelled
+	// reference: it names the variable and where variables come from.
+	_, err = RenderTemplate("{{.Vars.NOPE}}", d)
+	if err == nil {
+		t.Fatal("an unset variable must fail")
+	}
+	if !strings.Contains(err.Error(), "NOPE") || !strings.Contains(err.Error(), "переменной") {
+		t.Fatalf("unhelpful complaint: %v", err)
+	}
+}
+
+func TestCheckTemplateAgainstKnownVariables(t *testing.T) {
+	// Without a list the shape is all that can be checked.
+	if err := CheckTemplate("{{.Vars.OPS}}", nil); err != nil {
+		t.Fatalf("without a list a variable reference must pass: %v", err)
+	}
+	if err := CheckTemplate("{{.Vars.OPS}}", KnownVars{"OPS": true}); err != nil {
+		t.Fatalf("known variable flagged: %v", err)
+	}
+	if err := CheckTemplate("{{.Vars.OPS}}", KnownVars{}); err == nil {
+		t.Fatal("an unknown variable must be flagged when the list is known")
+	}
+	// ".Vars" alone and a deeper path name no variable, and are reported as the
+	// unknown references they are.
+	for _, s := range []string{"{{.Vars}}", "{{.Vars.A.B}}"} {
+		if err := CheckTemplate(s, KnownVars{"A": true}); err == nil {
+			t.Fatalf("%q must be flagged", s)
+		}
+	}
+}
+
+func TestVariablesUsed(t *testing.T) {
+	view := []byte(`{"defaults":{
+		"/a":"{{.Vars.OPS}}","/b":"{{.Team}}-{{.Vars.OPS}}","/c":"{{.Vars.ENV}}",
+		"/d":"plain","/e":"{{ $labels.x }}","/f":"{{.Vars.BROKEN"}}`)
+	got := VariablesUsed(view)
+	if len(got) != 2 || got[0] != "ENV" || got[1] != "OPS" {
+		t.Fatalf("VariablesUsed = %v, want [ENV OPS]", got)
+	}
+	if used := VariablesUsed([]byte(`{"defaults":{"/a":"{{.Team}}"}}`)); len(used) != 0 {
+		t.Fatalf("a document without variables uses none, got %v", used)
 	}
 }

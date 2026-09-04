@@ -20,6 +20,7 @@ import {
   IconTags,
   IconTrash,
   IconUsers,
+  IconVariable,
   IconX,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -244,6 +245,13 @@ export function AdminOverviewPage() {
             Icon={IconTags}
             title="Категории каталога"
             desc="структура разделов каталога"
+          />
+          <QuickLink
+            to="/admin/variables"
+            tone="slate"
+            Icon={IconVariable}
+            title="Переменные"
+            desc="значения для документов версий"
           />
         </div>
       </section>

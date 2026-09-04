@@ -9,6 +9,11 @@ export const fieldMsg = {
   charset: "Используйте строчные латинские буквы, цифры и дефис.",
   charsetDots: "Используйте строчные латинские буквы, цифры, точку и дефис.",
   charsetFromLetter: "Используйте строчные латинские буквы, цифры и дефис, начиная с буквы.",
+  // Platform variables are named the other way round: a document references
+  // one as "{{.Vars.OPS_DOMAIN}}", and upper case is what tells such a reference
+  // apart from a reference to the order.
+  charsetUpperFromLetter:
+    "Используйте заглавные латинские буквы, цифры и подчёркивание, начиная с буквы.",
   edgeChars: "Первый и последний символ - буква или цифра.",
   firstLetter: "Первый символ - буква, последний - буква или цифра.",
   pathSlash: "Начните путь с косой черты.",

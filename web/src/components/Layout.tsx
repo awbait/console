@@ -21,6 +21,7 @@ import {
   IconShieldCheck,
   IconShieldLock,
   IconTags,
+  IconVariable,
   IconUser,
   IconUsers,
   IconUsersGroup,
@@ -95,6 +96,7 @@ const adminSectionNav: SectionNavItem[] = [
   { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
   { to: "/admin/config", label: "Конфигурация", Icon: IconAdjustments },
   { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
+  { to: "/admin/variables", label: "Переменные", Icon: IconVariable },
 ];
 
 // SideTip labels a sidebar item while the menu is collapsed, where only the

@@ -49,7 +49,7 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 	}
 	// A draft may carry schema flaws (the chart schema can drift), but the
 	// document format itself must be valid.
-	if issues := views.ValidateStructure(view); len(issues) > 0 {
+	if issues := views.ValidateStructure(view, s.checkAgainstVariables(ctx)...); len(issues) > 0 {
 		return nil, &ValidationError{Message: "view.schema.json не проходит валидацию формата", Issues: issues}
 	}
 	v, err := s.getOrInitVersion(ctx, p, chartVersion)
@@ -742,6 +742,6 @@ func (s *Service) validateVersionView(ctx context.Context, p *models.ChartPublic
 			schema = b
 		}
 	}
-	return views.Validate(view, schema)
+	return views.Validate(view, schema, s.checkAgainstVariables(ctx)...)
 }
 

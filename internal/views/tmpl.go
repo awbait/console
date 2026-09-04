@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -42,6 +43,12 @@ type TemplateData struct {
 	Chart        string
 	ChartVersion string
 	User         TemplateUser
+	// Vars are the platform's own named values (models.Variable), by name. A
+	// document references one as "{{.Vars.OPS}}". They belong to neither the
+	// chart nor the order: an admin keeps them in the portal, so a domain or an
+	// environment prefix that moves does not cost every service owner an edit
+	// and a fresh approval of their document.
+	Vars map[string]string
 }
 
 // TemplateUser is the order's author: the display name a person recognizes and
@@ -76,9 +83,43 @@ func TemplateRefs() []TemplateRef {
 	}
 }
 
-// lookup resolves one reference. The bool separates "the portal has nothing
-// here" (a name nobody answers to - a mistake in the document) from "the value
-// is empty" (a legitimate answer: an order without a namespace of its own).
+// varsPrefix opens a reference to a platform variable: everything after it is
+// the variable's name.
+const varsPrefix = ".Vars."
+
+// varName returns the variable a reference names. Only a single segment counts:
+// "{{.Vars.A.B}}" names no variable, and falls through to be reported as the
+// unknown reference it is.
+func varName(ref string) (string, bool) {
+	name, ok := strings.CutPrefix(ref, varsPrefix)
+	if !ok || name == "" || strings.Contains(name, ".") {
+		return "", false
+	}
+	return name, true
+}
+
+// resolve answers one reference or says what is wrong with it. The two failures
+// are kept apart on purpose: a name nobody answers to is a mistake in the
+// document, while a variable that is simply not set is a mistake in the portal,
+// and they are fixed by different people.
+func (d TemplateData) resolve(ref string) (string, error) {
+	if name, ok := varName(ref); ok {
+		v, set := d.Vars[name]
+		if !set {
+			return "", varNotSet(name)
+		}
+		return v, nil
+	}
+	v, ok := d.lookup(ref)
+	if !ok {
+		return "", unknownRef(ref)
+	}
+	return v, nil
+}
+
+// lookup resolves one reference to the order. The bool separates "the portal has
+// nothing here" (a name nobody answers to - a mistake in the document) from "the
+// value is empty" (a legitimate answer: an order without a namespace of its own).
 func (d TemplateData) lookup(ref string) (string, bool) {
 	switch ref {
 	case ".Team":
@@ -103,8 +144,9 @@ func (d TemplateData) lookup(ref string) (string, bool) {
 
 const tmplOpen, tmplClose = "{{", "}}"
 
-// refPattern is the whole grammar: a dotted path of identifiers.
-var refPattern = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)*$`)
+// refPattern is the whole grammar: a dotted path of identifiers. Underscores
+// are in because a platform variable is named with them ("{{.Vars.OPS_DOMAIN}}").
+var refPattern = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$`)
 
 // RenderTemplate expands every reference in s against d.
 //
@@ -112,27 +154,62 @@ var refPattern = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-
 // committed to Git and deployed, so a value that quietly went missing would be
 // found much later, by someone looking at a resource named after nothing.
 func RenderTemplate(s string, d TemplateData) (string, error) {
-	return walkTemplate(s, func(ref string) (string, error) {
-		v, ok := d.lookup(ref)
-		if !ok {
-			return "", unknownRef(ref)
-		}
-		return v, nil
-	})
+	return walkTemplate(s, d.resolve)
 }
+
+// KnownVars is the set of platform variable names a document may reference.
+// A nil set means the caller has no list at hand and only the shape of a
+// "{{.Vars.X}}" reference is checked.
+type KnownVars map[string]bool
 
 // CheckTemplate reports what is wrong with s without needing an order to render
 // it against. The version constructor asks this while the document is being
 // written, which is the moment a typo costs nothing to fix; the same mistake
 // found at order time costs a person their order.
-func CheckTemplate(s string) error {
+func CheckTemplate(s string, known KnownVars) error {
 	_, err := walkTemplate(s, func(ref string) (string, error) {
+		if name, ok := varName(ref); ok {
+			if known == nil || known[name] {
+				return "", nil
+			}
+			return "", varNotSet(name)
+		}
 		if _, ok := (TemplateData{}).lookup(ref); !ok {
 			return "", unknownRef(ref)
 		}
 		return "", nil
 	})
 	return err
+}
+
+// VariablesUsed returns the platform variables a view document references, by
+// name, sorted and without repeats. Two callers ask: the order stamp, which
+// reads the variables table only when a document actually needs it, and the
+// admin page, which will not let a variable be deleted while a published
+// document still names it.
+func VariablesUsed(viewJSON []byte) []string {
+	seen := map[string]bool{}
+	collect := func(ref string) (string, error) {
+		if name, ok := varName(ref); ok {
+			seen[name] = true
+		}
+		return "", nil
+	}
+	for _, val := range Defaults(viewJSON) {
+		s, ok := val.(string)
+		if !ok {
+			continue
+		}
+		// A document that does not parse still names what it names up to the
+		// point it breaks: this is a scan, not a check.
+		_, _ = walkTemplate(s, collect)
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // walkTemplate is the single pass both rendering and checking go through, so
@@ -184,6 +261,14 @@ func unknownRef(ref string) error {
 	for _, r := range TemplateRefs() {
 		names = append(names, r.Ref)
 	}
-	return fmt.Errorf("нет такой ссылки «%s%s%s». Есть: %s",
-		tmplOpen, ref, tmplClose, strings.Join(names, ", "))
+	return fmt.Errorf("нет такой ссылки «%s%s%s». Есть: %s, а также %s.Vars.ИМЯ%s для переменных платформы",
+		tmplOpen, ref, tmplClose, strings.Join(names, ", "), tmplOpen, tmplClose)
+}
+
+// varNotSet is what a reference to a variable nobody has created says. It names
+// where the variable comes from: the person reading it is either writing the
+// document and picked a name that does not exist, or ordering a service whose
+// document outlived the variable, and both need the same admin.
+func varNotSet(name string) error {
+	return fmt.Errorf("нет переменной «%s»: их заводит администратор платформы в разделе «Переменные»", name)
 }

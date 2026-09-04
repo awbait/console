@@ -212,6 +212,15 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/categories/{id}", s.handleUpdateCategory)  // admin
 			r.Delete("/categories/{id}", s.handleDeleteCategory) // admin
 
+			// platform variables: named values a version document references as
+			// "{{.Vars.OPS}}". Reading is open (the constructor offers them),
+			// writing is admin.
+			r.Get("/variables", s.handleListVariables)
+			r.Get("/variables/{name}/usage", s.handleVariableUsage)
+			r.Put("/variables/{name}", s.handleSetVariable)       // admin
+			r.Post("/variables", s.handleSetVariable)             // admin
+			r.Delete("/variables/{name}", s.handleDeleteVariable) // admin
+
 			// chart publications: metadata + view builder + approval
 			r.Get("/view-schema", s.handleViewSchema) // format of the view document, for the constructor's editor
 			r.Get("/publications", s.handleListPublications)
