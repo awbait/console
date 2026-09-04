@@ -1,5 +1,5 @@
 import { deref } from "@/form/SchemaForm";
-import { getLocation, parse as parseJsonc } from "jsonc-parser";
+import { createScanner, getLocation, parse as parseJsonc } from "jsonc-parser";
 import type { TemplateRef } from "@/api/types";
 import { type ChartField, chartFields, nodeAt, properties, rowOf } from "./chartFields";
 
@@ -55,13 +55,28 @@ export function hintsAt(
 
   // Inside a string the value replaces what is between the quotes; anywhere else
   // it is inserted whole, quotes included.
-  const node = loc.previousNode;
-  if (node && node.type === "string" && offset > node.offset && offset <= node.offset + node.length) {
-    const raw = text.slice(node.offset, node.offset + node.length);
-    const closed = raw.length > 1 && raw.endsWith('"');
-    return { items, from: node.offset + 1, to: node.offset + node.length - (closed ? 1 : 0), quote: false };
-  }
+  const inside = stringAt(text, offset);
+  if (inside) return { items, ...inside, quote: false };
   return { items, from: offset, to: offset, quote: true };
+}
+
+// stringAt returns what stands between the quotes of the string the cursor is
+// in, or null when it is not in one. The answer is read off the text with the
+// scanner rather than off the parsed document: a value being typed is a node
+// there, but a key being typed is not, and both are strings that must not be
+// quoted a second time.
+function stringAt(text: string, offset: number): { from: number; to: number } | null {
+  const scanner = createScanner(text, true);
+  for (scanner.scan(); scanner.getTokenOffset() < offset; scanner.scan()) {
+    const start = scanner.getTokenOffset();
+    if (text[start] !== '"') continue;
+    // A string the scanner could not close ends where it stopped, and the
+    // replacement runs to there: that is the half-typed pointer.
+    const raw = text.slice(start, start + scanner.getTokenLength());
+    const end = start + raw.length - (raw.length > 1 && raw.endsWith('"') ? 1 : 0);
+    if (offset <= end) return { from: start + 1, to: end };
+  }
+  return null;
 }
 
 function suggest(

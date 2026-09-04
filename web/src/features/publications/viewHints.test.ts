@@ -136,6 +136,30 @@ describe("where the text is replaced", () => {
     expect(doc.slice(got?.from, got?.to)).toBe("/gate");
   });
 
+  test("a key is a string like any other, and keeps what is already typed", () => {
+    const doc = `{"defaults":{"/nam"}}`;
+    const got = hintsAt(doc, doc.indexOf("/nam") + 4, chart);
+    expect(got?.quote).toBe(false);
+    expect(doc.slice(got?.from, got?.to)).toBe("/nam");
+  });
+
+  // The empty string is where a second pair of quotes used to appear: the
+  // suggestion went in whole, over the quotes already standing around it.
+  test("an empty string is filled in between its quotes, wherever it stands", () => {
+    const empty = [
+      `{"defaults":{""}}`,
+      `{"views":{"order":{"identity":""}}}`,
+      `{"views":{"order":{"include":[""]}}}`,
+    ];
+    for (const doc of empty) {
+      const offset = doc.indexOf(`""`) + 1;
+      const got = hintsAt(doc, offset, chart);
+      expect(got?.quote).toBe(false);
+      expect(got?.from).toBe(offset);
+      expect(got?.to).toBe(offset);
+    }
+  });
+
   test("outside a string the value brings its own quotes", () => {
     const doc = `{"tabs":[{"items": }]}`;
     const got = hintsAt(doc, doc.indexOf("}") - 1, chart);
