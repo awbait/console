@@ -117,11 +117,6 @@ func mountDependencies(parent []byte, deps []models.ChartDependency) ([]byte, []
 		if json.Unmarshal(dep.Schema, &doc) != nil {
 			continue
 		}
-		if _, taken := declared[dep.Key]; taken {
-			dep.Warning = fmt.Sprintf(
-				"Схема чарта уже описывает поле %q, поэтому форма берёт его оттуда, а не из зависимости", dep.Key)
-			continue
-		}
 		def := depDefinition(dep.Key)
 		rewriteRefs(doc, "#/definitions/"+def)
 		delete(doc, "$schema")
@@ -142,10 +137,22 @@ func mountDependencies(parent []byte, deps []models.ChartDependency) ([]byte, []
 			}
 			node["properties"] = without
 		}
+		// What the chart says about the key itself wins over what the dependency
+		// says about its own root. A chart that describes the subchart's values in
+		// full keeps its description; one that only leaves a placeholder there - a
+		// title, a "hidden", a line saying what the block is, which is what charts
+		// actually do - keeps that and gains the fields it never listed. Merged
+		// rather than either side skipped: skipping the dependency leaves the
+		// placeholder with nothing in it, and skipping the chart throws away the
+		// wording its author chose.
+		own, declaresKey := declared[dep.Key].(map[string]any)
+		if declaresKey {
+			maps.Copy(node, own)
+		}
 		node[models.SchemaDependencyAnnotation] = dep.Name
 		props[dep.Key] = node
 		mounted++
-		if strict {
+		if strict && !declaresKey {
 			dep.Warning = fmt.Sprintf(
 				"Схема чарта запрещает лишние ключи (additionalProperties: false) и не описывает %q. "+
 					"Helm отклонит values заказа, пока поле не появится в values.schema.json чарта", dep.Key)

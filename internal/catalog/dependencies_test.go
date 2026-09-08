@@ -128,22 +128,53 @@ func TestMountDependenciesWarnsOnStrictParent(t *testing.T) {
 	}
 }
 
-// A parent describing the subchart's values itself is the chart's own decision
-// and wins. Saying so is the only way to explain why the dependency's tab shows
-// fields the form does not.
-func TestMountDependenciesLeavesDeclaredKeyAlone(t *testing.T) {
+// What a chart says about the dependency's key wins over what the dependency
+// says about its own root, keyword by keyword: a chart that describes the
+// subchart's values in full keeps its description.
+func TestMountDependenciesLetsTheChartWinOnWhatItDescribes(t *testing.T) {
 	parent := []byte(`{"type":"object","properties":{"pooler":{"type":"object","properties":{"enabled":{"type":"boolean"}}}}}`)
 	deps := []models.ChartDependency{{
 		Name: "pgbouncer", Key: "pooler",
 		Schema: []byte(`{"type":"object","properties":{"poolMode":{"type":"string"}}}`),
 	}}
 
-	out, deps := mountDependencies(parent, deps)
-	if string(out) != string(parent) {
-		t.Errorf("effective schema = %s, want the parent untouched", out)
+	out, _ := mountDependencies(parent, deps)
+	pooler := propertyOf(t, decode(t, out), "pooler")
+	props, _ := pooler["properties"].(map[string]any)
+	if _, ok := props["enabled"]; !ok {
+		t.Error("the chart's own description of the key was overwritten")
 	}
-	if deps[0].Warning == "" {
-		t.Error("no warning about the chart describing the dependency itself")
+	if _, ok := props["poolMode"]; ok {
+		t.Error("the dependency's fields were merged into a key the chart describes itself")
+	}
+}
+
+// The case this feature exists for, and the one real charts are written in: the
+// chart leaves a placeholder where the subchart's values go - a title, a line
+// saying what the block is, a "hidden" - and never lists a single field. Taking
+// the placeholder as a description would leave an empty object where the
+// dependency's fields should be, and there would be no way to name them.
+func TestMountDependenciesFillsAPlaceholderKey(t *testing.T) {
+	parent := []byte(`{"type":"object","properties":{"waypoint":{
+	  "type":"object","title":"Waypoint subchart","ui:widget":"hidden",
+	  "description":"Values of the waypoint subchart"}}}`)
+	deps := []models.ChartDependency{{
+		Name: "waypoint", Key: "waypoint",
+		Schema: []byte(`{"type":"object","properties":{"waypoints":{"type":"array"},"enabled":{"type":"boolean"}}}`),
+	}}
+
+	out, deps := mountDependencies(parent, deps)
+	node := propertyOf(t, decode(t, out), "waypoint")
+	props, _ := node["properties"].(map[string]any)
+	if _, ok := props["waypoints"]; !ok {
+		t.Fatalf("the dependency's fields did not reach the placeholder: %v", keysOf(props))
+	}
+	// And what the chart said about the block itself is still what is shown.
+	if node["title"] != "Waypoint subchart" || node["ui:widget"] != "hidden" {
+		t.Errorf("the chart's own wording was lost: %v", node)
+	}
+	if deps[0].Warning != "" {
+		t.Errorf("unexpected warning: %s", deps[0].Warning)
 	}
 }
 
