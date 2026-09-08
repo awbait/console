@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-08
+
+A release about charts that pull in other charts. What a dependency describes
+can now be shown in an order form, and an order is checked against it the way
+Helm checks it on install.
+
 ### Added
 - A service whose chart pulls in other charts can now offer their fields in its
   order form. The version constructor has a "Dependencies" tab showing each
@@ -602,7 +608,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/awbait/console/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/awbait/console/compare/v0.8.2...v0.9.0

@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-08
+
+Релиз про чарты, которые тянут за собой другие чарты. То, что описывает
+зависимость, теперь можно показать в форме заказа, а сам заказ проверяется по
+этому описанию так же, как его проверяет Helm при установке.
+
 ### Добавлено
 - Сервис, чарт которого тянет за собой другие чарты, может показать их поля в
   своей форме заказа. В конструкторе версии появилась вкладка «Зависимости»: там
@@ -599,7 +605,8 @@ GitOps-провижининг, согласование публикаций и 
 - Сборка и релизы на GitHub Actions: проверки PR, тег и GitHub Release, сборка
   образов портала и коллектора.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/awbait/console/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/awbait/console/compare/v0.8.2...v0.9.0
