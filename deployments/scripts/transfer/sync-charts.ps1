@@ -117,6 +117,21 @@ function Test-Command {
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+# Git for Windows ships core.autocrlf=true in its system config, so a clone made
+# on a transfer machine gets a working tree with CRLF in every text file. Two
+# things come of that and neither is wanted here. The obvious one is noise: a
+# screen of "LF will be replaced by CRLF" for every file of every chart, with
+# the lines that matter somewhere in the middle of it. The other is that
+# -PushToHarbor packages the working tree, so the chart that reaches Harbor
+# would carry line endings the chart's own repository never had, and differ from
+# what the GitLab pipeline builds out of the same commit.
+#
+# This clone is read, compared and repackaged, never edited by a person, so the
+# bytes committed are the bytes wanted. Conversion off, both for the checkout
+# (-c, which only reaches the command it is given to) and in the clone's own
+# config, for every git call after it.
+$gitVerbatim = @('-c', 'core.autocrlf=false', '-c', 'core.eol=lf')
+
 function Invoke-Native {
   param([string]$Exe, [string[]]$Arguments, [string]$What)
   $out = & $Exe @Arguments
@@ -389,20 +404,25 @@ try {
         $hostPart = $gitlabUrl.Substring("${scheme}://".Length)
         $authRemote = "${scheme}://oauth2:$GitLabToken@$hostPart/$project.git"
       }
-      & git clone --quiet --depth 1 --branch $targetBranch $authRemote $clone
+      & git @gitVerbatim clone --quiet --depth 1 --branch $targetBranch $authRemote $clone
       if ($LASTEXITCODE -ne 0) {
         Write-Warn "cannot clone $remote (branch $targetBranch). Does the project exist, and does the token reach it with at least Developer?"
         $failed += "${chart}: clone failed"
         continue
       }
     } else {
-      Invoke-Quiet git @('clone', '--quiet', '--depth', '1', '--branch', $targetBranch, $remote, $clone) | Out-Null
+      Invoke-Quiet git ($gitVerbatim + @('clone', '--quiet', '--depth', '1', '--branch', $targetBranch, $remote, $clone)) | Out-Null
       if ($LASTEXITCODE -ne 0) {
         Write-Warn "cannot clone $remote anonymously; in a real run the token would be used"
         $failed += "${chart}: clone failed (dry run, no token)"
         continue
       }
     }
+    # -c applies to the clone command only, so the setting is written into the
+    # clone as well: everything below (add, status, commit) has to see the same
+    # bytes the checkout produced.
+    & git -C $clone config core.autocrlf false
+    & git -C $clone config core.eol lf
 
     # --- replace everything but the kept files ---
     $stash = Join-Path $workDir "keep\$chart"
