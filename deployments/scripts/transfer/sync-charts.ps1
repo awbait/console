@@ -23,8 +23,9 @@
 
     download the GitHub zip -> per chart: clone GitLab -> replace all but
     `keep` -> repoint dependencies at Harbor -> nothing changed? skip ->
-    branch + commit + push with an MR -> optionally helm dependency update +
-    package + push to Harbor -> clean up.
+    branch + commit + push with an MR (-AutoMerge lets GitLab merge it on a
+    green pipeline) -> optionally helm dependency update + package + push to
+    Harbor -> clean up.
 
   The source arrives as a zip archive over plain https, not as a git clone:
   the machines that run this have no git access to GitHub, and a read-only
@@ -49,6 +50,16 @@
   Also package the chart and push it to Harbor, instead of leaving that to the
   GitLab pipeline.
 
+.PARAMETER AutoMerge
+  Ask GitLab to merge each MR by itself once its pipeline passes, instead of
+  leaving it for a person. The MR is still opened and still shows what is going
+  into the contour; nobody has to press the button.
+
+  This needs the chart project to have a pipeline: with none to wait for,
+  GitLab has no green to merge on and the MR stays open. That is the same
+  condition -PushToHarbor exists for, so the two together are a contradiction
+  and the script says so.
+
 .PARAMETER Force
   Overwrite an existing sync branch, and push to Harbor even when the version is
   already there.
@@ -61,6 +72,9 @@
 
 .EXAMPLE
   powershell -File deployments\scripts\transfer\sync-charts.ps1 -PushToHarbor -InsecureTls
+
+.EXAMPLE
+  powershell -File deployments\scripts\transfer\sync-charts.ps1 -AutoMerge
 #>
 [CmdletBinding()]
 param(
@@ -71,6 +85,7 @@ param(
   [string]   $HarborPassword,
   [switch]   $PushToHarbor,
   [switch]   $InsecureTls,
+  [switch]   $AutoMerge,
   [switch]   $DryRun,
   [switch]   $Force,
   [switch]   $Keep
@@ -273,6 +288,13 @@ if (-not (Test-Command 'git')) { throw 'git is not on PATH.' }
 if ($PushToHarbor -and -not (Test-Command 'helm')) {
   throw 'helm is not on PATH, and -PushToHarbor needs it. Install helm or drop the flag and let the GitLab pipeline publish.'
 }
+# -PushToHarbor is for a project with no pipeline; -AutoMerge waits for one to
+# go green. Asked for together they describe two different projects, and the MR
+# would sit open waiting for a pipeline that never runs. Said, not refused: a
+# run may cover several charts, and only some of them may be in that state.
+if ($AutoMerge -and $PushToHarbor) {
+  Write-Warn '-AutoMerge waits for a pipeline, -PushToHarbor is for projects that have none. An MR in such a project will stay open.'
+}
 
 if (-not $DryRun) {
   if (-not $GitLabToken) { $GitLabToken = $env:GITLAB_TOKEN }
@@ -433,7 +455,11 @@ try {
     if (@($changes).Count -gt 20) { Write-Host "      ... and $(@($changes).Count - 20) more" }
 
     if ($DryRun) {
-      Write-Skip 'dry run: no branch, no commit, no push'
+      if ($AutoMerge) {
+        Write-Skip 'dry run: no branch, no commit, no push (the MR would be set to merge on a green pipeline)'
+      } else {
+        Write-Skip 'dry run: no branch, no commit, no push'
+      }
       $synced += $chart
       continue
     }
@@ -461,9 +487,13 @@ try {
       '-o', 'merge_request.create',
       '-o', "merge_request.target_branch=$targetBranch",
       '-o', "merge_request.title=chore($chart): sync chart $($meta.Version) from console-charts",
-      '-o', 'merge_request.remove_source_branch',
-      'origin', "HEAD:refs/heads/$branch"
+      '-o', 'merge_request.remove_source_branch'
     )
+    # GitLab merges the MR itself once the pipeline is green. Asked for on the
+    # push rather than through the API afterwards: one call, and nothing is
+    # merged that the project's own checks have not passed.
+    if ($AutoMerge) { $pushArgs += @('-o', 'merge_request.merge_when_pipeline_succeeds') }
+    $pushArgs += @('origin', "HEAD:refs/heads/$branch")
     Write-Step "$chart : pushing $branch and opening an MR"
     # GitLab prints the MR URL as a remote message; it is left on the console
     # rather than captured, so the link stays clickable.
@@ -473,7 +503,11 @@ try {
       $failed += "${chart}: push failed"
       continue
     }
-    Write-Ok "$branch pushed, MR opened against $targetBranch"
+    if ($AutoMerge) {
+      Write-Ok "$branch pushed, MR opened against $targetBranch and set to merge on a green pipeline"
+    } else {
+      Write-Ok "$branch pushed, MR opened against $targetBranch"
+    }
     $synced += $chart
 
     # --- optional: straight into Harbor ---
