@@ -22,10 +22,14 @@
   Harbor first: the map is in dependency order for that reason.
 
     download the GitHub zip -> per chart: clone GitLab -> replace all but
-    `keep` -> repoint dependencies at Harbor -> nothing changed? skip ->
+    `keep` -> repoint dependencies at Harbor -> nothing changed? no MR ->
     branch + commit + push with an MR (-AutoMerge lets GitLab merge it on a
     green pipeline) -> optionally helm dependency update + package + push to
     Harbor -> clean up.
+
+  GitLab and Harbor are asked separately. A chart GitLab already holds gets no
+  MR, and with -PushToHarbor the run still goes on to Harbor: the chart may
+  never have reached it, or be there in a copy somebody wants replaced.
 
   The source arrives as a zip archive over plain https, not as a git clone:
   the machines that run this have no git access to GitHub, and a read-only
@@ -61,8 +65,14 @@
   and the script says so.
 
 .PARAMETER Force
-  Overwrite an existing sync branch, and push to Harbor even when the version is
+  Overwrite an existing sync branch, and push to Harbor over a version that is
   already there.
+
+  The second half is the one to reach for when a chart is unchanged everywhere
+  and the copy in Harbor still has to be replaced: with -PushToHarbor the chart
+  is packaged from the synced content and pushed over the existing tag. Harbor
+  keeps the old artifact, untagged, until the registry's garbage collection
+  takes it.
 
 .EXAMPLE
   powershell -File deployments\scripts\transfer\sync-charts.ps1 -DryRun
@@ -183,7 +193,12 @@ function Get-ChartDependencies {
     }
   }
   if ($current) { $deps += $current }
-  return ,$deps
+  # Plain return, and the caller wraps the result in @(). The comma idiom that
+  # keeps a one-element array from unrolling turns an empty one into an array
+  # holding an empty array, and the caller then walks a phantom dependency with
+  # no name - which read as "this chart's dependency is not in Harbor" for every
+  # chart that has none.
+  return $deps
 }
 
 # Where a chart lives in Harbor: its own harborProject if the map gives it one,
@@ -445,70 +460,83 @@ try {
 
     Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'add', '-A') -What 'git add' | Out-Null
     $changes = & git -C $clone status --porcelain
-    if (-not $changes) {
+
+    # "GitLab already holds this chart" is a reason not to open an MR, and only
+    # that. Harbor is a separate question and can answer differently: the chart
+    # may never have reached it (a pipeline that failed), or be there in a copy
+    # somebody wants replaced. So with -PushToHarbor the run carries on to that
+    # half, where the version check - and -Force - decide on their own.
+    $nothingToCommit = -not $changes
+    if ($nothingToCommit) {
       Write-Skip 'GitLab already holds this chart, nothing to sync'
       $upToDate += $chart
-      continue
+      if (-not $PushToHarbor) { continue }
+    } else {
+      Write-Ok "$(@($changes).Count) file(s) differ:"
+      foreach ($line in @($changes) | Select-Object -First 20) { Write-Host "      $line" }
+      if (@($changes).Count -gt 20) { Write-Host "      ... and $(@($changes).Count - 20) more" }
     }
-    Write-Ok "$(@($changes).Count) file(s) differ:"
-    foreach ($line in @($changes) | Select-Object -First 20) { Write-Host "      $line" }
-    if (@($changes).Count -gt 20) { Write-Host "      ... and $(@($changes).Count - 20) more" }
 
     if ($DryRun) {
-      if ($AutoMerge) {
+      if ($nothingToCommit) {
+        Write-Skip 'dry run: nothing to sync to GitLab, Harbor would be checked'
+      } elseif ($AutoMerge) {
         Write-Skip 'dry run: no branch, no commit, no push (the MR would be set to merge on a green pipeline)'
+        $synced += $chart
       } else {
         Write-Skip 'dry run: no branch, no commit, no push'
+        $synced += $chart
       }
-      $synced += $chart
       continue
     }
 
     # --- branch, commit, MR ---
-    $branch = "chore/sync-$chart-$($meta.Version)"
-    Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'checkout', '--quiet', '-B', $branch) -What 'git checkout' | Out-Null
+    if (-not $nothingToCommit) {
+      $branch = "chore/sync-$chart-$($meta.Version)"
+      Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'checkout', '--quiet', '-B', $branch) -What 'git checkout' | Out-Null
 
-    # A shallow throwaway clone has no identity of its own; set one locally so
-    # the commit does not fail on a machine with no global user.name.
-    & git -C $clone config user.name  'console-transfer'
-    & git -C $clone config user.email 'console-transfer@localhost'
+      # A shallow throwaway clone has no identity of its own; set one locally so
+      # the commit does not fail on a machine with no global user.name.
+      & git -C $clone config user.name  'console-transfer'
+      & git -C $clone config user.email 'console-transfer@localhost'
 
-    $body = "Source: $sourceRepo@$sourceRef ($sourceSha)."
-    if ($kept) { $body += "`nKept from GitLab: $($kept -join ', ')." }
-    Invoke-Native -Exe 'git' -Arguments @(
-      '-C', $clone, 'commit', '--quiet',
-      '-m', "chore($chart): sync chart $($meta.Version) from console-charts",
-      '-m', $body
-    ) -What 'git commit' | Out-Null
+      $body = "Source: $sourceRepo@$sourceRef ($sourceSha)."
+      if ($kept) { $body += "`nKept from GitLab: $($kept -join ', ')." }
+      Invoke-Native -Exe 'git' -Arguments @(
+        '-C', $clone, 'commit', '--quiet',
+        '-m', "chore($chart): sync chart $($meta.Version) from console-charts",
+        '-m', $body
+      ) -What 'git commit' | Out-Null
 
-    $pushArgs = @('-C', $clone, 'push')
-    if ($Force) { $pushArgs += '--force' }
-    $pushArgs += @(
-      '-o', 'merge_request.create',
-      '-o', "merge_request.target_branch=$targetBranch",
-      '-o', "merge_request.title=chore($chart): sync chart $($meta.Version) from console-charts",
-      '-o', 'merge_request.remove_source_branch'
-    )
-    # GitLab merges the MR itself once the pipeline is green. Asked for on the
-    # push rather than through the API afterwards: one call, and nothing is
-    # merged that the project's own checks have not passed.
-    if ($AutoMerge) { $pushArgs += @('-o', 'merge_request.merge_when_pipeline_succeeds') }
-    $pushArgs += @('origin', "HEAD:refs/heads/$branch")
-    Write-Step "$chart : pushing $branch and opening an MR"
-    # GitLab prints the MR URL as a remote message; it is left on the console
-    # rather than captured, so the link stays clickable.
-    & git @pushArgs
-    if ($LASTEXITCODE -ne 0) {
-      Write-Warn "push failed. If $branch already exists on the remote, rerun with -Force."
-      $failed += "${chart}: push failed"
-      continue
-    }
-    if ($AutoMerge) {
-      Write-Ok "$branch pushed, MR opened against $targetBranch and set to merge on a green pipeline"
-    } else {
-      Write-Ok "$branch pushed, MR opened against $targetBranch"
-    }
-    $synced += $chart
+      $pushArgs = @('-C', $clone, 'push')
+      if ($Force) { $pushArgs += '--force' }
+      $pushArgs += @(
+        '-o', 'merge_request.create',
+        '-o', "merge_request.target_branch=$targetBranch",
+        '-o', "merge_request.title=chore($chart): sync chart $($meta.Version) from console-charts",
+        '-o', 'merge_request.remove_source_branch'
+      )
+      # GitLab merges the MR itself once the pipeline is green. Asked for on the
+      # push rather than through the API afterwards: one call, and nothing is
+      # merged that the project's own checks have not passed.
+      if ($AutoMerge) { $pushArgs += @('-o', 'merge_request.merge_when_pipeline_succeeds') }
+      $pushArgs += @('origin', "HEAD:refs/heads/$branch")
+      Write-Step "$chart : pushing $branch and opening an MR"
+      # GitLab prints the MR URL as a remote message; it is left on the console
+      # rather than captured, so the link stays clickable.
+      & git @pushArgs
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warn "push failed. If $branch already exists on the remote, rerun with -Force."
+        $failed += "${chart}: push failed"
+        continue
+      }
+      if ($AutoMerge) {
+        Write-Ok "$branch pushed, MR opened against $targetBranch and set to merge on a green pipeline"
+      } else {
+        Write-Ok "$branch pushed, MR opened against $targetBranch"
+      }
+      $synced += $chart
+    } # end of the GitLab half, skipped when GitLab already holds the chart
 
     # --- optional: straight into Harbor ---
     if ($PushToHarbor) {
