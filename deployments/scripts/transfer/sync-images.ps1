@@ -22,6 +22,12 @@
   Which images to carry. Defaults to both portal and collector. A component
   missing from the release is reported and skipped, not treated as a failure.
 
+.PARAMETER HarborHost
+  The OCI endpoint images are pushed to, e.g. harbor.example.test. Without it:
+  $env:HARBOR_HOST. There is no default, and deliberately so: this address
+  belongs to the installation, and a wrong one means images pushed into somebody
+  else's registry.
+
 .PARAMETER Force
   Push even when the tag is already in Harbor (overwrites it).
 
@@ -29,7 +35,7 @@
   Keep the downloaded archives and the local docker images afterwards.
 
 .EXAMPLE
-  powershell -File deployments\scripts\transfer\sync-images.ps1
+  powershell -File deployments\scripts\transfer\sync-images.ps1 -HarborHost harbor.example.test
 
 .EXAMPLE
   powershell -File deployments\scripts\transfer\sync-images.ps1 -Version v0.8.1 -Components portal
@@ -39,7 +45,7 @@ param(
   [string]   $Version,
   [string[]] $Components    = @('portal', 'collector'),
   [string]   $SourceRepo    = 'awbait/console',
-  [string]   $HarborHost    = 'harbor.idp.ecpk.test',
+  [string]   $HarborHost,
   [string]   $HarborProject = 'core',
   [string]   $HarborUser,
   [string]   $HarborPassword,
@@ -57,6 +63,14 @@ trap {
   Write-Host ''
   Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
   exit 1
+}
+
+# The address is the installation's, not the product's, so there is no default
+# to fall back to: a wrong one here means images pushed to somebody else's
+# registry, which is worse than a script that refuses to start.
+if (-not $HarborHost) { $HarborHost = $env:HARBOR_HOST }
+if (-not $HarborHost) {
+  throw 'no Harbor address: pass -HarborHost or set $env:HARBOR_HOST (the OCI endpoint images are pushed to, e.g. harbor.example.test).'
 }
 
 # Credentials: parameters win, then the environment, then the stand default.

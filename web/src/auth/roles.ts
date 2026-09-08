@@ -16,7 +16,7 @@ export const ROLE_LABELS: Record<string, string> = {
 // Usually the team's own name. But a service can be owned by a group that
 // grants a role instead of being a team - the charts the platform team runs
 // itself are owned by the admin group - and that group is stored as its path in
-// the directory, something like "idp_ecpk_console/admin". Nobody outside the
+// the directory, something like "platform_console/admin". Nobody outside the
 // platform team has ever seen that string. Those owners are called by their
 // role, in the same words the profile menu uses.
 //

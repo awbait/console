@@ -367,7 +367,7 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 
 // meResponse is the session, plus the one piece of configuration the interface
 // needs in order to name things: which groups grant a role rather than being a
-// team. A group like "idp_ecpk_console/admin" can own a service, and printing
+// team. A group like "platform_console/admin" can own a service, and printing
 // its path tells the reader nothing - it is "Администратор платформы" they know
 // from the profile menu. What that reads as is the interface's business, so the
 // portal sends the role and the wording stays in the SPA.

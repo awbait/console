@@ -7,7 +7,7 @@ Harbor, Helm-чарты в GitLab (а оттуда пайплайном в Harbo
 | Скрипт | Что переносит | Откуда | Куда |
 |---|---|---|---|
 | `update-repos.ps1` | исходники `console` и `console-charts` | ветка `main` обоих репозиториев | папка, из которой запущен |
-| `sync-images.ps1` | образы `portal` и `collector` | GitHub Release репозитория `awbait/console` | `harbor.idp.ecpk.test/core/console/*` |
+| `sync-images.ps1` | образы `portal` и `collector` | GitHub Release репозитория `awbait/console` | `harbor.example.test/core/console/*` |
 | `sync-charts.ps1` | Helm-чарты | ветка `main` репозитория `awbait/console-charts` | проекты чартов в GitLab, дальше Harbor |
 
 Все три идемпотентны и убирают за собой: скачанные архивы, временные клоны и
@@ -88,7 +88,7 @@ powershell -File deployments\scripts\transfer\sync-images.ps1 -Version v0.8.1 -C
    GitHub API) или из `-Version`.
 3. `docker login` в Harbor. Логин идёт первым: без него проверка «образ уже
    есть?» на приватном проекте отвечала бы «нет».
-4. Для каждого образа проверяется `harbor.idp.ecpk.test/core/console/<имя>:<версия>`.
+4. Для каждого образа проверяется `harbor.example.test/core/console/<имя>:<версия>`.
    Всё, что уже там, пропускается. Если пропускать нечего, скрипт завершается,
    ничего не скачав. Перезалить принудительно: `-Force`.
 5. Скачивается `console-<имя>-<версия>-linux-amd64.tar.gz` и сверяется с
@@ -143,11 +143,15 @@ powershell -File deployments\scripts\transfer\sync-charts.ps1 -AutoMerge
 `charts-map.json`. Чарт с пустым `project` - это ошибка конфигурации, и скрипт
 назовёт такие чарты и остановится, не тронув GitLab.
 
+Адреса `gitlabUrl` и `harborHost` шаблон тоже не несёт: они принадлежат
+установке, а не продукту, и подставленный по умолчанию чужой адрес означал бы
+чарты, уехавшие не туда. Пустые - скрипт назовёт их и остановится.
+
 ```json
 {
-  "gitlabUrl": "https://gitlab.idp.ecpk.test",
+  "gitlabUrl": "https://gitlab.example.test",
   "targetBranch": "main",
-  "harborHost": "harbor.idp.ecpk.test",
+  "harborHost": "harbor.example.test",
   "harborProject": "platform",
   "keep": ["values.yaml"],
   "charts": {
@@ -226,7 +230,7 @@ Harbor:
 # на GitHub
 repository: "file://../ingress-gateway"
 # в GitLab
-repository: "oci://harbor.idp.ecpk.test/platform"
+repository: "oci://harbor.example.test/platform"
 ```
 
 Имя чарта остаётся в `name:`, поэтому в `repository` идёт только проект.

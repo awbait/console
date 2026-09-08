@@ -2,10 +2,10 @@
   "sourceRepo": "awbait/console-charts",
   "ref": "main",
 
-  "gitlabUrl": "https://gitlab.idp.ecpk.test",
+  "gitlabUrl": "",
   "targetBranch": "main",
 
-  "harborHost": "harbor.idp.ecpk.test",
+  "harborHost": "",
   "harborProject": "platform",
 
   "keep": ["values.yaml"],

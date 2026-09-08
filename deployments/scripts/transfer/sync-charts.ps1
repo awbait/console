@@ -262,10 +262,20 @@ $cfg = Get-Content -Path $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 
 $sourceRepo   = $cfg.sourceRepo
 $sourceRef    = $cfg.ref
-$gitlabUrl    = $cfg.gitlabUrl.TrimEnd('/')
 $targetBranch = $cfg.targetBranch
-$harborHost   = $cfg.harborHost
 $defaultKeep  = @($cfg.keep)
+
+# The addresses are the installation's, not the product's, so the map ships
+# without them. Caught here rather than three calls later, where an empty host
+# turns into a clone of "/group/chart.git" and a message about a bad URL.
+$missing = @()
+if (-not $cfg.gitlabUrl)  { $missing += 'gitlabUrl' }
+if (-not $cfg.harborHost) { $missing += 'harborHost' }
+if ($missing) {
+  throw "not set in $ConfigPath : $($missing -join ', '). Fill in the addresses of this installation's GitLab and Harbor."
+}
+$gitlabUrl  = $cfg.gitlabUrl.TrimEnd('/')
+$harborHost = $cfg.harborHost
 
 $chartNames = $cfg.charts.PSObject.Properties.Name
 if ($Charts) {

@@ -86,7 +86,7 @@ func TestHTTPMeRoleGroups(t *testing.T) {
 	}
 
 	srv.RoleGroups = map[string]models.Role{
-		"idp_ecpk_console/admin": models.RoleAdmin,
+		"platform_console/admin": models.RoleAdmin,
 		"console/support":        models.RoleSupport,
 	}
 	var wired struct {
@@ -102,7 +102,7 @@ func TestHTTPMeRoleGroups(t *testing.T) {
 	}
 	// Everybody gets the map: an owner has to be named the same way whoever is
 	// looking at the catalog.
-	if wired.RoleGroups["idp_ecpk_console/admin"] != "admin" ||
+	if wired.RoleGroups["platform_console/admin"] != "admin" ||
 		wired.RoleGroups["console/support"] != "support" {
 		t.Fatalf("role_groups = %v", wired.RoleGroups)
 	}
