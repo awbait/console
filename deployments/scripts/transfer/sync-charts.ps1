@@ -299,7 +299,7 @@ if ($AutoMerge -and $PushToHarbor) {
 if (-not $DryRun) {
   if (-not $GitLabToken) { $GitLabToken = $env:GITLAB_TOKEN }
   if (-not $GitLabToken) {
-    throw 'no GitLab token: pass -GitLabToken or set $env:GITLAB_TOKEN (a token with write access to the chart projects).'
+    throw 'no GitLab token: pass -GitLabToken or set $env:GITLAB_TOKEN. It needs the write_repository scope and at least Developer in every chart project; -AutoMerge additionally needs the right to merge into the target branch.'
   }
 }
 if ($PushToHarbor) {
@@ -391,7 +391,7 @@ try {
       }
       & git clone --quiet --depth 1 --branch $targetBranch $authRemote $clone
       if ($LASTEXITCODE -ne 0) {
-        Write-Warn "cannot clone $remote (branch $targetBranch). Does the project exist and does the token have write access?"
+        Write-Warn "cannot clone $remote (branch $targetBranch). Does the project exist, and does the token reach it with at least Developer?"
         $failed += "${chart}: clone failed"
         continue
       }
