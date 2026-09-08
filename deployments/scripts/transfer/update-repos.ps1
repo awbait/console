@@ -38,6 +38,11 @@
   replacing it would throw away the history and whatever is uncommitted in it.
   Update that one with git, or pass -Force to replace it like any other.
 
+  Whole means whole: nothing kept inside a repository folder survives an update
+  of it. Anything the installation owns - the filled-in charts-map.json above
+  all - belongs in the folder this runs from, beside the repositories rather
+  than inside one. sync-charts.ps1 looks for its map there for that reason.
+
 .PARAMETER Path
   The folder holding the copies. Default: the current directory, which is where
   this is meant to be run from.

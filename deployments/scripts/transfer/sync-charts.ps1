@@ -22,10 +22,14 @@
   Harbor first: the map is in dependency order for that reason.
 
     download the GitHub zip -> per chart: clone GitLab -> replace all but
-    `keep` -> repoint dependencies at Harbor -> nothing changed? skip ->
+    `keep` -> repoint dependencies at Harbor -> nothing changed? no MR ->
     branch + commit + push with an MR (-AutoMerge lets GitLab merge it on a
     green pipeline) -> optionally helm dependency update + package + push to
     Harbor -> clean up.
+
+  GitLab and Harbor are asked separately. A chart GitLab already holds gets no
+  MR, and with -PushToHarbor the run still goes on to Harbor: the chart may
+  never have reached it, or be there in a copy somebody wants replaced.
 
   The source arrives as a zip archive over plain https, not as a git clone:
   the machines that run this have no git access to GitHub, and a read-only
@@ -41,6 +45,15 @@
 
 .PARAMETER Charts
   Only these charts out of the map. Default: every chart in the map.
+
+.PARAMETER ConfigPath
+  The chart map to read. Without it: $env:CHARTS_MAP, then a charts-map.json
+  sitting next to the console folder, then the template shipped in this
+  directory.
+
+  Keep the filled-in map next to the console folder rather than inside the
+  repository. update-repos.ps1 replaces the repository whole, so a map kept
+  inside it is thrown away on the next update, projects and all.
 
 .PARAMETER DryRun
   Print the resolved plan (chart, GitLab project, kept files, version, what
@@ -61,8 +74,14 @@
   and the script says so.
 
 .PARAMETER Force
-  Overwrite an existing sync branch, and push to Harbor even when the version is
+  Overwrite an existing sync branch, and push to Harbor over a version that is
   already there.
+
+  The second half is the one to reach for when a chart is unchanged everywhere
+  and the copy in Harbor still has to be replaced: with -PushToHarbor the chart
+  is packaged from the synced content and pushed over the existing tag. Harbor
+  keeps the old artifact, untagged, until the registry's garbage collection
+  takes it.
 
 .EXAMPLE
   powershell -File deployments\scripts\transfer\sync-charts.ps1 -DryRun
@@ -103,6 +122,25 @@ trap {
   exit 1
 }
 
+# Where the chart map is looked for, in order: -ConfigPath, $env:CHARTS_MAP, a
+# charts-map.json sitting next to the repository folder, and finally the
+# template shipped in this directory.
+#
+# The third one is the one that matters. update-repos.ps1 replaces the whole
+# console folder to bring it up to date, so a map filled in inside the
+# repository is thrown away with everything else, and the next transfer starts
+# by asking for projects that were named weeks ago. One level up, in the folder
+# holding console and console-charts, nothing touches it.
+if (-not $ConfigPath) { $ConfigPath = $env:CHARTS_MAP }
+if (-not $ConfigPath) {
+  # <repo>\deployments\scripts\transfer -> <repo> -> the folder holding it.
+  $repoRoot  = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+  $besideDir = if ($repoRoot) { Split-Path -Parent $repoRoot } else { $null }
+  if ($besideDir) {
+    $beside = Join-Path $besideDir 'charts-map.json'
+    if (Test-Path $beside) { $ConfigPath = $beside }
+  }
+}
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'charts-map.json' }
 
 # --- small helpers ----------------------------------------------------------
@@ -116,6 +154,21 @@ function Test-Command {
   param([string]$Name)
   return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
+
+# Git for Windows ships core.autocrlf=true in its system config, so a clone made
+# on a transfer machine gets a working tree with CRLF in every text file. Two
+# things come of that and neither is wanted here. The obvious one is noise: a
+# screen of "LF will be replaced by CRLF" for every file of every chart, with
+# the lines that matter somewhere in the middle of it. The other is that
+# -PushToHarbor packages the working tree, so the chart that reaches Harbor
+# would carry line endings the chart's own repository never had, and differ from
+# what the GitLab pipeline builds out of the same commit.
+#
+# This clone is read, compared and repackaged, never edited by a person, so the
+# bytes committed are the bytes wanted. Conversion off, both for the checkout
+# (-c, which only reaches the command it is given to) and in the clone's own
+# config, for every git call after it.
+$gitVerbatim = @('-c', 'core.autocrlf=false', '-c', 'core.eol=lf')
 
 function Invoke-Native {
   param([string]$Exe, [string[]]$Arguments, [string]$What)
@@ -183,7 +236,12 @@ function Get-ChartDependencies {
     }
   }
   if ($current) { $deps += $current }
-  return ,$deps
+  # Plain return, and the caller wraps the result in @(). The comma idiom that
+  # keeps a one-element array from unrolling turns an empty one into an array
+  # holding an empty array, and the caller then walks a phantom dependency with
+  # no name - which read as "this chart's dependency is not in Harbor" for every
+  # chart that has none.
+  return $deps
 }
 
 # Where a chart lives in Harbor: its own harborProject if the map gives it one,
@@ -259,6 +317,9 @@ if (-not (Test-Path $ConfigPath)) {
   throw "config not found: $ConfigPath (see README.md in the same directory)"
 }
 $cfg = Get-Content -Path $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+# Which map this run is reading. There are up to four places it could have come
+# from, and the difference between them is a transfer that goes somewhere else.
+Write-Skip "chart map: $ConfigPath"
 
 $sourceRepo   = $cfg.sourceRepo
 $sourceRef    = $cfg.ref
@@ -272,7 +333,13 @@ $missing = @()
 if (-not $cfg.gitlabUrl)  { $missing += 'gitlabUrl' }
 if (-not $cfg.harborHost) { $missing += 'harborHost' }
 if ($missing) {
-  throw "not set in $ConfigPath : $($missing -join ', '). Fill in the addresses of this installation's GitLab and Harbor."
+  $where = "Fill in the addresses of this installation's GitLab and Harbor in $ConfigPath."
+  # Same trap as an unfilled `project`: filling in the copy inside the repository
+  # means filling it in again after the next update-repos.ps1 run.
+  if ($ConfigPath -eq (Join-Path $PSScriptRoot 'charts-map.json')) {
+    $where = "This is the template shipped with the repository, and updating the repository replaces it. Copy it next to the console folder and fill in the addresses of this installation's GitLab and Harbor there."
+  }
+  throw "not set in the chart map: $($missing -join ', '). $where"
 }
 $gitlabUrl  = $cfg.gitlabUrl.TrimEnd('/')
 $harborHost = $cfg.harborHost
@@ -289,7 +356,13 @@ if (-not $chartNames) { throw "no charts in $ConfigPath" }
 # in particular, so it is caught before anything is cloned.
 $unmapped = $chartNames | Where-Object { -not $cfg.charts.$_.project }
 if ($unmapped) {
-  throw "no GitLab project set for: $($unmapped -join ', '). Fill in 'project' for them in $ConfigPath."
+  $hint = "Fill in 'project' for them in $ConfigPath."
+  # The template inside the repository is the wrong copy to fill in: the next
+  # update-repos.ps1 run replaces that folder and the answers go with it.
+  if ($ConfigPath -eq (Join-Path $PSScriptRoot 'charts-map.json')) {
+    $hint = "This is the template shipped with the repository, and updating the repository replaces it. Copy it next to the console folder, fill in 'project' there, and it will be picked up on its own."
+  }
+  throw "no GitLab project set for: $($unmapped -join ', '). $hint"
 }
 
 # --- preflight --------------------------------------------------------------
@@ -399,20 +472,25 @@ try {
         $hostPart = $gitlabUrl.Substring("${scheme}://".Length)
         $authRemote = "${scheme}://oauth2:$GitLabToken@$hostPart/$project.git"
       }
-      & git clone --quiet --depth 1 --branch $targetBranch $authRemote $clone
+      & git @gitVerbatim clone --quiet --depth 1 --branch $targetBranch $authRemote $clone
       if ($LASTEXITCODE -ne 0) {
         Write-Warn "cannot clone $remote (branch $targetBranch). Does the project exist, and does the token reach it with at least Developer?"
         $failed += "${chart}: clone failed"
         continue
       }
     } else {
-      Invoke-Quiet git @('clone', '--quiet', '--depth', '1', '--branch', $targetBranch, $remote, $clone) | Out-Null
+      Invoke-Quiet git ($gitVerbatim + @('clone', '--quiet', '--depth', '1', '--branch', $targetBranch, $remote, $clone)) | Out-Null
       if ($LASTEXITCODE -ne 0) {
         Write-Warn "cannot clone $remote anonymously; in a real run the token would be used"
         $failed += "${chart}: clone failed (dry run, no token)"
         continue
       }
     }
+    # -c applies to the clone command only, so the setting is written into the
+    # clone as well: everything below (add, status, commit) has to see the same
+    # bytes the checkout produced.
+    & git -C $clone config core.autocrlf false
+    & git -C $clone config core.eol lf
 
     # --- replace everything but the kept files ---
     $stash = Join-Path $workDir "keep\$chart"
@@ -455,70 +533,83 @@ try {
 
     Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'add', '-A') -What 'git add' | Out-Null
     $changes = & git -C $clone status --porcelain
-    if (-not $changes) {
+
+    # "GitLab already holds this chart" is a reason not to open an MR, and only
+    # that. Harbor is a separate question and can answer differently: the chart
+    # may never have reached it (a pipeline that failed), or be there in a copy
+    # somebody wants replaced. So with -PushToHarbor the run carries on to that
+    # half, where the version check - and -Force - decide on their own.
+    $nothingToCommit = -not $changes
+    if ($nothingToCommit) {
       Write-Skip 'GitLab already holds this chart, nothing to sync'
       $upToDate += $chart
-      continue
+      if (-not $PushToHarbor) { continue }
+    } else {
+      Write-Ok "$(@($changes).Count) file(s) differ:"
+      foreach ($line in @($changes) | Select-Object -First 20) { Write-Host "      $line" }
+      if (@($changes).Count -gt 20) { Write-Host "      ... and $(@($changes).Count - 20) more" }
     }
-    Write-Ok "$(@($changes).Count) file(s) differ:"
-    foreach ($line in @($changes) | Select-Object -First 20) { Write-Host "      $line" }
-    if (@($changes).Count -gt 20) { Write-Host "      ... and $(@($changes).Count - 20) more" }
 
     if ($DryRun) {
-      if ($AutoMerge) {
+      if ($nothingToCommit) {
+        Write-Skip 'dry run: nothing to sync to GitLab, Harbor would be checked'
+      } elseif ($AutoMerge) {
         Write-Skip 'dry run: no branch, no commit, no push (the MR would be set to merge on a green pipeline)'
+        $synced += $chart
       } else {
         Write-Skip 'dry run: no branch, no commit, no push'
+        $synced += $chart
       }
-      $synced += $chart
       continue
     }
 
     # --- branch, commit, MR ---
-    $branch = "chore/sync-$chart-$($meta.Version)"
-    Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'checkout', '--quiet', '-B', $branch) -What 'git checkout' | Out-Null
+    if (-not $nothingToCommit) {
+      $branch = "chore/sync-$chart-$($meta.Version)"
+      Invoke-Native -Exe 'git' -Arguments @('-C', $clone, 'checkout', '--quiet', '-B', $branch) -What 'git checkout' | Out-Null
 
-    # A shallow throwaway clone has no identity of its own; set one locally so
-    # the commit does not fail on a machine with no global user.name.
-    & git -C $clone config user.name  'console-transfer'
-    & git -C $clone config user.email 'console-transfer@localhost'
+      # A shallow throwaway clone has no identity of its own; set one locally so
+      # the commit does not fail on a machine with no global user.name.
+      & git -C $clone config user.name  'console-transfer'
+      & git -C $clone config user.email 'console-transfer@localhost'
 
-    $body = "Source: $sourceRepo@$sourceRef ($sourceSha)."
-    if ($kept) { $body += "`nKept from GitLab: $($kept -join ', ')." }
-    Invoke-Native -Exe 'git' -Arguments @(
-      '-C', $clone, 'commit', '--quiet',
-      '-m', "chore($chart): sync chart $($meta.Version) from console-charts",
-      '-m', $body
-    ) -What 'git commit' | Out-Null
+      $body = "Source: $sourceRepo@$sourceRef ($sourceSha)."
+      if ($kept) { $body += "`nKept from GitLab: $($kept -join ', ')." }
+      Invoke-Native -Exe 'git' -Arguments @(
+        '-C', $clone, 'commit', '--quiet',
+        '-m', "chore($chart): sync chart $($meta.Version) from console-charts",
+        '-m', $body
+      ) -What 'git commit' | Out-Null
 
-    $pushArgs = @('-C', $clone, 'push')
-    if ($Force) { $pushArgs += '--force' }
-    $pushArgs += @(
-      '-o', 'merge_request.create',
-      '-o', "merge_request.target_branch=$targetBranch",
-      '-o', "merge_request.title=chore($chart): sync chart $($meta.Version) from console-charts",
-      '-o', 'merge_request.remove_source_branch'
-    )
-    # GitLab merges the MR itself once the pipeline is green. Asked for on the
-    # push rather than through the API afterwards: one call, and nothing is
-    # merged that the project's own checks have not passed.
-    if ($AutoMerge) { $pushArgs += @('-o', 'merge_request.merge_when_pipeline_succeeds') }
-    $pushArgs += @('origin', "HEAD:refs/heads/$branch")
-    Write-Step "$chart : pushing $branch and opening an MR"
-    # GitLab prints the MR URL as a remote message; it is left on the console
-    # rather than captured, so the link stays clickable.
-    & git @pushArgs
-    if ($LASTEXITCODE -ne 0) {
-      Write-Warn "push failed. If $branch already exists on the remote, rerun with -Force."
-      $failed += "${chart}: push failed"
-      continue
-    }
-    if ($AutoMerge) {
-      Write-Ok "$branch pushed, MR opened against $targetBranch and set to merge on a green pipeline"
-    } else {
-      Write-Ok "$branch pushed, MR opened against $targetBranch"
-    }
-    $synced += $chart
+      $pushArgs = @('-C', $clone, 'push')
+      if ($Force) { $pushArgs += '--force' }
+      $pushArgs += @(
+        '-o', 'merge_request.create',
+        '-o', "merge_request.target_branch=$targetBranch",
+        '-o', "merge_request.title=chore($chart): sync chart $($meta.Version) from console-charts",
+        '-o', 'merge_request.remove_source_branch'
+      )
+      # GitLab merges the MR itself once the pipeline is green. Asked for on the
+      # push rather than through the API afterwards: one call, and nothing is
+      # merged that the project's own checks have not passed.
+      if ($AutoMerge) { $pushArgs += @('-o', 'merge_request.merge_when_pipeline_succeeds') }
+      $pushArgs += @('origin', "HEAD:refs/heads/$branch")
+      Write-Step "$chart : pushing $branch and opening an MR"
+      # GitLab prints the MR URL as a remote message; it is left on the console
+      # rather than captured, so the link stays clickable.
+      & git @pushArgs
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warn "push failed. If $branch already exists on the remote, rerun with -Force."
+        $failed += "${chart}: push failed"
+        continue
+      }
+      if ($AutoMerge) {
+        Write-Ok "$branch pushed, MR opened against $targetBranch and set to merge on a green pipeline"
+      } else {
+        Write-Ok "$branch pushed, MR opened against $targetBranch"
+      }
+      $synced += $chart
+    } # end of the GitLab half, skipped when GitLab already holds the chart
 
     # --- optional: straight into Harbor ---
     if ($PushToHarbor) {
