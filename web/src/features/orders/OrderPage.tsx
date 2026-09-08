@@ -211,10 +211,20 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // view document (from its publication). The "order" view curates the form
   // (e.g. one Gateway, hide xroutes); the schema stays the single source of
   // truth for validation.
+  //
+  // The schema asked for is the effective one: the chart's own with every
+  // dependency mounted under the key its values sit at. Without it a view naming
+  // a dependency's field would point at nothing, and the order would be checked
+  // against half the rules Helm applies.
   const { data: form } = useAsync(
     async (signal) => {
       if (!project || !name || !effectiveVersion) return null;
-      const schema = await api.getSchema(project, name, effectiveVersion, signal);
+      const { effective_schema: schema } = await api.getDependencies(
+        project,
+        name,
+        effectiveVersion,
+        signal,
+      );
       // Request the view for the selected version only when it is an orderable
       // version; otherwise (legacy charts) fall back to the default active view.
       const viewVersion = orderableVersions.includes(effectiveVersion) ? effectiveVersion : undefined;

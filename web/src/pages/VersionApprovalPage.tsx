@@ -100,13 +100,15 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
     [pub.id],
     qk.versions(pub.id),
   );
-  // The chart's own schema: the preview builds the order form out of it, exactly
-  // as the order page will.
-  const { data: schema } = useAsync(
-    () => api.getSchema(project, name, version),
+  // The schema the preview builds the order form out of, exactly as the order
+  // page will: the chart's own with every dependency mounted under its key, so a
+  // document that projects a dependency's fields shows them here too.
+  const { data: deps } = useAsync(
+    () => api.getDependencies(project, name, version),
     [project, name, version],
-    qk.schema(project, name, version),
+    qk.dependencies(project, name, version),
   );
+  const schema = deps?.effective_schema ?? null;
 
   const cur = versions?.find((v) => v.chart_version === version) ?? null;
 

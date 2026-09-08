@@ -56,7 +56,7 @@ export function ConflictDialog({
   const { data: schema, loading } = useAsync(
     (signal) =>
       isOpen
-        ? api.getSchema(request.chart_project, request.chart_name, request.chart_version, signal)
+        ? api.getFormSchema(request.chart_project, request.chart_name, request.chart_version, signal)
         : Promise.resolve(null),
     [isOpen, request.chart_project, request.chart_name, request.chart_version],
   );

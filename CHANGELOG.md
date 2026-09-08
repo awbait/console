@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- A service whose chart pulls in other charts can now offer their fields in its
+  order form. The version constructor has a "Dependencies" tab showing each
+  dependency, the field its values live under and its schema. A field is named in
+  the document as "pooler/poolMode" and appears in the form once it is listed in
+  `include`. See the documentation, "Order form constructor".
+
+### Changed
+- An order is now checked against the schemas of the dependencies too, the way
+  Helm checks it on install. A wrong value in a dependency's field is refused by
+  the order form with the field named, instead of failing later in Argo CD.
+
 ## [0.11.0] - 2026-09-04
 
 A release about the values the portal fills into an order for the customer. A

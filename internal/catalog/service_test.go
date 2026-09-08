@@ -35,6 +35,9 @@ func (h downHarbor) GetSchema(context.Context, string, string, string) ([]byte, 
 func (h downHarbor) GetChangelog(context.Context, string, string, string) ([]byte, error) {
 	return nil, h.err
 }
+func (h downHarbor) GetDependencies(context.Context, string, string, string) ([]models.ChartDependency, error) {
+	return nil, h.err
+}
 func (h downHarbor) Healthz(context.Context) error { return h.err }
 
 // An unreachable registry must reach the API layer as ErrUpstream (502), not as

@@ -165,7 +165,7 @@
           "else": { "$ref": "#/definitions/namespaceRule" }
         },
         "include": {
-          "description": "Поля values.schema.json, которые показывает форма. Без include форма показывает все поля схемы",
+          "description": "Поля values.schema.json, которые показывает форма. Без include форма показывает все поля схемы, кроме полей зависимостей чарта: их называют явно, как \"redis/architecture\"",
           "type": "array",
           "errorMessage": "Поле \"include\" должно быть массивом имён полей схемы, например [\"naming\", \"gateways\"]",
           "items": {
@@ -174,7 +174,7 @@
           }
         },
         "exclude": {
-          "description": "Поля values.schema.json, которые форма прячет",
+          "description": "Поля values.schema.json, которые форма прячет. Поле зависимости чарта называется как \"redis/architecture\"",
           "type": "array",
           "errorMessage": "Поле \"exclude\" должно быть массивом имён полей схемы, например [\"naming\", \"gateways\"]",
           "items": {
@@ -183,7 +183,7 @@
           }
         },
         "required": {
-          "description": "Поля, которые форма требует заполнить, даже если схема чарта их не требует",
+          "description": "Поля, которые форма требует заполнить, даже если схема чарта их не требует. Поле зависимости чарта называется как \"redis/architecture\"",
           "type": "array",
           "errorMessage": "Поле \"required\" должно быть массивом имён полей схемы, например [\"naming\", \"gateways\"]",
           "items": {
@@ -192,7 +192,7 @@
           }
         },
         "overrides": {
-          "description": "Настройка отдельных полей: заголовок, виджет, вложенная форма",
+          "description": "Настройка отдельных полей: заголовок, виджет, вложенная форма. Ключ - имя поля или, для поля зависимости чарта, \"redis/architecture\"",
           "type": "object",
           "errorMessage": "Поле \"overrides\" должно быть объектом: {\"<имя поля>\": { настройки }}",
           "additionalProperties": { "$ref": "#/definitions/fieldOverride" }

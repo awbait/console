@@ -1010,7 +1010,11 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	// The chart schema is read before the stamp, not after: it decides the type a
 	// stamped value takes (a port is a number, and a template renders text), and
 	// the same bytes are then reused for the validation below.
-	schemaBytes, err := s.catalog.GetSchema(ctx, project, name, version)
+	// The effective schema: the chart's own file with each dependency's schema
+	// mounted under the key its values sit at. This is what Helm checks at install
+	// time, so checking it here is the difference between the order being refused
+	// with the field named and the release failing later, in Argo.
+	schemaBytes, _, err := s.catalog.FormSchema(ctx, project, name, version)
 	if err != nil && validate && !errors.Is(err, models.ErrNotFound) {
 		return "", fmt.Errorf("%w: harbor schema: %v", ErrUpstream, err)
 	}

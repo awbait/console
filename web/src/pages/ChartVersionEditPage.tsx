@@ -35,6 +35,7 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type {
+  ChartDependency,
   ChartPublication,
   PublicationStatus,
   PublicationVersion,
@@ -52,6 +53,7 @@ import { FormErrors } from "../components/FormErrors";
 import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
 import {
   chartModelPath,
+  dependencyModelPath,
   useViewDocumentHints,
   viewModelPath,
 } from "../features/publications/monacoHints";
@@ -126,6 +128,100 @@ function PanelNotice({ Icon, text }: { Icon: typeof IconPackageOff; text: string
   );
 }
 
+// The chart's dependencies, on one tab rather than one tab each. A chart can
+// pull in half a dozen subcharts, and six more names in the strip would push the
+// document itself off the side; the picker inside appears only when there is
+// something to pick between.
+//
+// Read-only, like the chart's own schema next to it: a dependency's schema is
+// changed by releasing the dependency, not from here. What this tab is for is
+// the one thing the document cannot be written without - the key the dependency
+// sits under, and the fields it has.
+function DependencyPanel({
+  dependencies,
+  project,
+  name,
+  version,
+  monacoTheme,
+}: {
+  dependencies: ChartDependency[];
+  project: string;
+  name: string;
+  version: string;
+  monacoTheme: string;
+}) {
+  const [picked, setPicked] = useState("");
+  const dep = dependencies.find((d) => d.key === picked) ?? dependencies[0];
+  if (!dep) return null;
+  return (
+    <>
+      {dependencies.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {dependencies.map((d) => (
+            <button
+              key={d.key}
+              type="button"
+              onClick={() => setPicked(d.key)}
+              className={`cursor-pointer rounded-md px-2 py-1 font-mono text-xs transition-colors ${
+                d.key === dep.key
+                  ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              }`}
+            >
+              {d.key}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-slate-500">
+        Чарт {dep.name}
+        {dep.version ? ` ${dep.version}` : ""}. Значения лежат в поле{" "}
+        <code className="rounded bg-surface px-1 py-px font-mono text-[11px] text-slate-600 ring-1 ring-slate-200">
+          {dep.key}
+        </code>
+        {dep.condition ? `, включает их флаг ${dep.condition}.` : "."}
+      </p>
+      {dep.warning && (
+        <div className="flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+          <IconAlertTriangle size={14} stroke={1.8} className="mt-px shrink-0 text-amber-500" />
+          <span>{dep.warning}</span>
+        </div>
+      )}
+      {dep.schema ? (
+        <>
+          <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
+            <Editor
+              height="100%"
+              defaultLanguage="json"
+              path={dependencyModelPath(project, name, version, dep.key)}
+              theme={monacoTheme}
+              value={JSON.stringify(dep.schema, null, 2)}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                automaticLayout: true,
+                wordWrap: "on",
+                readOnly: true,
+                domReadOnly: true,
+              }}
+            />
+          </div>
+          <p className="text-xs text-slate-400">
+            Поля зависимости пишутся как {dep.key}/поле, например {dep.key}/
+            {Object.keys(dep.schema.properties ?? {})[0] ?? "поле"}. В форму заказа они попадают
+            только тогда, когда вы перечислите их в include.
+          </p>
+        </>
+      ) : (
+        <PanelNotice
+          Icon={IconPackageOff}
+          text="У этой зависимости нет values.schema.json, описывать её поля нечем"
+        />
+      )}
+    </>
+  );
+}
+
 function VersionEditor({ pub, version }: { pub: ChartPublication; version: string }) {
   const { user } = useUser();
   const { reload: reloadCatalog } = useCatalog();
@@ -153,12 +249,24 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   const cur = versions?.find((v) => v.chart_version === version) ?? null;
   const curStatus: PublicationStatus = cur?.status ?? "DRAFT";
 
-  // Chart schema of the version, for validation and the form preview.
+  // The chart's own values.schema.json, shown on its tab exactly as the chart
+  // wrote it.
   const { data: schema } = useAsync(
     () => api.getSchema(project, name, version),
     [project, name, version],
     qk.schema(project, name, version),
   );
+  // The chart's dependencies, and the schema an order is actually drawn from:
+  // the file above with each dependency mounted under the key its values sit at.
+  // The preview, the editor hints and the server-side check of the document all
+  // work from this one, so a document may name a dependency's fields.
+  const { data: depsData } = useAsync(
+    () => api.getDependencies(project, name, version),
+    [project, name, version],
+    qk.dependencies(project, name, version),
+  );
+  const dependencies = depsData?.dependencies ?? [];
+  const formSchema = depsData?.effective_schema ?? schema;
 
   // The document is written by hand, so the editor is taught what it is: the
   // format comes from the portal, the fields to point at from the chart above.
@@ -167,7 +275,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   // What the document may reference in "defaults" and "initial": the fixed
   // catalogue plus the platform variables that exist right now.
   const { data: viewRefs } = useAsync(() => api.viewRefs(), [], qk.viewRefs());
-  useViewDocumentHints(viewFormat, schema, viewRefs);
+  useViewDocumentHints(viewFormat, formSchema, viewRefs);
 
   const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);
@@ -552,6 +660,14 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
               <TabList aria-label="Документы" className="flex gap-1">
                 <EditorTab id="view">view.schema.json</EditorTab>
                 <EditorTab id="schema">values.schema.json</EditorTab>
+                {dependencies.length > 0 && (
+                  <EditorTab
+                    id="dependencies"
+                    info="Чарты, которые этот чарт тянет за собой. Их поля можно показать в форме заказа."
+                  >
+                    Зависимости ({dependencies.length})
+                  </EditorTab>
+                )}
               </TabList>
               {/* Offered only where there is something to take: a chart whose
                   only version this is, or whose other versions never got past
@@ -660,6 +776,20 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                 <PanelNotice {...schemaMissing} />
               )}
             </TabPanel>
+            {dependencies.length > 0 && (
+              <TabPanel
+                id="dependencies"
+                className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none"
+              >
+                <DependencyPanel
+                  dependencies={dependencies}
+                  project={project}
+                  name={name}
+                  version={version}
+                  monacoTheme={monacoTheme}
+                />
+              </TabPanel>
+            )}
           </Tabs>
         </Card>
 
@@ -673,7 +803,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
           ) : (
             <PreviewBoundary resetKey={text}>
               <PreviewPane
-                schema={schema as Record<string, any>}
+                schema={formSchema as Record<string, any>}
                 doc={parsed!}
                 label={chartLabel(name)}
                 project={project}

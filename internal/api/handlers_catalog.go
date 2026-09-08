@@ -1,10 +1,13 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"console/internal/auth"
+	"console/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -90,6 +93,44 @@ func (s *Server) handleGetSchema(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(b)
+}
+
+// chartDependencies is what the version constructor and the order form are
+// given: the chart's dependencies, each with its own values.schema.json, and the
+// one schema built out of them. "schema" (the endpoint above) stays the chart's
+// file byte for byte; this is the file plus every dependency mounted under the
+// key its values sit at, which is what an order is actually drawn from.
+//
+// The effective schema is absent when the chart describes nothing at all: no
+// values.schema.json of its own and no dependency carrying one. That is not an
+// error, it is a chart ordered as raw YAML.
+type chartDependencies struct {
+	Dependencies    []models.ChartDependency `json:"dependencies"`
+	EffectiveSchema json.RawMessage          `json:"effective_schema,omitempty"`
+}
+
+func (s *Server) handleGetDependencies(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeChart(w, r) {
+		return
+	}
+	project, name, version := chi.URLParam(r, "project"), chi.URLParam(r, "name"), chi.URLParam(r, "version")
+	// Asked first, because below a "not found" has to mean "this chart describes
+	// nothing", which is a normal answer. Without this a mistyped version would
+	// come back as an empty schema and the order form would quietly offer raw
+	// YAML for a version that is not in the registry at all.
+	if _, err := s.Catalog.GetVersion(r.Context(), project, name, version); err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	schema, deps, err := s.Catalog.FormSchema(r.Context(), project, name, version)
+	if err != nil && !errors.Is(err, models.ErrNotFound) {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	if deps == nil {
+		deps = []models.ChartDependency{}
+	}
+	writeJSON(w, http.StatusOK, chartDependencies{Dependencies: deps, EffectiveSchema: schema})
 }
 
 func (s *Server) handleGetChangelog(w http.ResponseWriter, r *http.Request) {

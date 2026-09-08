@@ -634,6 +634,30 @@ export interface JSONSchema {
   items?: JSONSchema;
 }
 
+// One dependency of a chart version: a subchart whose values Helm puts in the
+// parent's values under `key` (its alias, or its chart name when it has none).
+export interface ChartDependency {
+  name: string;
+  alias?: string;
+  key: string;
+  version?: string;
+  condition?: string;
+  // The dependency's own values.schema.json. Absent for most external charts,
+  // which is normal: then there is nothing to show and nothing to draw.
+  schema?: JSONSchema;
+  // What the portal noticed about this pair of charts and cannot fix itself.
+  warning?: string;
+}
+
+// What the version constructor and the order form are given for one version.
+// `effective_schema` is the chart's own schema with every dependency mounted
+// under its key, which is what an order is drawn from and checked against; a
+// chart with no dependencies gets its own schema back unchanged.
+export interface ChartDependencies {
+  dependencies: ChartDependency[];
+  effective_schema?: JSONSchema;
+}
+
 export interface CreateOrderBody {
   chart: string; // "project/name"
   version: string;

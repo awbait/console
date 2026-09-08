@@ -206,6 +206,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/charts/{project}/{name}/{version}/readme", s.handleGetReadme)
 			r.Get("/charts/{project}/{name}/{version}/changelog", s.handleGetChangelog)
 			r.Get("/charts/{project}/{name}/{version}/schema", s.handleGetSchema)
+			r.Get("/charts/{project}/{name}/{version}/dependencies", s.handleGetDependencies)
 
 			// catalog metadata: categories + publications over the Harbor listing
 			r.Get("/catalog", s.handleCatalog)

@@ -18,8 +18,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
+
+	"console/pkg/models"
 )
 
 // Issue is a single validation problem; Path points into the view document
@@ -332,11 +335,12 @@ func checkView(path string, vm map[string]any, node, root map[string]any) []Issu
 		list, _ := vm[key].([]any)
 		for i, item := range list {
 			s, ok := item.(string)
-			if !ok || props == nil || props[s] != nil {
+			if !ok {
 				continue
 			}
-			issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i),
-				fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", s)})
+			if _, msg := resolveFieldName(s, props, root); msg != "" {
+				issues = append(issues, Issue{fmt.Sprintf("%s/%s/%d", path, key, i), msg})
+			}
 		}
 	}
 
@@ -365,16 +369,12 @@ func checkView(path string, vm map[string]any, node, root map[string]any) []Issu
 	}
 
 	overrides, _ := vm["overrides"].(map[string]any)
-	for field, ov := range overrides {
+	for _, field := range sortedKeys(overrides) {
+		ov := overrides[field]
 		fp := path + "/overrides/" + field
-		var fieldNode map[string]any
-		if props != nil {
-			if props[field] == nil {
-				issues = append(issues, Issue{fp,
-					fmt.Sprintf("Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", field)})
-			} else {
-				fieldNode, _ = props[field].(map[string]any)
-			}
+		fieldNode, msg := resolveFieldName(field, props, root)
+		if msg != "" {
+			issues = append(issues, Issue{fp, msg})
 		}
 		ovm, ok := ov.(map[string]any)
 		if !ok {
@@ -387,6 +387,65 @@ func checkView(path string, vm map[string]any, node, root map[string]any) []Issu
 		}
 	}
 	return issues
+}
+
+// resolveFieldName finds the field a view names in "include", "exclude",
+// "required" or a key of "overrides", and returns its schema node plus what is
+// wrong with the name when nothing is found.
+//
+// A name is a field of the projected node ("gateways"), or a path through it
+// ("pooler/poolMode"). The path form is what reaches into a chart dependency:
+// the effective schema mounts each dependency under the key its values sit at,
+// so the dependency's own fields are one segment deeper and cannot be named any
+// other way - "pooler" alone can only mean the whole subchart.
+//
+// Both halves of a path are checked and the message names the half at fault: a
+// misspelled dependency and a misspelled field of a correct dependency send the
+// author looking in two different places. nil props (an undescribed or free-form
+// node) means nothing can be proven, and then there is nothing to say.
+func resolveFieldName(name string, props, root map[string]any) (map[string]any, string) {
+	if props == nil || name == "" {
+		return nil, ""
+	}
+	segments := strings.Split(name, "/")
+	// The chart name of the dependency the path entered, for the message. Empty
+	// while the path is still walking fields of the chart itself.
+	dependency := ""
+	cur := props
+	var node map[string]any
+	for i, seg := range segments {
+		if cur == nil {
+			return nil, "" // free-form from here on: the rest cannot be proven wrong
+		}
+		next, ok := cur[seg].(map[string]any)
+		if !ok {
+			switch {
+			case i == 0:
+				return nil, fmt.Sprintf(
+					"Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", seg)
+			case dependency != "":
+				// The chart name is worth saying only when it is not the key already:
+				// a dependency without an alias sits under its own name, and naming it
+				// twice reads as two different things.
+				of := strconv.Quote(segments[0])
+				if dependency != segments[0] {
+					of = fmt.Sprintf("%q (чарт %s)", segments[0], dependency)
+				}
+				return nil, fmt.Sprintf(
+					"Поля %q нет в схеме зависимости %s. Сверьтесь со вкладкой этой зависимости", seg, of)
+			default:
+				return nil, fmt.Sprintf(
+					"Поля %q нет в %q (values.schema.json). Сверьтесь со вкладкой схемы",
+					seg, strings.Join(segments[:i], "/"))
+			}
+		}
+		node = deref(next, root)
+		if i == 0 {
+			dependency, _ = node[models.SchemaDependencyAnnotation].(string)
+		}
+		cur = collectProperties(node, root)
+	}
+	return node, ""
 }
 
 // checkColumns cross-checks the column paths of a list tab against the schema of

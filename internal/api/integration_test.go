@@ -102,6 +102,7 @@ func TestHTTPChartAllowlistBypass(t *testing.T) {
 		"/api/v1/charts/platform/redis/7.2.0/values",
 		"/api/v1/charts/platform/redis/7.2.0/readme",
 		"/api/v1/charts/platform/redis/7.2.0/schema",
+		"/api/v1/charts/platform/redis/7.2.0/dependencies",
 		"/api/v1/charts/platform/redis/7.2.0/changelog",
 		"/api/v1/charts/platform/redis/changelog/aggregated",
 	}
@@ -259,5 +260,58 @@ func TestHTTPFirstBellIsEmpty(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &unread)
 	if unread.Unread != 1 {
 		t.Fatalf("unread = %d, want the one announcement since", unread.Unread)
+	}
+}
+
+// The dependency endpoint hands over two things at once: the dependencies to put
+// tabs on in the version constructor, and the schema an order is actually drawn
+// from. The fixture's postgres pulls in pgbouncer under the alias "pooler", the
+// case the whole feature exists for: the values key is not the chart name.
+func TestHTTPChartDependencies(t *testing.T) {
+	srv, _, _ := newServer(t)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, devReq("GET", "/api/v1/charts/platform/postgres/15.4.2/dependencies", "payments", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Dependencies []models.ChartDependency `json:"dependencies"`
+		Effective    map[string]any           `json:"effective_schema"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Dependencies) != 1 || out.Dependencies[0].Key != "pooler" || out.Dependencies[0].Name != "pgbouncer" {
+		t.Fatalf("dependencies = %+v", out.Dependencies)
+	}
+	if len(out.Dependencies[0].Schema) == 0 {
+		t.Error("the dependency's own schema is missing, the constructor has no tab to show")
+	}
+	props, _ := out.Effective["properties"].(map[string]any)
+	pooler, _ := props["pooler"].(map[string]any)
+	if pooler == nil {
+		t.Fatalf("effective schema has no %q: %v", "pooler", props)
+	}
+	if pooler[models.SchemaDependencyAnnotation] != "pgbouncer" {
+		t.Errorf("mounted node is not marked as a dependency: %v", pooler)
+	}
+
+	// A chart with no dependencies answers the same way, with nothing in it, so
+	// the order form has one call to make either way.
+	rec = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, devReq("GET", "/api/v1/charts/platform/ingress-gateway/3.1.0/dependencies", "payments", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("no-dependency chart: want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// A version that is not in the registry is a 404, not an empty schema: the order
+// form would otherwise offer raw YAML for something nobody can deploy.
+func TestHTTPDependenciesOfUnknownVersion(t *testing.T) {
+	srv, _, _ := newServer(t)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, devReq("GET", "/api/v1/charts/platform/postgres/9.9.9/dependencies", "payments", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }

@@ -77,6 +77,7 @@ func (f *Fake) seedEmbeddedCharts() {
 			readme := read("README.md")
 			schema := read("values.schema.json")
 			changelog := read("CHANGELOG.md")
+			deps := embeddedDependencies(base, metaB)
 
 			// Content-derived digest: editing any vendored file changes it, which
 			// invalidates the catalog's per-digest cache (a stable digest would
@@ -99,9 +100,30 @@ func (f *Fake) seedEmbeddedCharts() {
 						readme:    readme,
 						schema:    schema,
 						changelog: changelog,
+						deps:      deps,
 					},
 				},
 			})
 		}
 	}
+}
+
+// embeddedDependencies reads a vendored chart's dependencies the same way the
+// real client reads a packaged one: the parent's Chart.yaml for the declaration
+// (the alias lives only there) and "charts/{dep}/" for the schema. Only the
+// unpacked form is handled - nothing vendored here is a .tgz.
+func embeddedDependencies(base string, chartYAML []byte) []models.ChartDependency {
+	files := map[string][]byte{"Chart.yaml": chartYAML}
+	subs, _ := fs.ReadDir(chartsFS, path.Join(base, "charts"))
+	for _, d := range subs {
+		if !d.IsDir() {
+			continue
+		}
+		for file := range subchartFiles {
+			if b, err := fs.ReadFile(chartsFS, path.Join(base, "charts", d.Name(), file)); err == nil {
+				files[subchartKey(d.Name(), file)] = b
+			}
+		}
+	}
+	return dependenciesOf(files)
 }

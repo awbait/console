@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"console/pkg/models"
 )
 
@@ -331,6 +333,17 @@ func (c *Client) GetChangelog(ctx context.Context, project, name, version string
 	return c.file(ctx, project, name, version, "CHANGELOG.md")
 }
 
+// GetDependencies lists the chart's first-level dependencies with the schema of
+// each, read from the same archive the other files come from. A chart without
+// dependencies returns nothing, which is not an error.
+func (c *Client) GetDependencies(ctx context.Context, project, name, version string) ([]models.ChartDependency, error) {
+	files, err := c.pullFiles(ctx, project, name, version)
+	if err != nil {
+		return nil, err
+	}
+	return dependenciesOf(files), nil
+}
+
 func (c *Client) file(ctx context.Context, project, name, version, filename string) ([]byte, error) {
 	files, err := c.pullFiles(ctx, project, name, version)
 	if err != nil {
@@ -577,17 +590,43 @@ func parseBearerChallenge(h string) (realm string, params map[string]string) {
 	return realm, params
 }
 
-// chartFiles are the top-level chart files the catalog serves.
+// chartFiles are the top-level chart files the catalog serves. Chart.yaml is in
+// the list for one thing: its "dependencies" block, which says under which key
+// each subchart's values live in the parent (see GetDependencies).
 var chartFiles = map[string]bool{
 	"values.yaml":        true,
 	"README.md":          true,
 	"values.schema.json": true,
 	"CHANGELOG.md":       true,
+	"Chart.yaml":         true,
 }
 
-// extractChartFiles untars a Helm chart .tgz and returns the chart's top-level
-// files (one directory deep: "{chart}/values.yaml" etc.), keyed by base name.
-// Subchart files under "{chart}/charts/..." are deeper and thus ignored.
+// subchartFiles are the files taken from each dependency under "charts/": the
+// schema whose fields the order form draws, and the Chart.yaml that says which
+// chart the directory holds (its name need not match the directory).
+var subchartFiles = map[string]bool{
+	"values.schema.json": true,
+	"Chart.yaml":         true,
+}
+
+// maxSubcharts caps how many dependencies are unpacked from one chart. Well past
+// anything real, and it keeps a hand-built archive from turning one pull into an
+// unbounded amount of work.
+const maxSubcharts = 64
+
+// subchartKey is the map key a dependency's file is stored under, by chart name
+// rather than by the directory it happened to sit in.
+func subchartKey(chart, file string) string { return "charts/" + chart + "/" + file }
+
+// extractChartFiles untars a Helm chart .tgz and returns the files the catalog
+// serves: the chart's own top-level files keyed by base name ("values.yaml"),
+// and each first-level dependency's files keyed by "charts/{chart}/{file}".
+//
+// A dependency arrives in one of two shapes, and both are met in practice: an
+// unpacked directory ("{chart}/charts/{dep}/values.schema.json") and a packaged
+// archive ("{chart}/charts/{dep}-{version}.tgz"), which is what "helm dependency
+// build" leaves behind. Anything deeper (a dependency of a dependency) is
+// dropped: the portal projects one level.
 func extractChartFiles(tgz []byte) (map[string][]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(tgz))
 	if err != nil {
@@ -596,6 +635,7 @@ func extractChartFiles(tgz []byte) (map[string][]byte, error) {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 	out := map[string][]byte{}
+	packaged := 0
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -609,20 +649,95 @@ func extractChartFiles(tgz []byte) (map[string][]byte, error) {
 		}
 		clean := path.Clean(h.Name)
 		parts := strings.Split(clean, "/")
-		if len(parts) != 2 { // "{chart}/{file}" only
+		switch {
+		case len(parts) == 2 && chartFiles[parts[1]]: // "{chart}/{file}"
+			b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
+			if err != nil {
+				return nil, err
+			}
+			out[parts[1]] = b
+
+		case len(parts) == 4 && parts[1] == "charts" && subchartFiles[parts[3]]:
+			// "{chart}/charts/{dep}/{file}": an unpacked dependency. The directory
+			// name is the chart name for every chart Helm itself unpacks.
+			b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
+			if err != nil {
+				return nil, err
+			}
+			out[subchartKey(parts[2], parts[3])] = b
+
+		case len(parts) == 3 && parts[1] == "charts" && strings.HasSuffix(parts[2], ".tgz"):
+			// "{chart}/charts/{dep}-{version}.tgz": a packaged dependency.
+			if packaged >= maxSubcharts {
+				continue
+			}
+			packaged++
+			b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
+			if err != nil {
+				return nil, err
+			}
+			nested, err := extractSubchartFiles(b)
+			if err != nil {
+				continue // a dependency we cannot read is not a broken parent chart
+			}
+			name := chartNameOf(nested["Chart.yaml"])
+			if name == "" {
+				name = strings.TrimSuffix(parts[2], ".tgz")
+			}
+			for file, body := range nested {
+				out[subchartKey(name, file)] = body
+			}
+		}
+	}
+	return out, nil
+}
+
+// extractSubchartFiles untars a packaged dependency and returns its top-level
+// files. Its own "charts/" is not followed: one level is what the portal shows.
+func extractSubchartFiles(tgz []byte) (map[string][]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(tgz))
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	out := map[string][]byte{}
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return out, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if h.Typeflag != tar.TypeReg {
 			continue
 		}
-		base := parts[1]
-		if !chartFiles[base] {
+		parts := strings.Split(path.Clean(h.Name), "/")
+		if len(parts) != 2 || !subchartFiles[parts[1]] {
 			continue
 		}
 		b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
 		if err != nil {
 			return nil, err
 		}
-		out[base] = b
+		out[parts[1]] = b
 	}
-	return out, nil
+}
+
+// chartNameOf reads the "name" of a Chart.yaml. Empty when there is none, and
+// then the caller falls back to the file name it came from.
+func chartNameOf(chartYAML []byte) string {
+	if len(chartYAML) == 0 {
+		return ""
+	}
+	var m struct {
+		Name string `yaml:"name"`
+	}
+	if yaml.Unmarshal(chartYAML, &m) != nil {
+		return ""
+	}
+	return m.Name
 }
 
 func (c *Client) Healthz(ctx context.Context) error {

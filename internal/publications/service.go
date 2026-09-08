@@ -61,6 +61,12 @@ type SchemaSource interface {
 	// GetSchema returns values.schema.json for a specific chart version, used to
 	// cross-validate that version's view document.
 	GetSchema(ctx context.Context, project, name, version string) ([]byte, error)
+	// FormSchema returns the schema an order of that version is drawn from: the
+	// chart's own, with the schema of every dependency mounted under the key its
+	// values sit at. It is what a view document is checked against, so a document
+	// may name a dependency's fields ("pooler/poolMode") the way it names the
+	// chart's own.
+	FormSchema(ctx context.Context, project, name, version string) ([]byte, []models.ChartDependency, error)
 	// ListVersions returns the versions the registry currently holds, which is
 	// what decides whether an allowlisted version can still be ordered at all
 	// (see registry.go).
