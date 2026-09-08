@@ -42,6 +42,15 @@
 .PARAMETER Charts
   Only these charts out of the map. Default: every chart in the map.
 
+.PARAMETER ConfigPath
+  The chart map to read. Without it: $env:CHARTS_MAP, then a charts-map.json
+  sitting next to the console folder, then the template shipped in this
+  directory.
+
+  Keep the filled-in map next to the console folder rather than inside the
+  repository. update-repos.ps1 replaces the repository whole, so a map kept
+  inside it is thrown away on the next update, projects and all.
+
 .PARAMETER DryRun
   Print the resolved plan (chart, GitLab project, kept files, version, what
   differs) and change nothing anywhere.
@@ -103,6 +112,25 @@ trap {
   exit 1
 }
 
+# Where the chart map is looked for, in order: -ConfigPath, $env:CHARTS_MAP, a
+# charts-map.json sitting next to the repository folder, and finally the
+# template shipped in this directory.
+#
+# The third one is the one that matters. update-repos.ps1 replaces the whole
+# console folder to bring it up to date, so a map filled in inside the
+# repository is thrown away with everything else, and the next transfer starts
+# by asking for projects that were named weeks ago. One level up, in the folder
+# holding console and console-charts, nothing touches it.
+if (-not $ConfigPath) { $ConfigPath = $env:CHARTS_MAP }
+if (-not $ConfigPath) {
+  # <repo>\deployments\scripts\transfer -> <repo> -> the folder holding it.
+  $repoRoot  = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+  $besideDir = if ($repoRoot) { Split-Path -Parent $repoRoot } else { $null }
+  if ($besideDir) {
+    $beside = Join-Path $besideDir 'charts-map.json'
+    if (Test-Path $beside) { $ConfigPath = $beside }
+  }
+}
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'charts-map.json' }
 
 # --- small helpers ----------------------------------------------------------
@@ -259,6 +287,9 @@ if (-not (Test-Path $ConfigPath)) {
   throw "config not found: $ConfigPath (see README.md in the same directory)"
 }
 $cfg = Get-Content -Path $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+# Which map this run is reading. There are up to four places it could have come
+# from, and the difference between them is a transfer that goes somewhere else.
+Write-Skip "chart map: $ConfigPath"
 
 $sourceRepo   = $cfg.sourceRepo
 $sourceRef    = $cfg.ref
@@ -279,7 +310,13 @@ if (-not $chartNames) { throw "no charts in $ConfigPath" }
 # in particular, so it is caught before anything is cloned.
 $unmapped = $chartNames | Where-Object { -not $cfg.charts.$_.project }
 if ($unmapped) {
-  throw "no GitLab project set for: $($unmapped -join ', '). Fill in 'project' for them in $ConfigPath."
+  $hint = "Fill in 'project' for them in $ConfigPath."
+  # The template inside the repository is the wrong copy to fill in: the next
+  # update-repos.ps1 run replaces that folder and the answers go with it.
+  if ($ConfigPath -eq (Join-Path $PSScriptRoot 'charts-map.json')) {
+    $hint = "This is the template shipped with the repository, and updating the repository replaces it. Copy it next to the console folder, fill in 'project' there, and it will be picked up on its own."
+  }
+  throw "no GitLab project set for: $($unmapped -join ', '). $hint"
 }
 
 # --- preflight --------------------------------------------------------------
