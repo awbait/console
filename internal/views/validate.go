@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -423,9 +424,15 @@ func resolveFieldName(name string, props, root map[string]any) (map[string]any, 
 				return nil, fmt.Sprintf(
 					"Definition %q не найден в values.schema.json. Сверьтесь со вкладкой схемы", seg)
 			case dependency != "":
+				// The chart name is worth saying only when it is not the key already:
+				// a dependency without an alias sits under its own name, and naming it
+				// twice reads as two different things.
+				of := strconv.Quote(segments[0])
+				if dependency != segments[0] {
+					of = fmt.Sprintf("%q (чарт %s)", segments[0], dependency)
+				}
 				return nil, fmt.Sprintf(
-					"Поля %q нет в схеме зависимости %q (чарт %s). Сверьтесь со вкладкой этой зависимости",
-					seg, segments[0], dependency)
+					"Поля %q нет в схеме зависимости %s. Сверьтесь со вкладкой этой зависимости", seg, of)
 			default:
 				return nil, fmt.Sprintf(
 					"Поля %q нет в %q (values.schema.json). Сверьтесь со вкладкой схемы",
