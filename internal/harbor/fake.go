@@ -15,6 +15,7 @@ type fakeVersion struct {
 	readme    string
 	schema    string
 	changelog string
+	deps      []models.ChartDependency
 }
 
 type fakeChart struct {
@@ -84,6 +85,22 @@ func (f *Fake) seed() {
 ### Fixed
 - Crash on empty password
 `
+	// A dependency with an alias, so the dev run has the case the constructor is
+	// built for: the values key ("pooler") is not the chart name ("pgbouncer").
+	pgDeps := []models.ChartDependency{{
+		Name: "pgbouncer", Alias: "pooler", Key: "pooler", Version: "1.22.0",
+		Condition: "pooler.enabled",
+		Schema: []byte(`{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "enabled": {"type": "boolean", "title": "Connection pooler", "default": false},
+    "poolMode": {"type": "string", "title": "Pool mode", "enum": ["session", "transaction", "statement"], "default": "transaction"},
+    "maxClientConn": {"type": "integer", "title": "Max client connections", "default": 100},
+    "global": {"type": "object", "properties": {"imageRegistry": {"type": "string"}}}
+  }
+}`),
+	}}
 
 	f.add(&fakeChart{
 		chart: models.Chart{
@@ -98,6 +115,7 @@ func (f *Fake) seed() {
 				readme:    "# PostgreSQL\n\nManaged Postgres chart.\n",
 				schema:    pgSchema,
 				changelog: pgChangelog,
+				deps:      pgDeps,
 			},
 			"15.4.2": {
 				v:         models.ChartVersion{Project: "platform", Name: "postgres", Version: "15.4.2", Digest: "sha256:pg1542", AppVersion: "15.4.2", Created: now, Tags: []string{"stable"}},
@@ -105,6 +123,7 @@ func (f *Fake) seed() {
 				readme:    "# PostgreSQL\n\nManaged Postgres chart.\n",
 				schema:    pgSchema,
 				changelog: pgChangelog,
+				deps:      pgDeps,
 			},
 		},
 	})
@@ -254,6 +273,14 @@ func (f *Fake) GetChangelog(ctx context.Context, project, name, version string) 
 		return nil, models.ErrNotFound
 	}
 	return []byte(fv.changelog), nil
+}
+
+func (f *Fake) GetDependencies(ctx context.Context, project, name, version string) ([]models.ChartDependency, error) {
+	fv, err := f.getVer(project, name, version)
+	if err != nil {
+		return nil, err
+	}
+	return fv.deps, nil
 }
 
 func (f *Fake) Healthz(ctx context.Context) error { return nil }

@@ -171,7 +171,7 @@ func (s *Service) OrderInitialValues(ctx context.Context, u *models.User, projec
 	// a variable has to reach the form as a number, not as text in a number box.
 	var schema []byte
 	if s.schemas != nil {
-		if b, serr := s.schemas.GetSchema(ctx, project, name, version); serr == nil {
+		if b, _, serr := s.schemas.FormSchema(ctx, project, name, version); serr == nil {
 			schema = b
 		}
 	}

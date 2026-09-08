@@ -1,4 +1,4 @@
-import { deref } from "@/form/SchemaForm";
+import { DEPENDENCY_ANNOTATION, deref } from "@/form/SchemaForm";
 import { createScanner, getLocation, parse as parseJsonc } from "jsonc-parser";
 import type { TemplateRef } from "@/api/types";
 import { type ChartField, chartFields, nodeAt, properties, rowOf } from "./chartFields";
@@ -232,16 +232,41 @@ function fields(
 
 // names lists the fields of one node by name: what include/exclude/overrides and
 // the match/get of a lookup are written with.
+//
+// A chart dependency is listed twice over: once as itself, which means the whole
+// subchart, and once per field it has, as "<key>/<field>". The second form is
+// the only way to name one field of a dependency, and it is not something anyone
+// guesses - the key is the alias from Chart.yaml, which is nowhere on screen
+// until the dependency tab is opened.
 function names(node: Schema | null | undefined, chart: Schema | null): Suggestion[] {
   if (!node || !chart) return [];
-  return Object.entries(properties(node, chart)).map(([key, raw]) => {
+  const out: Suggestion[] = [];
+  for (const [key, raw] of Object.entries(properties(node, chart))) {
     const s = deref(raw, chart);
-    return {
+    const dependency = s[DEPENDENCY_ANNOTATION];
+    const from = typeof dependency === "string" ? dependency : undefined;
+    out.push({
       value: key,
-      detail: typeof s.title === "string" ? s.title : undefined,
-      doc: typeof s.description === "string" ? s.description : undefined,
-    };
-  });
+      detail: from ? `зависимость ${from}` : hintText(s.title),
+      doc: hintText(s.description),
+    });
+    if (!from) continue;
+    for (const [field, sub] of Object.entries(properties(s, chart))) {
+      const f = deref(sub, chart);
+      out.push({
+        value: `${key}/${field}`,
+        detail: hintText(f.title) ?? `поле чарта ${from}`,
+        doc: hintText(f.description),
+      });
+    }
+  }
+  return out;
+}
+
+// hintText guards a title or description that is not text: a schema is written
+// by hand, and an object there would be rendered as one by the editor.
+function hintText(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
 }
 
 // viewNames lists the forms this document declares. "order" is the order form,

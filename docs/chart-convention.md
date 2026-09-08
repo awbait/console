@@ -30,6 +30,17 @@ all agree on.
   "additions" only expose `values.yaml`+`readme.md`, so the tarball is the single
   source that also yields the schema and changelog. The chart's `values.schema.json`
   is the **single source of truth** for the order form - there is no second copy.
+- **Dependencies** - `Chart.yaml` and everything under `charts/` come out of the
+  same `.tgz`. A dependency is read in either shape `helm dependency build` can
+  leave: an unpacked `charts/{dep}/` or a packaged `charts/{dep}-{version}.tgz`.
+  Of each, only `values.schema.json` and `Chart.yaml` are taken, one level deep.
+  The values key a dependency sits under is its `alias` when it has one and its
+  chart name otherwise, and the alias is written down nowhere but the parent's
+  `Chart.yaml` - which is the whole reason that file is read.
+  `GET /charts/{project}/{name}/{version}/dependencies` serves the list plus the
+  **effective schema**: the chart's own with each dependency's schema mounted
+  under its key. That is what an order is drawn from and checked against, so the
+  portal refuses a bad value where Helm would, instead of letting Argo find it.
 - Auth is an optional robot account (`HARBOR_ROBOT_USER`/`HARBOR_ROBOT_TOKEN`); with
   none set the client runs anonymously, which works against a **public** project.
   `AllowedTeams` is always empty for real Harbor (no allowlist source in Harbor yet).

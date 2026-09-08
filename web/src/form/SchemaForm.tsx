@@ -97,22 +97,27 @@ function walkErrors(
     return;
   }
   if (s.type === "object" && s.properties) {
-    const required = new Set<string>([
-      ...(s.required ?? []),
-      ...conditionalRequired(s, (value as Values) ?? {}, root),
-      ...(view?.required ?? []),
-    ]);
-    const hidden = new Set<string>(conditionalHidden(s, (value as Values) ?? {}, root));
-    for (const k of viewKeys(s, view)) {
-      const childNode = view?.overrides?.[k] ? { ...s.properties[k], ...view.overrides[k] } : s.properties[k];
+    const viewRequired = new Set<string>(view?.required ?? []);
+    for (const k of viewKeys(s, view, root)) {
+      const field = resolveField(k, s, root, (value as Values) ?? {});
+      if (!field) continue;
+      // A field named by a path belongs to the object one level down, and that
+      // object, not the form's root, is what says whether it is required and
+      // whether the current values hide it.
+      const required = new Set<string>([
+        ...(field.owner.required ?? []),
+        ...conditionalRequired(field.owner, field.ownerValue, root),
+      ]);
+      const hidden = new Set<string>(conditionalHidden(field.owner, field.ownerValue, root));
+      const childNode = view?.overrides?.[k] ? { ...field.node, ...view.overrides[k] } : field.node;
       const child = deref(childNode, root);
-      if (hidden.has(k) || isHidden(child)) continue;
-      const cv = (value as Values)?.[k];
+      if (hidden.has(field.label) || isHidden(child)) continue;
+      const cv = field.value;
       const cpath = `${base}/${k}`;
       // A required field with a schema default/const isn't "missing input" - the
       // form shows the default selected and it's applied on submit, so don't flag.
       const hasDefault = "default" in child || "const" in child;
-      if (required.has(k) && emptyVal(cv) && !hasDefault) {
+      if ((required.has(field.label) || viewRequired.has(k)) && emptyVal(cv) && !hasDefault) {
         // A required empty array needs an element added, not a value typed in.
         out.set(cpath, child.type === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
         continue;
@@ -162,11 +167,77 @@ export type View = {
   required?: string[];
 };
 
-function viewKeys(schema: Schema, view?: View): string[] {
-  const all = orderedKeys(schema);
-  if (view?.include) return view.include.filter((k) => all.includes(k));
-  if (view?.exclude) return all.filter((k) => !view.exclude!.includes(k));
-  return all;
+// The annotation the portal writes on a property it mounted from a chart
+// dependency (models.SchemaDependencyAnnotation, written in
+// internal/catalog/dependencies.go). Its value is the dependency's chart name.
+export const DEPENDENCY_ANNOTATION = "x-dependency";
+
+const isDependency = (node: Schema | undefined) =>
+  typeof node?.[DEPENDENCY_ANNOTATION] === "string";
+
+// resolveField finds the field a view names. A name is a field of this node
+// ("naming") or a path through it ("pooler/poolMode"), which is how a view
+// reaches into a chart dependency: the effective schema mounts each dependency
+// under the key its values sit at, so its own fields are one segment deeper and
+// "pooler" alone can only mean the whole subchart.
+//
+// Returned with the object that declares the field and that object's value,
+// because those, not the form's root, are what decide whether the field is
+// required and whether the current values hide it.
+function resolveField(
+  key: string,
+  schema: Schema,
+  root: Schema,
+  value: Values | undefined,
+): { node: Schema; owner: Schema; ownerValue: Values; label: string; value: unknown } | undefined {
+  const segments = key.split("/");
+  let owner = deref(schema, root);
+  let ownerValue: Values = value ?? {};
+  let node: Schema | undefined;
+  for (let i = 0; i < segments.length; i++) {
+    node = owner.properties?.[segments[i]];
+    if (!node) return undefined;
+    if (i < segments.length - 1) {
+      owner = deref(node, root);
+      ownerValue = (ownerValue?.[segments[i]] as Values) ?? {};
+    }
+  }
+  const label = segments[segments.length - 1];
+  return { node: node!, owner, ownerValue, label, value: ownerValue?.[label] };
+}
+
+// setAt writes a value at a path of object keys, building the objects on the way
+// down and dropping a key - and any container it leaves empty - when the value
+// goes away, so an untouched dependency never reaches the order's values.
+export function setAt(value: Values, segments: string[], v: unknown): Values {
+  const [head, ...rest] = segments;
+  if (rest.length === 0) {
+    if (v === undefined) {
+      const { [head]: _drop, ...keep } = value;
+      return keep;
+    }
+    return { ...value, [head]: v };
+  }
+  const child = setAt((value?.[head] as Values) ?? {}, rest, v);
+  if (Object.keys(child).length === 0) {
+    const { [head]: _drop, ...keep } = value;
+    return keep;
+  }
+  return { ...value, [head]: child };
+}
+
+// viewKeys lists what the form draws, in the order it draws it.
+//
+// A mounted dependency is left out until the view asks for it by name. Charts
+// pull in third-party subcharts whose schemas run to hundreds of fields, and a
+// form that opened with all of them would be worse than the one that showed none
+// of them: which of those fields belong in an order is the chart author's call,
+// written down in "include".
+function viewKeys(schema: Schema, view: View | undefined, root: Schema): string[] {
+  const own = orderedKeys(schema).filter((k) => !isDependency(schema.properties?.[k]));
+  if (view?.include) return view.include.filter((k) => resolveField(k, schema, root, {}));
+  if (view?.exclude) return own.filter((k) => !view.exclude!.includes(k));
+  return own;
 }
 
 // SchemaForm renders a JSON Schema (draft-07, editor flavour) as React Aria
@@ -386,49 +457,44 @@ function ObjectFields({
   view?: View;
   path?: string;
 }) {
-  // Effective required = declared required + conditional (if/then) required for
-  // the current value, so the form mirrors the schema (e.g. a listener's
-  // hostname/tlsMode become required once protocol is HTTPS/TLS).
-  const required = new Set<string>([
-    ...(schema.required ?? []),
-    ...conditionalRequired(schema, value, root),
-    ...(view?.required ?? []), // portal-side forced-required hint
-  ]);
-  // Fields the current value hides (e.g. the domain of a TCP entry point):
-  // the chart marks them ui:widget "hidden" inside the matching if/then branch.
-  const hidden = new Set<string>(conditionalHidden(schema, value, root));
-  const set = (k: string, v: unknown) => {
-    if (v === undefined) {
-      const { [k]: _drop, ...rest } = value;
-      onChange(rest);
-    } else {
-      onChange({ ...value, [k]: v });
-    }
-  };
+  // Fields the view forces to be filled in, on top of what the schema requires.
+  // Written the way the view names them, so a path ("pooler/poolMode") counts.
+  const viewRequired = new Set<string>(view?.required ?? []);
   return (
     <div className="flex flex-col gap-4">
-      {viewKeys(schema, view).map((k) => {
+      {viewKeys(schema, view, root).map((k) => {
+        const field = resolveField(k, schema, root, value);
+        if (!field) return null;
+        // Effective required = declared required + conditional (if/then) required
+        // for the current value, so the form mirrors the schema (e.g. a listener's
+        // hostname/tlsMode become required once protocol is HTTPS/TLS). Read off
+        // the object that declares the field: for a path it is one level down.
+        const required = new Set<string>([
+          ...(field.owner.required ?? []),
+          ...conditionalRequired(field.owner, field.ownerValue, root),
+        ]);
+        // Fields the current value hides (e.g. the domain of a TCP entry point):
+        // the chart marks them ui:widget "hidden" inside the matching if/then branch.
+        const hidden = new Set<string>(conditionalHidden(field.owner, field.ownerValue, root));
         // A view may override a field's schema hints (e.g. render the gateways
         // array as a single object). Overrides shallow-merge onto the node, so
         // existing hints like ui:widget compose. View applies to this level only.
-        const node = view?.overrides?.[k]
-          ? { ...schema.properties[k], ...view.overrides[k] }
-          : schema.properties[k];
+        const node = view?.overrides?.[k] ? { ...field.node, ...view.overrides[k] } : field.node;
         // Skip hidden fields here so their empty anchor wrapper doesn't add a
         // phantom gap (Field would render null for them anyway).
-        if (hidden.has(k) || isHidden(deref(node, root))) return null;
+        if (hidden.has(field.label) || isHidden(deref(node, root))) return null;
         const childPath = `${path}/${k}`;
         return (
           // Anchor by path so the error summary can scroll to and focus this field;
           // scroll-mt keeps it clear of the sticky header when targeted.
           <div key={k} id={fieldAnchorId(childPath)} className="scroll-mt-24">
             <Field
-              name={k}
+              name={field.label}
               schema={node}
               root={root}
-              required={required.has(k)}
-              value={value?.[k]}
-              onChange={(v) => set(k, v)}
+              required={required.has(field.label) || viewRequired.has(k)}
+              value={field.value}
+              onChange={(v) => onChange(setAt(value ?? {}, k.split("/"), v))}
               path={childPath}
             />
           </div>

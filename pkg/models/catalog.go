@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Chart is a Helm chart (managed service) in the catalog.
 type Chart struct {
@@ -42,4 +45,33 @@ type ChangelogEntry struct {
 type ChangelogSection struct {
 	Title string   `json:"title"`
 	Items []string `json:"items"`
+}
+
+// SchemaDependencyAnnotation marks a property of the effective chart schema that
+// the portal mounted from a dependency rather than the chart declaring it. Its
+// value is the dependency's chart name. Written when the effective schema is
+// built (internal/catalog), read wherever a dependency has to be told apart from
+// a field of the chart itself: the view checker, the constructor, the order form.
+const SchemaDependencyAnnotation = "x-dependency"
+
+// ChartDependency is one entry of a chart's Chart.yaml "dependencies", paired
+// with the values.schema.json found inside the packaged subchart.
+//
+// Key is what the portal addresses the dependency by: in Helm the values of a
+// dependency sit in the parent's values under its alias, or under its chart name
+// when there is no alias. The order form writes that key, so it is the key a view
+// document names ("redis/architecture"), while Name is only what to call it on
+// screen.
+type ChartDependency struct {
+	Name      string `json:"name"`
+	Alias     string `json:"alias,omitempty"`
+	Key       string `json:"key"`
+	Version   string `json:"version,omitempty"`
+	Condition string `json:"condition,omitempty"`
+	// Schema is the dependency's own values.schema.json, verbatim. Absent for
+	// most external charts, which is normal and not an error.
+	Schema json.RawMessage `json:"schema,omitempty"`
+	// Warning is a problem with the pair (parent, dependency) that the portal can
+	// see but not fix, shown in the version constructor. Empty when there is none.
+	Warning string `json:"warning,omitempty"`
 }

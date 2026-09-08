@@ -26,6 +26,10 @@ type Port interface {
 	GetSchema(ctx context.Context, project, name, version string) ([]byte, error)
 	// GetChangelog returns the raw CHANGELOG.md pulled from the chart .tgz.
 	GetChangelog(ctx context.Context, project, name, version string) ([]byte, error)
+	// GetDependencies lists the chart's first-level dependencies, each with the
+	// values.schema.json packaged under "charts/" (absent for most external
+	// charts). Nothing to return is not an error.
+	GetDependencies(ctx context.Context, project, name, version string) ([]models.ChartDependency, error)
 
 	// Healthz reports upstream reachability (used by /ready diagnostics only).
 	Healthz(ctx context.Context) error

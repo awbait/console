@@ -15,6 +15,12 @@ export const qk = {
     name,
     version,
   ],
+  dependencies: (project: string, name: string, version: string): QueryKey => [
+    "dependencies",
+    project,
+    name,
+    version,
+  ],
   readme: (project: string, name: string, version: string): QueryKey => [
     "readme",
     project,

@@ -9,6 +9,7 @@ import type {
   ChangelogEntry,
   Chart,
   ChartCheckResult,
+  ChartDependencies,
   ChartPublication,
   ChartVersion,
   ChecksResponse,
@@ -158,6 +159,15 @@ async function req<T>(
   return (await res.text()) as unknown as T;
 }
 
+function chartDependencies(project: string, name: string, version: string, signal?: AbortSignal) {
+  return req<ChartDependencies>(
+    "GET",
+    `/charts/${enc(project)}/${enc(name)}/${enc(version)}/dependencies`,
+    undefined,
+    signal,
+  );
+}
+
 export const api = {
   // auth
   me: () => req<User>("GET", "/auth/me"),
@@ -185,6 +195,17 @@ export const api = {
     req<string>("GET", `/charts/${enc(project)}/${enc(name)}/${enc(version)}/readme`, undefined, signal),
   getSchema: (project: string, name: string, version: string, signal?: AbortSignal) =>
     req<JSONSchema>("GET", `/charts/${enc(project)}/${enc(name)}/${enc(version)}/schema`, undefined, signal),
+  // The version's dependencies plus the schema an order of it is drawn from
+  // (the chart's own, with every dependency mounted under its values key).
+  // getSchema above stays the chart's file byte for byte: the constructor shows
+  // it as the chart wrote it.
+  getDependencies: chartDependencies,
+  // The schema to draw a form of this version from, or null when the chart
+  // describes nothing at all (then the order is raw YAML). Everything that
+  // renders or labels an order's values asks for this one, not for the chart's
+  // file: a view may name a field that only exists once a dependency is mounted.
+  getFormSchema: (project: string, name: string, version: string, signal?: AbortSignal) =>
+    chartDependencies(project, name, version, signal).then((d) => d.effective_schema ?? null),
   getAggregatedChangelog: (project: string, name: string, limit = 20, signal?: AbortSignal) =>
     req<ChangelogEntry[]>(
       "GET",

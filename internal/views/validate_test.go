@@ -376,3 +376,75 @@ func TestFreeFormObjectTolerated(t *testing.T) {
 		t.Fatalf("want no issues on free-form object, got %+v", issues)
 	}
 }
+
+// --- dependency fields ---
+
+// The effective schema the portal builds: the chart's own file with the
+// dependency mounted under the key its values sit at, annotated so the checker
+// can tell a dependency from a field the chart declared itself.
+const schemaWithDependency = `{
+  "type": "object",
+  "properties": {
+    "naming": { "type": "object", "properties": { "env": { "type": "string" } } },
+    "pooler": {
+      "type": "object",
+      "x-dependency": "pgbouncer",
+      "properties": {
+        "poolMode": { "type": "string" },
+        "resources": { "type": "object", "properties": { "cpu": { "type": "string" } } }
+      }
+    }
+  }
+}`
+
+func docWith(order string) string {
+	return `{"views":{"order":{` + order + `}}}`
+}
+
+// A dependency's field is named "<key>/<field>", because the key on its own can
+// only mean the whole subchart.
+func TestDependencyFieldNamesAreAccepted(t *testing.T) {
+	doc := docWith(`"include":["naming","pooler/poolMode","pooler/resources/cpu"],` +
+		`"required":["pooler/poolMode"],` +
+		`"overrides":{"pooler/poolMode":{"title":"Режим пула"}}`)
+	if issues := views.Validate([]byte(doc), []byte(schemaWithDependency)); len(issues) != 0 {
+		t.Fatalf("issues = %+v, want none", issues)
+	}
+}
+
+// Both halves of the name can be wrong and they send the author to different
+// places, so the message has to say which one it is.
+func TestDependencyFieldNamesBlameTheRightHalf(t *testing.T) {
+	cases := []struct {
+		name  string
+		field string
+		want  string
+	}{
+		{"unknown dependency", "poler/poolMode", `"poler"`},
+		{"unknown field of a dependency", "pooler/poolMod", "зависимости"},
+		{"unknown field of a chart object", "naming/envs", `"naming"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			issues := views.Validate([]byte(docWith(`"include":["`+tc.field+`"]`)), []byte(schemaWithDependency))
+			if len(issues) != 1 {
+				t.Fatalf("issues = %+v, want one", issues)
+			}
+			if !strings.Contains(issues[0].Message, tc.want) {
+				t.Errorf("message = %q, want it to name %s", issues[0].Message, tc.want)
+			}
+			if issues[0].Path != "/views/order/include/0" {
+				t.Errorf("path = %q", issues[0].Path)
+			}
+		})
+	}
+}
+
+// A pointer into a dependency is an ordinary pointer once the dependency is
+// mounted: that is the whole reason for mounting.
+func TestDependencyPointersResolve(t *testing.T) {
+	doc := `{"views":{"order":{"identity":"/pooler/poolMode"}},"defaults":{"/pooler/poolMode":"transaction"}}`
+	if issues := views.Validate([]byte(doc), []byte(schemaWithDependency)); len(issues) != 0 {
+		t.Fatalf("issues = %+v, want none", issues)
+	}
+}

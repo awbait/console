@@ -444,3 +444,35 @@ func mustStatus(ctx context.Context, t *testing.T, st store.Store, id string) mo
 	}
 	return r.Status
 }
+
+// Helm checks the values of a subchart against that subchart's own schema when
+// it installs the release. Until the portal did the same, a typo in a
+// dependency's field went through the order form, through the merge request, and
+// only stopped at Argo CD, where the person who typed it never looks. The
+// fixture's postgres pulls in pgbouncer under the alias "pooler".
+func TestCreateChecksDependencyValues(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+
+	values := validValues()
+	values["pooler"] = map[string]any{"poolMode": "sesion"} // the dependency's enum has "session"
+	_, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg1", Values: values,
+	})
+	var ve *provisioning.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want ValidationError, got %v", err)
+	}
+
+	// And a value the dependency does allow goes through, which is the half that
+	// makes the check worth having.
+	values["pooler"] = map[string]any{"poolMode": "session"}
+	if _, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg2", Values: values,
+	}); err != nil {
+		t.Fatalf("create with a valid dependency value: %v", err)
+	}
+}

@@ -25,6 +25,18 @@ export function chartModelPath(project: string, name: string, version: string): 
   return `inmemory://chart/${project}/${name}/${version}/values.schema.json`;
 }
 
+// One model per dependency of a version, for the same reason: two schemas shown
+// in the same editor must not share a model, or the second one opens holding the
+// text of the first.
+export function dependencyModelPath(
+  project: string,
+  name: string,
+  version: string,
+  key: string,
+): string {
+  return `inmemory://chart/${project}/${name}/${version}/charts/${key}/values.schema.json`;
+}
+
 const VIEW_MODEL_SUFFIX = "view-document.json";
 
 // useViewDocumentHints teaches the editor this document and this chart. Both

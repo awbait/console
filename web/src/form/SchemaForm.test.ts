@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { collectErrors, enumLabel, enumOptions, newArrayItem } from "./SchemaForm";
+import { collectErrors, enumLabel, enumOptions, newArrayItem, setAt } from "./SchemaForm";
 
 // A chart may hide a field for part of the values: the ingress-gateway schema
 // hides a listener's domain once the protocol is TCP or UDP. What the form does
@@ -116,5 +116,76 @@ describe("a new array row", () => {
       defaultSnippets: [{ label: "one", body: [{ name: "core" }] }],
     };
     expect(newArrayItem(arr, root)).toEqual({ name: "core" });
+  });
+});
+
+// A chart dependency reaches the form through the effective schema: the portal
+// mounts the subchart's schema under the key its values sit at (its alias, or
+// its chart name), and marks it so the form can tell it from a field the chart
+// declared itself.
+const withDependency = {
+  type: "object",
+  required: ["naming"],
+  properties: {
+    naming: { type: "string" },
+    pooler: {
+      type: "object",
+      "x-dependency": "pgbouncer",
+      required: ["poolMode"],
+      properties: {
+        poolMode: { type: "string", enum: ["session", "transaction"] },
+        maxClientConn: { type: "integer", minimum: 1 },
+      },
+    },
+  },
+};
+
+describe("a chart dependency in the order form", () => {
+  it("is left out until the view asks for it", () => {
+    // No include: only the chart's own fields are drawn, so the required field
+    // of an untouched subchart is not held against the person ordering.
+    const errors = collectErrors(withDependency, {});
+    expect([...errors.keys()]).toEqual(["/naming"]);
+  });
+
+  it("checks the field a view names by path", () => {
+    const view = { include: ["pooler/poolMode"] };
+    expect(collectErrors(withDependency, {}, view).get("/pooler/poolMode")).toBeString();
+    expect(collectErrors(withDependency, { pooler: { poolMode: "session" } }, view).size).toBe(0);
+  });
+
+  it("checks the dependency's own rules on the value under it", () => {
+    const view = { include: ["pooler/maxClientConn"] };
+    const errors = collectErrors(withDependency, { pooler: { maxClientConn: 0 } }, view);
+    expect(errors.get("/pooler/maxClientConn")).toBeString();
+  });
+
+  it("honors a view that forces a dependency's field to be filled in", () => {
+    const view = { include: ["pooler/maxClientConn"], required: ["pooler/maxClientConn"] };
+    expect(collectErrors(withDependency, {}, view).get("/pooler/maxClientConn")).toBeString();
+  });
+
+  it("drops a name that finds nothing rather than drawing an empty field", () => {
+    expect(collectErrors(withDependency, {}, { include: ["pooler/typo"] }).size).toBe(0);
+  });
+});
+
+describe("writing a field named by a path", () => {
+  it("builds the objects on the way down", () => {
+    expect(setAt({ naming: "app" }, ["pooler", "poolMode"], "session")).toEqual({
+      naming: "app",
+      pooler: { poolMode: "session" },
+    });
+  });
+
+  it("takes the container with the last value in it, so an untouched dependency stays out of the order", () => {
+    expect(setAt({ naming: "app", pooler: { poolMode: "session" } }, ["pooler", "poolMode"], undefined)).toEqual({
+      naming: "app",
+    });
+  });
+
+  it("keeps a container that still holds something", () => {
+    const before = { pooler: { poolMode: "session", maxClientConn: 10 } };
+    expect(setAt(before, ["pooler", "poolMode"], undefined)).toEqual({ pooler: { maxClientConn: 10 } });
   });
 });

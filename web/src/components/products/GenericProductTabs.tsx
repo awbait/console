@@ -175,7 +175,7 @@ export function GenericListTab({
     () =>
       schemaProp
         ? Promise.resolve(null)
-        : api.getSchema(request.chart_project, request.chart_name, request.chart_version),
+        : api.getFormSchema(request.chart_project, request.chart_name, request.chart_version),
     [schemaProp, request.chart_project, request.chart_name, request.chart_version],
   );
   const schema = schemaProp ?? fetched.data;
@@ -635,7 +635,7 @@ function ViewFormModal({
   persist?: PersistValues;
 }) {
   const fetched = useAsync(
-    () => (isOpen && !schemaProp ? api.getSchema(project, name, version) : Promise.resolve(null)),
+    () => (isOpen && !schemaProp ? api.getFormSchema(project, name, version) : Promise.resolve(null)),
     [isOpen, schemaProp, project, name, version],
   );
   const schema = schemaProp ?? fetched.data;

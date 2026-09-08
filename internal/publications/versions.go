@@ -738,7 +738,9 @@ func errDeprecated(v *models.PublicationVersion) error {
 func (s *Service) validateVersionView(ctx context.Context, p *models.ChartPublication, chartVersion string, view json.RawMessage) []views.Issue {
 	var schema []byte
 	if s.schemas != nil {
-		if b, err := s.schemas.GetSchema(ctx, p.ChartProject, p.ChartName, chartVersion); err == nil {
+		// The effective schema, not the chart's own file: a document may project a
+		// dependency's fields, and they exist only once the dependency is mounted.
+		if b, _, err := s.schemas.FormSchema(ctx, p.ChartProject, p.ChartName, chartVersion); err == nil {
 			schema = b
 		}
 	}
