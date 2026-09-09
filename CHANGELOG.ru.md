@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-09
+
+Релиз про окна, в которых что-то добавляют к сервису: запись теперь бывает
+разного вида, а кнопка под полем принимает нажатие.
+
 ### Добавлено
 - Добавили выбор вида записи в окне добавления на вкладке сервиса: например,
   сертификат из хранилища или готовый секрет.
@@ -613,7 +618,8 @@ GitOps-провижининг, согласование публикаций и 
 - Сборка и релизы на GitHub Actions: проверки PR, тег и GitHub Release, сборка
   образов портала и коллектора.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/awbait/console/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/awbait/console/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0

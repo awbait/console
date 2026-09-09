@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-09
+
+A release about the dialogs that add something to a service: an entry can now
+come in more than one kind, and the button below a field takes the press.
+
 ### Added
 - Added a picker for the kind of an entry to the add dialog on a service tab: a
   certificate read from a store or one that already lies in the cluster, say.
@@ -616,7 +621,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/awbait/console/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/awbait/console/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/awbait/console/compare/v0.9.0...v0.10.0
