@@ -192,10 +192,10 @@ func TestCreateServiceNameSubdomain(t *testing.T) {
 
 	req, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "vault.idp.ecpk.test-vault", Namespace: "team-core",
+		Team: "core", ServiceName: "vault.example.test-vault", Namespace: "team-core",
 		Values: validValues(),
 	})
-	if err != nil || req.ServiceName != "vault.idp.ecpk.test-vault" {
+	if err != nil || req.ServiceName != "vault.example.test-vault" {
 		t.Fatalf("dotted service name: err=%v name=%q", err, req.ServiceName)
 	}
 

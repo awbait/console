@@ -272,7 +272,7 @@ describe("schemaViolationText", () => {
 // inside every part of it.
 describe("dnsSubdomainError", () => {
   it("takes a dotted name", () => {
-    expect(dnsSubdomainError("vault.idp.ecpk.test-vault")).toBeNull();
+    expect(dnsSubdomainError("vault.example.test-vault")).toBeNull();
     expect(dnsSubdomainError("payments-db")).toBeNull();
   });
 

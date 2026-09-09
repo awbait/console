@@ -34,7 +34,7 @@ var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 // GitOps repo, and both take a subdomain. It can also come from the chart
 // itself, when the version's view names an identity field, and a chart is free
 // to name a thing the way Kubernetes does: the secret-store calls a store after
-// the vault it reads, vault.idp.ecpk.test-vault. A namespace stays a plain
+// the vault it reads, vault.example.test-vault. A namespace stays a plain
 // label - see validNamespace.
 var serviceNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 

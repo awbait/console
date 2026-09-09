@@ -152,7 +152,7 @@ a host address.
 - A list in the order form names its choices. "Cluster" now reads "techsec-dev
   (tco)" instead of "tco", and the meaning of the codes no longer sits in the
   text under the field.
-- A service name may contain a dot: "vault.idp.ecpk.test-vault" is accepted
+- A service name may contain a dot: "vault.example.test-vault" is accepted
   where only letters, digits and hyphens were before. A chart that names what it
   deploys after a host now orders under that name. The namespace of an order is
   unchanged and still takes no dots.
