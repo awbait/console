@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- A product tab whose list holds entries of more than one shape now opens a
+  form. It used to answer "no structural schema, use the YAML editor" on Add,
+  and picking a shape other than the first one was impossible anywhere: the
+  picker jumped back on the first keystroke, because a half-filled entry was
+  read as the first shape.
+
 ## [0.12.0] - 2026-09-08
 
 A release about charts that pull in other charts. What a dependency describes
