@@ -17,7 +17,8 @@ import (
 // own view document, so the portal can apply them without any chart-specific
 // code (it stays chart-agnostic). Semantics are overwrite ("перезапись"): the
 // declared value replaces whatever the form submitted, so it suits fields that
-// are hidden from the order form (e.g. cpaas.io/creator = console).
+// are hidden from the order form (e.g. "/namespace/creator" = console, so every
+// namespace the portal makes says so).
 func Defaults(viewJSON []byte) map[string]any {
 	var doc struct {
 		Defaults map[string]any `json:"defaults"`

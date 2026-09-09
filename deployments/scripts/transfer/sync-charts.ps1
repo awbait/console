@@ -323,10 +323,26 @@ Write-Skip "chart map: $ConfigPath"
 
 $sourceRepo   = $cfg.sourceRepo
 $sourceRef    = $cfg.ref
-$gitlabUrl    = $cfg.gitlabUrl.TrimEnd('/')
 $targetBranch = $cfg.targetBranch
-$harborHost   = $cfg.harborHost
 $defaultKeep  = @($cfg.keep)
+
+# The addresses are the installation's, not the product's, so the map ships
+# without them. Caught here rather than three calls later, where an empty host
+# turns into a clone of "/group/chart.git" and a message about a bad URL.
+$missing = @()
+if (-not $cfg.gitlabUrl)  { $missing += 'gitlabUrl' }
+if (-not $cfg.harborHost) { $missing += 'harborHost' }
+if ($missing) {
+  $where = "Fill in the addresses of this installation's GitLab and Harbor in $ConfigPath."
+  # Same trap as an unfilled `project`: filling in the copy inside the repository
+  # means filling it in again after the next update-repos.ps1 run.
+  if ($ConfigPath -eq (Join-Path $PSScriptRoot 'charts-map.json')) {
+    $where = "This is the template shipped with the repository, and updating the repository replaces it. Copy it next to the console folder and fill in the addresses of this installation's GitLab and Harbor there."
+  }
+  throw "not set in the chart map: $($missing -join ', '). $where"
+}
+$gitlabUrl  = $cfg.gitlabUrl.TrimEnd('/')
+$harborHost = $cfg.harborHost
 
 $chartNames = $cfg.charts.PSObject.Properties.Name
 if ($Charts) {

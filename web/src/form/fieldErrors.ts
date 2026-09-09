@@ -75,7 +75,7 @@ export const DNS_LABEL_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 // RFC 1123 DNS subdomain: labels as above, joined by dots. The name of a
 // Kubernetes object, which is what a service name becomes (the ArgoCD
 // application) and what a chart may name a thing after - the secret-store calls
-// a store after the vault it reads, vault.idp.ecpk.test-vault.
+// a store after the vault it reads, vault.example.test-vault.
 export const DNS_SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
 // FieldConstraints is the part of a chart's values.schema.json that says what

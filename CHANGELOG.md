@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- The rules of a field no longer stand between the pointer and the button below
+  it. In a dialog they used to hang over the row of buttons for as long as the
+  caret was in the field, and the press landed on the hint instead of on "Add".
+  They now close as soon as the value meets every rule, and while they are up
+  they let a press through to whatever is underneath.
 - A product tab whose list holds entries of more than one shape now opens a
   form. It used to answer "no structural schema, use the YAML editor" on Add,
   and picking a shape other than the first one was impossible anywhere: the
@@ -159,7 +164,7 @@ a host address.
 - A list in the order form names its choices. "Cluster" now reads "techsec-dev
   (tco)" instead of "tco", and the meaning of the codes no longer sits in the
   text under the field.
-- A service name may contain a dot: "vault.idp.ecpk.test-vault" is accepted
+- A service name may contain a dot: "vault.example.test-vault" is accepted
   where only letters, digits and hyphens were before. A chart that names what it
   deploys after a host now orders under that name. The namespace of an order is
   unchanged and still takes no dots.

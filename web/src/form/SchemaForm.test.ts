@@ -46,16 +46,16 @@ describe("collectErrors with conditional fields", () => {
 // the code.
 const cluster = {
   type: "string",
-  enum: ["inf", "dev", "tco"],
-  enumNames: ["Infra-dev-ecpk (inf)", "dev-ecpk и dev-common (dev)", "techsec-dev (tco)"],
+  enum: ["inf", "dev", "tst"],
+  enumNames: ["Infra (inf)", "Development (dev)", "Testing (tst)"],
 };
 
 describe("enum option labels", () => {
   it("names every choice the chart named", () => {
     expect(enumOptions(cluster)).toEqual([
-      { id: "inf", label: "Infra-dev-ecpk (inf)" },
-      { id: "dev", label: "dev-ecpk и dev-common (dev)" },
-      { id: "tco", label: "techsec-dev (tco)" },
+      { id: "inf", label: "Infra (inf)" },
+      { id: "dev", label: "Development (dev)" },
+      { id: "tst", label: "Testing (tst)" },
     ]);
   });
 
@@ -72,7 +72,7 @@ describe("enum option labels", () => {
   });
 
   it("names a chosen value, and leaves a value outside the list alone", () => {
-    expect(enumLabel(cluster, "tco")).toBe("techsec-dev (tco)");
+    expect(enumLabel(cluster, "tst")).toBe("Testing (tst)");
     expect(enumLabel(cluster, "gone")).toBe("gone");
   });
 

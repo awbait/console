@@ -83,10 +83,14 @@ export function Hint({
           no direction and reads as appearing over the page rather than as
           coming out of the icon. Closing is quicker than opening - a hint on
           its way out should not be in the way. */}
+      {/* pointer-events-none: the panel is read, never clicked, and a hint held
+          open while a field is being filled in lands on whatever sits under the
+          field - in a dialog that is the row of buttons. Transparent to the
+          pointer, it can cover a button without swallowing the press. */}
       <AriaTooltip
         offset={8}
         placement={placement}
-        className="group max-w-xs rounded-lg border border-overlay-edge overlay-panel bg-overlay px-3 py-2 text-xs text-slate-700 entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-150 entering:placement-bottom:slide-in-from-top-1 entering:placement-left:slide-in-from-right-1 entering:placement-right:slide-in-from-left-1 entering:placement-top:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 motion-reduce:transition-none motion-reduce:animate-none"
+        className="pointer-events-none group max-w-xs rounded-lg border border-overlay-edge overlay-panel bg-overlay px-3 py-2 text-xs text-slate-700 entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-150 entering:placement-bottom:slide-in-from-top-1 entering:placement-left:slide-in-from-right-1 entering:placement-right:slide-in-from-left-1 entering:placement-top:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 motion-reduce:transition-none motion-reduce:animate-none"
       >
         <OverlayArrow className="group">
           {/* Rotated square rather than an SVG triangle: it inherits the panel's
@@ -99,6 +103,33 @@ export function Hint({
       </AriaTooltip>
     </TooltipTrigger>
   );
+}
+
+// hintIsOpen: whether the rules panel of a field is up. Held open by the caret
+// while the rules still have something to say, and by hovering the "i" at any
+// time.
+//
+// It closes the moment the last rule is ticked off, and that moment matters:
+// the panel opens downwards, so in a dialog it hangs over the row of buttons,
+// and the reader who has just finished filling the field is reaching for the
+// one below it. A finished checklist has nothing left to say anyway.
+//
+// An empty field is never "satisfied": nothing has been typed yet, which is
+// when the rules are needed most, and a rule like "no longer than 9" is true of
+// an empty string. RequirementList draws that state neutral for the same reason.
+export function hintIsOpen({
+  typing,
+  hovered,
+  rules,
+  value,
+}: {
+  typing: boolean;
+  hovered: boolean;
+  rules: FieldRequirement[];
+  value: string;
+}): boolean {
+  const satisfied = value.trim() !== "" && rules.every((r) => r.met(value));
+  return (typing && !satisfied) || hovered;
 }
 
 // RequirementList: what a field accepts, one rule per line, each ticked off
@@ -266,7 +297,7 @@ export function TextField({
           <span className="absolute inset-y-0 right-1 flex items-center">
             <Hint
               text={<RequirementList items={rules ?? []} value={value} />}
-              isOpen={typing || hintHovered}
+              isOpen={hintIsOpen({ typing, hovered: hintHovered, rules: rules ?? [], value })}
               onOpenChange={setHintHovered}
               // Below the field: while typing, a hint over the label hides the
               // name of what is being filled in. Aligned to the end rather than

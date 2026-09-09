@@ -3,11 +3,11 @@ import { teamLabel } from "./roles";
 
 describe("teamLabel", () => {
   test("a team is called by its own name", () => {
-    expect(teamLabel("core", { "idp_ecpk_console/admin": "admin" })).toBe("core");
+    expect(teamLabel("core", { "platform_console/admin": "admin" })).toBe("core");
   });
 
   test("a group that grants a role is called by the role", () => {
-    expect(teamLabel("idp_ecpk_console/admin", { "idp_ecpk_console/admin": "admin" })).toBe(
+    expect(teamLabel("platform_console/admin", { "platform_console/admin": "admin" })).toBe(
       "Администратор платформы",
     );
   });
@@ -19,7 +19,7 @@ describe("teamLabel", () => {
   });
 
   test("with nothing configured the group is printed as it is", () => {
-    expect(teamLabel("idp_ecpk_console/admin")).toBe("idp_ecpk_console/admin");
+    expect(teamLabel("platform_console/admin")).toBe("platform_console/admin");
     expect(teamLabel("core", {})).toBe("core");
   });
 });
