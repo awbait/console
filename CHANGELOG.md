@@ -4,12 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added a picker for the kind of an entry to the add dialog on a service tab: a
+  certificate read from a store or one that already lies in the cluster, say.
+
 ### Fixed
-- The rules of a field no longer stand between the pointer and the button below
-  it. In a dialog they used to hang over the row of buttons for as long as the
-  caret was in the field, and the press landed on the hint instead of on "Add".
-  They now close as soon as the value meets every rule, and while they are up
-  they let a press through to whatever is underneath.
+- Fixed pressing a button in the add dialog while the rules of the field above
+  it are open.
 
 ## [0.12.0] - 2026-09-08
 

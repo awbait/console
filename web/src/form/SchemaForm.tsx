@@ -375,21 +375,32 @@ export function newArrayItem(arr: Schema, root: Schema): unknown {
 
 // matchVariant picks which oneOf option the current value corresponds to,
 // preferring const discriminators (e.g. filter "type"), then required keys.
+//
+// The discriminator decides on its own, before anything is said about required
+// keys. A variant is picked from an empty row and filled in afterwards, so for
+// most of the time the reader spends in it the row holds the discriminator and
+// little else; asking for the required keys as well would snap the picker back
+// to the first variant on every keystroke, and the other variants could never
+// be chosen at all. Required keys are the fallback for a value that carries no
+// discriminator - an entry written before the field existed.
 function matchVariant(value: unknown, options: Schema[], root: Schema): number {
   if (!value || typeof value !== "object") return 0;
   const v = value as Values;
+  const constMatch = (o: Schema): "yes" | "no" | "silent" => {
+    let seen = false;
+    for (const [pk, pv] of Object.entries((o.properties ?? {}) as Record<string, Schema>)) {
+      const ps = deref(pv, root);
+      if (!("const" in ps) || v[pk] === undefined) continue;
+      seen = true;
+      if (v[pk] !== ps.const) return "no";
+    }
+    return seen ? "yes" : "silent";
+  };
+  for (let i = 0; i < options.length; i++) if (constMatch(options[i]) === "yes") return i;
   for (let i = 0; i < options.length; i++) {
     const o = options[i];
-    const props: Record<string, Schema> = o.properties ?? {};
-    let ok = true;
-    for (const [pk, pv] of Object.entries(props)) {
-      const ps = deref(pv, root);
-      if ("const" in ps && v[pk] !== undefined && v[pk] !== ps.const) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok && (o.required ?? []).every((k: string) => v[k] !== undefined)) return i;
+    if (constMatch(o) === "no") continue;
+    if ((o.required ?? []).every((k: string) => v[k] !== undefined)) return i;
   }
   return 0;
 }
@@ -428,14 +439,30 @@ export function SchemaForm({
   );
   const root = schema;
   const s = deref(schema, root);
-  if (s.type !== "object" || !s.properties) {
+  // A variant is a form on its own, not only a field inside one: the row of a
+  // tab whose list holds entries of more than one shape (a certificate read
+  // from a store next to one that is already a Secret) arrives here as the
+  // whole schema. collectErrors has always walked such a root; without this it
+  // was the only thing the form itself sent to the YAML editor.
+  const isVariant = Array.isArray(s.oneOf);
+  if (!isVariant && (s.type !== "object" || !s.properties)) {
     return <p className="text-sm text-gray-500">Нет структурной схемы, используйте редактор YAML.</p>;
   }
   return (
     <ValidationCtx.Provider value={validation}>
       <LockActiveCtx.Provider value={lockReadOnly}>
         <LockedPathsCtx.Provider value={lockedSet}>
-          <ObjectFields schema={s} root={root} value={value} onChange={onChange} view={view} path="" />
+          {isVariant ? (
+            <VariantBody
+              schema={s}
+              root={root}
+              value={value}
+              onChange={(v) => onChange((v ?? {}) as Values)}
+              path=""
+            />
+          ) : (
+            <ObjectFields schema={s} root={root} value={value} onChange={onChange} view={view} path="" />
+          )}
         </LockedPathsCtx.Provider>
       </LockActiveCtx.Provider>
     </ValidationCtx.Provider>
@@ -764,12 +791,37 @@ function VariantField({
   onChange: (v: unknown) => void;
   path?: string;
 }) {
+  return (
+    <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
+      <VariantBody schema={schema} root={root} value={value} onChange={onChange} path={path} />
+    </Section>
+  );
+}
+
+// VariantBody: the picker and the fields of the chosen variant, without the
+// section around them. Split out because a variant is also a whole form on its
+// own - the row of a tab whose list holds entries of more than one shape - and
+// there the dialog is already the frame.
+function VariantBody({
+  schema,
+  root,
+  value,
+  onChange,
+  path = "",
+}: {
+  schema: Schema;
+  root: Schema;
+  value: unknown;
+  onChange: (v: unknown) => void;
+  path?: string;
+}) {
   const locked = useContext(LockedCtx);
   const options: Schema[] = schema.oneOf.map((o: Schema) => deref(o, root));
   const sel = matchVariant(value, options, root);
   const selected = options[sel];
+  const name = text(schema.title) ?? "";
   return (
-    <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
+    <>
       <div className="flex flex-col gap-3">
         <Select
           label="Вариант"
@@ -784,7 +836,7 @@ function VariantField({
           <Field name={name} schema={selected} root={root} required value={value} onChange={onChange} path={path} />
         )}
       </div>
-    </Section>
+    </>
   );
 }
 
