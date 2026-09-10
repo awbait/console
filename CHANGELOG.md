@@ -5,14 +5,15 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- A chart version you are not going to publish can now be hidden: the "Hide"
-  button on its row on the service management page. The portal stops announcing
-  it as a new version, and "Put back in work" brings it back.
+- Added a "Hide" button to the service management page for a chart version you
+  are not going to publish.
 
 ### Changed
-- The versions table on the service management page now lists only the versions
-  in use. Hidden ones, those out of support and those the registry no longer has
-  are collected behind "Show inactive versions".
+- Took the hidden versions, the ones out of support and the ones the registry
+  has lost out of the versions table on the service management page: they open
+  from a "Show inactive versions" line.
+- Stopped sending a notification about a new chart version once that version is
+  hidden.
 
 ## [0.13.0] - 2026-09-09
 
