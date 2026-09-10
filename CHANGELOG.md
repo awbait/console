@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-10
+
+A release about the versions table on the service management page: it lists the
+versions in use, and a version you are not going to publish is put aside.
+
 ### Added
 - Added a "Hide" button to the service management page for a chart version you
   are not going to publish.
@@ -636,7 +641,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/awbait/console/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/awbait/console/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/awbait/console/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/awbait/console/compare/v0.10.0...v0.11.0
