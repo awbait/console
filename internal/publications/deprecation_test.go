@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"console/internal/publications"
@@ -158,18 +159,67 @@ func TestDeprecatePendingLeavesTheQueue(t *testing.T) {
 	}
 }
 
-// A draft nobody ever approved was never offered to anyone, so there is nothing
-// to take out of support.
-func TestDeprecateNeedsAnApprovedVersion(t *testing.T) {
+// A version nobody ever published is put aside rather than withdrawn: the same
+// mark, but it reaches no customer. It works on a version nothing has been
+// written for at all, which is the whole point - that is what the registry is
+// full of.
+func TestHideVersionNobodyPublished(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := setup(t)
+	rec := &recorder{}
+	svc.SetNotifier(rec)
 	owner := member("core")
 	p := newPub(t, svc, owner, "ingress-gateway")
-	if _, err := svc.SaveVersionView(ctx, owner, p.ID, "1.0.0", viewV1); err != nil {
+	publishVersion(t, svc, owner, p.ID, "1.0.0", viewV1)
+	// A draft somebody started and never had approved.
+	if _, err := svc.SaveVersionView(ctx, owner, p.ID, "1.5.0", viewV1); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if _, err := svc.DeprecateVersion(ctx, owner, p.ID, "1.0.0", ""); !errors.Is(err, models.ErrConflict) {
-		t.Fatalf("want conflict on a never-approved draft, got %v", err)
+
+	for _, version := range []string{"1.5.0", "2.0.0"} { // a draft, and a version with no row at all
+		v, err := svc.DeprecateVersion(ctx, owner, p.ID, version, "")
+		if err != nil {
+			t.Fatalf("hide %s: %v", version, err)
+		}
+		if !v.Hidden() || !v.Deprecated() {
+			t.Fatalf("hide %s: %+v", version, v)
+		}
+	}
+	// Nothing about a version nobody saw is said to anybody.
+	if len(rec.deprecated) != 0 {
+		t.Fatalf("hiding must tell nobody, got %+v", rec.deprecated)
+	}
+	cv, err := svc.CatalogVersions(ctx, p, []string{"1.0.0", "1.5.0", "2.0.0"})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	if len(cv.Deprecated) != 0 {
+		t.Fatalf("the catalog must not report a hidden version: %+v", cv.Deprecated)
+	}
+	if len(cv.Orderable) != 1 || cv.Orderable[0] != "1.0.0" {
+		t.Fatalf("what is orderable must not change: %v", cv.Orderable)
+	}
+
+	// A hidden version is closed for changes like any other, and says so in its
+	// own words.
+	_, err = svc.SaveVersionView(ctx, owner, p.ID, "1.5.0", viewV2)
+	if !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("want conflict on a hidden version, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "скрыта") {
+		t.Fatalf("the refusal must say the version is hidden, got %q", err)
+	}
+
+	// Back on the list, with its draft where it was.
+	back, err := svc.UndeprecateVersion(ctx, owner, p.ID, "1.5.0")
+	if err != nil {
+		t.Fatalf("unhide: %v", err)
+	}
+	if back.Deprecated() || back.Status != models.PubDraft {
+		t.Fatalf("unhide must clear the mark and keep the draft: %+v", back)
+	}
+	if _, err := svc.SaveVersionView(ctx, owner, p.ID, "1.5.0", viewV2); err != nil {
+		t.Fatalf("save after unhide: %v", err)
 	}
 }
 

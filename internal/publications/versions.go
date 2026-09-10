@@ -288,31 +288,56 @@ func (s *Service) SetRecommendedVersion(ctx context.Context, u *models.User, pub
 	return nil
 }
 
-// DeprecateVersion takes a version out of support: it leaves the catalog, gives
-// up the recommendation if it held it, and refuses every change until somebody
-// puts it back. Orders already running on it are untouched - deprecation closes
-// the door on new orders, it does not take a service down.
+// DeprecateVersion takes a version out of use: it leaves the catalog, gives up
+// the recommendation if it held it, and refuses every change until somebody puts
+// it back. Orders already running on it are untouched - this closes the door on
+// new orders, it does not take a service down.
 //
-// note is the owner's reason, and it travels: it is in the journal, in the chip
-// on every page showing the version, and in the message the teams still running
-// it receive. Empty is allowed - a version can simply be old - but the sentence
-// those teams read is much better with it.
+// The same call covers the two ways a version stops being something the owner
+// offers, and which one it is follows from whether the version was ever
+// approved (see models.PublicationVersion.Hidden):
 //
-// Only a version that was published at some point can be taken out of support.
-// A draft nobody ever approved was never offered to anybody, so there is nothing
-// to withdraw: it is deleted or left alone, not deprecated.
+// A published version is withdrawn from support. Somebody may still be running
+// it, so the teams that do are told, and the mark travels: the journal, the chip
+// on every page showing the version, the order page of everyone still on it.
+// note is the owner's reason and is worth writing, though a version can simply
+// be old.
+//
+// A version nobody ever published is put aside instead. The registry holds
+// versions the owner has no intention of publishing, and without this they sit
+// on the management page for good: deleting the row cannot work, because that
+// page is built from the registry listing and the row would come straight back
+// on the next load. Nothing about such a version ever reached a customer, so
+// this reaches none either - no catalog entry, no message, no reason to write.
+// The row is created here when there is none: putting a version aside is the one
+// decision that can be made about a version nothing has been written for yet.
 func (s *Service) DeprecateVersion(ctx context.Context, u *models.User, pubID, chartVersion, note string) (*models.PublicationVersion, error) {
-	p, v, err := s.loadVersionToManage(ctx, u, pubID, chartVersion)
+	p, err := s.store.GetPublication(ctx, pubID)
 	if err != nil {
 		return nil, err
 	}
+	if !canManage(u, p.OwnerTeam) {
+		return nil, ErrForbidden
+	}
+	v, err := s.store.GetVersion(ctx, pubID, chartVersion)
+	created := errors.Is(err, models.ErrNotFound)
+	if created {
+		if v, err = s.getOrInitVersion(ctx, p, chartVersion); err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
 	if v.Deprecated() {
+		if v.Hidden() {
+			return nil, conflict("Версия %s уже скрыта.", chartVersion)
+		}
 		return nil, conflict("Версия %s уже снята с поддержки.", chartVersion)
 	}
-	if len(v.ApprovedViewJSON) == 0 {
-		return nil, conflict("Снять с поддержки можно только версию, которая была согласована.")
-	}
 	note = strings.TrimSpace(note)
+	if !v.EverPublished() {
+		note = "" // nobody was offered this version, so there is nothing to explain
+	}
 
 	// A version waiting in the admin's queue leaves it in the same move. Without
 	// this the queue keeps offering a decision on something already buried, and
@@ -327,6 +352,10 @@ func (s *Service) DeprecateVersion(ctx context.Context, u *models.User, pubID, c
 	if err := s.store.Tx(ctx, func(tx store.Store) error {
 		if withdrawn {
 			v.Status = models.PubDraft
+		}
+		// A version nothing has been written for has no row to mark, so it gets
+		// one here. Saving it is also how a version leaves the review queue.
+		if created || withdrawn {
 			if err := tx.UpsertVersion(ctx, v); err != nil {
 				return err
 			}
@@ -365,37 +394,54 @@ func (s *Service) DeprecateVersion(ctx context.Context, u *models.User, pubID, c
 	if withdrawn {
 		payload["withdrawn"] = true // it was in the approval queue
 	}
-	s.addEvent(ctx, p.ID, u, "version_deprecated", "", "", payload)
-	s.logger().Info("publication version deprecated",
+	// The journal says which of the two decisions this was, because they read
+	// differently a year later: one withdrew a service somebody was running, the
+	// other passed over a version nobody ever saw.
+	event, metric, logged := "version_deprecated", "deprecated", "publication version deprecated"
+	if v.Hidden() {
+		event, metric, logged = "version_hidden", "hidden", "publication version hidden"
+	}
+	s.addEvent(ctx, p.ID, u, event, "", "", payload)
+	s.logger().Info(logged,
 		"publication_id", p.ID, "chart", p.ChartName, "chart_version", chartVersion,
 		"actor", u.Subject)
-	observability.ObservePublicationVersionEvent("deprecated")
-	s.notifyDeprecated(ctx, p, v, u)
+	observability.ObservePublicationVersionEvent(metric)
+	// Nobody could be running a version that was never published, so there is
+	// nobody to tell about it.
+	if v.EverPublished() {
+		s.notifyDeprecated(ctx, p, v, u)
+	}
 	return v, nil
 }
 
-// UndeprecateVersion puts a version back in support. The approval status it had
-// is what it goes back to - deprecation only ever moved it out of the review
-// queue, and that move cannot be undone by guessing. It does not go back into
-// the catalog by itself either: offering a version again is a decision, and the
-// owner makes it with the catalog switch.
+// UndeprecateVersion puts a version back: a withdrawn one back in support, a
+// version that was put aside back on the list of what can be worked on. The
+// approval status it had is what it goes back to - taking it out only ever moved
+// it out of the review queue, and that move cannot be undone by guessing. It
+// does not go back into the catalog by itself either: offering a version again
+// is a decision, and the owner makes it with the catalog switch.
 func (s *Service) UndeprecateVersion(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.PublicationVersion, error) {
 	p, v, err := s.loadVersionToManage(ctx, u, pubID, chartVersion)
 	if err != nil {
 		return nil, err
 	}
 	if !v.Deprecated() {
-		return nil, conflict("Версия %s и так на поддержке.", chartVersion)
+		return nil, conflict("Версия %s и так в работе.", chartVersion)
 	}
+	hidden := v.Hidden()
 	if err := s.store.SetDeprecated(ctx, v.ID, nil, "", ""); err != nil {
 		return nil, err
 	}
 	v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = nil, "", ""
-	s.addEvent(ctx, p.ID, u, "version_undeprecated", "", "", map[string]any{"chart_version": chartVersion})
-	s.logger().Info("publication version undeprecated",
+	event, metric, logged := "version_undeprecated", "undeprecated", "publication version undeprecated"
+	if hidden {
+		event, metric, logged = "version_unhidden", "unhidden", "publication version unhidden"
+	}
+	s.addEvent(ctx, p.ID, u, event, "", "", map[string]any{"chart_version": chartVersion})
+	s.logger().Info(logged,
 		"publication_id", p.ID, "chart", p.ChartName, "chart_version", chartVersion,
 		"actor", u.Subject)
-	observability.ObservePublicationVersionEvent("undeprecated")
+	observability.ObservePublicationVersionEvent(metric)
 	return v, nil
 }
 
@@ -549,8 +595,10 @@ func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublicatio
 			out.Gone = append(out.Gone, v.ChartVersion)
 		}
 		// Support is the owner's word about the version, so it is reported
-		// whatever the registry currently holds.
-		if v.Deprecated() {
+		// whatever the registry currently holds. A version put aside before it
+		// was ever published is not reported at all: it was never offered, so
+		// there is nobody to tell it is gone (see PublicationVersion.Hidden).
+		if v.Deprecated() && !v.Hidden() {
 			out.Deprecated = append(out.Deprecated, v)
 		}
 	}
@@ -727,9 +775,15 @@ func (s *Service) loadVersionToManage(ctx context.Context, u *models.User, pubID
 	return p, v, nil
 }
 
-// errDeprecated is the one refusal every operation on an unsupported version
-// gives, so a person meets the same sentence wherever they run into it.
+// errDeprecated is the one refusal every operation on a version taken out of
+// use gives, so a person meets the same sentence wherever they run into it. It
+// names the state the version is actually in: a hidden version was never
+// withdrawn from anything, and being told it was would send its owner looking
+// for a decision nobody made.
 func errDeprecated(v *models.PublicationVersion) error {
+	if v.Hidden() {
+		return conflict("Версия %s скрыта. Верните её в работу, чтобы изменить.", v.ChartVersion)
+	}
 	return conflict("Версия %s снята с поддержки. Верните её в работу, чтобы изменить.", v.ChartVersion)
 }
 

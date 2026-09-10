@@ -4,10 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added a "Hide" button to the service management page for a chart version you
+  are not going to publish.
+
+### Changed
+- Took the hidden versions, the ones out of support and the ones the registry
+  has lost out of the versions table on the service management page: they open
+  from a "Show inactive versions" line.
+- Stopped sending a notification about a new chart version once that version is
+  hidden.
+
 ### Fixed
-- A chart version uploaded to Harbor more than once is now one version in the
-  catalog. Each upload used to add another row with the same number, so a chart
-  re-uploaded three times showed 6.0.0 three times.
+- Fixed the duplicates of a chart version in the catalog after it is uploaded to
+  Harbor again.
 
 ## [0.13.0] - 2026-09-09
 

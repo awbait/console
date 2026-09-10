@@ -8,6 +8,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconClock,
+  IconEyeOff,
   IconPencil,
   IconTag,
   IconUser,
@@ -53,6 +54,16 @@ export const STATUS_LABELS: Record<
   REJECTED: { label: "Отклонено", cls: "bg-red-50 text-red-700", Icon: IconAlertCircle },
 };
 
+// A version taken out of use before it was ever published is hidden, not
+// withdrawn from support: nobody was ever offered it, so there is nothing to
+// withdraw and nobody to tell. It is the same mark in the portal, and the
+// difference is only in what the page says about it.
+export function isHiddenVersion(
+  row: { deprecated_at?: string; approved_view_json?: unknown } | null | undefined,
+): boolean {
+  return !!row?.deprecated_at && !row.approved_view_json;
+}
+
 // Short availability/status hint for a version, used in the editor's version
 // switcher dropdown: "рекомендуемая, в каталоге" / "черновик" / "".
 //
@@ -63,7 +74,7 @@ export function versionHint(
   row: PublicationVersion | null | undefined,
   recommended: string,
 ): string {
-  if (row?.deprecated_at) return "снята с поддержки";
+  if (row?.deprecated_at) return isHiddenVersion(row) ? "скрыта" : "снята с поддержки";
   const parts: string[] = [];
   if (v === recommended) parts.push("рекомендуемая");
   if (row?.orderable) parts.push("в каталоге");
@@ -76,11 +87,21 @@ export function versionHint(
 export function deprecationText(row: {
   deprecated_at?: string;
   deprecation_note?: string;
+  approved_view_json?: unknown;
 }): string {
   const when = row.deprecated_at ? dateInWords(row.deprecated_at) : "";
+  if (isHiddenVersion(row)) return when ? `Скрыта ${when}.` : "Скрыта.";
   const head = when ? `Снята с поддержки ${when}.` : "Снята с поддержки.";
   return row.deprecation_note ? `${head} ${row.deprecation_note}` : head;
 }
+
+// One line of the versions table: a chart version, the row the portal stores
+// for it (none until somebody writes one) and whether the registry still has it.
+type VersionEntry = {
+  version: string;
+  row: PublicationVersion | null;
+  missing: boolean;
+};
 
 // Publication management overview: metadata (category, owner) + the versions
 // table. Editing a version's view document lives on its own page
@@ -328,6 +349,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
   // which version it is about and what the owner typed.
   const [deprecating, setDeprecating] = useState<PublicationVersion | null>(null);
   const [note, setNote] = useState("");
+  const [showRetired, setShowRetired] = useState(false);
 
   async function onDeprecate(row: PublicationVersion, reason: string) {
     await api.deprecateVersion(pub.id, row.chart_version, reason);
@@ -337,6 +359,23 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
     reloadVersions();
     reloadCatalog();
     success(`Версия ${row.chart_version} снята с поддержки`);
+  }
+
+  // Putting aside a version nobody published: no reason to ask for, nothing to
+  // announce, and the catalog is not involved - the version was never in it.
+  // The version may have no row at all yet, which is why this takes the number
+  // and not a row.
+  async function onHide(version: string) {
+    setBusy(`support:${version}`);
+    try {
+      await api.deprecateVersion(pub.id, version, "");
+      reloadVersions();
+      success(`Версия ${version} скрыта`);
+    } catch (e) {
+      error(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onUndeprecate(row: PublicationVersion) {
@@ -371,9 +410,24 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
   // highest first (a re-pushed old version must not float to the top). Stored
   // rows whose chart version is gone from Harbor follow, same order.
   const harborVersions = [...(chart?.versions ?? [])].sort((a, b) => compareSemver(b, a));
-  const orphanRows = (versions ?? [])
-    .filter((r) => !harborVersions.includes(r.chart_version))
-    .sort((a, b) => compareSemver(b.chart_version, a.chart_version));
+  const rows: VersionEntry[] = [
+    ...harborVersions.map((v) => ({
+      version: v,
+      row: versions?.find((r) => r.chart_version === v) ?? null,
+      missing: false,
+    })),
+    ...(versions ?? [])
+      .filter((r) => !harborVersions.includes(r.chart_version))
+      .sort((a, b) => compareSemver(b.chart_version, a.chart_version))
+      .map((r) => ({ version: r.chart_version, row: r, missing: true })),
+  ];
+  // Versions nobody is going to work on again: put aside, taken out of support,
+  // or gone from the registry. They wait behind one press instead of filling the
+  // table, because a chart that has been around a while has more of them than
+  // live versions, and the live ones are what somebody opened this page for.
+  const isRetired = (e: VersionEntry) => e.missing || !!e.row?.deprecated_at;
+  const liveRows = rows.filter((e) => !isRetired(e));
+  const retiredRows = rows.filter(isRetired);
 
   return (
     <div className="flex flex-col gap-4">
@@ -467,7 +521,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
           Editing a version's view opens its own page (deep-linkable). */}
       {!chart && versions === null ? (
         <Loading label="Загружаем версии" />
-      ) : harborVersions.length === 0 && orphanRows.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-surface py-10 text-center text-sm text-slate-500 shadow-sm">
           Версии чарта не найдены в Harbor.
         </div>
@@ -483,37 +537,68 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
               </tr>
             </thead>
             <tbody>
-              {harborVersions.map((v) => (
+              {liveRows.map((e) => (
                 <VersionRow
-                  key={v}
-                  version={v}
-                  row={versions?.find((r) => r.chart_version === v) ?? null}
-                  recommended={recommended === v}
+                  key={e.version}
+                  version={e.version}
+                  row={e.row}
+                  missing={e.missing}
+                  recommended={recommended === e.version}
                   isOwner={isOwner}
                   busy={busy}
                   basePath={`/catalog/${project}/${name}/manage`}
                   onToggleOrderable={onToggleOrderable}
                   onSetRecommended={onSetRecommended}
                   onDeprecate={setDeprecating}
+                  onHide={onHide}
                   onUndeprecate={onUndeprecate}
                 />
               ))}
-              {orphanRows.map((r) => (
-                <VersionRow
-                  key={r.chart_version}
-                  version={r.chart_version}
-                  row={r}
-                  missing
-                  recommended={recommended === r.chart_version}
-                  isOwner={isOwner}
-                  busy={busy}
-                  basePath={`/catalog/${project}/${name}/manage`}
-                  onToggleOrderable={onToggleOrderable}
-                  onSetRecommended={onSetRecommended}
-                  onDeprecate={setDeprecating}
-                  onUndeprecate={onUndeprecate}
-                />
-              ))}
+              {liveRows.length === 0 && (
+                <tr className="border-b border-slate-100 last:border-0">
+                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-500">
+                    В работе не осталось ни одной версии.
+                  </td>
+                </tr>
+              )}
+              {retiredRows.length > 0 && (
+                <tr className="border-b border-slate-100 last:border-0">
+                  <td colSpan={4} className="px-4 py-2">
+                    <AriaButton
+                      onPress={() => setShowRetired(!showRetired)}
+                      aria-expanded={showRetired}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-slate-500 outline-none transition-colors hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
+                      <IconChevronDown
+                        size={14}
+                        stroke={1.8}
+                        className={`transition-transform ${showRetired ? "rotate-180" : ""}`}
+                      />
+                      {showRetired
+                        ? "Скрыть неактуальные версии"
+                        : `Показать неактуальные версии (${retiredRows.length})`}
+                    </AriaButton>
+                  </td>
+                </tr>
+              )}
+              {showRetired &&
+                retiredRows.map((e) => (
+                  <VersionRow
+                    key={e.version}
+                    version={e.version}
+                    row={e.row}
+                    missing={e.missing}
+                    recommended={recommended === e.version}
+                    isOwner={isOwner}
+                    busy={busy}
+                    basePath={`/catalog/${project}/${name}/manage`}
+                    onToggleOrderable={onToggleOrderable}
+                    onSetRecommended={onSetRecommended}
+                    onDeprecate={setDeprecating}
+                    onHide={onHide}
+                    onUndeprecate={onUndeprecate}
+                  />
+                ))}
             </tbody>
           </table>
         </div>
@@ -649,6 +734,7 @@ function VersionRow({
   onToggleOrderable,
   onSetRecommended,
   onDeprecate,
+  onHide,
   onUndeprecate,
 }: {
   version: string;
@@ -661,12 +747,14 @@ function VersionRow({
   onToggleOrderable: (row: PublicationVersion) => void;
   onSetRecommended: (v: string) => void;
   onDeprecate: (row: PublicationVersion) => void;
+  onHide: (version: string) => void;
   onUndeprecate: (row: PublicationVersion) => void;
 }) {
   const st = row ? STATUS_LABELS[row.status] : null;
-  // Out of support: the only thing left to offer is putting it back, so every
+  // Out of use: the only thing left to offer is putting it back, so every
   // other action goes away rather than answering with a refusal when pressed.
   const deprecated = !!row?.deprecated_at;
+  const hidden = isHiddenVersion(row);
   // A version the registry no longer has cannot be decided about: it is not
   // orderable whatever the row says, and the portal refuses changes to it until
   // it is back (the same rule is enforced on the server).
@@ -686,8 +774,11 @@ function VersionRow({
     row.status === "APPROVED" &&
     !recommended;
   // Only a version that was published at some point can be taken out of
-  // support: a draft nobody approved was never offered to anybody.
+  // support: a draft nobody approved was never offered to anybody. Such a
+  // version is put aside instead, which is the answer to a registry full of
+  // versions this service is never going to publish.
   const canDeprecate = isOwner && !deprecated && !!row && !!row.approved_view_json;
+  const canHide = isOwner && !deprecated && !row?.approved_view_json;
 
   return (
     <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
@@ -702,10 +793,17 @@ function VersionRow({
           )}
           {deprecated && row && (
             <span title={deprecationText(row)}>
-              <Chip className="bg-amber-50 text-amber-700">
-                <IconArchive size={12} stroke={2} />
-                Снята с поддержки
-              </Chip>
+              {hidden ? (
+                <Chip className="bg-slate-100 text-slate-600">
+                  <IconEyeOff size={12} stroke={2} />
+                  Скрыта
+                </Chip>
+              ) : (
+                <Chip className="bg-amber-50 text-amber-700">
+                  <IconArchive size={12} stroke={2} />
+                  Снята с поддержки
+                </Chip>
+              )}
             </span>
           )}
           {missing && (
@@ -758,6 +856,11 @@ function VersionRow({
           {canDeprecate && row && (
             <RowAction isDisabled={busy !== null} onPress={() => onDeprecate(row)}>
               Снять с поддержки
+            </RowAction>
+          )}
+          {canHide && (
+            <RowAction isDisabled={busy !== null} onPress={() => onHide(version)}>
+              Скрыть
             </RowAction>
           )}
           {deprecated && isOwner && row && (
