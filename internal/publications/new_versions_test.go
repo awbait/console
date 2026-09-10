@@ -126,6 +126,42 @@ func TestNotifyNewVersionsIgnoresOlderReleases(t *testing.T) {
 	}
 }
 
+// A version the owner took out of use is not offered back to them: hiding one
+// is an answer to "there is a newer version", and repeating the offer on every
+// sweep would undo the decision.
+func TestNotifyNewVersionsStaysQuietOnAHiddenVersion(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	rec := &recorder{}
+	svc.SetNotifier(rec)
+	p := publish(t, st, "ingress-gateway", "core", "1.2.0")
+
+	if _, err := svc.DeprecateVersion(ctx, member("core"), p.ID, "1.3.0", ""); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
+	err := svc.NotifyNewVersions(ctx, []publications.ChartVersionRef{
+		{Project: "platform", Name: "ingress-gateway", LatestVersion: "1.3.0"},
+	})
+	if err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if len(rec.versions) != 0 {
+		t.Fatalf("want silence about a hidden version, got %v", rec.versions)
+	}
+
+	// Something newer still is news: the decision was about 1.3.0, not about
+	// every release after it.
+	err = svc.NotifyNewVersions(ctx, []publications.ChartVersionRef{
+		{Project: "platform", Name: "ingress-gateway", LatestVersion: "1.4.0"},
+	})
+	if err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if len(rec.versions) != 1 || rec.versions[0] != "ingress-gateway@1.4.0" {
+		t.Fatalf("got %v", rec.versions)
+	}
+}
+
 // The approval queue is work for the platform team, and until now they learned
 // of it only by opening the page. Same for a chart the portal finds itself: an
 // unadopted draft is invisible in the catalog, so a find nobody hears about is

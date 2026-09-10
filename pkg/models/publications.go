@@ -154,6 +154,18 @@ type PublicationVersion struct {
 // to keep tooling from reading it as one.)
 func (v *PublicationVersion) Deprecated() bool { return v.DeprecatedAt != nil }
 
+// EverPublished reports that this version was approved at some point: an
+// approved view is only ever written by an approval, so carrying one is what
+// "this version was offered to somebody" means.
+func (v *PublicationVersion) EverPublished() bool { return len(v.ApprovedViewJSON) > 0 }
+
+// Hidden is the same mark as Deprecated on a version that was never published:
+// the owner put a version of the chart aside instead of withdrawing one that had
+// been offered. The two are one decision in the database and differ only in who
+// ever saw the version - nothing about a hidden one reached a customer, so
+// nothing is said to one and the catalog does not report it.
+func (v *PublicationVersion) Hidden() bool { return v.Deprecated() && !v.EverPublished() }
+
 // Orderable + APPROVED + carrying an approved view + still supported: this
 // version can serve order forms. The presence of an "order" view inside the
 // document is checked by the publications service (it needs to parse the view),

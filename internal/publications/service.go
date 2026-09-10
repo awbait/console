@@ -475,10 +475,17 @@ func (s *Service) NotifyNewVersions(ctx context.Context, charts []ChartVersionRe
 		if p.OwnerTeam == "" || p.OwnerTeam == s.discoveryOwner {
 			continue // nobody has claimed it yet
 		}
-		published, perr := s.highestPublished(ctx, p.ID)
-		if perr != nil {
-			return perr
+		versions, verr := s.store.ListVersions(ctx, p.ID)
+		if verr != nil {
+			return verr
 		}
+		// The owner has already answered this one: a version they took out of use
+		// is not news, and saying it every tick is how a deliberate decision
+		// starts looking like something to redo.
+		if v := versionRow(versions, c.LatestVersion); v != nil && v.Deprecated() {
+			continue
+		}
+		published := highestPublished(versions)
 		if published == "" || models.CompareChartVersions(c.LatestVersion, published) <= 0 {
 			continue
 		}
@@ -513,18 +520,25 @@ func (s *Service) notifyMissingVersions(ctx context.Context, p *models.ChartPubl
 // highestPublished is the newest version of a service that can actually be
 // ordered - the one a new release in the registry is measured against. Empty
 // when the service has nothing published.
-func (s *Service) highestPublished(ctx context.Context, publicationID string) (string, error) {
-	versions, err := s.store.ListVersions(ctx, publicationID)
-	if err != nil {
-		return "", err
-	}
+func highestPublished(versions []*models.PublicationVersion) string {
 	best := ""
 	for _, v := range versions {
 		if v.Published() && (best == "" || models.CompareChartVersions(v.ChartVersion, best) > 0) {
 			best = v.ChartVersion
 		}
 	}
-	return best, nil
+	return best
+}
+
+// versionRow finds a chart version among a publication's rows, nil when nothing
+// has been written for it.
+func versionRow(versions []*models.PublicationVersion, chartVersion string) *models.PublicationVersion {
+	for _, v := range versions {
+		if v.ChartVersion == chartVersion {
+			return v
+		}
+	}
+	return nil
 }
 
 // EnsureDiscovered creates draft publications for charts found in Harbor that

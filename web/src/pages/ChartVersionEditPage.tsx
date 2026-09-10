@@ -6,6 +6,7 @@ import {
   IconCheck,
   IconChevronDown,
   IconCloudOff,
+  IconEyeOff,
   IconHelpCircle,
   IconPackageOff,
   IconTag,
@@ -67,7 +68,13 @@ import {
 } from "../features/publications/viewPreview";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
-import { deprecationText, RejectedChip, STATUS_LABELS, versionHint } from "./ChartManagePage";
+import {
+  deprecationText,
+  isHiddenVersion,
+  RejectedChip,
+  STATUS_LABELS,
+  versionHint,
+} from "./ChartManagePage";
 
 // How long the typing has to stop before the draft saves itself. Long enough
 // that a pause for thought inside a sentence does not become a request, short
@@ -279,10 +286,13 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
 
   const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);
-  // Out of support: the document is here to be read, not changed. The server
+  // Out of use: the document is here to be read, not changed. The server
   // refuses to save or submit it, and the only action left is putting the
-  // version back in work.
+  // version back in work. A version put aside before it was ever published is
+  // hidden rather than withdrawn from support - the same lock, a different
+  // sentence (see isHiddenVersion).
   const deprecated = !!cur?.deprecated_at;
+  const hidden = isHiddenVersion(cur);
   // A version the registry no longer has is read-only: the document can be
   // looked at, but there is nothing to check it against and nothing to deploy,
   // so the portal refuses to save or submit it (the server enforces the same).
@@ -552,10 +562,17 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
             )}
             {deprecated && cur && (
               <span title={deprecationText(cur)}>
-                <Chip className="bg-amber-50 text-amber-700">
-                  <IconArchive size={12} stroke={2} />
-                  Снята с поддержки
-                </Chip>
+                {hidden ? (
+                  <Chip className="bg-slate-100 text-slate-600">
+                    <IconEyeOff size={12} stroke={2} />
+                    Скрыта
+                  </Chip>
+                ) : (
+                  <Chip className="bg-amber-50 text-amber-700">
+                    <IconArchive size={12} stroke={2} />
+                    Снята с поддержки
+                  </Chip>
+                )}
               </span>
             )}
             {cur?.orderable && inRegistry && (
@@ -606,10 +623,22 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
       {/* Why the editor is read-only, said above it rather than left for the
           reader to work out from a disabled button. */}
       {deprecated && cur && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div
+          className={`flex items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm ${
+            hidden
+              ? "border-slate-200 bg-slate-50 text-slate-700"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
           <span>
-            Версия {version} снята с поддержки. Заказать её нельзя, изменить тоже.
-            {cur.deprecation_note ? ` ${cur.deprecation_note}` : ""}
+            {hidden ? (
+              <>Версия {version} скрыта. В списке версий сервиса её не видно, изменить нельзя.</>
+            ) : (
+              <>
+                Версия {version} снята с поддержки. Заказать её нельзя, изменить тоже.
+                {cur.deprecation_note ? ` ${cur.deprecation_note}` : ""}
+              </>
+            )}
           </span>
           {isOwner && (
             <Button isDisabled={busy !== null} onPress={onUndeprecate}>
