@@ -15,6 +15,10 @@ All notable changes to this project are documented in this file.
 - Stopped sending a notification about a new chart version once that version is
   hidden.
 
+### Fixed
+- Fixed the duplicates of a chart version in the catalog after it is uploaded to
+  Harbor again.
+
 ## [0.13.0] - 2026-09-09
 
 A release about the dialogs that add something to a service: an entry can now
