@@ -71,7 +71,13 @@ func harborStub(t *testing.T, tgz []byte) *httptest.Server {
 		_, _ = w.Write([]byte(`[{"name":"platform/ingress-gateway","description":"Edge gateway"}]`))
 	})
 	mux.HandleFunc("/api/v2.0/projects/platform/repositories/ingress-gateway/artifacts", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`[{"digest":"sha256:manifest1","push_time":"2026-05-20T00:00:00Z","tags":[{"name":"3.1.0"}],"extra_attrs":{"version":"3.1.0","appVersion":"3.1.0","description":"Edge gateway"}}]`))
+		// The second artifact is what an earlier upload of the same version leaves
+		// behind: same version in its metadata, tag long since moved away. The
+		// catalog must show 3.1.0 once, as the tagged artifact.
+		_, _ = w.Write([]byte(`[
+			{"digest":"sha256:manifest1","push_time":"2026-05-20T00:00:00Z","tags":[{"name":"3.1.0"}],"extra_attrs":{"version":"3.1.0","appVersion":"3.1.0","description":"Edge gateway"}},
+			{"digest":"sha256:leftover","push_time":"2026-05-19T00:00:00Z","tags":[],"extra_attrs":{"version":"3.1.0","appVersion":"3.1.0","description":"Edge gateway"}}
+		]`))
 	})
 
 	// token realm
@@ -134,6 +140,11 @@ func TestClientCatalogAndChartFiles(t *testing.T) {
 	}
 	if charts[0].LatestVersion != "3.1.0" {
 		t.Fatalf("latest = %q, want 3.1.0", charts[0].LatestVersion)
+	}
+	// One row per version, not one per upload: the stub also serves the untagged
+	// artifact an earlier push of 3.1.0 left behind.
+	if len(charts[0].Versions) != 1 || charts[0].Versions[0] != "3.1.0" {
+		t.Fatalf("versions = %v, want [3.1.0]", charts[0].Versions)
 	}
 	if charts[0].Description != "Edge gateway" {
 		t.Fatalf("description = %q", charts[0].Description)
@@ -200,6 +211,55 @@ func TestPullFilesRejectsTraversal(t *testing.T) {
 		if _, err := c.GetValues(context.Background(), "platform", name, "1.0.0"); err != models.ErrNotFound {
 			t.Errorf("name %q: want ErrNotFound, got %v", name, err)
 		}
+	}
+}
+
+// TestLatestPerVersionCollapsesRepushes: a chart version re-uploaded three times
+// is three artifacts in the repository, two of them untagged leftovers carrying
+// the same version. The catalog must still see one 6.0.0, and it must be the
+// artifact the tag points at (the one a pull resolves to).
+func TestLatestPerVersionCollapsesRepushes(t *testing.T) {
+	artifact := func(digest, push string, tags ...string) apiArtifact {
+		a := apiArtifact{Digest: digest, PushTime: push}
+		for _, tag := range tags {
+			a.Tags = append(a.Tags, apiTag{Name: tag})
+		}
+		a.ExtraAttrs.Version = "6.0.0"
+		return a
+	}
+	arts := []apiArtifact{
+		artifact("sha256:first", "2026-09-01T10:00:00Z"),
+		artifact("sha256:current", "2026-09-03T10:00:00Z", "6.0.0"),
+		artifact("sha256:second", "2026-09-02T10:00:00Z"),
+	}
+	got := latestPerVersion(arts)
+	if len(got) != 1 || got[0].Digest != "sha256:current" {
+		t.Fatalf("latestPerVersion = %+v, want the tagged artifact only", got)
+	}
+
+	// No tag anywhere (the version was untagged in Harbor): the newest push wins,
+	// so the version does not disappear from the catalog.
+	untagged := []apiArtifact{
+		artifact("sha256:old", "2026-09-01T10:00:00Z"),
+		artifact("sha256:new", "2026-09-02T10:00:00Z"),
+	}
+	if got := latestPerVersion(untagged); len(got) != 1 || got[0].Digest != "sha256:new" {
+		t.Fatalf("untagged: latestPerVersion = %+v, want the newest push", got)
+	}
+
+	// Different versions are all kept, and an artifact naming no version at all
+	// (a leftover with neither metadata nor a tag) is not a catalog row.
+	mixed := []apiArtifact{
+		artifact("sha256:six", "2026-09-03T10:00:00Z", "6.0.0"),
+		{Digest: "sha256:nameless", PushTime: "2026-09-04T10:00:00Z"},
+	}
+	mixed[1].ExtraAttrs.Version = ""
+	five := artifact("sha256:five", "2026-08-01T10:00:00Z", "5.0.0")
+	five.ExtraAttrs.Version = "5.0.0"
+	mixed = append(mixed, five)
+	got = latestPerVersion(mixed)
+	if len(got) != 2 {
+		t.Fatalf("mixed: latestPerVersion = %+v, want 6.0.0 and 5.0.0", got)
 	}
 }
 

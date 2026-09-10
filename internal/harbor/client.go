@@ -18,6 +18,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -172,12 +173,14 @@ type apiRepo struct {
 	Description string `json:"description"`
 }
 
+type apiTag struct {
+	Name string `json:"name"`
+}
+
 type apiArtifact struct {
-	Digest   string `json:"digest"`
-	PushTime string `json:"push_time"`
-	Tags     []struct {
-		Name string `json:"name"`
-	} `json:"tags"`
+	Digest     string   `json:"digest"`
+	PushTime   string   `json:"push_time"`
+	Tags       []apiTag `json:"tags"`
 	ExtraAttrs struct {
 		Version     string `json:"version"`
 		AppVersion  string `json:"appVersion"`
@@ -271,15 +274,102 @@ func (c *Client) ListVersions(ctx context.Context, project, name string) ([]mode
 	return out, nil
 }
 
+// artifactPageSize / maxArtifactPages bound the artifact listing. A repository
+// holds one artifact per push, not per version (see latestPerVersion), so a
+// chart uploaded often has many more artifacts than versions and a single page
+// is not the whole repository: without paging, a version could be absent from
+// the catalog only because older leftovers filled the first page. The cap keeps
+// a pathological repository from turning one catalog request into a long walk.
+const (
+	artifactPageSize = 100
+	maxArtifactPages = 20
+)
+
 func (c *Client) listArtifacts(ctx context.Context, project, name string) ([]apiArtifact, error) {
-	var arts []apiArtifact
-	err := c.apiGet(ctx,
-		"/projects/"+url.PathEscape(project)+"/repositories/"+url.PathEscape(name)+"/artifacts",
-		url.Values{"with_tag": {"true"}, "page_size": {"100"}}, &arts)
-	if err != nil {
-		return nil, err
+	p := "/projects/" + url.PathEscape(project) + "/repositories/" + url.PathEscape(name) + "/artifacts"
+	var all []apiArtifact
+	for page := 1; page <= maxArtifactPages; page++ {
+		var arts []apiArtifact
+		err := c.apiGet(ctx, p, url.Values{
+			"with_tag":  {"true"},
+			"page":      {strconv.Itoa(page)},
+			"page_size": {strconv.Itoa(artifactPageSize)},
+		}, &arts)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, arts...)
+		if len(arts) < artifactPageSize {
+			break
+		}
 	}
-	return arts, nil
+	return latestPerVersion(all), nil
+}
+
+// latestPerVersion keeps one artifact per chart version: a repository holds as
+// many artifacts as there were pushes, not as many as there are versions.
+//
+// Re-pushing a chart version with any change of content makes a new artifact and
+// moves the tag onto it; the previous one stays in the repository untagged, with
+// the same version in the Chart.yaml metadata Harbor parsed out of it. The
+// listing returns all of them, so three uploads of 6.0.0 used to be three 6.0.0
+// rows in the catalog, indistinguishable to the person reading it.
+//
+// The one kept is the tagged artifact, newest push first, because that is the
+// one the version resolves to everywhere else: files are pulled by tag
+// reference, so an untagged leftover cannot be the source of anything.
+// Artifacts carrying no version at all (neither metadata nor a tag) name nothing
+// orderable and are dropped.
+func latestPerVersion(arts []apiArtifact) []apiArtifact {
+	at := make(map[string]int, len(arts))
+	out := make([]apiArtifact, 0, len(arts))
+	for _, a := range arts {
+		version := artifactVersion(a)
+		if version == "" {
+			continue
+		}
+		i, seen := at[version]
+		if !seen {
+			at[version] = len(out)
+			out = append(out, a)
+			continue
+		}
+		if preferArtifact(a, out[i]) {
+			out[i] = a
+		}
+	}
+	return out
+}
+
+// preferArtifact reports whether a should replace b as the artifact serving
+// their shared version: a tagged one always wins, then the newer push.
+func preferArtifact(a, b apiArtifact) bool {
+	if tagged(a) != tagged(b) {
+		return tagged(a)
+	}
+	return pushedAt(a).After(pushedAt(b))
+}
+
+func tagged(a apiArtifact) bool { return len(a.Tags) > 0 }
+
+func pushedAt(a apiArtifact) time.Time {
+	t, err := time.Parse(time.RFC3339, a.PushTime)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// artifactVersion is the chart version an artifact carries: the chart metadata
+// Harbor parsed out of it, else its first tag.
+func artifactVersion(a apiArtifact) string {
+	if a.ExtraAttrs.Version != "" {
+		return a.ExtraAttrs.Version
+	}
+	if len(a.Tags) > 0 {
+		return a.Tags[0].Name
+	}
+	return ""
 }
 
 func artifactToVersion(project, name string, a apiArtifact) models.ChartVersion {
@@ -288,19 +378,13 @@ func artifactToVersion(project, name string, a apiArtifact) models.ChartVersion 
 		Name:       name,
 		Digest:     a.Digest,
 		AppVersion: a.ExtraAttrs.AppVersion,
+		Version:    artifactVersion(a),
+		Created:    pushedAt(a),
 	}
-	// version: prefer the chart metadata, else the first tag.
-	v.Version = a.ExtraAttrs.Version
 	for _, t := range a.Tags {
-		if v.Version == "" {
-			v.Version = t.Name
-		}
 		if t.Name != v.Version {
 			v.Tags = append(v.Tags, t.Name)
 		}
-	}
-	if t, err := time.Parse(time.RFC3339, a.PushTime); err == nil {
-		v.Created = t
 	}
 	return v
 }

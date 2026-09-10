@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- A chart version uploaded to Harbor more than once is now one version in the
+  catalog. Each upload used to add another row with the same number, so a chart
+  re-uploaded three times showed 6.0.0 three times.
+
 ## [0.13.0] - 2026-09-09
 
 A release about the dialogs that add something to a service: an entry can now
