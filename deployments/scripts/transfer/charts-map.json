@@ -12,10 +12,10 @@
 
   "charts": {
     "ingress-gateway": { "project": "" },
-    "egress-gateway":  { "project": "" },
     "waypoint":        { "project": "" },
     "policies":        { "project": "" },
     "namespace":       { "project": "" },
+    "egress-gateway":  { "project": "" },
     "project":         { "project": "" },
     "secret-store":    { "project": "" },
     "console":         { "project": "", "harborProject": "core" }

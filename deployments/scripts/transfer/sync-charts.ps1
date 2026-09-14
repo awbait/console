@@ -19,13 +19,18 @@
   project leaves nothing for that path to point at. So every such reference is
   repointed at the dependency's Harbor project, which is where the GitLab
   pipeline, and -PushToHarbor, resolve it from. The dependency has to be in
-  Harbor first: the map is in dependency order for that reason.
+  Harbor before the chart that needs it is packaged, so the charts are taken
+  in dependency order (read from the Chart.yaml files, whatever order the map
+  lists them in), and a chart whose dependency is not in Harbor yet is not
+  pushed: with -AutoMerge the run waits for the dependency to land, otherwise
+  the chart is reported and left for a rerun.
 
-    download the GitHub zip -> per chart: clone GitLab -> replace all but
-    `keep` -> repoint dependencies at Harbor -> nothing changed? no MR ->
-    branch + commit + push with an MR (-AutoMerge lets GitLab merge it on a
-    green pipeline) -> optionally helm dependency update + package + push to
-    Harbor -> clean up.
+    download the GitHub zip -> sort the charts by their dependencies -> per
+    chart: clone GitLab -> replace all but `keep` -> repoint dependencies at
+    Harbor -> nothing changed? no MR -> dependencies in Harbor? (wait with
+    -AutoMerge) -> branch + commit + push with an MR (-AutoMerge lets GitLab
+    merge it on a green pipeline) -> optionally helm dependency update +
+    package + push to Harbor -> clean up.
 
   GitLab and Harbor are asked separately. A chart GitLab already holds gets no
   MR, and with -PushToHarbor the run still goes on to Harbor: the chart may
@@ -73,6 +78,24 @@
   condition -PushToHarbor exists for, so the two together are a contradiction
   and the script says so.
 
+  The push option alone is not enough. An MR nobody has opened keeps its
+  merge status at "unchecked": GitLab computes it lazily, when the MR page is
+  loaded, and the auto-merge worker that wakes up on the green pipeline treats
+  an unchecked MR as not mergeable and goes back to sleep. Such an MR merges
+  the moment somebody opens it in a browser, and not before. So after the push
+  the script asks the GitLab API for the MR, which queues that check, waits
+  for the status to settle and makes sure auto-merge is still set. This is
+  what makes the token need the `api` scope with -AutoMerge.
+
+  A chart whose dependency is not in Harbor yet waits for it, up to
+  -DependencyTimeout: the dependency's own MR has to merge and its pipeline
+  has to publish before this chart's pipeline can package.
+
+.PARAMETER DependencyTimeout
+  Minutes to wait, with -AutoMerge, for a dependency pushed earlier in the same
+  run to show up in Harbor. Default 20. A chart whose dependency has not
+  arrived by then is reported as not done; rerun it once it has.
+
 .PARAMETER Force
   Overwrite an existing sync branch, and push to Harbor over a version that is
   already there.
@@ -82,6 +105,18 @@
   is packaged from the synced content and pushed over the existing tag. Harbor
   keeps the old artifact, untagged, until the registry's garbage collection
   takes it.
+
+.PARAMETER InsecureTls
+  Accept a self-signed certificate: on the helm calls to Harbor, and on the
+  REST calls this script makes to Harbor and GitLab. Git has its own setting
+  for the clone (http.sslVerify), this switch does not reach it.
+
+.PARAMETER HarborUser
+  Harbor account for -PushToHarbor and for reading whether a chart is there.
+  Default: $env:HARBOR_USER, then the stand's admin.
+
+.PARAMETER HarborPassword
+  Its password. Default: $env:HARBOR_PASSWORD, then the stand's default.
 
 .EXAMPLE
   powershell -File deployments\scripts\transfer\sync-charts.ps1 -DryRun
@@ -105,6 +140,7 @@ param(
   [switch]   $PushToHarbor,
   [switch]   $InsecureTls,
   [switch]   $AutoMerge,
+  [int]      $DependencyTimeout = 20,
   [switch]   $DryRun,
   [switch]   $Force,
   [switch]   $Keep
@@ -208,9 +244,9 @@ function Get-ChartMeta {
   }
 }
 
-# The dependencies of a chart, as name and version. Same reasoning as
-# Get-ChartMeta: a block written by us, read two fields deep, does not justify a
-# YAML parser. The block ends at the next top-level key.
+# The dependencies of a chart, as name, version and repository. Same reasoning
+# as Get-ChartMeta: a block written by us, read three fields deep, does not
+# justify a YAML parser. The block ends at the next top-level key.
 function Get-ChartDependencies {
   param([string]$ChartDir)
   $file = Join-Path $ChartDir 'Chart.yaml'
@@ -228,11 +264,14 @@ function Get-ChartDependencies {
     if ($line -match '^[^\s-]') { break }
     if ($line -match '^\s*-\s*name:\s*(.+)$') {
       if ($current) { $deps += $current }
-      $current = [pscustomobject]@{ Name = $Matches[1].Trim().Trim('"', "'"); Version = '' }
+      $current = [pscustomobject]@{ Name = $Matches[1].Trim().Trim('"', "'"); Version = ''; Repository = '' }
       continue
     }
     if ($current -and $line -match '^\s*version:\s*(.+)$') {
       $current.Version = $Matches[1].Trim().Trim('"', "'")
+    }
+    if ($current -and $line -match '^\s*repository:\s*(.+)$') {
+      $current.Repository = $Matches[1].Trim().Trim('"', "'")
     }
   }
   if ($current) { $deps += $current }
@@ -291,6 +330,200 @@ function Convert-DependenciesToOci {
   # the one line that actually changed.
   [IO.File]::WriteAllText($file, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
   return ,$repointed
+}
+
+# The charts in the order they can be transferred: every chart after the ones
+# it depends on. A dependency is a sibling when its repository reads
+# `file://../<dir>`, and only siblings that are in this run count; a missing one
+# is the business of the Harbor check, not of the order. Ties keep the map's
+# order, so a map already written in dependency order comes out unchanged.
+function Get-ChartOrder {
+  param([string[]]$Names, [string]$SourceDir)
+  $needs = @{}
+  foreach ($n in $Names) {
+    $siblings = @()
+    foreach ($d in @(Get-ChartDependencies -ChartDir (Join-Path $SourceDir $n))) {
+      if ($d.Repository -match '^file://\.\./([^/]+)/?$') {
+        $dir = $Matches[1]
+        if ($Names -contains $dir -and $dir -ne $n) { $siblings += $dir }
+      }
+    }
+    $needs[$n] = $siblings
+  }
+  $ordered = @()
+  $left    = @($Names)
+  while ($left.Count -gt 0) {
+    $next = $null
+    foreach ($n in $left) {
+      $ready = $true
+      foreach ($d in $needs[$n]) { if ($ordered -notcontains $d) { $ready = $false } }
+      if ($ready) { $next = $n; break }
+    }
+    if (-not $next) { throw "the charts depend on each other in a circle: $($left -join ', ')" }
+    $ordered += $next
+    $left = @($left | Where-Object { $_ -ne $next })
+  }
+  # Plain return, the caller wraps it in @(): see Get-ChartDependencies.
+  return $ordered
+}
+
+# One http call whose status code is the answer, for the REST sides of GitLab
+# and Harbor. Invoke-WebRequest throws on 4xx, and the WebException carries the
+# response; both roads end in the same @{ Status; Body } so the caller reads a
+# number instead of catching. A failure with no response at all (no route, TLS
+# refused) is still thrown: that is the environment, and the trap says so.
+function Invoke-Http {
+  param([string]$Method, [string]$Uri, [hashtable]$Headers = @{})
+  $prevProgress = $ProgressPreference
+  $ProgressPreference = 'SilentlyContinue'
+  try {
+    $resp = Invoke-WebRequest -Uri $Uri -Method $Method -Headers $Headers -UseBasicParsing
+    $body = $null
+    if ($resp.Content) { try { $body = $resp.Content | ConvertFrom-Json } catch { $body = $resp.Content } }
+    return @{ Status = [int]$resp.StatusCode; Body = $body }
+  } catch [Net.WebException] {
+    $r = $_.Exception.Response
+    if (-not $r) { throw "$Method $Uri failed: $($_.Exception.Message)" }
+    # Invoke-WebRequest has already read the stream once; rewind before reading.
+    $text = ''
+    try {
+      $stream = $r.GetResponseStream()
+      if ($stream.CanSeek) { $stream.Position = 0 }
+      $reader = New-Object IO.StreamReader($stream)
+      $text = $reader.ReadToEnd()
+    } catch { }
+    $body = $null
+    if ($text) { try { $body = $text | ConvertFrom-Json } catch { $body = $text } }
+    return @{ Status = [int]$r.StatusCode; Body = $body }
+  } finally {
+    $ProgressPreference = $prevProgress
+  }
+}
+
+# Is this chart version in Harbor. Asked of the registry's REST API rather than
+# of helm, because the GitLab half of a run does not need helm at all and the
+# question comes up there: a dependency has to be in Harbor before the chart
+# that needs it can be packaged by its pipeline. The credentials are tried
+# first, and anonymously second: a public project answers either way, a private
+# one only to the account, and wrong credentials would turn a public 200 into a
+# 401.
+function Test-HarborChart {
+  param([string]$Project, [string]$Name, [string]$Version)
+  $uri = "https://$harborHost/api/v2.0/projects/$([Uri]::EscapeDataString($Project))/repositories/$([Uri]::EscapeDataString($Name))/artifacts/$([Uri]::EscapeDataString($Version))"
+  $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${HarborUser}:${HarborPassword}"))
+  $answer = Invoke-Http -Method 'GET' -Uri $uri -Headers @{ Authorization = "Basic $basic" }
+  if ($answer.Status -eq 401 -or $answer.Status -eq 403) {
+    $answer = Invoke-Http -Method 'GET' -Uri $uri
+  }
+  switch ($answer.Status) {
+    200 { return $true }
+    404 { return $false }
+    { $_ -eq 401 -or $_ -eq 403 } {
+      throw "Harbor would not show $Project/$Name (HTTP $($answer.Status)). Pass -HarborUser/-HarborPassword (or HARBOR_USER/HARBOR_PASSWORD) for an account that can read that project."
+    }
+    default { throw "Harbor answered HTTP $($answer.Status) for $uri" }
+  }
+}
+
+function Invoke-GitLab {
+  param([string]$Method, [string]$Path)
+  return Invoke-Http -Method $Method -Uri "$gitlabUrl/api/v4/$Path" -Headers @{ 'PRIVATE-TOKEN' = $GitLabToken }
+}
+
+# Makes the auto-merge asked for on the push actually happen.
+#
+# The push option sets the flag, and that is where GitLab stops. The new MR's
+# merge status is "unchecked": GitLab computes it lazily, when somebody loads
+# the MR page, and nothing else in the MR's life asks for it. The worker that
+# wakes up on the green pipeline looks at the status, sees "unchecked", treats
+# the MR as not mergeable and does nothing. The MR then merges the moment a
+# person opens it in a browser, because the page asks for the status, the
+# status becomes "can be merged", and that transition wakes the worker again.
+#
+# Reading the MR over the API is the same ask the page makes: it queues the
+# check. So: find the MR by its branch, read it until the status has settled,
+# and if the flag did not survive (GitLab drops it when the pipeline was not
+# there yet at push time) set it again through the merge endpoint.
+function Enable-AutoMerge {
+  param([string]$Project, [string]$Branch)
+  $enc = [Uri]::EscapeDataString($Project)
+
+  # By branch, not by title: a rerun with -Force lands on the MR an earlier run
+  # left open for this branch (GitLab updates it rather than opening a second
+  # one), and its title may be from that earlier run. GitLab cancels auto-merge
+  # when new commits arrive, so that MR is exactly the one that needs the flag
+  # set again below.
+  $mr = $null
+  foreach ($try in 1..5) {
+    $found = Invoke-GitLab -Method 'GET' -Path "projects/$enc/merge_requests?source_branch=$([Uri]::EscapeDataString($Branch))&state=opened"
+    if ($found.Status -eq 200) {
+      $mr = @($found.Body) | Where-Object { $_.target_branch -eq $targetBranch } | Select-Object -First 1
+      if ($mr) { break }
+    }
+    if ($found.Status -eq 401 -or $found.Status -eq 403) {
+      Write-Warn "the token cannot read merge requests over the API (HTTP $($found.Status)): it needs the api scope. The MR is opened and flagged, but may sit unmerged until somebody opens it in a browser."
+      return
+    }
+    Start-Sleep -Seconds 2
+  }
+  if (-not $mr) {
+    Write-Warn "no open MR for $Branch came back from the API. The MR is opened and flagged, but may sit unmerged until somebody opens it in a browser."
+    return
+  }
+  $iid = $mr.iid
+
+  # Until the check has run the status reads preparing, unchecked or checking.
+  # A minute and a half covers a busy Sidekiq; past that the run goes on and
+  # says so, the MR is not lost, only lazy again.
+  $status = ''
+  $deadline = (Get-Date).AddSeconds(90)
+  do {
+    $one = Invoke-GitLab -Method 'GET' -Path "projects/$enc/merge_requests/$iid"
+    if ($one.Status -ne 200) { break }
+    $mr = $one.Body
+    $status = if ($mr.detailed_merge_status) { $mr.detailed_merge_status } else { $mr.merge_status }
+    if ($mr.state -ne 'opened') { break }
+    if ($status -notin @('preparing', 'unchecked', 'checking')) { break }
+    Start-Sleep -Seconds 3
+  } while ((Get-Date) -lt $deadline)
+
+  if ($mr.state -eq 'merged') {
+    Write-Ok "MR !$iid is already merged"
+    return
+  }
+  if ($status -in @('preparing', 'unchecked', 'checking')) {
+    Write-Warn "MR !$iid : merge status is still '$status' after 90s. It may sit unmerged until somebody opens it in a browser."
+  }
+  if ($status -in @('conflict', 'need_rebase', 'draft_status', 'discussions_not_resolved', 'not_approved', 'requested_changes', 'merge_request_blocked')) {
+    Write-Warn "MR !$iid : merge status '$status', GitLab will not merge it by itself. Look at the MR."
+    return
+  }
+
+  if (-not $mr.merge_when_pipeline_succeeds) {
+    # Both spellings: auto_merge is the current name, the other one is what
+    # GitLab before 17.11 understands, and each ignores the one it does not know.
+    #
+    # GitLab answers 405 while the MR has no pipeline to wait for, and right
+    # after a push the pipeline is still being created: that is also why the
+    # push option itself gets dropped. So a 405 is retried for a while, and
+    # once GitLab has attached the pipeline the flag sticks.
+    $set = $null
+    $deadline = (Get-Date).AddSeconds(120)
+    do {
+      $set = Invoke-GitLab -Method 'PUT' -Path "projects/$enc/merge_requests/$iid/merge?auto_merge=true&merge_when_pipeline_succeeds=true"
+      if ($set.Status -ne 405) { break }
+      Start-Sleep -Seconds 10
+    } while ((Get-Date) -lt $deadline)
+    if ($set.Status -eq 200) {
+      Write-Ok "MR !$iid : merge status '$status', auto-merge set again over the API"
+    } else {
+      $why = ''
+      if ($set.Body -and $set.Body.message) { $why = ": $($set.Body.message)" }
+      Write-Warn "MR !$iid : auto-merge was not kept and could not be set over the API (HTTP $($set.Status)$why). Does the project have a pipeline? Set it in the MR by hand."
+    }
+  } else {
+    Write-Ok "MR !$iid : merge status '$status', auto-merge is on"
+  }
 }
 
 # Commit the ref points at, asked over plain https: gh first (it carries auth
@@ -379,17 +612,36 @@ if ($AutoMerge -and $PushToHarbor) {
   Write-Warn '-AutoMerge waits for a pipeline, -PushToHarbor is for projects that have none. An MR in such a project will stay open.'
 }
 
+if ($DependencyTimeout -lt 0) { throw '-DependencyTimeout is in minutes and cannot be negative.' }
+
 if (-not $DryRun) {
   if (-not $GitLabToken) { $GitLabToken = $env:GITLAB_TOKEN }
   if (-not $GitLabToken) {
-    throw 'no GitLab token: pass -GitLabToken or set $env:GITLAB_TOKEN. It needs the write_repository scope and at least Developer in every chart project; -AutoMerge additionally needs the right to merge into the target branch.'
+    throw 'no GitLab token: pass -GitLabToken or set $env:GITLAB_TOKEN. It needs the write_repository scope and at least Developer in every chart project; -AutoMerge additionally needs the api scope and the right to merge into the target branch.'
   }
 }
-if ($PushToHarbor) {
-  if (-not $HarborUser)     { $HarborUser     = $env:HARBOR_USER }
-  if (-not $HarborUser)     { $HarborUser     = 'admin' }
-  if (-not $HarborPassword) { $HarborPassword = $env:HARBOR_PASSWORD }
-  if (-not $HarborPassword) { $HarborPassword = 'Harbor12345' }
+# The account is used for -PushToHarbor and, in every run, to ask Harbor
+# whether a dependency is there: the answer decides whether a chart is pushed.
+if (-not $HarborUser)     { $HarborUser     = $env:HARBOR_USER }
+if (-not $HarborUser)     { $HarborUser     = 'admin' }
+if (-not $HarborPassword) { $HarborPassword = $env:HARBOR_PASSWORD }
+if (-not $HarborPassword) { $HarborPassword = 'Harbor12345' }
+
+# The REST calls to Harbor and GitLab go through .NET, and .NET checks the
+# certificate on its own; helm gets its flag per call, git has its own config.
+# A policy class rather than a callback scriptblock: the callback runs on a
+# thread with no runspace and fails in Windows PowerShell.
+if ($InsecureTls) {
+  if (-not ([Management.Automation.PSTypeName]'TransferTrustAllCerts').Type) {
+    Add-Type -TypeDefinition @'
+using System.Net;
+using System.Security.Cryptography.X509Certificates;
+public class TransferTrustAllCerts : ICertificatePolicy {
+    public bool CheckValidationResult(ServicePoint sp, X509Certificate cert, WebRequest req, int problem) { return true; }
+}
+'@
+  }
+  [Net.ServicePointManager]::CertificatePolicy = New-Object TransferTrustAllCerts
 }
 
 # --- source -----------------------------------------------------------------
@@ -422,6 +674,16 @@ try {
   $sourceDir = (Get-ChildItem -Path $unpacked -Directory | Select-Object -First 1).FullName
   if (-not $sourceDir) { throw "the source archive of $sourceRepo@$sourceRef unpacked into nothing" }
   Write-Ok 'source tree unpacked'
+
+  # A chart is packaged, by its pipeline or by -PushToHarbor, against the
+  # dependencies already in Harbor, so the dependency goes first. The order is
+  # read from the charts themselves: a map is written by hand and a chart that
+  # grew a dependency last week is not going to reorder it.
+  $ordered = @(Get-ChartOrder -Names @($chartNames) -SourceDir $sourceDir)
+  if (($ordered -join ' ') -ne (@($chartNames) -join ' ')) {
+    Write-Skip "taken in dependency order: $($ordered -join ', ')"
+  }
+  $chartNames = $ordered
 
   if ($PushToHarbor -and -not $DryRun) {
     Write-Step "helm registry login $harborHost"
@@ -550,6 +812,62 @@ try {
       if (@($changes).Count -gt 20) { Write-Host "      ... and $(@($changes).Count - 20) more" }
     }
 
+    # --- the dependencies have to be in Harbor before the MR is opened ---
+    # The chart's pipeline packages it against its oci:// dependencies, and so
+    # does -PushToHarbor. A dependency that is not in Harbor yet makes that
+    # pipeline red, and a red pipeline cancels the auto-merge: the MR is then
+    # stuck at exactly the point -AutoMerge was meant to remove. So the MR waits
+    # for the dependency. With -AutoMerge and a dependency pushed earlier in
+    # this run, waiting is all it takes: its MR merges on green and its pipeline
+    # publishes. Anything else is a rerun, after the person or the pipeline has
+    # done its part.
+    if (-not $nothingToCommit) {
+      $ociPrefix = "oci://$harborHost/"
+      $blocked   = $false
+      foreach ($dep in @(Get-ChartDependencies -ChartDir $clone)) {
+        if (-not $dep.Repository.StartsWith($ociPrefix)) { continue }
+        $depProject = $dep.Repository.Substring($ociPrefix.Length).Trim('/')
+        $label      = "$($dep.Name) $($dep.Version) ($($dep.Repository))"
+        if (Test-HarborChart -Project $depProject -Name $dep.Name -Version $dep.Version) {
+          Write-Ok "dependency $label is in Harbor"
+          continue
+        }
+        # Pushed by this run means its MR is open (or, with -PushToHarbor, the
+        # push to Harbor already happened and failed: nothing to wait for).
+        $openedNow = ($synced -contains $dep.Name) -and -not $PushToHarbor
+        if ($DryRun) {
+          if ($AutoMerge -and $openedNow) {
+            Write-Skip "dry run: dependency $label is not in Harbor; a real run would wait for it, up to $DependencyTimeout min"
+          } else {
+            Write-Warn "dependency $label is not in Harbor: this chart would be skipped until it is"
+          }
+          continue
+        }
+        if ($AutoMerge -and $openedNow) {
+          Write-Step "$chart : waiting up to $DependencyTimeout min for $label (its MR merges on a green pipeline, then its pipeline publishes)"
+          $deadline = (Get-Date).AddMinutes($DependencyTimeout)
+          $arrived  = $false
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 20
+            if (Test-HarborChart -Project $depProject -Name $dep.Name -Version $dep.Version) { $arrived = $true; break }
+          }
+          if ($arrived) {
+            Write-Ok "dependency $label is in Harbor"
+            continue
+          }
+          Write-Warn "dependency $label has not reached Harbor in $DependencyTimeout min. Look at the MR and the pipeline of $($dep.Name), then rerun with -Charts $chart."
+        } elseif ($openedNow) {
+          Write-Warn "dependency $label is not in Harbor yet: its MR was just opened. Merge it, let its pipeline publish, then rerun with -Charts $chart."
+        } else {
+          Write-Warn "dependency $label is not in Harbor. GitLab may hold it while the pipeline never published it: check that project's pipeline, or run -Charts $($dep.Name) -PushToHarbor, then rerun with -Charts $chart."
+        }
+        $failed += "${chart}: dependency $($dep.Name) $($dep.Version) is not in Harbor"
+        $blocked = $true
+        break
+      }
+      if ($blocked) { continue }
+    }
+
     if ($DryRun) {
       if ($nothingToCommit) {
         Write-Skip 'dry run: nothing to sync to GitLab, Harbor would be checked'
@@ -590,8 +908,9 @@ try {
         '-o', 'merge_request.remove_source_branch'
       )
       # GitLab merges the MR itself once the pipeline is green. Asked for on the
-      # push rather than through the API afterwards: one call, and nothing is
-      # merged that the project's own checks have not passed.
+      # push, so nothing is merged that the project's own checks have not
+      # passed; looked after over the API right below, because the push option
+      # alone leaves the MR waiting for a browser (see Enable-AutoMerge).
       if ($AutoMerge) { $pushArgs += @('-o', 'merge_request.merge_when_pipeline_succeeds') }
       $pushArgs += @('origin', "HEAD:refs/heads/$branch")
       Write-Step "$chart : pushing $branch and opening an MR"
@@ -605,6 +924,13 @@ try {
       }
       if ($AutoMerge) {
         Write-Ok "$branch pushed, MR opened against $targetBranch and set to merge on a green pipeline"
+        # A network fault here is not a reason to drop the rest of the run: the
+        # MR exists, only its merge may end up waiting for a browser.
+        try {
+          Enable-AutoMerge -Project $project -Branch $branch
+        } catch {
+          Write-Warn "could not reach the GitLab API for the MR: $($_.Exception.Message). It may sit unmerged until somebody opens it in a browser."
+        }
       } else {
         Write-Ok "$branch pushed, MR opened against $targetBranch"
       }
