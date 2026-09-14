@@ -15,11 +15,15 @@ type IconType = ComponentType<{ size?: number; stroke?: number; className?: stri
 // subgroups for free. A node is either a leaf link (a page) or a group of nodes.
 // Top-level groups are sections (always shown); nested groups are collapsible and
 // may carry an icon.
-export type DocLink = { kind: "link"; id: string; title: string };
+// A page may carry a prompt: a file next to the page's markdown that a person
+// hands to an LLM to have the thing the page describes written for them. The
+// page then shows download and copy buttons above the text.
+export type DocLink = { kind: "link"; id: string; title: string; prompt?: string };
 export type DocGroup = { kind: "group"; title: string; children: DocNode[]; Icon?: IconType };
 export type DocNode = DocLink | DocGroup;
 
-const link = (id: string, title: string): DocLink => ({ kind: "link", id, title });
+const link = (id: string, title: string, prompt?: string): DocLink =>
+  prompt ? { kind: "link", id, title, prompt } : { kind: "link", id, title };
 
 export const DOCS_NAV: DocGroup[] = [
   {
@@ -44,7 +48,7 @@ export const DOCS_NAV: DocGroup[] = [
       link("ordering", "Заказ сервиса"),
       link("statuses", "Статусы и развёртывание"),
       link("publishing", "Публикация сервиса"),
-      link("view-document", "Конструктор формы заказа"),
+      link("view-document", "Конструктор формы заказа", "view-document.prompt.md"),
     ],
   },
   {
@@ -119,12 +123,12 @@ export const DOCS_NAV: DocGroup[] = [
 
 // A flat list of every page in nav order, each tagged with its top-level
 // section (used for the search index, prev/next, and the default landing page).
-export type FlatDoc = { id: string; title: string; section: string };
+export type FlatDoc = { id: string; title: string; section: string; prompt?: string };
 
 export function flattenNav(): FlatDoc[] {
   const out: FlatDoc[] = [];
   const walk = (node: DocNode, section: string) => {
-    if (node.kind === "link") out.push({ id: node.id, title: node.title, section });
+    if (node.kind === "link") out.push({ id: node.id, title: node.title, section, prompt: node.prompt });
     else for (const child of node.children) walk(child, section);
   };
   for (const sec of DOCS_NAV) walk(sec, sec.title);
