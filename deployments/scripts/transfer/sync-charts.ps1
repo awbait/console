@@ -448,10 +448,18 @@ function Enable-AutoMerge {
   param([string]$Project, [string]$Branch)
   $enc = [Uri]::EscapeDataString($Project)
 
+  # By branch, not by title: a rerun with -Force lands on the MR an earlier run
+  # left open for this branch (GitLab updates it rather than opening a second
+  # one), and its title may be from that earlier run. GitLab cancels auto-merge
+  # when new commits arrive, so that MR is exactly the one that needs the flag
+  # set again below.
   $mr = $null
   foreach ($try in 1..5) {
     $found = Invoke-GitLab -Method 'GET' -Path "projects/$enc/merge_requests?source_branch=$([Uri]::EscapeDataString($Branch))&state=opened"
-    if ($found.Status -eq 200 -and @($found.Body).Count -gt 0) { $mr = @($found.Body)[0]; break }
+    if ($found.Status -eq 200) {
+      $mr = @($found.Body) | Where-Object { $_.target_branch -eq $targetBranch } | Select-Object -First 1
+      if ($mr) { break }
+    }
     if ($found.Status -eq 401 -or $found.Status -eq 403) {
       Write-Warn "the token cannot read merge requests over the API (HTTP $($found.Status)): it needs the api scope. The MR is opened and flagged, but may sit unmerged until somebody opens it in a browser."
       return
@@ -494,18 +502,24 @@ function Enable-AutoMerge {
   if (-not $mr.merge_when_pipeline_succeeds) {
     # Both spellings: auto_merge is the current name, the other one is what
     # GitLab before 17.11 understands, and each ignores the one it does not know.
+    #
+    # GitLab answers 405 while the MR has no pipeline to wait for, and right
+    # after a push the pipeline is still being created: that is also why the
+    # push option itself gets dropped. So a 405 is retried for a while, and
+    # once GitLab has attached the pipeline the flag sticks.
     $set = $null
-    foreach ($try in 1..3) {
+    $deadline = (Get-Date).AddSeconds(120)
+    do {
       $set = Invoke-GitLab -Method 'PUT' -Path "projects/$enc/merge_requests/$iid/merge?auto_merge=true&merge_when_pipeline_succeeds=true"
-      if ($set.Status -eq 200) { break }
-      Start-Sleep -Seconds 5
-    }
+      if ($set.Status -ne 405) { break }
+      Start-Sleep -Seconds 10
+    } while ((Get-Date) -lt $deadline)
     if ($set.Status -eq 200) {
       Write-Ok "MR !$iid : merge status '$status', auto-merge set again over the API"
     } else {
       $why = ''
       if ($set.Body -and $set.Body.message) { $why = ": $($set.Body.message)" }
-      Write-Warn "MR !$iid : auto-merge was not kept and could not be set over the API (HTTP $($set.Status)$why). Set it in the MR by hand."
+      Write-Warn "MR !$iid : auto-merge was not kept and could not be set over the API (HTTP $($set.Status)$why). Does the project have a pipeline? Set it in the MR by hand."
     }
   } else {
     Write-Ok "MR !$iid : merge status '$status', auto-merge is on"
