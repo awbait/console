@@ -4,18 +4,29 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-14
+
+A release about the sidebar and the "Order form constructor" documentation
+page: the menu now tells a category from the services inside it, and the page
+hands you a ready prompt for the version document.
+
 ### Added
 - Added "Download prompt" and "Copy prompt" buttons to the "Order form
   constructor" documentation page: with that prompt any LLM writes a version
   document from the chart schema.
 
 ### Changed
+- Separated category headers from the services inside them in the sidebar.
+  A header now sits on its own background, and the services are indented
+  under a faint dashed guide.
+- Updated the sidebar and topbar icons in one style. An icon answers to a
+  pointer or to keyboard focus with a short movement, and stays still when
+  the system asks for reduced motion.
+- Team names in the project selector are written in capitals, and the
+  selected team is picked out in bold.
 - Extended the "Order form constructor" documentation page with a complete
   document example, map-key columns in tabs and the meaning of more error
   messages.
-- Separated category headers from services in the sidebar with indentation and a faint dashed guide.
-- Updated sidebar and topbar icons with a consistent style and quick animations on hover or keyboard focus.
-- Displayed team names in uppercase in the project selector and highlighted the active team in bold.
 
 ## [0.14.0] - 2026-09-10
 
@@ -654,7 +665,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/awbait/console/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/awbait/console/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/awbait/console/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/awbait/console/compare/v0.11.0...v0.12.0
