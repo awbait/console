@@ -1,10 +1,17 @@
-import { IconArrowLeft, IconChevronRight, IconSearch } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconCheck,
+  IconChevronRight,
+  IconCopy,
+  IconDownload,
+  IconSearch,
+} from "@tabler/icons-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { SkeletonText } from "../components/ui";
+import { Button, buttonClass, SkeletonText } from "../components/ui";
 import { DOCS_NAV, type DocNode, flattenNav, pathToActive } from "./docsNav";
 
 const BASE = `${import.meta.env.BASE_URL}docs-content/`;
@@ -18,6 +25,7 @@ interface NavItem {
   id: string;
   title: string;
   section: string;
+  prompt?: string; // file next to the page that an LLM writes the page's subject from
   text?: string; // page plain text, filled for the search index
 }
 interface Heading {
@@ -143,6 +151,46 @@ function legacyCopy(text: string) {
     /* ignore: clipboard unavailable */
   }
   document.body.removeChild(ta);
+}
+
+// The prompt a page offers, as two controls above the text: a download of the
+// file itself and a copy of its text. Both are the same file, the way docs sites
+// offer "copy for LLM" next to "download": the copy is for pasting straight
+// into a chat, the download is for keeping. A plain anchor does the download,
+// since the file is static and same-origin; only the copy needs a fetch.
+function PromptTools({ file }: { file: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const copy = async () => {
+    try {
+      copyText(await fetchText(`${BASE}${file}`));
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState("idle"), 1800);
+  };
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <a href={`${BASE}${file}`} download={file} className={buttonClass("secondary")}>
+        <IconDownload size={16} stroke={1.8} className="text-slate-500" aria-hidden />
+        Скачать промт
+      </a>
+      <Button
+        onPress={() => void copy()}
+        className={state === "copied" ? "border-emerald-300 text-emerald-700" : ""}
+      >
+        {state === "copied" ? (
+          <IconCheck size={16} stroke={2} aria-hidden />
+        ) : (
+          <IconCopy size={16} stroke={1.8} className="text-slate-500" aria-hidden />
+        )}
+        {state === "copied" ? "Скопировано" : state === "failed" ? "Не удалось скопировать" : "Скопировать промт"}
+      </Button>
+    </div>
+  );
 }
 
 // A "#" affordance on heading hover; clicking copies the section URL (does not navigate).
@@ -592,13 +640,18 @@ export function DocsPage() {
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto">
               <div className="flex w-full gap-8">
                 <article className="min-w-0 flex-1">
-                  <Breadcrumbs
-                    className="mb-4"
-                    items={[
-                      { label: "Документация", to: "/docs" },
-                      ...(entry ? [{ label: entry.section }, { label: entry.title }] : []),
-                    ]}
-                  />
+                  {/* The trail and, when the page has one, the prompt controls
+                      share a row: the controls belong to the page, so they sit
+                      where the page starts, not inside the text. */}
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                    <Breadcrumbs
+                      items={[
+                        { label: "Документация", to: "/docs" },
+                        ...(entry ? [{ label: entry.section }, { label: entry.title }] : []),
+                      ]}
+                    />
+                    {entry?.prompt && <PromptTools file={entry.prompt} />}
+                  </div>
                   {content === null ? (
                     <SkeletonText lines={8} />
                   ) : (
