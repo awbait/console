@@ -1,32 +1,25 @@
 import {
   IconActivity,
   IconAdjustments,
-  IconBook,
   IconBox,
   IconCheck,
   IconChecklist,
   IconChevronDown,
   IconChevronRight,
   IconHash,
-  IconInfoCircle,
   IconLayoutDashboard,
   IconLayoutGrid,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
   IconLifebuoy,
   IconLogout,
-  IconPackages,
   IconScan,
   IconSettings,
   IconShieldCheck,
   IconShieldLock,
   IconTags,
   IconVariable,
-  IconUser,
   IconUsers,
-  IconUsersGroup,
 } from "@tabler/icons-react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useId, useMemo, useState } from "react";
 import {
   Button,
   Focusable,
@@ -49,6 +42,13 @@ import { useAsync } from "../hooks/useAsync";
 import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
+import "./sidebar.css";
+import { CatalogIcon } from "./CatalogIcon";
+import { DocumentationIcon } from "./DocumentationIcon";
+import { SidebarToggleIcon } from "./SidebarToggleIcon";
+import { NavbarInfoIcon, NavbarUserIcon } from "./NavbarIcons";
+import { OrdersIcon } from "./OrdersIcon";
+import { ProjectsIcon } from "./ProjectsIcon";
 import { LoginScreen } from "./LoginScreen";
 import { PlatformHealthBanner } from "./PlatformHealthBanner";
 import { PlatformHealthIndicator } from "./PlatformHealthIndicator";
@@ -56,8 +56,8 @@ import { ThemeMenu } from "./ThemeMenu";
 import { Loading, Skeleton, SkeletonText } from "./ui";
 
 const navItems = [
-  { to: "/requests", label: "Список заказов", Icon: IconBox },
-  { to: "/catalog", label: "Каталог", Icon: IconPackages },
+  { to: "/requests", label: "Список заказов", Icon: OrdersIcon },
+  { to: "/catalog", label: "Каталог", Icon: CatalogIcon },
 ];
 
 // Top-level sidebar sections. The platform section is the default product
@@ -168,6 +168,7 @@ function NavSection({
   open,
   onToggle,
   framed = false,
+  category = false,
   children,
 }: {
   Icon: TablerIcon;
@@ -175,9 +176,11 @@ function NavSection({
   open: boolean;
   onToggle: () => void;
   framed?: boolean;
+  category?: boolean;
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = useState(false);
+  const sectionId = useId();
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
@@ -187,18 +190,20 @@ function NavSection({
   return (
     <div>
       <Button
+        id={`${sectionId}-heading`}
         onPress={onToggle}
         aria-expanded={open}
+        aria-controls={`${sectionId}-items`}
         /* framed: a transparent border of the same weight as the select this
            header turns into when the sidebar collapses. The box then matches
            in both states, so folding the menu does not resize the card. */
-        className={`flex w-full items-center justify-between overflow-hidden whitespace-nowrap rounded-md text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 ${
+        className={`flex w-full items-center justify-between gap-2 overflow-hidden rounded-md text-sm outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 ${category ? "sidebar-category-heading" : "whitespace-nowrap font-medium text-slate-600"} ${
           framed ? `border border-transparent ${SELECT_ROW}` : ROW
         }`}
       >
-        <span className="flex items-center gap-3">
-          <Icon size={20} stroke={1.7} className="shrink-0" />
-          <span className="shrink-0">{label}</span>
+        <span className="flex min-w-0 items-center gap-3">
+          <Icon size={20} stroke={1.8} className="shrink-0" />
+          <span className={category ? "text-left [overflow-wrap:anywhere]" : "shrink-0"}>{label}</span>
         </span>
         <IconChevronRight
           size={16}
@@ -212,6 +217,10 @@ function NavSection({
           closing, so a folded list is out of the tab order without cutting the
           animation short. */}
       <div
+        role="group"
+        id={`${sectionId}-items`}
+        aria-labelledby={`${sectionId}-heading`}
+        inert={!open}
         className={`grid transition-[grid-template-rows,visibility] duration-200 ease-out motion-reduce:transition-none ${
           shown ? "visible grid-rows-[1fr]" : "invisible grid-rows-[0fr]"
         }`}
@@ -402,7 +411,7 @@ export function Layout() {
               aria-current={pathname.startsWith("/about") ? "page" : undefined}
               className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
             >
-              <IconInfoCircle size={20} stroke={1.7} />
+              <NavbarInfoIcon size={20} />
             </Link>
             <NotificationsBell />
             <UserMenu />
@@ -562,7 +571,11 @@ export function Layout() {
                                 aria-current={navActive(n.to) ? "page" : undefined}
                                 className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
                               >
-                                <Icon size={20} stroke={1.7} className="shrink-0" />
+                                {/* These glyphs use 24px for optical balance; the
+                                    20px slot keeps their centers aligned with category icons. */}
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                                  <Icon size={24} stroke={1.5} className="shrink-0" />
+                                </span>
                                 <span className={`shrink-0 ${labelFade(collapsed)}`}>{n.label}</span>
                               </Link>
                             </SideTip>
@@ -579,22 +592,22 @@ export function Layout() {
                       it used to be a plain link to the first chart, which left
                       every other service in the category unreachable. */}
                   {collapsed ? (
-                    <nav className="flex flex-col gap-1.5 px-2 py-2">
+                    <nav aria-label="Сервисы" className="flex flex-col gap-1.5 px-2 py-3">
                       {menu.map((g) => {
-                        const Icon = categoryIcon(g.icon || g.id);
+                        const Icon = categoryIcon(g.icon || g.id, g.id);
                         return (
                           <MenuTrigger key={g.id}>
                             <SideTip label={g.label} enabled>
                               <Button
                                 aria-label={g.label}
                                 aria-current={activeCategory === g.id ? "page" : undefined}
-                                className={`flex w-full rounded-md ${ROW} text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
+                                className={`sidebar-category-heading flex w-full rounded-md ${ROW} outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
                               >
                                 <Icon size={20} stroke={1.7} className="shrink-0" />
                               </Button>
                             </SideTip>
                             <Popover className="min-w-52 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
-                              <div className="border-b border-slate-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
                                 {g.label}
                               </div>
                               <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
@@ -615,24 +628,25 @@ export function Layout() {
                       })}
                     </nav>
                   ) : (
-                    <nav className="px-2 py-2">
+                    <nav aria-label="Сервисы" className="flex flex-col gap-1.5 px-2 py-3">
                       {menu.map((g) => {
-                        const Icon = categoryIcon(g.icon || g.id);
+                        const Icon = categoryIcon(g.icon || g.id, g.id);
                         return (
                           <NavSection
                             key={g.id}
                             Icon={Icon}
                             label={g.label}
+                            category
                             open={!folded.has(g.id)}
                             onToggle={() => toggleCategory(g.id)}
                           >
-                            <ul className="flex flex-col gap-0.5 py-1">
+                            <ul className="sidebar-category-items">
                               {g.charts.map((c) => (
                                 <li key={`${c.project}/${c.name}`}>
                                   <Link
                                     to={`/products/${c.project}/${c.name}`}
                                     aria-current={chartActive(c) ? "page" : undefined}
-                                    className={`block whitespace-nowrap rounded-md ${SUB_ROW} text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700`}
+                                    className="sidebar-service-link text-sm text-slate-600 outline-none hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:font-semibold aria-[current=page]:text-brand-700"
                                   >
                                     {chartLabel(c.name)}
                                   </Link>
@@ -658,7 +672,7 @@ export function Layout() {
                   aria-current={pathname.startsWith("/docs") ? "page" : undefined}
                   className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700`}
                 >
-                  <IconBook size={20} stroke={1.7} className="shrink-0" />
+                  <DocumentationIcon size={20} className="shrink-0" />
                   <span className={`shrink-0 ${labelFade(collapsed)}`}>Документация</span>
                 </Link>
               </SideTip>
@@ -674,11 +688,7 @@ export function Layout() {
                   aria-pressed={collapsed}
                   className={`flex w-full items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-400 outline-none hover:bg-slate-50 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500`}
                 >
-                  {collapsed ? (
-                    <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
-                  ) : (
-                    <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
-                  )}
+                  <SidebarToggleIcon collapsed={collapsed} size={20} className="shrink-0" />
                   <span className={`shrink-0 ${labelFade(collapsed)}`}>Свернуть меню</span>
                 </Button>
               </SideTip>
@@ -788,7 +798,7 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
         <span
           className={`flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg ${ROW} text-sm text-slate-400`}
         >
-          <IconUsersGroup size={20} stroke={1.7} className="shrink-0" />
+          <ProjectsIcon size={20} stroke={1.8} className="shrink-0" />
           <span className={`shrink-0 ${labelFade(collapsed)}`}>нет группы</span>
         </span>
       </SideTip>
@@ -800,10 +810,10 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
     return (
       <SideTip label={`Проект: ${team}`} enabled={collapsed}>
         <span
-          className={`flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg ${ROW} text-sm`}
+          className={`projects-context flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg ${ROW} text-sm`}
         >
-          <IconUsersGroup size={20} stroke={1.7} className="shrink-0 text-brand-600" />
-          <span className={`truncate font-medium text-slate-700 ${labelFade(collapsed)}`}>{team}</span>
+          <ProjectsIcon size={20} stroke={1.8} className="shrink-0 text-brand-600" />
+          <span className={`truncate font-bold uppercase text-slate-700 ${labelFade(collapsed)}`}>{team}</span>
         </span>
       </SideTip>
     );
@@ -816,7 +826,7 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
   if (!collapsed) {
     return (
       <NavSection
-        Icon={IconUsersGroup}
+        Icon={ProjectsIcon}
         label="Проекты"
         open={open}
         onToggle={() => setOpen((o) => !o)}
@@ -830,10 +840,10 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
               <Button
                 onPress={() => setTeam(t)}
                 aria-pressed={t === team}
-                className={`flex w-full items-center gap-3 whitespace-nowrap rounded-md ${SUB_ROW} text-sm text-slate-500 outline-none hover:bg-slate-50 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 aria-pressed:bg-brand-50 aria-pressed:font-medium aria-pressed:text-brand-700`}
+                className={`flex w-full items-center gap-3 whitespace-nowrap rounded-md ${SUB_ROW} text-sm text-slate-500 outline-none hover:bg-slate-50 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 aria-pressed:bg-brand-50 aria-pressed:font-bold aria-pressed:text-brand-700`}
               >
                 <IconHash size={20} stroke={1.7} className="shrink-0 text-slate-400" />
-                <span className="truncate">{t}</span>
+                <span className="truncate uppercase">{t}</span>
                 {t === team && <IconCheck size={16} className="ml-auto shrink-0 text-brand-600" />}
               </Button>
             </li>
@@ -852,7 +862,7 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
         >
           {/* No label and no chevron: neither fits beside the icon at 64px,
               and the frame alone is enough to keep it reading as a select. */}
-          <IconUsersGroup size={20} stroke={1.7} className="shrink-0 text-brand-600" />
+          <ProjectsIcon size={20} stroke={1.8} className="shrink-0 text-brand-600" />
         </Button>
       </SideTip>
       <Popover className="min-w-52 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in">
@@ -865,7 +875,7 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
             >
               <span className="flex min-w-0 items-center gap-2">
                 <IconHash size={20} stroke={1.7} className="shrink-0 text-slate-500" />
-                <span className="truncate">{t}</span>
+                <span className={`truncate uppercase ${t === team ? "font-bold" : ""}`}>{t}</span>
               </span>
               {t === team && <IconCheck size={16} className="shrink-0 text-brand-600" />}
             </MenuItem>
@@ -884,7 +894,7 @@ function UserMenu() {
     <MenuTrigger>
       <Button className="ml-2 flex items-center gap-2 rounded-md py-1 pl-1 pr-2 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-          <IconUser size={20} stroke={1.7} />
+          <NavbarUserIcon size={20} />
         </span>
         <span className="text-left text-xs leading-tight">
           <span className="block font-medium text-slate-800">{user.name || user.preferred_username}</span>
@@ -912,4 +922,3 @@ function UserMenu() {
     </MenuTrigger>
   );
 }
-

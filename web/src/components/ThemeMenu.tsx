@@ -1,20 +1,20 @@
-import { IconDeviceDesktop, IconMoon, IconSun } from "@tabler/icons-react";
 import { Button, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { THEME_CHOICES, THEME_LABELS, type ThemeChoice, useTheme } from "../app/ThemeContext";
 import type { TablerIcon } from "./icons";
+import { NavbarMoonIcon, NavbarSunIcon, NavbarSystemIcon } from "./NavbarIcons";
 
 // Each choice gets a glyph of its own, and the same glyph stands for it in the
 // topbar and in the switcher. RN has none: it is a brand theme, not a time of
 // day, and the two letters say more than any icon would.
 const THEME_ICONS: Partial<Record<ThemeChoice, TablerIcon>> = {
-  system: IconDeviceDesktop,
-  light: IconSun,
-  dark: IconMoon,
+  system: NavbarSystemIcon,
+  light: NavbarSunIcon,
+  dark: NavbarMoonIcon,
 };
 
 function ThemeGlyph({ choice, size }: { choice: ThemeChoice; size: number }) {
   const Icon = THEME_ICONS[choice];
-  if (Icon) return <Icon size={size} stroke={1.7} />;
+  if (Icon) return <Icon size={size} />;
   return (
     <span className="text-xs font-semibold leading-none tracking-tight">
       {THEME_LABELS[choice]}
@@ -58,7 +58,7 @@ export function ThemeMenu() {
               id={t}
               textValue={THEME_LABELS[t]}
               aria-label={THEME_LABELS[t]}
-              className={`flex h-8 w-10 cursor-pointer items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
+              className={`flex h-8 w-10 cursor-pointer items-center justify-center rounded-md outline-none transition-colors data-[focus-visible]:ring-2 data-[focus-visible]:ring-brand-500 ${
                 choice === t
                   ? // The hairline is what carries the lift in the dark themes,
                     // where the card sits one hair above the page and a fill

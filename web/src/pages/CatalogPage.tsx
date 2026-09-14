@@ -275,7 +275,7 @@ function CategoryFilter({
                 <span className="ml-auto pl-3 text-xs text-slate-400">{total}</span>
               </ListBoxItem>
               {categories.map((cat) => {
-                const Icon = categoryIcon(cat.icon ?? "");
+                const Icon = categoryIcon(cat.icon ?? "", cat.id);
                 return (
                   <ListBoxItem
                     key={cat.id}
@@ -350,7 +350,7 @@ function ChartCard({
   const extraVersions = orderable.filter((v) => v !== version);
   const description = (approved && pub?.approved_description) || c.description;
   const category = categoryOf(pub?.category_id);
-  const CatIcon = categoryIcon(category?.icon ?? "");
+  const CatIcon = categoryIcon(category?.icon ?? "", category?.id ?? pub?.category_id);
   return (
     <Link to={`/catalog/${c.project}/${c.name}`} className="group block h-full">
       <Card
