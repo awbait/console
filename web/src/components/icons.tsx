@@ -3,7 +3,6 @@
 import type { ComponentType } from "react";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { categoryGlyphs } from "./CategoryIcons";
-import "./sidebar.css";
 
 // Common shape of a Tabler icon component (size/stroke/className props).
 export type TablerIcon = ComponentType<{ size?: number | string; stroke?: number; className?: string }>;
@@ -41,8 +40,8 @@ export const CATEGORY_ICON_CHOICES: { id: string; Icon: TablerIcon }[] = [
 ].map((id) => ({ id, Icon: CATEGORY_ICON_BY_NAME[id] }));
 
 export function categoryIconName(name: string, categoryId?: string): string {
-  // Existing installations seeded the built-in category with the generic box.
-  if (categoryId === "uncategorized" && (!name || name === "box")) return "tag";
+  // Only missing values use the default; persisted choices must round-trip.
+  if (categoryId === "uncategorized" && !name) return "tag";
   return name;
 }
 

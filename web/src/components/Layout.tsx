@@ -42,6 +42,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
+import "./sidebar.css";
 import { CatalogIcon } from "./CatalogIcon";
 import { DocumentationIcon } from "./DocumentationIcon";
 import { SidebarToggleIcon } from "./SidebarToggleIcon";
@@ -168,7 +169,6 @@ function NavSection({
   onToggle,
   framed = false,
   category = false,
-  active = false,
   children,
 }: {
   Icon: TablerIcon;
@@ -177,7 +177,6 @@ function NavSection({
   onToggle: () => void;
   framed?: boolean;
   category?: boolean;
-  active?: boolean;
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -189,7 +188,7 @@ function NavSection({
   const shown = mounted && open;
 
   return (
-    <div className={category ? "sidebar-category" : undefined} data-active={active || undefined}>
+    <div>
       <Button
         id={`${sectionId}-heading`}
         onPress={onToggle}
@@ -198,7 +197,7 @@ function NavSection({
         /* framed: a transparent border of the same weight as the select this
            header turns into when the sidebar collapses. The box then matches
            in both states, so folding the menu does not resize the card. */
-        className={`flex w-full items-center justify-between gap-2 overflow-hidden rounded-md text-sm font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 ${category ? "sidebar-category-heading" : "whitespace-nowrap"} ${
+        className={`flex w-full items-center justify-between gap-2 overflow-hidden rounded-md text-sm outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 ${category ? "sidebar-category-heading" : "whitespace-nowrap font-medium text-slate-600"} ${
           framed ? `border border-transparent ${SELECT_ROW}` : ROW
         }`}
       >
@@ -217,7 +216,8 @@ function NavSection({
           at the start of the opening and back to hidden only at the end of the
           closing, so a folded list is out of the tab order without cutting the
           animation short. */}
-      <section
+      <div
+        role="group"
         id={`${sectionId}-items`}
         aria-labelledby={`${sectionId}-heading`}
         inert={!open}
@@ -226,7 +226,7 @@ function NavSection({
         }`}
       >
         <div className="overflow-hidden">{children}</div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -571,6 +571,8 @@ export function Layout() {
                                 aria-current={navActive(n.to) ? "page" : undefined}
                                 className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
                               >
+                                {/* These glyphs use 24px for optical balance; the
+                                    20px slot keeps their centers aligned with category icons. */}
                                 <span className="flex h-5 w-5 shrink-0 items-center justify-center">
                                   <Icon size={24} stroke={1.5} className="shrink-0" />
                                 </span>
@@ -599,7 +601,7 @@ export function Layout() {
                               <Button
                                 aria-label={g.label}
                                 aria-current={activeCategory === g.id ? "page" : undefined}
-                                className={`sidebar-category-heading flex w-full rounded-md ${ROW} text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
+                                className={`sidebar-category-heading flex w-full rounded-md ${ROW} outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
                               >
                                 <Icon size={20} stroke={1.7} className="shrink-0" />
                               </Button>
@@ -635,7 +637,6 @@ export function Layout() {
                             Icon={Icon}
                             label={g.label}
                             category
-                            active={activeCategory === g.id}
                             open={!folded.has(g.id)}
                             onToggle={() => toggleCategory(g.id)}
                           >

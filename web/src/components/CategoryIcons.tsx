@@ -1,6 +1,39 @@
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 
 type IconProps = { size?: number | string; stroke?: number; className?: string };
+
+let cssPathSupported: boolean | undefined;
+
+function supportsCssPath() {
+  if (cssPathSupported !== undefined) return cssPathSupported;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const path = document.createElementNS(svg.namespaceURI, "path") as SVGPathElement;
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;visibility:hidden";
+  path.setAttribute("d", "M0 0h1");
+  path.style.setProperty("d", 'path("M0 0h2")');
+  svg.append(path);
+  document.body.append(svg);
+  try {
+    // Some browsers parse CSS d without applying it, so CSS.supports is insufficient.
+    cssPathSupported = path.getTotalLength() === 2;
+  } catch {
+    cssPathSupported = false;
+  } finally {
+    svg.remove();
+  }
+  return cssPathSupported;
+}
+
+function SecurityShape() {
+  const [canMorph, setCanMorph] = useState(false);
+  useEffect(() => setCanMorph(supportsCssPath()), []);
+  return <g className={canMorph ? "category-security-morph" : undefined}>
+    <path className="category-security-half category-security-half-left" fill="currentColor" fillOpacity=".06" d="m12 3-8 3v5c0 4.5 3 7.5 8 10" />
+    <path className="category-security-half category-security-half-right" fill="currentColor" fillOpacity=".06" d="m12 3 8 3v5c0 4.5-3 7.5-8 10" />
+    <path className="category-security-seam" d="M10.5 3v18m3-18v18" />
+  </g>;
+}
 
 function DatabaseShape() {
   const clipId = useId();
@@ -34,7 +67,7 @@ function NetworkShape() {
         </g>
       </mask>
     </defs>
-    <circle cx="12" cy="12" r="7.5" strokeWidth="1.8" mask={`url(#${maskId})`} />
+    <circle cx="12" cy="12" r="7.5" mask={`url(#${maskId})`} />
     <g className="category-network-orbit">
       {nodes.map(node => <circle key={node.name} cx={node.x} cy={node.y} r="2.8" />)}
     </g>
@@ -51,7 +84,7 @@ const glyphs: Record<string, ReactNode> = {
   box: <><path d="m3 7 9 5 9-5M12 12v9M3 7v10l9 4 9-4V7L12 3Z" /><path className="category-icon-accent" d="m7.5 5 9 5v5" /></>,
   server: <><rect x="3" y="3" width="18" height="8" rx="2" /><rect x="3" y="14" width="18" height="7" rx="2" /><path d="M7 7h.01M7 17.5h.01" /><path className="category-icon-accent" d="M13 7h4M13 17.5h4" /></>,
   cloud: <><path d="M7 18H6a4 4 0 0 1-.6-8A7 7 0 0 1 19 8a5 5 0 0 1 0 10h-2" /><path className="category-icon-accent" d="M12 21V12m-3 3 3-3 3 3" /></>,
-  shield: <><path className="category-security-half category-security-half-left" fill="currentColor" fillOpacity=".06" d="m12 3-8 3v5c0 4.5 3 7.5 8 10" /><path className="category-security-half category-security-half-right" fill="currentColor" fillOpacity=".06" d="m12 3 8 3v5c0 4.5-3 7.5-8 10" /><path className="category-security-seam" d="M10.5 3v18m3-18v18" /></>,
+  shield: <SecurityShape />,
   lock: <><path d="M7 10V7a5 5 0 0 1 10 0v3" /><rect x="4" y="10" width="16" height="11" rx="3" fill="currentColor" fillOpacity=".12" /><path className="category-icon-accent" d="M12 14v3" /></>,
   key: <><circle cx="8" cy="8" r="5" fill="currentColor" fillOpacity=".12" /><path className="category-icon-accent" d="m11.5 11.5 9 9m-3-3 3-3m-6 0 3-3" /><path d="M7 7h.01" /></>,
   chart: <><path d="M3 3v18h18" /><path className="category-icon-accent" d="m6 15 4-5 4 3 7-8" /><path d="M17 5h4v4" /></>,

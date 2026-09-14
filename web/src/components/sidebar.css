@@ -90,8 +90,8 @@
   transform: translateX(1.5px);
 }
 
-:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-security-half,
-.category-icon-shield:is(:hover, :focus-visible) .category-security-half {
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-security-morph .category-security-half,
+.category-icon-shield:is(:hover, :focus-visible) .category-security-morph .category-security-half {
   transform: translateX(0);
 }
 
@@ -100,8 +100,8 @@
 }
 
 /* Both edges share one stroke, including when they meet at the center. */
-:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-security-seam,
-.category-icon-shield:is(:hover, :focus-visible) .category-security-seam {
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-security-morph .category-security-seam,
+.category-icon-shield:is(:hover, :focus-visible) .category-security-morph .category-security-seam {
   d: path("M12 3v18m0-18v18");
 }
 
