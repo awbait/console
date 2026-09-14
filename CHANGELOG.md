@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Added "Download prompt" and "Copy prompt" buttons to the "Order form
+  constructor" documentation page: with that prompt any LLM writes a version
+  document from the chart schema.
+
+### Changed
+- Extended the "Order form constructor" documentation page with a complete
+  document example, map-key columns in tabs and the meaning of more error
+  messages.
+
 ## [0.14.0] - 2026-09-10
 
 A release about the versions table on the service management page: it lists the
