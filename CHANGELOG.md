@@ -13,6 +13,9 @@ All notable changes to this project are documented in this file.
 - Extended the "Order form constructor" documentation page with a complete
   document example, map-key columns in tabs and the meaning of more error
   messages.
+- Separated category headers from services in the sidebar with indentation and a faint dashed guide.
+- Updated sidebar icons with a consistent style and animations on hover or keyboard focus.
+- Displayed team names in uppercase in the project selector and highlighted the active team in bold.
 
 ## [0.14.0] - 2026-09-10
 

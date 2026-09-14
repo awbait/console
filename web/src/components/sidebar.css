@@ -1,0 +1,113 @@
+/* Spacing and indentation separate category headings from their services. */
+.sidebar-category-heading {
+  background: rgb(var(--c-neutral-50));
+  color: rgb(var(--c-neutral-800));
+  font-weight: 600;
+  transition: background-color 160ms, color 160ms;
+}
+
+.sidebar-category-items {
+  position: relative;
+  margin: 4px 0 2px 31px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-category-items::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 6px;
+  bottom: 6px;
+  border-left: 1px dashed rgb(var(--c-neutral-300) / .7);
+  pointer-events: none;
+}
+
+.sidebar-service-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  transition: color 160ms, background-color 160ms;
+}
+
+.category-icon-accent {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.category-network-orbit {
+  transform-origin: 12px 12px;
+  transform: rotate(0deg);
+}
+
+.catalog-icon-front {
+  transform: translate(12px, 12.75px);
+}
+
+.orders-icon-row {
+  transform: translateX(0);
+}
+
+.projects-icon-member {
+  transform: translateX(0);
+}
+
+:is(button, a, .projects-context):is(:hover, :focus-visible) .projects-icon-member-left,
+.projects-icon:is(:hover, :focus-visible) .projects-icon-member-left {
+  transform: translateX(1px);
+}
+
+:is(button, a, .projects-context):is(:hover, :focus-visible) .projects-icon-member-right,
+.projects-icon:is(:hover, :focus-visible) .projects-icon-member-right {
+  transform: translateX(-1px);
+}
+
+:is(button, a):is(:hover, :focus-visible) .orders-icon-row,
+.orders-icon:is(:hover, :focus-visible) .orders-icon-row {
+  transform: translateX(1.5px);
+}
+
+:is(button, a):is(:hover, :focus-visible) .orders-icon-row-middle,
+.orders-icon:is(:hover, :focus-visible) .orders-icon-row-middle {
+  transform: translateX(-1.5px);
+}
+
+:is(button, a):is(:hover, :focus-visible) .catalog-icon-front,
+.catalog-icon:is(:hover, :focus-visible) .catalog-icon-front {
+  transform: translate(12px, 15.25px);
+}
+
+/* The alternate arrangement stays in place for the whole hover/focus. */
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-network-orbit,
+.category-icon-network:is(:hover, :focus-visible) .category-network-orbit {
+  transform: rotate(60deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-icon-accent {
+    animation: category-icon-lift 400ms ease-out;
+  }
+
+  .category-network-orbit {
+    transition: transform 100ms linear;
+  }
+
+  .catalog-icon-front, .orders-icon-row, .projects-icon-member {
+    transition: transform 100ms steps(2, jump-start);
+  }
+}
+
+@keyframes category-icon-lift {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-1.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-category-heading, .sidebar-service-link { transition: none; }
+}

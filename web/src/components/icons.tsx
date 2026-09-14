@@ -1,23 +1,9 @@
-// Shared icon helpers built on @tabler/icons-react.
+// Shared icon helpers for categories and published charts.
 
-import {
-  IconApps,
-  IconBox,
-  IconBucket,
-  IconChartLine,
-  IconCloud,
-  IconCpu,
-  IconDatabase,
-  IconKey,
-  IconLock,
-  IconMessages,
-  IconNetwork,
-  IconServer,
-  IconShieldLock,
-  IconStack3,
-} from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import { findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { categoryGlyphs } from "./CategoryIcons";
+import "./sidebar.css";
 
 // Common shape of a Tabler icon component (size/stroke/className props).
 export type TablerIcon = ComponentType<{ size?: number | string; stroke?: number; className?: string }>;
@@ -27,23 +13,10 @@ export type TablerIcon = ComponentType<{ size?: number | string; stroke?: number
 // persisted. The "platform"/"databases"/"network" aliases keep older categories
 // (seeded before the icon field) showing a sensible icon until re-picked.
 const CATEGORY_ICON_BY_NAME: Record<string, TablerIcon> = {
-  box: IconBox,
-  stack: IconStack3,
-  database: IconDatabase,
-  network: IconNetwork,
-  server: IconServer,
-  cloud: IconCloud,
-  shield: IconShieldLock,
-  lock: IconLock,
-  key: IconKey,
-  chart: IconChartLine,
-  bucket: IconBucket,
-  cpu: IconCpu,
-  apps: IconApps,
-  messages: IconMessages,
+  ...categoryGlyphs,
   // legacy id aliases (pre-icon-field categories)
-  platform: IconStack3,
-  databases: IconDatabase,
+  platform: categoryGlyphs.stack,
+  databases: categoryGlyphs.database,
 };
 
 // CATEGORY_ICON_CHOICES drives the icon picker (the real palette, without the
@@ -68,7 +41,7 @@ export const CATEGORY_ICON_CHOICES: { id: string; Icon: TablerIcon }[] = [
 // categoryIcon resolves a category's chosen icon slug to a component (default
 // for empty/unknown).
 export function categoryIcon(name: string): TablerIcon {
-  return CATEGORY_ICON_BY_NAME[name] ?? IconBox;
+  return CATEGORY_ICON_BY_NAME[name] ?? categoryGlyphs.box;
 }
 
 // ProductIcon renders a chart's own icon (Chart.yaml `icon` -> icon_url). When the
