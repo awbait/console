@@ -54,7 +54,7 @@ import type {
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
 import { useTeamLabel, useUser } from "../auth/UserContext";
-import { CATEGORY_ICON_CHOICES, categoryIcon, ProductIcon } from "../components/icons";
+import { CATEGORY_ICON_CHOICES, categoryIcon, categoryIconName, ProductIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
 import { fieldMsg, ruPlural } from "../form/fieldErrors";
@@ -1065,7 +1065,7 @@ function CategoryRow({
         <IconGripVertical size={18} stroke={1.7} />
       </span>
 
-      <IconPicker value={category.icon} disabled={busy} onPick={onIcon} />
+      <IconPicker value={categoryIconName(category.icon ?? "", category.id)} disabled={busy} onPick={onIcon} />
 
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <input

@@ -41,17 +41,118 @@
   transform-origin: center;
 }
 
+.navbar-info-mark, .navbar-system-cursor {
+  transform: translate(0, 0);
+}
+
+.navbar-sun-rays, .navbar-moon-shape {
+  transform-origin: 12px 12px;
+  transform: rotate(0deg);
+}
+
+:is(button, a):is(:hover, :focus-visible) .navbar-info-mark {
+  transform: translateY(-1px);
+}
+
+:is(button, a):not([role="menuitem"]):is(:hover, :focus-visible) .navbar-sun-rays,
+[role="menuitem"]:is([data-hovered], [data-focus-visible]) .navbar-sun-rays {
+  transform: rotate(22.5deg);
+}
+
+:is(button, a):not([role="menuitem"]):is(:hover, :focus-visible) .navbar-moon-shape,
+[role="menuitem"]:is([data-hovered], [data-focus-visible]) .navbar-moon-shape {
+  transform: rotate(-15deg);
+}
+
+:is(button, a):not([role="menuitem"]):is(:hover, :focus-visible) .navbar-system-cursor,
+[role="menuitem"]:is([data-hovered], [data-focus-visible]) .navbar-system-cursor {
+  transform: translateX(5px);
+}
+
 .category-network-orbit {
   transform-origin: 12px 12px;
   transform: rotate(0deg);
+}
+
+.category-platform-layer {
+  transform: translateY(0);
+}
+
+.category-database-band {
+  transform: translateY(0);
+}
+
+.category-security-half-left {
+  transform: translateX(-1.5px);
+}
+
+.category-security-half-right {
+  transform: translateX(1.5px);
+}
+
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-security-half,
+.category-icon-shield:is(:hover, :focus-visible) .category-security-half {
+  transform: translateX(0);
+}
+
+.category-security-seam {
+  d: path("M10.5 3v18m3-18v18");
+}
+
+/* Both edges share one stroke, including when they meet at the center. */
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-security-seam,
+.category-icon-shield:is(:hover, :focus-visible) .category-security-seam {
+  d: path("M12 3v18m0-18v18");
+}
+
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-database-band,
+.category-icon-database:is(:hover, :focus-visible) .category-database-band {
+  transform: translateY(2px);
+}
+
+.category-uncategorized-tag {
+  transform: translate(0, 0);
+}
+
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-uncategorized-tag,
+.category-icon-tag:is(:hover, :focus-visible) .category-uncategorized-tag {
+  transform: translate(1px, 1px);
+}
+
+:is(button, a, [role="option"]):is(:hover, :focus-visible) .category-platform-layer,
+.category-icon-stack:is(:hover, :focus-visible) .category-platform-layer {
+  transform: translateY(-2px);
 }
 
 .catalog-icon-front {
   transform: translate(12px, 12.75px);
 }
 
+.documentation-icon-sheet {
+  transform: translate(0, 0);
+}
+
+:is(button, a):is(:hover, :focus-visible) .documentation-icon-sheet,
+.documentation-icon:is(:hover, :focus-visible) .documentation-icon-sheet {
+  transform: translate(1px, -1px);
+}
+
 .orders-icon-row {
   transform: translateX(0);
+}
+
+.sidebar-toggle-icon-arrow {
+  transform: translateX(0);
+}
+
+button:is(:hover, :focus-visible) .sidebar-toggle-icon-collapse .sidebar-toggle-icon-arrow,
+.sidebar-toggle-icon-collapse:is(:hover, :focus-visible) .sidebar-toggle-icon-arrow {
+  transform: translateX(-1.5px);
+}
+
+button:is(:hover, :focus-visible) .sidebar-toggle-icon-expand .sidebar-toggle-icon-arrow,
+.sidebar-toggle-icon-expand:is(:hover, :focus-visible) .sidebar-toggle-icon-arrow {
+  transform: translateX(1.5px);
 }
 
 .projects-icon-member {
@@ -98,7 +199,15 @@
     transition: transform 100ms linear;
   }
 
-  .catalog-icon-front, .orders-icon-row, .projects-icon-member {
+  .category-security-seam {
+    transition: d 100ms steps(2, jump-start);
+  }
+
+  .navbar-info-mark, .navbar-sun-rays, .navbar-moon-shape, .navbar-system-cursor {
+    transition: transform 100ms steps(2, jump-start);
+  }
+
+  .catalog-icon-front, .orders-icon-row, .projects-icon-member, .category-platform-layer, .category-uncategorized-tag, .category-database-band, .category-security-half, .documentation-icon-sheet, .sidebar-toggle-icon-arrow {
     transition: transform 100ms steps(2, jump-start);
   }
 }

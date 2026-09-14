@@ -17,12 +17,14 @@ const CATEGORY_ICON_BY_NAME: Record<string, TablerIcon> = {
   // legacy id aliases (pre-icon-field categories)
   platform: categoryGlyphs.stack,
   databases: categoryGlyphs.database,
+  uncategorized: categoryGlyphs.tag,
 };
 
 // CATEGORY_ICON_CHOICES drives the icon picker (the real palette, without the
 // legacy id aliases).
 export const CATEGORY_ICON_CHOICES: { id: string; Icon: TablerIcon }[] = [
   "box",
+  "tag",
   "stack",
   "database",
   "network",
@@ -38,10 +40,15 @@ export const CATEGORY_ICON_CHOICES: { id: string; Icon: TablerIcon }[] = [
   "messages",
 ].map((id) => ({ id, Icon: CATEGORY_ICON_BY_NAME[id] }));
 
-// categoryIcon resolves a category's chosen icon slug to a component (default
-// for empty/unknown).
-export function categoryIcon(name: string): TablerIcon {
-  return CATEGORY_ICON_BY_NAME[name] ?? categoryGlyphs.box;
+export function categoryIconName(name: string, categoryId?: string): string {
+  // Existing installations seeded the built-in category with the generic box.
+  if (categoryId === "uncategorized" && (!name || name === "box")) return "tag";
+  return name;
+}
+
+// Resolve persisted icon names, with the generic box for unknown names.
+export function categoryIcon(name: string, categoryId?: string): TablerIcon {
+  return CATEGORY_ICON_BY_NAME[categoryIconName(name, categoryId)] ?? categoryGlyphs.box;
 }
 
 // ProductIcon renders a chart's own icon (Chart.yaml `icon` -> icon_url). When the
@@ -78,6 +85,7 @@ export function ProductIcon({
       />
     );
   }
-  const Icon = categoryIcon(categories.find((c) => c.id === pub?.category_id)?.icon ?? "");
+  const category = categories.find((c) => c.id === pub?.category_id);
+  const Icon = categoryIcon(category?.icon ?? "", category?.id ?? pub?.category_id);
   return <Icon size={size} stroke={1.7} className={`shrink-0 ${className}`} />;
 }

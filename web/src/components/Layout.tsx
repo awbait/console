@@ -1,18 +1,14 @@
 import {
   IconActivity,
   IconAdjustments,
-  IconBook,
   IconBox,
   IconCheck,
   IconChecklist,
   IconChevronDown,
   IconChevronRight,
   IconHash,
-  IconInfoCircle,
   IconLayoutDashboard,
   IconLayoutGrid,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
   IconLifebuoy,
   IconLogout,
   IconScan,
@@ -21,7 +17,6 @@ import {
   IconShieldLock,
   IconTags,
   IconVariable,
-  IconUser,
   IconUsers,
 } from "@tabler/icons-react";
 import { Suspense, useEffect, useId, useMemo, useState } from "react";
@@ -48,6 +43,9 @@ import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
 import { CatalogIcon } from "./CatalogIcon";
+import { DocumentationIcon } from "./DocumentationIcon";
+import { SidebarToggleIcon } from "./SidebarToggleIcon";
+import { NavbarInfoIcon, NavbarUserIcon } from "./NavbarIcons";
 import { OrdersIcon } from "./OrdersIcon";
 import { ProjectsIcon } from "./ProjectsIcon";
 import { LoginScreen } from "./LoginScreen";
@@ -413,7 +411,7 @@ export function Layout() {
               aria-current={pathname.startsWith("/about") ? "page" : undefined}
               className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
             >
-              <IconInfoCircle size={20} stroke={1.7} />
+              <NavbarInfoIcon size={20} />
             </Link>
             <NotificationsBell />
             <UserMenu />
@@ -594,7 +592,7 @@ export function Layout() {
                   {collapsed ? (
                     <nav aria-label="Сервисы" className="flex flex-col gap-1.5 px-2 py-3">
                       {menu.map((g) => {
-                        const Icon = categoryIcon(g.icon || g.id);
+                        const Icon = categoryIcon(g.icon || g.id, g.id);
                         return (
                           <MenuTrigger key={g.id}>
                             <SideTip label={g.label} enabled>
@@ -630,7 +628,7 @@ export function Layout() {
                   ) : (
                     <nav aria-label="Сервисы" className="flex flex-col gap-1.5 px-2 py-3">
                       {menu.map((g) => {
-                        const Icon = categoryIcon(g.icon || g.id);
+                        const Icon = categoryIcon(g.icon || g.id, g.id);
                         return (
                           <NavSection
                             key={g.id}
@@ -673,7 +671,7 @@ export function Layout() {
                   aria-current={pathname.startsWith("/docs") ? "page" : undefined}
                   className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700`}
                 >
-                  <IconBook size={20} stroke={1.7} className="shrink-0" />
+                  <DocumentationIcon size={20} className="shrink-0" />
                   <span className={`shrink-0 ${labelFade(collapsed)}`}>Документация</span>
                 </Link>
               </SideTip>
@@ -689,11 +687,7 @@ export function Layout() {
                   aria-pressed={collapsed}
                   className={`flex w-full items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-400 outline-none hover:bg-slate-50 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500`}
                 >
-                  {collapsed ? (
-                    <IconLayoutSidebarLeftExpand size={20} stroke={1.7} className="shrink-0" />
-                  ) : (
-                    <IconLayoutSidebarLeftCollapse size={20} stroke={1.7} className="shrink-0" />
-                  )}
+                  <SidebarToggleIcon collapsed={collapsed} size={20} className="shrink-0" />
                   <span className={`shrink-0 ${labelFade(collapsed)}`}>Свернуть меню</span>
                 </Button>
               </SideTip>
@@ -899,7 +893,7 @@ function UserMenu() {
     <MenuTrigger>
       <Button className="ml-2 flex items-center gap-2 rounded-md py-1 pl-1 pr-2 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-          <IconUser size={20} stroke={1.7} />
+          <NavbarUserIcon size={20} />
         </span>
         <span className="text-left text-xs leading-tight">
           <span className="block font-medium text-slate-800">{user.name || user.preferred_username}</span>
