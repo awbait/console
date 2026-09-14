@@ -97,14 +97,16 @@
   arrived by then is reported as not done; rerun it once it has.
 
 .PARAMETER Force
-  Overwrite an existing sync branch, and push to Harbor over a version that is
-  already there.
+  Push to Harbor over a version that is already there.
 
-  The second half is the one to reach for when a chart is unchanged everywhere
-  and the copy in Harbor still has to be replaced: with -PushToHarbor the chart
-  is packaged from the synced content and pushed over the existing tag. Harbor
-  keeps the old artifact, untagged, until the registry's garbage collection
-  takes it.
+  The case for it is a chart that is unchanged everywhere and whose copy in
+  Harbor still has to be replaced: with -PushToHarbor the chart is packaged
+  from the synced content and pushed over the existing tag. Harbor keeps the
+  old artifact, untagged, until the registry's garbage collection takes it.
+
+  The sync branch needs no flag. Its name is the script's own, so a branch
+  already on the remote is what an earlier run left behind, and it is replaced
+  with a word about it; an MR still open on it gets the new commit.
 
 .PARAMETER InsecureTls
   Accept a self-signed certificate: on the helm calls to Harbor, and on the
@@ -448,7 +450,7 @@ function Enable-AutoMerge {
   param([string]$Project, [string]$Branch)
   $enc = [Uri]::EscapeDataString($Project)
 
-  # By branch, not by title: a rerun with -Force lands on the MR an earlier run
+  # By branch, not by title: a rerun lands on the MR an earlier run
   # left open for this branch (GitLab updates it rather than opening a second
   # one), and its title may be from that earlier run. GitLab cancels auto-merge
   # when new commits arrive, so that MR is exactly the one that needs the flag
@@ -899,8 +901,19 @@ try {
         '-m', $body
       ) -What 'git commit' | Out-Null
 
+      # A branch of this name is only ever made by this script, so one already
+      # on the remote is an earlier run's: its MR was not merged (the content
+      # still differs, or the run would have stopped above), or it was merged
+      # and the branch outlived it. Either way the clone here is a fresh
+      # single commit on top of the target branch and cannot fast-forward it,
+      # so the branch is replaced. GitLab then puts the commit into the MR
+      # still open on it rather than opening a second one.
       $pushArgs = @('-C', $clone, 'push')
-      if ($Force) { $pushArgs += '--force' }
+      $remoteBranch = & git -C $clone ls-remote --heads origin "refs/heads/$branch"
+      if ($remoteBranch) {
+        Write-Warn "$branch is already on the remote (an earlier run left it); replacing it"
+        $pushArgs += '--force'
+      }
       $pushArgs += @(
         '-o', 'merge_request.create',
         '-o', "merge_request.target_branch=$targetBranch",
@@ -918,7 +931,7 @@ try {
       # rather than captured, so the link stays clickable.
       & git @pushArgs
       if ($LASTEXITCODE -ne 0) {
-        Write-Warn "push failed. If $branch already exists on the remote, rerun with -Force."
+        Write-Warn "push failed. Can the token push to $project, and is $branch not a protected branch there?"
         $failed += "${chart}: push failed"
         continue
       }
