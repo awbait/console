@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-Fixed the refusal to save a change to a service while the portal was updating that service's state at the same moment.
+Fixed an error when saving service settings on the order page while the service status is being updated.
 
 #### ru
-Исправили отказ при сохранении изменения сервиса, если портал в этот же момент обновлял состояние этого сервиса.
+Исправили ошибку сохранения настроек сервиса на странице заказа при одновременном обновлении его статуса.
