@@ -128,6 +128,12 @@ func mountDependencies(parent []byte, deps []models.ChartDependency) ([]byte, []
 		// "global" in a subchart's schema describes values Helm reads from the root
 		// of the parent, not from under the subchart's key. Mounted as it stands it
 		// would offer a field whose value goes nowhere.
+		//
+		// It leaves "required" as well, and that is not tidiness. A subchart that
+		// requires "global" (charts do, because installed on its own it reads its
+		// values from there) would otherwise leave a node demanding a key its own
+		// "properties" no longer has: omitting it fails "required", supplying it
+		// fails "additionalProperties: false", and no values pass at all.
 		if p, ok := node["properties"].(map[string]any); ok {
 			without := map[string]any{}
 			for k, v := range p {
@@ -136,6 +142,16 @@ func mountDependencies(parent []byte, deps []models.ChartDependency) ([]byte, []
 				}
 			}
 			node["properties"] = without
+		}
+		if req, ok := node["required"].([]any); ok {
+			kept := make([]any, 0, len(req))
+			for _, r := range req {
+				if name, isString := r.(string); isString && name == "global" {
+					continue
+				}
+				kept = append(kept, r)
+			}
+			node["required"] = kept
 		}
 		// What the chart says about the key itself wins over what the dependency
 		// says about its own root. A chart that describes the subchart's values in
