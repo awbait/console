@@ -195,6 +195,18 @@ func (s *Server) handleWithdrawPublication(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, pub)
 }
 
+// handleRefreshChart drops what the portal cached about the publication's chart
+// and answers with the number of versions it will read again.
+func (s *Server) handleRefreshChart(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	versions, err := s.Pubs.RefreshChart(r.Context(), u, chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"versions": versions})
+}
+
 func (s *Server) handleApprovePublication(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	pub, err := s.Pubs.Approve(r.Context(), u, chi.URLParam(r, "id"))

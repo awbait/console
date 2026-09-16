@@ -71,6 +71,9 @@ type SchemaSource interface {
 	// what decides whether an allowlisted version can still be ordered at all
 	// (see registry.go).
 	ListVersions(ctx context.Context, project, name string) ([]models.ChartVersion, error)
+	// Forget drops what the portal cached about the chart, so its files are read
+	// from the registry again. Answers with the number of versions dropped.
+	Forget(ctx context.Context, project, name string) (int, error)
 }
 
 // Service owns publication metadata and the view-approval workflow.
@@ -348,6 +351,42 @@ func (s *Service) Withdraw(ctx context.Context, u *models.User, id string) (*mod
 	}
 	s.addEvent(ctx, p.ID, u, "withdrawn", from, p.Status, nil)
 	return p, nil
+}
+
+// RefreshChart re-reads the chart behind a publication: the portal drops what it
+// cached about every version and takes the files from the registry again.
+// Answers with the number of versions it dropped.
+//
+// A chart's files are cached for a month under the digest of the archive they
+// came out of, so a chart pushed again under a version that already existed goes
+// on being served from the entry written before it. Until now the only way out
+// of that was deleting keys in Redis, which on an installation that matters
+// means a one-off pod holding the portal's own secret - and the person who
+// pushed the chart is rarely the person who can do that.
+//
+// Open to the team that owns the publication as well as to an admin: it re-reads
+// their own chart, changes nothing about it, and the worst it can cost is one
+// request to the registry.
+func (s *Service) RefreshChart(ctx context.Context, u *models.User, id string) (int, error) {
+	p, err := s.store.GetPublication(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	if !canManage(u, p.OwnerTeam) {
+		return 0, ErrForbidden
+	}
+	if s.schemas == nil {
+		return 0, conflict("каталог недоступен")
+	}
+	versions, err := s.schemas.Forget(ctx, p.ChartProject, p.ChartName)
+	if err != nil {
+		return 0, err
+	}
+	chart := p.ChartProject + "/" + p.ChartName
+	s.addEvent(ctx, p.ID, u, "refreshed", "", "", map[string]any{"versions": versions})
+	s.logger().Info("chart cache dropped",
+		"publication_id", p.ID, "chart", chart, "actor", u.Subject, "versions", versions)
+	return versions, nil
 }
 
 // Approve (admin): the proposed metadata change goes live.

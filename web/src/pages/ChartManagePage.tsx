@@ -40,6 +40,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
+import { ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 import { compareSemver } from "../lib/semver";
 import { dateInWords } from "../lib/time";
@@ -238,7 +239,7 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
   const name = pub.chart_name;
 
   // Chart versions from Harbor + the stored per-version publication rows.
-  const { data: chart } = useAsync(
+  const { data: chart, reload: reloadChart } = useAsync(
     () => api.getChart(project, name),
     [project, name],
     qk.chart(project, name),
@@ -385,6 +386,26 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
       reloadVersions();
       reloadCatalog();
       success(`Версия ${row.chart_version} вернулась в работу`);
+    } catch (e) {
+      error(e instanceof HttpError ? e.message : (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // The portal keeps a chart's files for a month, under the digest of the
+  // archive they came from, so a chart pushed again under a version that already
+  // exists goes on being served from what was read the first time. This drops
+  // those files and reads them again - nothing about the chart changes, so the
+  // team that owns it asks for it themselves.
+  async function onRefreshChart() {
+    setBusy("refresh");
+    try {
+      const { versions: n } = await api.refreshChart(pub.id);
+      reloadChart();
+      reloadVersions();
+      reloadCatalog();
+      success(`Перечитали ${n} ${ruPlural(n, "версию", "версии", "версий")} чарта.`);
     } catch (e) {
       error(e instanceof HttpError ? e.message : (e as Error).message);
     } finally {
@@ -601,6 +622,20 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
                 ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Re-reading the chart sits under the versions, because that is what it
+          refreshes: their forms, descriptions and changelogs. */}
+      {isOwner && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-surface px-4 py-3 shadow-sm">
+          <p className="max-w-2xl text-sm text-slate-600">
+            Форма заказа, описание и журнал изменений собираются из файлов чарта. Если чарт выложили
+            в Harbor заново под той же версией, перечитайте его.
+          </p>
+          <Button isDisabled={busy !== null} onPress={onRefreshChart}>
+            {busy === "refresh" ? "Перечитываем…" : "Перечитать чарт"}
+          </Button>
         </div>
       )}
 
