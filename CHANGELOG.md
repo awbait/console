@@ -5,9 +5,7 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- A service built from several charts can be ordered again. The order form
-  asked to fill in a block of the chart the service is assembled from, and
-  refused the same block once it was filled.
+- Fixed the order form refusing a service that is assembled from several charts.
 
 ## [0.15.0] - 2026-09-14
 
