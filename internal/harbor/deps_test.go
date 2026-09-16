@@ -65,8 +65,11 @@ func TestExtractChartFilesReadsBothDependencyShapes(t *testing.T) {
 	if _, ok := files[subchartKey("metrics", "values.schema.json")]; !ok {
 		t.Error("unpacked dependency schema missing")
 	}
-	if _, ok := files[subchartKey("metrics", "values.yaml")]; ok {
-		t.Error("subchart values.yaml served, only the schema and Chart.yaml should be")
+	// The dependency's own values travel too: Helm coalesces them under the
+	// dependency's key before it checks any schema, so an order is held to what
+	// Helm would accept only when the portal has them.
+	if got := string(files[subchartKey("metrics", "values.yaml")]); got != "port: 9187\n" {
+		t.Errorf("unpacked dependency values = %q", got)
 	}
 	if _, ok := files[subchartKey("deep", "values.schema.json")]; ok {
 		t.Error("a dependency of a dependency was taken; only one level is projected")

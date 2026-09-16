@@ -686,11 +686,17 @@ var chartFiles = map[string]bool{
 }
 
 // subchartFiles are the files taken from each dependency under "charts/": the
-// schema whose fields the order form draws, and the Chart.yaml that says which
-// chart the directory holds (its name need not match the directory).
+// schema whose fields the order form draws, the Chart.yaml that says which chart
+// the directory holds (its name need not match the directory), and the values
+// the dependency answers for itself.
+//
+// Those values are what Helm coalesces under the dependency's key before it
+// checks any schema, so without them the portal holds an order to a standard
+// Helm does not: it refuses a field the chart already answers.
 var subchartFiles = map[string]bool{
 	"values.schema.json": true,
 	"Chart.yaml":         true,
+	"values.yaml":        true,
 }
 
 // maxSubcharts caps how many dependencies are unpacked from one chart. Well past

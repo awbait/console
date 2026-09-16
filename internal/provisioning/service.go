@@ -1038,7 +1038,16 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 		c := jsonschema.NewCompiler()
 		if aerr := c.AddResource("values.schema.json", bytes.NewReader(schemaBytes)); aerr == nil {
 			if sch, cerr := c.Compile("values.schema.json"); cerr == nil {
-				if verr := sch.Validate(values); verr != nil {
+				// Checked with the chart's defaults underneath, because that is
+				// what Helm checks. Without them the order is held to a stricter
+				// standard than it will actually face, and the person is asked to
+				// repeat values the chart already answers.
+				//
+				// The merged values are for this check alone: what gets marshalled
+				// below is the order's own, or every order would freeze today's
+				// chart defaults and an upgrade would stop moving what nobody
+				// touched.
+				if verr := sch.Validate(s.catalog.ValuesForValidation(ctx, project, name, version, values)); verr != nil {
 					return "", schemaValidationError(verr)
 				}
 			}
