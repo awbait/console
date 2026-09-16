@@ -37,6 +37,7 @@ export const CATEGORY_ICON_CHOICES: { id: string; Icon: TablerIcon }[] = [
   "cpu",
   "apps",
   "messages",
+  "code",
 ].map((id) => ({ id, Icon: CATEGORY_ICON_BY_NAME[id] }));
 
 export function categoryIconName(name: string, categoryId?: string): string {
