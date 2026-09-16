@@ -233,6 +233,14 @@ func (g *GitOps) AppPath(r *models.Request) string {
 // lets the CR go, which is also what makes the portal's "the Application is gone"
 // a truthful answer to "is the service deleted".
 //
+// syncPolicy.retry is what carries an upgrade over the moment it cannot
+// succeed. The two halves of an upgrade do not arrive together: values.yaml is
+// read straight from the branch, while the new chart version waits for the
+// app-of-apps to apply this manifest, and a sync run in between is the old chart
+// against the new values - which fails on the chart's own schema. Without a
+// retry ArgoCD leaves that failure standing, because an automated sync does not
+// run again for a revision it has already tried.
+//
 // (The fake ArgoCD parses only metadata.name, labels, spec.project and
 // spec.destination.name, all of which remain present here.)
 var applicationYAML = template.Must(template.New("app").Parse(`apiVersion: argoproj.io/v1alpha1
@@ -266,6 +274,12 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
 `))
 
 // RenderApplication produces the application.yaml content for a request: a
