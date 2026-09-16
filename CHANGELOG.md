@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed the order form garbling settings when a service is upgraded to a version
+  where a list of settings became a single setting.
+
 ## [0.15.0] - 2026-09-14
 
 A release about the sidebar and the "Order form constructor" documentation
