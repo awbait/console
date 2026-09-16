@@ -78,3 +78,40 @@ func TestFindDuplicateInsideADependency(t *testing.T) {
 		t.Error("a duplicate inside a dependency went through")
 	}
 }
+
+// Entries of a service-card tab are added in a dialog, not in a list on the
+// order form, so the tab is where the rule belongs for those - and the server
+// has to read it from there too.
+func TestUniqueRulesFromATab(t *testing.T) {
+	const doc = `{
+	  "tabs": [
+	    {"id": "routes", "items": "/xroutes", "form": "routes", "ui:uniqueBy": "name"},
+	    {"id": "rules", "items": "/networkPolicy/endpoints", "form": "np"}
+	  ],
+	  "views": {"order": {"include": ["gateways"]}}
+	}`
+	rules := UniqueRules([]byte(doc))
+	if len(rules) != 1 {
+		t.Fatalf("rules = %+v", rules)
+	}
+	// The tab names its list as a pointer; the rule walks it like any field.
+	if rules[0].Field != "xroutes" || rules[0].By != "name" {
+		t.Errorf("rule = %+v", rules[0])
+	}
+	values := map[string]any{"xroutes": []any{route("ctlg", "/a"), route("ctlg", "/b")}}
+	if d, found := FindDuplicate(values, rules); !found || d.Value != "ctlg" {
+		t.Errorf("duplicate = %+v found=%v", d, found)
+	}
+}
+
+// The same list may be named by a tab and by a view override at once. One rule
+// is enough; two would report the same collision twice.
+func TestUniqueRulesDoNotRepeatThemselves(t *testing.T) {
+	const doc = `{
+	  "tabs": [{"id": "routes", "items": "/xroutes", "form": "routes", "ui:uniqueBy": "name"}],
+	  "views": {"order": {"overrides": {"xroutes": {"ui:uniqueBy": "name"}}}}
+	}`
+	if rules := UniqueRules([]byte(doc)); len(rules) != 1 {
+		t.Errorf("rules = %+v", rules)
+	}
+}

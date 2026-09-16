@@ -13,6 +13,7 @@ import { api, HttpError } from "@/api/client";
 import type { OrderRequest, ViewDocument, ViewTab } from "@/api/types";
 import { chartLabel } from "@/app/CatalogContext";
 import { ChangeSummary } from "@/form/FieldDiff";
+import { fieldMsg } from "@/form/fieldErrors";
 import {
   collectErrors,
   pruneEmpty,
@@ -394,6 +395,15 @@ function ListEditor({
         label={label}
         isOpen={modalOpen}
         initial={initial}
+        uniqueBy={target.uniqueBy}
+        taken={
+          target.uniqueBy
+            ? items
+                .filter((_, i) => i !== editIndex)
+                .map((x) => x[target.uniqueBy])
+                .filter((v): v is string => typeof v === "string" && v !== "")
+            : []
+        }
         onClose={() => {
           setAdding(false);
           setEditIndex(null);
@@ -436,6 +446,8 @@ function ItemModal({
   label,
   isOpen,
   initial,
+  uniqueBy,
+  taken,
   onClose,
   onSave,
 }: {
@@ -446,6 +458,12 @@ function ItemModal({
   label: string;
   isOpen: boolean;
   initial: Values | null;
+  // The field entries are told apart by, and the values the other entries
+  // already carry. A chart names a resource in the cluster after this field, so
+  // a repeat asks for one resource twice - which the schema cannot see, because
+  // two entries with one name and different contents are different entries.
+  uniqueBy: string;
+  taken: string[];
   onClose: () => void;
   onSave: (item: Values) => Promise<void>;
 }) {
@@ -468,7 +486,14 @@ function ItemModal({
   // Dynamic enums (e.g. listener names for parentRefs[].sectionName) are injected
   // from the order's full values before the form renders and validates.
   const schema = useMemo(() => applyEnums(itemSchema, enums, full), [itemSchema, enums, full]);
-  const errors = useMemo(() => collectErrors(schema, item, view), [schema, item, view]);
+  const errors = useMemo(() => {
+    const found = collectErrors(schema, item, view);
+    const name = uniqueBy ? item[uniqueBy] : undefined;
+    if (typeof name === "string" && name !== "" && taken.includes(name)) {
+      found.set(`/${uniqueBy}`, fieldMsg.taken(name));
+    }
+    return found;
+  }, [schema, item, view, uniqueBy, taken]);
   // Saving an element back exactly as it was opens a merge request with an
   // empty diff, which then blocks every real edit until someone closes it. A
   // new element is a change by definition, so only editing is guarded.

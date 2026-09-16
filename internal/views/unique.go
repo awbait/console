@@ -39,23 +39,51 @@ type UniqueRule struct {
 	By string
 }
 
-// UniqueRules returns what the order view declares about repeated names.
+// UniqueRules returns everything a view document says about repeated names.
+//
+// Two places declare it, because entries are added in two places. A tab of the
+// service card says it on the tab, next to the list it edits - that is where a
+// route or an external service is added. A list drawn on the order form itself
+// says it in the view's override of that list.
+//
+// Every view is read, not only "order": the rule is about the values, and the
+// values are the same whichever screen wrote them.
 func UniqueRules(viewJSON []byte) []UniqueRule {
 	var doc struct {
 		Views map[string]struct {
 			Overrides map[string]map[string]any `json:"overrides"`
 		} `json:"views"`
+		Tabs []map[string]any `json:"tabs"`
 	}
 	if err := json.Unmarshal(viewJSON, &doc); err != nil {
 		return nil
 	}
+	seen := map[UniqueRule]bool{}
 	var out []UniqueRule
-	for field, ov := range doc.Views["order"].Overrides {
-		by, _ := ov[uniqueByKey].(string)
-		if by == "" {
-			continue
+	add := func(field, by string) {
+		if field == "" || by == "" {
+			return
 		}
-		out = append(out, UniqueRule{Field: field, By: by})
+		rule := UniqueRule{Field: field, By: by}
+		if seen[rule] {
+			return
+		}
+		seen[rule] = true
+		out = append(out, rule)
+	}
+	for _, view := range doc.Views {
+		for field, ov := range view.Overrides {
+			by, _ := ov[uniqueByKey].(string)
+			add(field, by)
+		}
+	}
+	for _, tab := range doc.Tabs {
+		by, _ := tab[uniqueByKey].(string)
+		// A tab names its list as a JSON pointer ("/xroutes"); a view override
+		// names a field ("xroutes", or "pooler/items" through a dependency). Both
+		// walk the same way once the pointer sheds its leading slash.
+		items, _ := tab["items"].(string)
+		add(strings.TrimPrefix(items, "/"), by)
 	}
 	return out
 }
