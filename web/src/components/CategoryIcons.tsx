@@ -93,11 +93,9 @@ const glyphs: Record<string, ReactNode> = {
   apps: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /><path className="category-icon-accent" fill="currentColor" fillOpacity=".18" d="m17.5 2 4.5 5-4.5 5L13 7Z" /></>,
   messages: <><path d="M14 15v3a2 2 0 0 0 2 2h3l3 2V11a2 2 0 0 0-2-2h-3" /><path fill="currentColor" fillOpacity=".1" d="M4 3h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7l-5 4V5a2 2 0 0 1 2-2Z" /><path className="category-icon-accent" d="M6 7h7M6 11h4" /></>,
   code: <>
-    <rect x="3" y="4" width="18" height="16" rx="2" fill="currentColor" fillOpacity=".06" />
-    <path d="M3 8h18" />
-    <path className="category-code-bracket-left" d="m8.5 11.5-2.5 2.5 2.5 2.5" />
-    <path className="category-code-bracket-right" d="m15.5 11.5 2.5 2.5-2.5 2.5" />
-    <path className="category-code-slash" pathLength="1" d="m13 11-2 6" />
+    <path className="category-code-bracket-left" d="m8 6-5 6 5 6" />
+    <path className="category-code-bracket-right" d="m16 6 5 6-5 6" />
+    <path d="m14 7-4 10" />
   </>,
 };
 

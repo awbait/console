@@ -1,7 +1,7 @@
 ### Added
 
 #### en
-Added an animated code editor icon to the category icon picker for development tools.
+Added an animated code brackets icon to the category icon picker for development tools.
 
 #### ru
-Добавили в выбор иконок категории анимированную иконку редактора кода для инструментов разработки.
+Добавили в выбор иконок категории анимированную иконку скобок кода для инструментов разработки.

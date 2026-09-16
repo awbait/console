@@ -197,18 +197,12 @@ button:is(:hover, :focus-visible) .sidebar-toggle-icon-expand .sidebar-toggle-ic
 
   :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-code-bracket-left,
   .category-icon-code:is(:hover, :focus-visible) .category-code-bracket-left {
-    transform: translateX(-.75px);
+    transform: translateX(-1px);
   }
 
   :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-code-bracket-right,
   .category-icon-code:is(:hover, :focus-visible) .category-code-bracket-right {
-    transform: translateX(.75px);
-  }
-
-  :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-code-slash,
-  .category-icon-code:is(:hover, :focus-visible) .category-code-slash {
-    stroke-dasharray: 1;
-    animation: category-code-type 260ms ease-out;
+    transform: translateX(1px);
   }
 
   :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-icon-accent {
@@ -235,11 +229,6 @@ button:is(:hover, :focus-visible) .sidebar-toggle-icon-expand .sidebar-toggle-ic
 @keyframes category-icon-lift {
   0%, 100% { transform: translateY(0); }
   45% { transform: translateY(-1.5px); }
-}
-
-@keyframes category-code-type {
-  from { stroke-dashoffset: 1; }
-  to { stroke-dashoffset: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
