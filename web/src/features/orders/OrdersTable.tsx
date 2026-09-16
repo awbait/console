@@ -79,10 +79,11 @@ const AT_ACTIONS = "right-0";
 const AT_STATUS = "right-16";
 // The edge of the pinned pair, shown only while something is still hidden to
 // the right of it. It has to read as one layer lying over another - a hairline
-// alone looks like an ordinary column rule - so the border carries a shadow
-// falling onto the columns that pass underneath. With nothing left to scroll
-// the edge goes away: there is no layer above anything then.
-const PINNED_EDGE = "border-l border-slate-200 shadow-[-10px_0_12px_-4px_rgba(15,23,42,0.22)]";
+// alone looks like an ordinary column rule, so a subtle dashed line
+// carries a shadow onto the columns that pass underneath. A pseudo-element
+// keeps column widths unchanged and the line visible in dark themes.
+// With nothing left to scroll, the edge goes away.
+const PINNED_EDGE = "before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:border-l before:border-dashed before:border-slate-400/60 before:content-[''] shadow-[-6px_0_10px_-4px_rgba(15,23,42,0.16)]";
 
 export function OrdersTable({ title, filter, orderTo, orderDisabledReason, emptyHint, allTeams }: Props) {
   // Fetch including deleted so the status filter can reveal them on demand.

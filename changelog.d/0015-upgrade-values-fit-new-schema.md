@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-Fixed carrying values over in the service upgrade form: the fields of the new version open with the values the order already has, and the form lists above itself what was moved or dropped.
+Fixed transferring saved settings into the service upgrade form, with a list of transferred and removed values.
 
 #### ru
-Исправили перенос значений в форме обновления сервиса: поля новой версии открываются со значениями заказа, а над формой перечислено, что перенесено и что удалено.
+Исправили перенос сохранённых настроек в форму обновления сервиса с указанием перенесённых и удалённых значений.
