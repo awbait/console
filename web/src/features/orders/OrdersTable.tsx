@@ -222,7 +222,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   async function onSync(r: OrderRequest) {
     try {
       await api.syncRequest(r.id);
-      toast.success("Выкатка из Git запущена");
+      toast.success("Синхронизация запущена");
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -715,7 +715,7 @@ function RowActions({
           )}
           {onSync && (
             <MenuItem id="sync" className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50">
-              Выкатить из Git
+              Синхронизировать с кластером
             </MenuItem>
           )}
           {onDelete && (

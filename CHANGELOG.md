@@ -7,6 +7,8 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Clarified the grey hint in an empty field of the order form: a default value
   is now labelled as one.
+- Renamed the admin action on the order page: "Deploy from Git" is now
+  "Synchronize with the cluster".
 
 ### Fixed
 - Fixed the order form refusing a service that is assembled from several charts.
