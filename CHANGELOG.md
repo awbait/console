@@ -20,6 +20,8 @@ All notable changes to this project are documented in this file.
   the portal fills them in the way it does in a new order.
 - Fixed a service staying blocked for good when its change reached Git and the
   order never recorded it: the portal now picks such a change up by itself.
+- Fixed the refusal to save a change to a service while the portal was updating
+  that service's state at the same moment.
 
 ## [0.15.0] - 2026-09-14
 

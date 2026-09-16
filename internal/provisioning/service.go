@@ -620,7 +620,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if _, err := s.openChange(ctx, r, proj, models.ActionCreate, actions); err != nil {
 		return r, err
 	}
-	if err := s.transition(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
+	if err := s.transitionAfterChange(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -669,7 +669,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if _, err := s.openChange(ctx, r, proj, models.ActionCreate, actions); err != nil {
 		return r, err
 	}
-	if err := s.transition(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
+	if err := s.transitionAfterChange(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return r, err
 	}
 	return r, nil
@@ -774,7 +774,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	if _, err := s.openChange(ctx, r, proj, models.ActionUpdate, actions); err != nil {
 		return nil, err
 	}
-	if err := s.transition(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
+	if err := s.transitionAfterChange(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return nil, err
 	}
 	return r, nil
@@ -956,7 +956,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	if _, err := s.openChange(ctx, r, proj, models.ActionDelete, actions); err != nil {
 		return nil, err
 	}
-	if err := s.transition(ctx, r, models.StatusDeleteRequested, byUser(u)); err != nil {
+	if err := s.transitionAfterChange(ctx, r, models.StatusDeleteRequested, byUser(u)); err != nil {
 		return nil, err
 	}
 	return r, nil
@@ -1341,6 +1341,38 @@ func byUser(u *models.User) actorRef { return actorRef{subject: u.Subject, name:
 
 func bySystem() actorRef { return actorRef{subject: models.ActorSystem} }
 
+// transitionAfterChange records a change that is already open in GitLab, and
+// gives that write one second chance when the order moved underneath it.
+//
+// By this point the branch, the commit and the merge request exist. Losing this
+// write is therefore not a refused edit: it is an order that will not admit to
+// the change it just made, which blocks every later change and which nothing but
+// reconcile can undo (see recoverOpenMR). The poller writing a health update
+// between the order being read and this line is enough to cause it, and that is
+// common enough to be worth one retry rather than a recovery an hour later.
+//
+// The retry takes the row's own bookkeeping from the write that won - its
+// version, and the status it left the order in - and keeps what this change is
+// about. The state machine admits a new change from every live status, so the
+// status it lands on does not decide whether the retry is allowed.
+func (s *Service) transitionAfterChange(ctx context.Context, r *models.Request,
+	to models.RequestStatus, a actorRef) error {
+
+	err := s.transition(ctx, r, to, a)
+	if !errors.Is(err, models.ErrStaleVersion) {
+		return err
+	}
+	fresh, gerr := s.store.GetRequest(ctx, r.ID)
+	if gerr != nil {
+		return err
+	}
+	s.logger().Info("change recorded on a second attempt",
+		"order_id", r.ID, "from", fresh.Status, "to", to)
+	r.Version = fresh.Version
+	r.Status = fresh.Status
+	return s.transition(ctx, r, to, a)
+}
+
 func (s *Service) transition(ctx context.Context, r *models.Request, to models.RequestStatus, a actorRef) error {
 	from := r.Status
 	if !CanTransition(from, to) {
@@ -1358,6 +1390,10 @@ func (s *Service) transition(ctx context.Context, r *models.Request, to models.R
 			EventType: "status_changed", FromStatus: from, ToStatus: to,
 		})
 	}); err != nil {
+		// Nothing was written, so the order in hand must not claim otherwise. A
+		// caller that retries reads this back, and one that gives up hands it to
+		// whoever asked - either way it has to say where the order really is.
+		r.Status = from
 		return err
 	}
 	s.notifyStatus(ctx, r, from, to)

@@ -2,9 +2,11 @@ package provisioning_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"console/internal/provisioning"
+	"console/internal/store"
 	"console/pkg/models"
 )
 
@@ -117,5 +119,72 @@ func TestReconcileLeavesARecordedChangeAlone(t *testing.T) {
 	}
 	if len(after) != len(before) {
 		t.Errorf("reconcile wrote %d event(s) for an order that needed nothing", len(after)-len(before))
+	}
+}
+
+// staleOnce writes to the order once, from the side, just before the portal
+// commits a status change. That is the poller finishing a health check between
+// the order being read and the change being recorded: the write the portal is
+// about to make is now against a version that no longer exists.
+type staleOnce struct {
+	store.Store
+	id    string
+	fired bool
+}
+
+func (s *staleOnce) Tx(ctx context.Context, fn func(store.Store) error) error {
+	if s.id != "" && !s.fired {
+		s.fired = true
+		if r, err := s.Store.GetRequest(ctx, s.id); err == nil {
+			_ = s.Store.UpdateRequest(ctx, r)
+		}
+	}
+	return s.Store.Tx(ctx, fn)
+}
+
+// The change is already in GitLab by the time its status is recorded, so losing
+// that write costs an order that will not admit to its own change. One retry off
+// the current row is enough, and the edit goes through as the person expects
+// instead of leaving them a blocked service and us a recovery an hour later.
+func TestChangeIsRecordedDespiteAConcurrentWrite(t *testing.T) {
+	ctx := context.Background()
+	st := &staleOnce{Store: store.NewMemory()}
+	s := newStackOn(t, st)
+	u := member("core")
+
+	req, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg3", Values: validValues(),
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	s.mergeLatestMR(ctx, t, req.ID)
+	s.tick(ctx)
+	s.tick(ctx)
+
+	// From here the next status write loses its race.
+	st.id = req.ID
+
+	if _, err := s.prov.Update(ctx, u, req.ID, provisioning.UpdateInput{
+		Values: map[string]any{"auth": map[string]any{"database": "app2"}},
+	}); err != nil {
+		t.Fatalf("edit refused after a concurrent write: %v", err)
+	}
+	if !st.fired {
+		t.Fatal("the concurrent write never happened, so nothing was proven")
+	}
+	if got := mustStatus(ctx, t, s.st, req.ID); got != models.StatusMRCreated {
+		t.Fatalf("change not recorded: want MR_CREATED, got %s", got)
+	}
+
+	// And the order is left holding the values the edit was about, not the ones
+	// the write that won happened to carry.
+	saved, err := s.st.GetRequest(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !strings.Contains(saved.ValuesYAML, "app2") {
+		t.Errorf("edited values were lost: %s", saved.ValuesYAML)
 	}
 }
