@@ -27,7 +27,13 @@ type stack struct {
 
 func newStack(t *testing.T) *stack {
 	t.Helper()
-	st := store.NewMemory()
+	return newStackOn(t, store.NewMemory())
+}
+
+// newStackOn is newStack over a store the test brought itself, for the tests
+// that need to see what happens when a write to the order loses a race.
+func newStackOn(t *testing.T, st store.Store) *stack {
+	t.Helper()
 	c := cache.NewMemory()
 	hb := harbor.NewFake()
 	gl := gitlab.NewFake("managed-services", []string{"team-core"}, false) // manual merge

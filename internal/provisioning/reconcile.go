@@ -42,6 +42,17 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 						"order_id", r.ID, "mr_iid", latest.MRIID, "err", uerr)
 				}
 			}
+			// An order holding an open merge request it never recorded is stuck for
+			// good: the block on further changes reads the merge request, while
+			// everything that would tend it reads the order's status, and the two
+			// disagree. It happens when the change reached GitLab and the status
+			// change after it did not - the two are not one write, and the second
+			// can fail on its own (a concurrent poller bumping the row's version,
+			// say). Put the order back on the status the open request implies, and
+			// the machinery below picks it up on this same tick.
+			if latest.Status == models.MROpened {
+				s.recoverOpenMR(ctx, r, latest)
+			}
 			if latest.Status == models.MROpened &&
 				(r.Status == models.StatusMRCreated || r.Status == models.StatusDeleteRequested) {
 				// A change rewritten onto a moved branch leaves this record pointing
@@ -401,9 +412,52 @@ func (s *Service) tryTransition(ctx context.Context, r *models.Request, to model
 		return
 	}
 	if !CanTransition(r.Status, to) {
+		// Not routine, and not silent any more. A refusal means the caller read the
+		// order as being somewhere it is not, and the order stays where it was with
+		// nobody told - which is how an order can sit wrong for hours without
+		// producing a single line to look at.
+		observability.ObserveTransitionRefused(string(r.Status), string(to))
+		s.logger().Warn("order transition refused",
+			"order_id", r.ID, "from", r.Status, "to", to)
 		return
 	}
 	_ = s.transition(ctx, r, to, bySystem())
+}
+
+// recoverOpenMR brings an order back to the status its open merge request
+// implies, when the order is somewhere that does not admit an open one.
+//
+// The order is the authority on what is being asked for; the merge request is
+// the authority on whether it was asked. When they disagree this way, the merge
+// request is right: it exists in GitLab, and something opened it. Left alone the
+// order is blocked for good - guardOpenMR refuses every further change because a
+// request is open, while reconcile tends open requests only for the two statuses
+// that expect one, so nothing ever merges it or reports it.
+//
+// A no-op in the ordinary case, where the order already says what the request
+// says.
+func (s *Service) recoverOpenMR(ctx context.Context, r *models.Request, mr *models.RequestMR) {
+	want := models.StatusMRCreated
+	if mr.Action == models.ActionDelete {
+		want = models.StatusDeleteRequested
+	}
+	if r.Status == want || r.Status == models.StatusMRCreated || r.Status == models.StatusDeleteRequested {
+		return
+	}
+	from := r.Status
+	s.tryTransition(ctx, r, want)
+	if r.Status != want {
+		// tryTransition has already said why. Nothing else to do here: an order the
+		// state machine will not move is one a person has to look at.
+		return
+	}
+	observability.ObserveOrderRecovered(string(want))
+	s.logger().Warn("order recovered from an unrecorded change",
+		"order_id", r.ID, "mr_iid", mr.MRIID, "from", from, "to", want)
+	s.eventWith(ctx, r, bySystem(), "change_recovered", want, want, map[string]any{
+		"mr_iid": mr.MRIID,
+		"from":   string(from),
+	})
 }
 
 func (s *Service) markDeleted(ctx context.Context, r *models.Request) {

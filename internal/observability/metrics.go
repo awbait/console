@@ -139,6 +139,25 @@ var (
 		Help: "Total conflicted portal merge requests the portal rewrote onto the current branch, by outcome.",
 	}, []string{"outcome"})
 
+	// ordersRecovered counts orders reconcile found holding an open merge request
+	// while sitting in a status that does not admit one, and brought back to the
+	// status that request implies. It means an order opened a change in GitLab and
+	// never recorded it - without this the order is blocked for good, because
+	// nothing tends a merge request the order does not know about. Any non-zero
+	// value is a defect somewhere upstream of here, not routine housekeeping.
+	ordersRecovered = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "console_order_open_mr_recovered_total",
+		Help: "Total orders brought back to the status their open merge request implies, by target status.",
+	}, []string{"to"})
+
+	// transitionsRefused counts status changes the state machine turned down, by
+	// edge. A refusal is never routine: the caller asked for something the order
+	// cannot do, and until now that answer went nowhere at all.
+	transitionsRefused = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "console_order_transition_refused_total",
+		Help: "Total order status changes refused by the state machine, by edge.",
+	}, []string{"from", "to"})
+
 	// mrMerges counts auto-merge attempts on the portal's own MRs by result
 	// (ok|error). A rising error count with no successes means an order is wedged
 	// unable to merge (conflict, required pipeline/approvals); the poller would
@@ -208,6 +227,19 @@ func ObserveMRMerge(err error) {
 // with GitLab's reason. Call it once per block, not once per attempt.
 func ObserveMRMergeBlocked(reason string) {
 	mrMergesBlocked.WithLabelValues(reason).Inc()
+}
+
+// ObserveOrderRecovered records one order reconcile found with an open merge
+// request its status did not admit, and put back on the status that request
+// implies. Label: the status the order was moved to.
+func ObserveOrderRecovered(to string) {
+	ordersRecovered.WithLabelValues(to).Inc()
+}
+
+// ObserveTransitionRefused records one status change the state machine turned
+// down. Labels: the edge that was asked for.
+func ObserveTransitionRefused(from, to string) {
+	transitionsRefused.WithLabelValues(from, to).Inc()
 }
 
 // ObserveMRMergeRetried records what came of one conflicted merge request:

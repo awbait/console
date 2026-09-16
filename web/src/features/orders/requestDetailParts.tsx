@@ -384,6 +384,11 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
     Icon: IconArrowBackUp,
     tint: "slate",
   },
+  change_recovered: {
+    label: "Изменение нашлось в Git и вернулось в заказ",
+    Icon: IconGitFork,
+    tint: "amber",
+  },
 };
 
 // What a status change means, phrased as an event. StatusBadge keeps its own
