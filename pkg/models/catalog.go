@@ -71,6 +71,15 @@ type ChartDependency struct {
 	// Schema is the dependency's own values.schema.json, verbatim. Absent for
 	// most external charts, which is normal and not an error.
 	Schema json.RawMessage `json:"schema,omitempty"`
+	// Values is the dependency's own values.yaml, verbatim. Helm coalesces it
+	// under the dependency's key before checking any schema, so an order is held
+	// to what Helm would accept only when this is taken into account.
+	//
+	// Carried in JSON rather than kept in memory: the dependency list is cached
+	// as JSON and read back from there, so a field that does not travel would
+	// arrive empty every time but the first. It rides next to the dependency's
+	// whole values.schema.json, which is the larger of the two by far.
+	Values []byte `json:"values,omitempty"`
 	// Warning is a problem with the pair (parent, dependency) that the portal can
 	// see but not fix, shown in the version constructor. Empty when there is none.
 	Warning string `json:"warning,omitempty"`

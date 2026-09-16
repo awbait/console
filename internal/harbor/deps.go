@@ -57,6 +57,7 @@ func dependenciesOf(files map[string][]byte) []models.ChartDependency {
 		}
 		if sub, ok := packaged[d.Name]; ok {
 			dep.Schema = sub.schema
+			dep.Values = sub.values
 			// The packaged version is what the schema shown actually belongs to;
 			// the declared one is often a range ("^7.0.0") and names no artifact.
 			if sub.version != "" {
@@ -76,7 +77,7 @@ func dependenciesOf(files map[string][]byte) []models.ChartDependency {
 	for _, name := range extra {
 		sub := packaged[name]
 		out = append(out, models.ChartDependency{
-			Name: name, Key: name, Version: sub.version, Schema: sub.schema,
+			Name: name, Key: name, Version: sub.version, Schema: sub.schema, Values: sub.values,
 		})
 	}
 	if len(out) == 0 {
@@ -88,6 +89,7 @@ func dependenciesOf(files map[string][]byte) []models.ChartDependency {
 type packagedSubchart struct {
 	version string
 	schema  []byte
+	values  []byte
 }
 
 // packagedSubcharts collects what extractChartFiles took out of "charts/",
@@ -103,6 +105,8 @@ func packagedSubcharts(files map[string][]byte) map[string]packagedSubchart {
 		switch file {
 		case "values.schema.json":
 			sub.schema = body
+		case "values.yaml":
+			sub.values = body
 		case "Chart.yaml":
 			var m chartMetaDeps
 			if yaml.Unmarshal(body, &m) == nil {

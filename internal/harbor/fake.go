@@ -93,13 +93,18 @@ func (f *Fake) seed() {
 		Schema: []byte(`{
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
+  "required": ["poolMode"],
   "properties": {
     "enabled": {"type": "boolean", "title": "Connection pooler", "default": false},
-    "poolMode": {"type": "string", "title": "Pool mode", "enum": ["session", "transaction", "statement"], "default": "transaction"},
+    "poolMode": {"type": "string", "title": "Pool mode", "enum": ["session", "transaction", "statement"]},
     "maxClientConn": {"type": "integer", "title": "Max client connections", "default": 100},
     "global": {"type": "object", "properties": {"imageRegistry": {"type": "string"}}}
   }
 }`),
+		// The dependency answers its own required field, the way a real one does.
+		// Helm hands this over before checking any schema, so an order that says
+		// nothing about poolMode is an order Helm takes.
+		Values: []byte("poolMode: transaction\nmaxClientConn: 100\n"),
 	}}
 
 	f.add(&fakeChart{
