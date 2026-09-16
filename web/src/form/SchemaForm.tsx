@@ -224,7 +224,13 @@ export function setAt(value: Values, segments: string[], v: unknown): Values {
     }
     return { ...value, [head]: v };
   }
-  const child = setAt((value?.[head] as Values) ?? {}, rest, v);
+  // What is already there is written into only when it is an object. Between two
+  // chart versions a field changes shape - a list of gateways becomes the one
+  // gateway - and spreading the old array here would keep its elements as keys
+  // "0", "1", ... beside the new fields, leaving values no schema accepts.
+  const at = value?.[head];
+  const into = at !== null && typeof at === "object" && !Array.isArray(at) ? (at as Values) : {};
+  const child = setAt(into, rest, v);
   if (Object.keys(child).length === 0) {
     const { [head]: _drop, ...keep } = value;
     return keep;
