@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Fixed the order form refusing a service that is assembled from several charts.
 - Aligned the row remove button with the input next to it in the lists of the
   order form.
 
