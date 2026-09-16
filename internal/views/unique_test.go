@@ -115,3 +115,23 @@ func TestUniqueRulesDoNotRepeatThemselves(t *testing.T) {
 		t.Errorf("rules = %+v", rules)
 	}
 }
+
+// A tab may name a list that lives inside another list: the listeners of the
+// gateway a chart provisions are "/gateways/0/listeners".
+func TestUniqueRulesThroughAListIndex(t *testing.T) {
+	const doc = `{"tabs":[{"id":"listeners","items":"/gateways/0/listeners","form":"l","ui:uniqueBy":"name"}]}`
+	rules := UniqueRules([]byte(doc))
+	values := map[string]any{"gateways": []any{map[string]any{
+		"name":      "lk",
+		"listeners": []any{route("https", ""), route("https", "")},
+	}}}
+
+	d, found := FindDuplicate(values, rules)
+	if !found || d.Value != "https" {
+		t.Fatalf("duplicate = %+v found=%v", d, found)
+	}
+	// And an index that is not there resolves to nothing rather than to a panic.
+	if _, found := FindDuplicate(map[string]any{"gateways": []any{}}, rules); found {
+		t.Error("an empty list produced a duplicate")
+	}
+}

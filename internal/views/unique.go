@@ -24,6 +24,7 @@ package views
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -128,11 +129,23 @@ func FindDuplicate(values map[string]any, rules []UniqueRule) (Duplicate, bool) 
 	return Duplicate{}, false
 }
 
-// resolveList walks a field name down to the list it points at. A name may be a
-// path through a chart dependency, the same way a view names any other field.
+// resolveList walks a field name down to the list it points at.
+//
+// A name may be a path through a chart dependency, the way a view names any
+// other field of one, and it may step through a list on the way: a tab names
+// the listeners of the first gateway as "/gateways/0/listeners", because a chart
+// that provisions one gateway keeps it at a fixed place.
 func resolveList(values map[string]any, field string) ([]any, bool) {
 	var node any = values
 	for seg := range strings.SplitSeq(field, "/") {
+		if i, err := strconv.Atoi(seg); err == nil {
+			list, ok := node.([]any)
+			if !ok || i < 0 || i >= len(list) {
+				return nil, false
+			}
+			node = list[i]
+			continue
+		}
 		m, ok := node.(map[string]any)
 		if !ok {
 			return nil, false
