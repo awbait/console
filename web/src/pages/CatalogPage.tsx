@@ -1,11 +1,13 @@
 import {
   IconCategory,
   IconChevronDown,
+  IconLayoutGrid,
+  IconList,
   IconPackageOff,
   IconSearch,
-  IconUsersGroup,
   IconX,
 } from "@tabler/icons-react";
+import { useEffect, useRef } from "react";
 import {
   Button as AriaButton,
   Select as AriaSelect,
@@ -14,202 +16,218 @@ import {
   ListBoxItem,
   Popover,
   SearchField,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
 } from "react-aria-components";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { CatalogChart, Category } from "../api/types";
-import { isUnclaimed, publisherLabel } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
 import { CAPABILITIES } from "../app/capabilities";
+import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { useTeam } from "../app/TeamContext";
-import { useTeamLabel } from "../auth/UserContext";
+import { noTeamNotice } from "../auth/access";
+import { useTeamLabel, useUser } from "../auth/UserContext";
 import { AddChartDialog } from "../components/AddChartDialog";
-import { categoryIcon, ProductIcon } from "../components/icons";
-import { Button, Card, OutageState, SkeletonCards } from "../components/ui";
+import { categoryIcon } from "../components/icons";
+import { Button, OutageState, SkeletonCards } from "../components/ui";
+import { CatalogCards, CatalogList } from "../features/catalog/CatalogItems";
+import { canManageChart, isOrderableChart } from "../features/catalog/catalogModel";
+import { useStored } from "../hooks/useStored";
+import "../features/catalog/catalog.css";
 
-type CategoryOf = (id?: string) => Category | undefined;
-
-// isApprovedChart: the chart is published with an order form available - at
-// least one orderable version.
-function isApprovedChart(c: CatalogChart): boolean {
-  const p = c.publication;
-  return !!p?.published && (!!p.has_order_view || (p.orderable_versions?.length ?? 0) > 0);
-}
-
-// matchesQuery: case-insensitive match over the card's visible texts (name,
-// project path, both live and approved descriptions).
-function matchesQuery(c: CatalogChart, q: string): boolean {
-  return [c.name, `${c.project}/${c.name}`, c.description, c.publication?.approved_description]
-    .filter(Boolean)
-    .some((s) => (s as string).toLowerCase().includes(q));
+function matchesQuery(chart: CatalogChart, query: string): boolean {
+  return [
+    chart.name,
+    `${chart.project}/${chart.name}`,
+    chart.description,
+    chart.publication?.approved_description,
+  ].some((value) => value?.toLowerCase().includes(query));
 }
 
 export function CatalogPage() {
   const { categories, charts, error, loading, reload } = useCatalog();
+  const { user } = useUser();
   const { team } = useTeam();
   const teamLabel = useTeamLabel();
-  // Search/filter state lives in the URL (?q=&cat=), so a filtered view can be
-  // shared and survives navigation back to the catalog.
+  const { blockedReason } = usePlatformHealth();
   const [params, setParams] = useSearchParams();
+  const [storedView, setView] = useStored<"cards" | "list">("catalog.view", "cards");
+  const view = storedView === "list" ? "list" : "cards";
+  const resultsRef = useRef<HTMLDivElement>(null);
   const query = params.get("q") ?? "";
   const activeCat = params.get("cat") ?? "";
+  const canPublish = user?.role === "admin" || !!user?.teams?.length;
+  const tab = canPublish && params.get("tab") === "unpublished" ? "unpublished" : "available";
+  const unpublished = tab === "unpublished";
+  const q = query.trim().toLowerCase();
+  const hasFilter = !!q || !!activeCat;
+  const orderDisabled = noTeamNotice(user)?.short ?? blockedReason("ordering");
 
-  if (loading) return <SkeletonCards count={6} className="mt-2" />;
-  // A catalog that cannot be loaded is the whole page, so it takes the whole
-  // page: the wording is the same one the platform indicator uses, so a user
-  // who saw the banner meets the same sentence here.
-  if (error)
-    return (
-      <OutageState
-        title="Каталог сейчас недоступен"
-        message={CAPABILITIES.catalog.impact}
-        onRetry={reload}
-      />
-    );
-
-  function setParam(key: "q" | "cat", value: string) {
+  // Search, category and tab can be shared. View density is a local preference.
+  function setParam(key: "q" | "cat" | "tab", value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
     setParams(next, { replace: true });
   }
 
-  const categoryOf: CategoryOf = (id) => categories.find((c) => c.id === id);
-
-  // Charts available to the active team: no allowlist, or allowlist includes it.
-  const visible = charts.filter(
-    (c) => !team || !c.allowed_teams?.length || c.allowed_teams.includes(team),
+  const visible = charts.filter((c) => !team || !c.allowed_teams?.length || c.allowed_teams.includes(team));
+  const available = visible.filter(isOrderableChart);
+  const drafts = visible.filter((c) => !isOrderableChart(c) && canManageChart(c, user));
+  const current = unpublished ? drafts : available;
+  const filtered = current.filter(
+    (c) => (!activeCat || c.publication?.category_id === activeCat) && (!q || matchesQuery(c, q)),
   );
-
-  // Category filter chips: only categories that actually hold visible charts.
-  const catCounts = new Map<string, number>();
-  for (const c of visible) {
-    const id = c.publication?.category_id;
-    if (id) catCounts.set(id, (catCounts.get(id) ?? 0) + 1);
+  const counts = new Map<string, number>();
+  for (const chart of current) {
+    const id = chart.publication?.category_id;
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
   }
-  const filterCats = categories.filter((c) => (catCounts.get(c.id) ?? 0) > 0);
+  // Keep the active category when another tab/team has no services in it.
+  const filterCategories = categories.filter((c) => counts.has(c.id) || c.id === activeCat);
 
-  const q = query.trim().toLowerCase();
-  const filtered = visible.filter((c) => {
-    if (activeCat && c.publication?.category_id !== activeCat) return false;
-    return !q || matchesQuery(c, q);
-  });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the result scope or view changes, not during background refreshes.
+  useEffect(() => {
+    resultsRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [query, activeCat, tab, team, view]);
 
-  // Approved: published with an order view (passed moderation). The rest:
-  // found by the Harbor scan / drafts still in progress or review.
-  const approved = filtered.filter(isApprovedChart);
-  const others = filtered.filter((c) => !isApprovedChart(c));
+  if (loading) return <SkeletonCards count={6} className="mt-2" />;
+  if (error)
+    return (
+      <OutageState title="Каталог сейчас недоступен" message={CAPABILITIES.catalog.impact} onRetry={reload} />
+    );
 
-  const hasFilter = !!q || !!activeCat;
-
+  const itemsProps = {
+    charts: filtered,
+    categories,
+    showCategory: !activeCat,
+    unpublished,
+    disabledReason: orderDisabled,
+  };
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Каталог</h1>
+    <Tabs
+      selectedKey={tab}
+      onSelectionChange={(key) => setParam("tab", key === "unpublished" ? "unpublished" : "")}
+      className="catalog-page"
+    >
+      <div className="catalog-heading">
+        <div>
+          <h1 className="text-xl font-semibold">Каталог</h1>
+          <p className="mt-1 text-sm text-slate-500">Сервисы для вашего проекта</p>
+        </div>
         <AddChartDialog />
       </div>
-
-      {/* A release the owners have not published yet used to be a banner here.
-          It is a notification now: the catalog is where a person comes to order
-          something, and the work belongs to whoever owns the service. */}
-
-      {/* Search + category filter. Hidden while the catalog is empty: the
-          empty state below explains how services get here. */}
-      {visible.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchField
-            value={query}
-            onChange={(v) => setParam("q", v)}
-            aria-label="Поиск по каталогу"
-            className="group relative w-full sm:w-72"
-          >
-            <IconSearch
-              size={16}
-              stroke={1.8}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-              aria-hidden
-            />
-            <Input
-              placeholder="Название или описание..."
-              className="w-full rounded-lg border border-gray-300 bg-surface py-1.5 pl-8 pr-8 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 [&::-webkit-search-cancel-button]:hidden"
-            />
-            {query && (
-              <AriaButton
-                onPress={() => setParam("q", "")}
-                aria-label="Очистить поиск"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                <IconX size={14} stroke={2} />
-              </AriaButton>
-            )}
-          </SearchField>
-          {filterCats.length > 1 && (
-            <CategoryFilter
-              categories={filterCats}
-              counts={catCounts}
-              total={visible.length}
-              value={activeCat}
-              onChange={(id) => setParam("cat", id)}
-            />
-          )}
-        </div>
-      )}
-
-      {/* One continuous catalog: published cards first (no section header),
-          unpublished ones after a thin labelled divider, rendered muted. */}
-      {approved.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {approved.map((c) => (
-            <ChartCard key={`${c.project}/${c.name}`} chart={c} categoryOf={categoryOf} />
-          ))}
-        </div>
-      )}
-      {others.length > 0 && (
-        <>
-          <div className="flex items-center gap-3">
-            <span className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs text-slate-400">не опубликованы</span>
-            <span className="h-px flex-1 bg-slate-200" />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {others.map((c) => (
-              <ChartCard key={`${c.project}/${c.name}`} chart={c} categoryOf={categoryOf} muted />
-            ))}
-          </div>
-        </>
-      )}
-
-      {visible.length === 0 ? (
-        <EmptyState
-          title="Каталог пуст"
-          text={
-            team
-              ? `Для группы ${teamLabel(team)} пока нет доступных сервисов. Добавьте сервис из Harbor - или дождитесь, пока его опубликует владелец.`
-              : "Добавьте сервис из Harbor через «Добавить сервис» - или включите автодискавери, и найденные чарты появятся здесь."
-          }
-        />
-      ) : (
-        filtered.length === 0 &&
-        hasFilter && (
-          <EmptyState
-            title="Ничего не найдено"
-            text={`По запросу${q ? ` «${query.trim()}»` : ""}${activeCat ? ` в категории «${categoryOf(activeCat)?.label ?? activeCat}»` : ""} сервисов нет. Попробуйте изменить запрос или сбросить фильтры.`}
-          >
-            <Button
-              onPress={() => {
-                setParams(new URLSearchParams(), { replace: true });
-              }}
+      <TabList aria-label="Раздел каталога" className="catalog-tabs">
+        <Tab id="available" className="catalog-tab">
+          Доступные сервисы<span className="catalog-count">{available.length}</span>
+        </Tab>
+        {canPublish && (
+          <Tab id="unpublished" className="catalog-tab">
+            Неопубликованные<span className="catalog-count">{drafts.length}</span>
+          </Tab>
+        )}
+      </TabList>
+      <div className="catalog-toolbar">
+        <SearchField
+          value={query}
+          onChange={(value) => setParam("q", value)}
+          aria-label="Поиск по каталогу"
+          className="catalog-search"
+        >
+          <IconSearch size={16} stroke={1.8} className="catalog-search-icon" aria-hidden />
+          <Input placeholder="Название или описание..." className="catalog-search-input" />
+          {query && (
+            <AriaButton
+              onPress={() => setParam("q", "")}
+              aria-label="Очистить поиск"
+              className="catalog-search-clear"
             >
-              Сбросить фильтры
-            </Button>
-          </EmptyState>
-        )
+              <IconX size={14} aria-hidden />
+            </AriaButton>
+          )}
+        </SearchField>
+        <CategoryFilter
+          categories={filterCategories}
+          counts={counts}
+          total={current.length}
+          value={activeCat}
+          onChange={(value) => setParam("cat", value)}
+        />
+        <fieldset aria-label="Вид каталога" className="catalog-view-switch">
+          <AriaButton
+            aria-label="Карточки"
+            aria-pressed={view === "cards"}
+            onPress={() => setView("cards")}
+            className="catalog-view-button"
+          >
+            <IconLayoutGrid size={18} aria-hidden />
+          </AriaButton>
+          <AriaButton
+            aria-label="Список"
+            aria-pressed={view === "list"}
+            onPress={() => setView("list")}
+            className="catalog-view-button"
+          >
+            <IconList size={18} aria-hidden />
+          </AriaButton>
+        </fieldset>
+      </div>
+      {hasFilter && (
+        <div className="catalog-filter-summary" role="status">
+          <span>Найдено: {filtered.length}</span>
+          <AriaButton
+            className="catalog-reset"
+            onPress={() => {
+              const next = new URLSearchParams(params);
+              next.delete("q");
+              next.delete("cat");
+              setParams(next, { replace: true });
+            }}
+          >
+            Сбросить фильтры
+            <IconX size={13} aria-hidden />
+          </AriaButton>
+        </div>
       )}
-    </div>
+      <TabPanel
+        id={tab}
+        ref={resultsRef}
+        className={`catalog-results ${view === "list" ? "catalog-results-list" : ""}`}
+      >
+        {filtered.length > 0 ? (
+          view === "list" ? (
+            <CatalogList {...itemsProps} />
+          ) : (
+            <CatalogCards {...itemsProps} />
+          )
+        ) : hasFilter ? (
+          <EmptyState title="Ничего не найдено" text="Попробуйте изменить запрос или сбросить фильтры." />
+        ) : unpublished ? (
+          <EmptyState
+            title="Нет неопубликованных сервисов"
+            text="Здесь появятся сервисы, которые вы готовите к публикации."
+          />
+        ) : (
+          <EmptyState
+            title="Пока нет доступных сервисов"
+            text={
+              team
+                ? `Для проекта ${teamLabel(team)} пока нет сервисов, готовых к заказу.`
+                : "Доступные сервисы появятся здесь после публикации."
+            }
+          >
+            {canPublish && drafts.length > 0 && (
+              <Button onPress={() => setParam("tab", "unpublished")}>Посмотреть неопубликованные</Button>
+            )}
+          </EmptyState>
+        )}
+      </TabPanel>
+    </Tabs>
   );
 }
 
-// CategoryFilter: a compact dropdown next to the search box. Scales to any
-// number of categories (unlike a chip row); an active filter tints the trigger.
 function CategoryFilter({
   categories,
   counts,
@@ -224,70 +242,46 @@ function CategoryFilter({
   onChange: (id: string) => void;
 }) {
   const current = categories.find((c) => c.id === value);
+  // Shared links can refer to a category removed after the link was created.
+  const options =
+    value && !current ? [...categories, { id: value, label: "Недоступная категория", sort: 0 }] : categories;
   return (
     <AriaSelect
       selectedKey={value || "all"}
-      onSelectionChange={(k) => onChange(k === "all" ? "" : String(k))}
+      onSelectionChange={(key) => onChange(key === "all" ? "" : String(key))}
       aria-label="Категория"
-      className="inline-flex"
+      className="catalog-category-filter"
     >
       {({ isOpen }) => (
         <>
-          <AriaButton
-            className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500 ${
-              value
-                ? "border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100"
-                : "border-gray-300 bg-surface text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <IconCategory
-              size={15}
-              stroke={1.8}
-              className={value ? "text-brand-500" : "text-slate-400"}
-              aria-hidden
-            />
-            {current?.label ?? "Все категории"}
-            {/* The chevron turns over while the list is open: the same 200ms as
-                the list itself, so one movement reads as the cause of the
-                other. */}
+          <AriaButton className={`catalog-category-trigger ${value ? "catalog-category-active" : ""}`}>
+            <IconCategory size={16} aria-hidden />
+            <span>{current?.label ?? (value ? "Недоступная категория" : "Все категории")}</span>
             <IconChevronDown
               size={14}
-              stroke={2}
-              className={`transition-transform duration-200 motion-reduce:transition-none ${
-                isOpen ? "rotate-180" : ""
-              } ${value ? "text-brand-400" : "text-slate-400"}`}
+              className={`shrink-0 transition-transform motion-reduce:transition-none ${isOpen ? "rotate-180" : ""}`}
               aria-hidden
             />
           </AriaButton>
-          {/* The list grows out of the button rather than appearing on top of
-              it: it scales from the edge it is anchored to and slides the last
-              4px into place, and it leaves faster than it arrives, the way a
-              thing dismissed should. */}
-          <Popover className="min-w-[var(--trigger-width)] origin-top rounded-lg border border-slate-200 bg-surface shadow-lg placement-top:origin-bottom entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-200 entering:ease-out placement-bottom:entering:slide-in-from-top-1 placement-top:entering:slide-in-from-bottom-1 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-100 exiting:ease-in exiting:fill-mode-forwards motion-reduce:animate-none">
-            <ListBox className="max-h-80 overflow-auto p-1 outline-none">
-              <ListBoxItem
-                id="all"
-                textValue="Все категории"
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none transition-colors focus:bg-brand-50 selected:bg-brand-100"
-              >
-                <IconCategory size={15} stroke={1.8} className="text-slate-400" aria-hidden />
-                Все категории
-                <span className="ml-auto pl-3 text-xs text-slate-400">{total}</span>
+          <Popover className="min-w-[var(--trigger-width)] max-w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-surface p-1 shadow-lg outline-none entering:animate-in entering:fade-in entering:duration-150 motion-reduce:animate-none">
+            <ListBox className="catalog-category-options">
+              <ListBoxItem id="all" textValue="Все категории" className="catalog-category-option">
+                <IconCategory size={15} aria-hidden />
+                <span>Все категории</span>
+                <span className="catalog-option-count">{total}</span>
               </ListBoxItem>
-              {categories.map((cat) => {
-                const Icon = categoryIcon(cat.icon ?? "", cat.id);
+              {options.map((category) => {
+                const Icon = categoryIcon(category.icon ?? "", category.id);
                 return (
                   <ListBoxItem
-                    key={cat.id}
-                    id={cat.id}
-                    textValue={cat.label}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm outline-none transition-colors focus:bg-brand-50 selected:bg-brand-100"
+                    key={category.id}
+                    id={category.id}
+                    textValue={category.label}
+                    className="catalog-category-option"
                   >
-                    <Icon size={15} stroke={1.8} className="text-slate-400" aria-hidden />
-                    {cat.label}
-                    <span className="ml-auto pl-3 text-xs text-slate-400">
-                      {counts.get(cat.id) ?? 0}
-                    </span>
+                    <Icon size={15} aria-hidden />
+                    <span>{category.label}</span>
+                    <span className="catalog-option-count">{counts.get(category.id) ?? 0}</span>
                   </ListBoxItem>
                 );
               })}
@@ -299,136 +293,13 @@ function CategoryFilter({
   );
 }
 
-// EmptyState: a friendly centered block instead of a blank screen (fresh
-// installation, or a search/filter with no hits).
-function EmptyState({
-  title,
-  text,
-  children,
-}: {
-  title: string;
-  text: string;
-  children?: React.ReactNode;
-}) {
+function EmptyState({ title, text, children }: { title: string; text: string; children?: React.ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-slate-200 bg-surface px-6 py-14 text-center shadow-sm">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-        <IconPackageOff size={24} stroke={1.6} />
-      </span>
-      <div>
-        <p className="text-sm font-semibold text-slate-700">{title}</p>
-        <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">{text}</p>
-      </div>
+    <div className="catalog-empty">
+      <IconPackageOff size={28} stroke={1.6} aria-hidden />
+      <h2>{title}</h2>
+      <p>{text}</p>
       {children}
     </div>
-  );
-}
-
-// ChartCard: one catalog entry. muted renders the unpublished variant: dashed
-// border and toned-down icon/text, so drafts read as secondary at a glance.
-function ChartCard({
-  chart: c,
-  categoryOf,
-  muted = false,
-}: {
-  chart: CatalogChart;
-  categoryOf: CategoryOf;
-  muted?: boolean;
-}) {
-  const pub = c.publication;
-  const teamLabel = useTeamLabel();
-  const approved = isApprovedChart(c);
-  const orderable = pub?.orderable_versions ?? [];
-  // Approved charts show a snapshot (version + description + icon at approve time),
-  // not the live Harbor data; the rest show live data. For approved charts take the
-  // icon strictly from the snapshot (even if empty), else a new version's icon leaks.
-  // Main chip: recommended (or highest orderable) version, else the live latest.
-  const version =
-    (approved && (pub?.recommended_version || orderable[0] || pub?.approved_view_version)) ||
-    c.latest_version;
-  // Other orderable versions beyond the main one, shown as "+N" with a tooltip.
-  const extraVersions = orderable.filter((v) => v !== version);
-  const description = (approved && pub?.approved_description) || c.description;
-  const category = categoryOf(pub?.category_id);
-  const CatIcon = categoryIcon(category?.icon ?? "", category?.id ?? pub?.category_id);
-  return (
-    <Link to={`/catalog/${c.project}/${c.name}`} className="group block h-full">
-      <Card
-        className={`flex h-full flex-col transition group-hover:border-brand-400 group-hover:shadow-md ${muted ? "border-dashed" : ""}`}
-      >
-        <div className="flex items-start gap-3">
-          <span
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition group-hover:bg-brand-50 group-hover:text-brand-600 ${
-              muted ? "bg-slate-50 text-slate-400" : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            <ProductIcon project={c.project} name={c.name} size={24} />
-          </span>
-          <div className="min-w-0 flex-1">
-            {/* Published state needs no badge here: the grid split (divider +
-                muted variant) already communicates it. */}
-            <h2
-              className={`truncate font-semibold transition-colors group-hover:text-brand-700 ${
-                muted ? "text-slate-700" : "text-gray-900"
-              }`}
-            >
-              {c.name}
-            </h2>
-            <p
-              className={`mt-1 line-clamp-2 min-h-[2.5rem] text-sm ${muted ? "text-slate-500" : "text-gray-600"}`}
-            >
-              {description}
-            </p>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500">
-          {c.missing ? (
-            <span
-              title="Публикация ссылается на чарт, которого больше нет в Harbor"
-              className="rounded bg-red-50 px-2 py-0.5 text-red-700"
-            >
-              нет в Harbor
-            </span>
-          ) : (
-            <span
-              title={approved ? "Рекомендуемая версия" : "Последняя версия в Harbor"}
-              className="rounded bg-gray-100 px-2 py-0.5 font-mono"
-            >
-              v{version}
-            </span>
-          )}
-          {!c.missing && extraVersions.length > 0 && (
-            <span
-              title={`Доступные версии: ${orderable.join(", ")}`}
-              className="rounded bg-gray-100 px-2 py-0.5 text-gray-500"
-            >
-              +{extraVersions.length}
-            </span>
-          )}
-          {category && (
-            <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5">
-              <CatIcon size={12} stroke={1.8} className="text-gray-400" aria-hidden />
-              {category.label}
-            </span>
-          )}
-          {/* A chart auto-discovery has not handed to anyone yet has no owner to
-              name: the admin group it is parked on is bookkeeping, not an owner. */}
-          {pub && !isUnclaimed(pub) && (
-            <span
-              title={`Владелец: ${teamLabel(pub.owner_team)}${pub.created_by_name ? ` · ${publisherLabel(pub.created_by)}: ${pub.created_by_name}` : ""}`}
-              className="inline-flex items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-brand-700"
-            >
-              <IconUsersGroup size={12} stroke={1.8} className="text-brand-400" aria-hidden />
-              {teamLabel(pub.owner_team)}
-            </span>
-          )}
-          {c.allowed_teams && c.allowed_teams.length > 0 && (
-            <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-700">
-              teams: {c.allowed_teams.join(", ")}
-            </span>
-          )}
-        </div>
-      </Card>
-    </Link>
   );
 }

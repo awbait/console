@@ -19,7 +19,7 @@ import {
   IconVariable,
   IconUsers,
 } from "@tabler/icons-react";
-import { Suspense, useEffect, useId, useMemo, useState } from "react";
+import { type CSSProperties, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Button,
   Focusable,
@@ -156,6 +156,43 @@ function labelFade(collapsed: boolean): string {
   }`;
 }
 
+// Measure the actual overflow so short labels stay still and long ones only
+// travel far enough to reveal their ending. Recheck after sidebar resizing.
+function CategoryLabel({ label }: { label: string }) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflow, setOverflow] = useState(0);
+  const reducedMotion = useMatchMedia("(prefers-reduced-motion: reduce)");
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const text = textRef.current;
+    if (!container || !text) return;
+    const measure = () => setOverflow(Math.max(0, text.scrollWidth - container.clientWidth));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(text);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <span
+      ref={containerRef}
+      className="sidebar-category-label"
+      data-overflow={overflow > 0 ? "true" : undefined}
+      title={reducedMotion && overflow > 0 ? label : undefined}
+      style={{
+        "--label-travel": `${-overflow}px`,
+        "--label-duration": `${Math.max(1, overflow / 100 * 2 + 0.5)}s`,
+      } as CSSProperties}
+    >
+      <span className="sidebar-category-label-static">{label}</span>
+      <span ref={textRef} aria-hidden="true" className="sidebar-category-label-moving">{label}</span>
+    </span>
+  );
+}
+
 // A sidebar section that opens in place: its header toggles the list below it.
 // Built by hand rather than on react-aria's Disclosure because that one hides
 // the panel with the `hidden` attribute (display: none), which no transition
@@ -203,7 +240,7 @@ function NavSection({
       >
         <span className="flex min-w-0 items-center gap-3">
           <Icon size={20} stroke={1.8} className="shrink-0" />
-          <span className={category ? "text-left [overflow-wrap:anywhere]" : "shrink-0"}>{label}</span>
+          {category ? <CategoryLabel label={label} /> : <span className="shrink-0">{label}</span>}
         </span>
         <IconChevronRight
           size={16}
@@ -403,7 +440,15 @@ export function Layout() {
           <div className="flex items-center gap-1">
             <PlatformHealthIndicator />
             <ThemeMenu />
-            {/* Docs live at the bottom of the sidebar; no duplicate here. */}
+            <Link
+              to="/docs"
+              aria-label="Документация"
+              title="Документация"
+              aria-current={pathname.startsWith("/docs") ? "page" : undefined}
+              className="rounded-md p-2 text-slate-500 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700"
+            >
+              <DocumentationIcon size={20} />
+            </Link>
             <Link
               to="/about"
               aria-label="О портале"
@@ -465,12 +510,9 @@ export function Layout() {
           })()}
 
           <aside className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm">
-            {/* Nav scrolls on its own so the collapse toggle stays pinned to the
-                bottom of the card even with a long product taxonomy.
-                overflow-x-hidden is not redundant: with overflow-y set, the other
-                axis computes to auto, so while the width animates the nowrap
-                labels overflow sideways and flash a horizontal scrollbar. */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+            {/* Only the lower navigation scrolls; the section switcher and
+                primary links stay visible even with a long product taxonomy. */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {/* Section switcher (only when a role can see more than one).
                   A dropdown in both states: the labels don't fit as a pill row
                   once there are three of them, and collapsing must not turn one
@@ -478,7 +520,7 @@ export function Layout() {
                   trigger shows the active section's icon and the menu carries
                   the labels. */}
               {availableSections.length > 1 && (
-                <div className="px-2 pt-2">
+                <div className="shrink-0 px-2 pt-2">
                   <MenuTrigger>
                     <SideTip label={currentSection.label} enabled={collapsed}>
                       <Button
@@ -534,7 +576,7 @@ export function Layout() {
 
               {sectionNav ? (
                 /* security/admin section: its own flat nav, no product categories */
-                <nav className="px-2 py-2">
+                <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2">
                   <ul className="flex flex-col gap-1.5">
                     {sectionNav.map((n) => {
                       const Icon = n.Icon;
@@ -559,7 +601,7 @@ export function Layout() {
               ) : (
                 <>
                   {/* flat group: Resources / Charts (active via navActive aria-current) */}
-                  <nav className="px-2 py-2">
+                  <nav className="shrink-0 px-2 py-2">
                     <ul className="flex flex-col gap-1.5">
                       {navItems.map((n) => {
                         const Icon = n.Icon;
@@ -585,14 +627,14 @@ export function Layout() {
                     </ul>
                   </nav>
 
-                  <div className="mx-3 border-t border-slate-100" />
+                  <div className="mx-3 shrink-0 border-t border-slate-100" />
 
                   {/* Product categories (dynamic: published charts with an order
                       view). Collapsed, a category opens its services in a menu -
                       it used to be a plain link to the first chart, which left
                       every other service in the category unreachable. */}
                   {collapsed ? (
-                    <nav aria-label="Сервисы" className="flex flex-col gap-1.5 px-2 py-3">
+                    <nav aria-label="Сервисы" className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden px-2 py-3 [&>*]:shrink-0">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id, g.id);
                         return (
@@ -628,7 +670,7 @@ export function Layout() {
                       })}
                     </nav>
                   ) : (
-                    <nav aria-label="Сервисы" className="flex flex-col gap-1.5 px-2 py-3">
+                    <nav aria-label="Сервисы" className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden px-2 py-3 [&>*]:shrink-0">
                       {menu.map((g) => {
                         const Icon = categoryIcon(g.icon || g.id, g.id);
                         return (
@@ -660,22 +702,6 @@ export function Layout() {
                   )}
                 </>
               )}
-            </div>
-
-            {/* Docs closes the navigation: a destination like the items above,
-                just a secondary one, so it stays inside the menu block with no
-                divider of its own. */}
-            <div className="shrink-0 px-2 pb-2">
-              <SideTip label="Документация" enabled={collapsed}>
-                <Link
-                  to="/docs"
-                  aria-current={pathname.startsWith("/docs") ? "page" : undefined}
-                  className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm text-slate-500 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:font-medium aria-[current=page]:text-brand-700`}
-                >
-                  <DocumentationIcon size={20} className="shrink-0" />
-                  <span className={`shrink-0 ${labelFade(collapsed)}`}>Документация</span>
-                </Link>
-              </SideTip>
             </div>
 
             {/* Collapsing is shell chrome, not a place to go: it sits below the
@@ -805,15 +831,36 @@ function OrgSelector({ collapsed }: { collapsed: boolean }) {
     );
   }
 
-  // A single group is context, not a control: no menu to open.
+  // Keep the same heading and selected-row geometry as the multi-project list.
+  // A single project is static context, so it needs no toggle or menu.
   if (teams.length === 1) {
+    const singleTeam = teams[0];
+    if (!collapsed) {
+      return (
+        <div className="projects-context">
+          <div className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md border border-transparent ${SELECT_ROW} text-sm font-medium text-slate-600`}>
+            <ProjectsIcon size={20} stroke={1.8} className="shrink-0" />
+            <span>Проект</span>
+          </div>
+          <div className="py-1">
+            <div className={`flex items-center gap-3 rounded-md bg-brand-50 ${SUB_ROW} text-sm font-bold text-brand-700`}>
+              <IconHash size={20} stroke={1.7} className="shrink-0 text-slate-400" />
+              <span className="min-w-0 truncate uppercase" title={singleTeam}>{singleTeam}</span>
+              <IconCheck size={16} className="ml-auto shrink-0 text-brand-600" />
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
-      <SideTip label={`Проект: ${team}`} enabled={collapsed}>
+      <SideTip label={`Проект: ${singleTeam}`} enabled>
         <span
-          className={`projects-context flex items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg ${ROW} text-sm`}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need access to the collapsed project's tooltip.
+          tabIndex={0}
+          aria-label={`Проект: ${singleTeam}`}
+          className={`projects-context flex items-center overflow-hidden rounded-lg border border-transparent ${SELECT_ROW} outline-none focus-visible:ring-2 focus-visible:ring-brand-500`}
         >
           <ProjectsIcon size={20} stroke={1.8} className="shrink-0 text-brand-600" />
-          <span className={`truncate font-bold uppercase text-slate-700 ${labelFade(collapsed)}`}>{team}</span>
         </span>
       </SideTip>
     );
