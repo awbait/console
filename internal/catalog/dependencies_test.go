@@ -233,3 +233,46 @@ func TestEffectiveSchemaCompilesAndChecksDependencyValues(t *testing.T) {
 		t.Error("a value outside the dependency's enum was accepted")
 	}
 }
+
+// A subchart that requires "global" and forbids unknown keys used to mount as a
+// node no values could satisfy: "global" was dropped from its properties but
+// left in its "required", so leaving it out failed "required" and putting it in
+// failed "additionalProperties". Nothing could be ordered from such a chart.
+func TestMountDependenciesDropsGlobalFromRequiredToo(t *testing.T) {
+	parent := []byte(`{"type":"object","properties":{"ns":{"type":"object","title":"Namespace"}}}`)
+	deps := []models.ChartDependency{{
+		Name: "namespace", Alias: "ns", Key: "ns",
+		Schema: []byte(`{
+		  "type":"object",
+		  "additionalProperties":false,
+		  "required":["identity","global"],
+		  "properties":{"identity":{"type":"object"},"global":{"type":"object"}}
+		}`),
+	}}
+
+	out, _ := mountDependencies(parent, deps)
+	ns := propertyOf(t, decode(t, out), "ns")
+	for _, r := range ns["required"].([]any) {
+		if r == "global" {
+			t.Fatal("global is still required under the dependency key")
+		}
+	}
+
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource("values.schema.json", bytes.NewReader(out)); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	sch, err := c.Compile("values.schema.json")
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	// What Helm sees: the parent's own global, and no global under the key.
+	values := map[string]any{"ns": map[string]any{"identity": map[string]any{}}}
+	if err := sch.Validate(values); err != nil {
+		t.Errorf("values Helm accepts were refused: %v", err)
+	}
+	// The rest of the dependency's "required" still has to hold.
+	if err := sch.Validate(map[string]any{"ns": map[string]any{}}); err == nil {
+		t.Error("a missing required field of the dependency was accepted")
+	}
+}
