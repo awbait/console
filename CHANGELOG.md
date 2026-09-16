@@ -12,6 +12,8 @@ All notable changes to this project are documented in this file.
 - Fixed the order form refusing a service that is assembled from several charts.
 - Fixed the order form garbling settings when a service is upgraded to a version
   where a list of settings became a single setting.
+- Aligned the row remove button with the input next to it in the lists of the
+  order form.
 - Fixed the empty fields in the form that upgrades a service to a new version:
   the portal fills them in the way it does in a new order.
 
