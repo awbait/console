@@ -100,6 +100,9 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 		// Freshly merged: wait until ArgoCD has actually finished syncing before
 		// calling it Healthy, so we don't latch onto a stale pre-sync report.
 		if app, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {
+			if s.reportAppError(ctx, r, app) {
+				return
+			}
 			if target := mapHealth(app.Health); target != "" &&
 				(target != models.StatusHealthy || deploySettled(app)) {
 				s.tryTransition(ctx, r, target)
@@ -112,6 +115,9 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 		// this (unchanged) app OutOfSync; that must not demote a Healthy product
 		// back to DEPLOYING - its own manifests/values did not change.
 		if app, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {
+			if s.reportAppError(ctx, r, app) {
+				return
+			}
 			if target := mapHealth(app.Health); target != "" {
 				s.tryTransition(ctx, r, target)
 			}
@@ -365,6 +371,45 @@ func (s *Service) takeMergeBlock(ctx context.Context, r *models.Request,
 // instances in DEPLOYING. Only used while DEPLOYING (see reconcileOne).
 func deploySettled(app *argocd.Application) bool {
 	return app.Sync == argocd.SyncSynced
+}
+
+// reportAppError puts an order whose application ArgoCD cannot even build into
+// DEGRADED, carrying what ArgoCD said. Returns true when the order has an error
+// to answer for, so the caller stops reading health off it.
+//
+// An application that fails to render reports no health at all: the status stays
+// Unknown, mapHealth answers with nothing, and the order sits wherever it was -
+// DEPLOYING, usually - for as long as nobody notices. Meanwhile ArgoCD is
+// holding the reason in plain words, down to the field of the values that broke
+// the chart. This is that reason reaching the person whose order it is.
+//
+// Said once, on the way into DEGRADED. An order already in DEGRADED stays put
+// with no second announcement: the poller comes back every few seconds, and a
+// reason that is already on the card is not news. The cost is that an order
+// degraded for some other reason and then failing to render keeps the older
+// explanation, which is a fair trade against saying the same thing forever.
+func (s *Service) reportAppError(ctx context.Context, r *models.Request, app *argocd.Application) bool {
+	if app == nil || app.Error == "" {
+		return false
+	}
+	from := r.Status
+	if from == models.StatusDegraded {
+		return true
+	}
+	s.tryTransition(ctx, r, models.StatusDegraded)
+	if r.Status != models.StatusDegraded {
+		// tryTransition has already said why it would not move.
+		return true
+	}
+	observability.ObserveAppError()
+	s.logger().Warn("argocd cannot build the application",
+		"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", app.Error)
+	s.eventWith(ctx, r, bySystem(), "app_error", from, models.StatusDegraded,
+		map[string]any{"error": app.Error})
+	if s.notify != nil {
+		s.notify.OrderDegraded(ctx, nil, r, app.Error)
+	}
+	return true
 }
 
 func mapHealth(h argocd.HealthStatus) models.RequestStatus {

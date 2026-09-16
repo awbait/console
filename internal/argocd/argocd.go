@@ -39,6 +39,24 @@ type Application struct {
 	// Healthy/Synced for a stale revision right after an MR merge).
 	Revision  string   `json:"revision,omitempty"`
 	Revisions []string `json:"revisions,omitempty"`
+	// Error is what ArgoCD says is wrong with this application, when it says
+	// anything. It comes from status.conditions and is the only place an
+	// application that cannot even be rendered explains itself: a chart whose
+	// values do not template, a dependency it cannot fetch, a spec it refuses.
+	// Health stays Unknown in those cases, so without this the portal has nothing
+	// to go on and the order waits for a health that will never arrive.
+	Error string `json:"error,omitempty"`
+}
+
+// errorCondition reports whether an ArgoCD condition type names a failure.
+//
+// ArgoCD spells them ComparisonError, SyncError, InvalidSpecError, and adds to
+// the list between versions. Matching the suffix rather than an allowlist is
+// deliberate: an unknown condition ending in Error is far more likely to be a
+// new name for a failure than something safe to swallow, and swallowing is what
+// this whole thing is about.
+func errorCondition(kind string) bool {
+	return len(kind) > 5 && kind[len(kind)-5:] == "Error"
 }
 
 // Port is the portal's view of ArgoCD: one application at a time, which is how

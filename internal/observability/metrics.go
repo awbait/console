@@ -139,6 +139,16 @@ var (
 		Help: "Total conflicted portal merge requests the portal rewrote onto the current branch, by outcome.",
 	}, []string{"outcome"})
 
+	// appErrors counts orders whose application ArgoCD could not build at all: a
+	// chart that does not template with these values, a dependency it cannot
+	// fetch, a spec it refuses. Such an application reports no health, so before
+	// this the order simply stopped moving. A rising count is orders waiting on
+	// somebody to fix their values, and it should be near zero.
+	appErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "console_order_app_error_total",
+		Help: "Total orders put into DEGRADED because ArgoCD reported an error condition on their application.",
+	})
+
 	// ordersRecovered counts orders reconcile found holding an open merge request
 	// while sitting in a status that does not admit one, and brought back to the
 	// status that request implies. It means an order opened a change in GitLab and
@@ -227,6 +237,12 @@ func ObserveMRMerge(err error) {
 // with GitLab's reason. Call it once per block, not once per attempt.
 func ObserveMRMergeBlocked(reason string) {
 	mrMergesBlocked.WithLabelValues(reason).Inc()
+}
+
+// ObserveAppError records one order put into DEGRADED because ArgoCD reported an
+// error condition on its application. Call it once per occurrence, not per tick.
+func ObserveAppError() {
+	appErrors.Inc()
 }
 
 // ObserveOrderRecovered records one order reconcile found with an open merge
