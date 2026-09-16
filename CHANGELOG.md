@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.16.0] - 2026-09-16
+
+A release about ordering and upgrading a service: the form asks for less and
+catches a mistake earlier, and an order that failed to deploy explains why on its
+own page.
+
+### Added
+- Added duplicate name checks in the order form and service card, identifying
+  the entry to rename (when uniqueness checking is configured for the list).
+
+### Changed
+- Added a "default" label to hints in empty order form fields to distinguish
+  them from entered values.
+- Renamed the administrator command for applying settings from Git to
+  "Synchronize with the cluster" in the orders table and on the order page.
+
+### Fixed
+- Fixed incorrect validation errors when ordering services with multiple
+  components.
+- Fixed order form validation so that service components' settings with default
+  values do not require manual entry.
+- Fixed saving settings in the service upgrade form when the selected version
+  replaces a list with a group of fields.
+- Fixed prefilling the service upgrade form: new fields receive the initial
+  values configured for the selected version, while existing settings are
+  preserved.
+- Fixed orders getting stuck during service changes: processing of submitted
+  changes resumes automatically.
+- Fixed an error when saving service settings on the order page while the
+  service status is being updated.
+- Added the reason for deployment failures to the order page and to
+  notifications sent to the service owner.
+- Aligned list item delete buttons with their input fields in the order form,
+  including when a hint or error appears below the field.
+
 ## [0.15.0] - 2026-09-14
 
 A release about the sidebar and the "Order form constructor" documentation
