@@ -1047,39 +1047,11 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	if verr := s.checkGraphNotEmpty(ctx, project, name, version, values); verr != nil {
 		return "", verr
 	}
-	if verr := s.checkUniqueNames(ctx, project, name, version, values); verr != nil {
-		return "", verr
-	}
 	out, merr := yaml.Marshal(values)
 	if merr != nil {
 		return "", &ValidationError{Message: MsgBadValues + merr.Error()}
 	}
 	return string(out), nil
-}
-
-// checkUniqueNames refuses an order in which two entries of one list carry the
-// same name, where the chart's view says that name tells entries apart.
-//
-// The schema cannot catch this: two entries with one name and different contents
-// are different entries, and uniqueItems is right to accept them. Yet the chart
-// builds the name of a resource out of that field, so the two ask for one
-// resource twice - and find out where the chart is rendered, which is Argo CD,
-// long after the order was accepted and the change merged into Git.
-//
-// Chart-agnostic, like the rest of the order path: which list and which field is
-// the version's own view document talking, not this.
-func (s *Service) checkUniqueNames(ctx context.Context, project, name, version string,
-	values map[string]any) *ValidationError {
-
-	rules := views.UniqueRules(s.orderView(ctx, project, name, version))
-	if len(rules) == 0 {
-		return nil
-	}
-	dup, found := views.FindDuplicate(values, rules)
-	if !found {
-		return nil
-	}
-	return &ValidationError{Message: views.DuplicateMessage(dup)}
 }
 
 // checkGraphNotEmpty refuses an order of a chart whose values are drawn as a
