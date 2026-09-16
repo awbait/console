@@ -389,6 +389,11 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
     Icon: IconGitFork,
     tint: "amber",
   },
+  app_error: {
+    label: "Сервис не удалось развернуть с этими настройками",
+    Icon: IconAlertTriangle,
+    tint: "rose",
+  },
 };
 
 // What a status change means, phrased as an event. StatusBadge keeps its own
@@ -441,6 +446,7 @@ const NOTABLE_EVENTS = new Set([
   "drift_detected",
   "merge_blocked",
   "change_withdrawn",
+  "app_error",
 ]);
 const NOTABLE_STATUSES = new Set([
   "MR_CREATED",
@@ -479,6 +485,14 @@ function eventLabel(e: TimelineEvent): string {
     // shown on the order form.
     const fields = String(e.payload?.fields ?? "");
     return fields ? `${label}: ${why} (${fields})` : `${label}: ${why}`;
+  }
+  // The delivery system's own words, kept as they are. They name the setting
+  // that broke the chart, which is the one thing the person can act on, and
+  // there is no shorter way to say which of a hundred fields it was. The row
+  // truncates and the full text is on hover.
+  if (e.event_type === "app_error") {
+    const why = String(e.payload?.error ?? "").trim();
+    return why ? `${label}: ${why}` : label;
   }
   return label;
 }
@@ -1057,7 +1071,11 @@ function TimelineRow({
       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${circle}`}>
         <Icon size={14} stroke={1.8} />
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{eventLabel(e)}</span>
+      {/* title, because a row truncates and some of these carry the delivery
+          system's own message, where the useful half is at the end. */}
+      <span className="min-w-0 flex-1 truncate text-sm text-slate-700" title={eventLabel(e)}>
+        {eventLabel(e)}
+      </span>
       {detailed && isStatus && <StatusEdge from={e.from_status} to={e.to_status} />}
       {/* The merge request the row rode in on, offered with the rest of the
           machinery under "Подробно" - the row already says in words what

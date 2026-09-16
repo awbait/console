@@ -121,6 +121,13 @@ type apiApp struct {
 		Health struct {
 			Status string `json:"status"`
 		} `json:"health"`
+		// conditions is where an application that could not be rendered at all
+		// says why. Health says nothing then - it stays Unknown - so this is the
+		// only thing to report and the only thing to act on.
+		Conditions []struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"conditions"`
 	} `json:"status"`
 }
 
@@ -137,6 +144,16 @@ func (a *apiApp) toApp() Application {
 	if health == "" {
 		health = HealthUnknown
 	}
+	// The first failing condition, not all of them: one reason is what a person
+	// acts on, and ArgoCD repeats the same failure across conditions often enough
+	// that a list of them reads as noise.
+	var appErr string
+	for _, c := range a.Status.Conditions {
+		if errorCondition(c.Type) && strings.TrimSpace(c.Message) != "" {
+			appErr = c.Type + ": " + strings.TrimSpace(c.Message)
+			break
+		}
+	}
 	return Application{
 		Name:      a.Metadata.Name,
 		Project:   a.Spec.Project,
@@ -146,6 +163,7 @@ func (a *apiApp) toApp() Application {
 		Labels:    a.Metadata.Labels,
 		Revision:  a.Status.Sync.Revision,
 		Revisions: a.Status.Sync.Revisions,
+		Error:     appErr,
 	}
 }
 
