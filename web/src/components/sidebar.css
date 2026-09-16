@@ -192,7 +192,7 @@ button:is(:hover, :focus-visible) .sidebar-toggle-icon-expand .sidebar-toggle-ic
 
 @media (prefers-reduced-motion: no-preference) {
   .category-code-bracket-left, .category-code-bracket-right {
-    transition: transform 160ms ease-out;
+    transition: transform 100ms ease-out;
   }
 
   :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-code-bracket-left,
