@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.17.0] - 2026-09-16
+
+### Added
+- Added the Sustainable Use License: internal business use is free, while
+  selling copies or paid portal access to third parties is prohibited.
+- Added an animated code brackets icon for development tools in category
+  settings.
+- Added a "Re-read chart" button on the chart management page to refresh chart
+  data after republishing a version in Harbor.
+- Added search, category filtering and a choice of cards or a table on the
+  catalog page.
+- Added an Unpublished tab in the catalog for services you can manage.
+
+### Changed
+- Kept the catalog heading, tabs and filters visible while scrolling through
+  services.
+- Moved the documentation link to the top navigation bar.
+- Made the pinned status column boundary clearer in the orders table with a
+  subtle dashed line.
+- Kept the order list, catalog and mode selector visible while scrolling through
+  sidebar categories.
+
+### Fixed
+- Fixed transferring saved settings into the service upgrade form, with a list
+  of transferred and removed values.
+- Fixed default values being ignored during order and service upgrade form
+  validation after a portal update.
+- Fixed long category names wrapping in the sidebar: the full name is revealed
+  on hover or keyboard focus.
+- Fixed the project section layout in the sidebar for accounts with one team.
+
 ## [0.16.0] - 2026-09-16
 
 A release about ordering and upgrading a service: the form asks for less and
@@ -698,7 +729,9 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/awbait/console/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/awbait/console/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/awbait/console/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/awbait/console/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/awbait/console/compare/v0.12.0...v0.13.0
