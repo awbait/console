@@ -19,8 +19,13 @@ import (
 // sees it, and a person typing into such a field would have their input quietly
 // overwritten on save.
 //
-// It only applies to a new order. Re-seeding an existing one would overwrite
-// somebody's edit with a value they had already decided against.
+// It applies to a new order, and to an upgrade of an existing one where it
+// fills only the keys the order does not already hold. A new chart version
+// brings fields the order has never had, and nothing else tells the person what
+// belongs in them. Everything the order does hold keeps its value: re-seeding it
+// would overwrite an edit with something already decided against. An order
+// changed without changing its version is not seeded at all, because no field is
+// new there.
 
 // Initial returns the "initial" block of a view document: a map from an RFC6901
 // JSON pointer to the value the order form starts with. Nil when the block is
