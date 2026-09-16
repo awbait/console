@@ -51,6 +51,17 @@ function emptyVal(v: unknown): boolean {
   return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
 }
 
+// The values a block of fields draws from. Anything that is not an object draws
+// an empty block: an older chart version kept a list where this one keeps a
+// block, and writing a field into that list would spread it into keys "0",
+// "1", ... beside the new fields, leaving values no schema accepts. The values
+// themselves are fitted to the schema before the form opens (valuesAdapt.ts),
+// which is where such a list is read back rather than lost - this only keeps the
+// form from making the mess again.
+function objectValue(v: unknown): Values {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Values) : {};
+}
+
 // matchesPattern safely tests v against a schema-provided regex. The pattern is
 // semi-trusted (chart view/schema), so guard against an invalid pattern (throws)
 // and cap input length to blunt catastrophic backtracking (ReDoS); backend
@@ -653,7 +664,7 @@ function Field({
             <ObjectFields
               schema={s}
               root={root}
-              value={(value as Values) ?? {}}
+              value={objectValue(value)}
               onChange={(v) => onChange(v)}
               view={s["ui:view"] as View | undefined}
               path={path}
