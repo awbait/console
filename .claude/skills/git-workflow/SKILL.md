@@ -76,9 +76,10 @@ the user asks for it.
 
 After finishing work on a branch:
 
-0. If the change is visible to the user, add its entry to `CHANGELOG.md` and
-   `CHANGELOG.ru.md` under `## [Unreleased]` and commit it with the change - see
-   the `changelog` skill for what deserves an entry and how it is worded.
+0. If the change is visible to the user, put its entry in `changelog.d/` as a
+   file of its own and commit it with the change - see `changelog.d/README.md`
+   for the format and the `changelog` skill for what deserves an entry and how it
+   is worded. The changelogs themselves are written only on release.
 1. Push the branch:
    ```bash
    git push -u origin feat/my-feature
@@ -125,8 +126,9 @@ Releases happen **only when the user explicitly asks** ("сделай релиз
 
 ### Release process
 
-1. Determine the new version from the `## [Unreleased]` section of the CHANGELOG
-   (the `changelog` skill has the rules):
+1. Determine the new version from the entries waiting in `changelog.d/`, which
+   `make changelog` prints without touching anything (the `changelog` skill has
+   the rules):
    - new capabilities (Added) → minor bump (v0.3.0 → v0.4.0)
    - only fixes (Fixed, Security) → patch bump (v0.3.0 → v0.3.1)
    - something removed or changed in a way that requires action → major bump
@@ -139,14 +141,20 @@ Releases happen **only when the user explicitly asks** ("сделай релиз
    git checkout -b release/vX.Y.Z
    ```
 
-3. Turn `## [Unreleased]` into the `## [X.Y.Z] - YYYY-MM-DD` section in
-   CHANGELOG.md and CHANGELOG.ru.md using the `changelog` skill. The entries are
-   already there from the merged PRs: reread them as one release, do not
-   reconstruct them from the git log
-
-4. Commit and create a PR:
+3. Collect the entries into the `## [X.Y.Z] - YYYY-MM-DD` section of
+   CHANGELOG.md and CHANGELOG.ru.md:
    ```bash
-   git add CHANGELOG.md CHANGELOG.ru.md
+   make changelog RELEASE=X.Y.Z
+   ```
+   The entries are already written, by the pull requests that made the changes:
+   reread the assembled section as one release, do not reconstruct it from the
+   git log. Editing the wording here is fine; writing a new entry from scratch
+   means somebody skipped step 0 above.
+
+4. Commit and create a PR. The entry files are collected into the changelogs and
+   removed, so both the files and the directory go into the commit:
+   ```bash
+   git add CHANGELOG.md CHANGELOG.ru.md changelog.d
    git commit -m "chore(release): prepare vX.Y.Z"
    git push -u origin release/vX.Y.Z
    gh pr create --title "release: vX.Y.Z" --body "..."
@@ -169,6 +177,6 @@ Never delete branches, tags, or releases - only the user can do that. Specifical
 |-----------|--------|
 | Start new feature | `git checkout main && git pull && git checkout -b feat/...` |
 | Switch to another task | WIP commit → checkout main → new branch |
-| Work is done | CHANGELOG под `[Unreleased]` → push (lefthook проверит) → create PR → комментарий в issue → checkout main |
+| Work is done | запись в `changelog.d/` → push (lefthook проверит) → create PR → комментарий в issue → checkout main |
 | User says "release" | Determine version → release branch → CHANGELOG → PR |
 | Merge conflict | Resolve, `git add`, continue rebase/merge |

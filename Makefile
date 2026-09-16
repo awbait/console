@@ -1,4 +1,4 @@
-.PHONY: build run-oidc watch web infra obs test vet lint tidy cover hooks down docker env-example \
+.PHONY: build run-oidc watch web infra obs test vet lint tidy cover hooks down docker env-example changelog \
 	up-upstreams-infra down-upstreams gitlab-seed \
 	stand-up stand-down stand-charts stand-appset stand-token stand-reset \
 	stand-gitlab-webhooks seed-import
@@ -110,6 +110,17 @@ tidy:
 # fails while the file and the tags disagree.
 env-example:
 	go run ./cmd/envexample
+
+# Show the changelog entries waiting in changelog.d/, or, with RELEASE, collect
+# them into a release section of CHANGELOG.md and CHANGELOG.ru.md and remove
+# them. The files carry no "Unreleased" section: that was the one place every
+# branch collided in, which is why entries wait in a file each.
+#   make changelog
+#   make changelog RELEASE=0.16.0
+# RELEASE rather than VERSION: VERSION is this build's own version, taken from
+# git a few lines above, and it is never the one being released.
+changelog:
+	go run ./cmd/changelog $(if $(RELEASE),-version $(RELEASE))
 
 cover:
 	go test -cover ./internal/...

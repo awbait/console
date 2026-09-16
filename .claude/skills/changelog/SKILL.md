@@ -1,6 +1,6 @@
 ---
 name: changelog
-description: "Maintain the changelog in Keep a Changelog format: add an entry for every user-visible change under [Unreleased], turn [Unreleased] into a version section on release, and pick the semantic version. Use whenever a change is finished or a release is prepared, or when the user says 'changelog', 'журнал изменений', 'release notes', 'какая версия'."
+description: "Maintain the changelog in Keep a Changelog format: write an entry for every user-visible change, collect the pending entries into a version section on release, and pick the semantic version. Use whenever a change is finished or a release is prepared, or when the user says 'changelog', 'журнал изменений', 'release notes', 'какая версия'."
 ---
 
 # Changelog
@@ -11,10 +11,15 @@ me.
 
 Two moments matter:
 
-1. **A change is finished.** Its entry goes under `## [Unreleased]` in the same
-   pull request that makes the change, so nothing has to be reconstructed later.
-2. **A release is cut.** `## [Unreleased]` becomes a version section with a
-   date, and a fresh empty `## [Unreleased]` takes its place.
+1. **A change is finished.** Its entry is written in the same pull request that
+   makes the change, so nothing has to be reconstructed later.
+2. **A release is cut.** Everything written since the last one becomes a version
+   section with a date.
+
+Where a pending entry waits between those two moments is the project's business,
+and this one keeps each in a file of its own - see **This project**. Writing them
+straight into the changelog is the other way, and the one the format below
+describes.
 
 ## File layout
 
@@ -26,7 +31,7 @@ on top:
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [1.3.0] - 2025-02-03
 
 ### Added
 - Dark mode: the interface follows the system theme or a choice of your own.
@@ -42,9 +47,12 @@ All notable changes to this project are documented in this file.
 ### Fixed
 - The password reset email no longer gets lost for addresses with a plus sign.
 
-[Unreleased]: https://github.com/<owner>/<repo>/compare/v1.2.0...HEAD
+[1.3.0]: https://github.com/<owner>/<repo>/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/<owner>/<repo>/compare/v1.1.0...v1.2.0
 ```
+
+Released sections only. A project that keeps its pending entries somewhere else,
+as this one does, has nothing above the newest release.
 
 Categories, in this order, and only the ones that have entries: **Added**,
 **Changed**, **Deprecated**, **Removed**, **Fixed**, **Security**.
@@ -55,9 +63,8 @@ product, not for the reader of the standard.
 
 ## Step 1: an entry per change
 
-Add the entry in the same pull request as the change itself. Put it under
-`## [Unreleased]`, in the category it belongs to, at the end of that category's
-list.
+Add the entry in the same pull request as the change itself, in the category it
+belongs to. Where it goes is in **This project**.
 
 **Write an entry when the change is visible or significant for the user:** a new
 capability, a changed behaviour or wording, a removed or renamed thing, a fixed
@@ -171,15 +178,14 @@ updated before the new version works.
 
 When a release is prepared:
 
-1. Replace the `## [Unreleased]` heading with `## [X.Y.Z] - YYYY-MM-DD` (the
-   release date in ISO format).
+1. Collect everything written since the last release into a
+   `## [X.Y.Z] - YYYY-MM-DD` section (the release date in ISO format), newest
+   section on top. How that is done is in **This project**.
 2. Optionally open the section with one or two sentences that say what this
    release is about, above the categories.
-3. Insert a fresh empty `## [Unreleased]` above it.
-4. Update the link references at the bottom of the file if the project uses
-   them: point `[Unreleased]` at `compare/vX.Y.Z...HEAD` and add a line for the
-   new version.
-5. Reread the section as a whole: merge entries that describe the same change,
+3. Update the link references at the bottom of the file if the project uses
+   them: add a line for the new version.
+4. Reread the section as a whole: merge entries that describe the same change,
    drop what turned out to be invisible to the user, put the entries that matter
    most first.
 
@@ -221,13 +227,22 @@ reader who needs the exact wording has the other file for it.
 The rules above are the whole method; this section is only what is specific to
 the Console repository.
 
-- Two files, kept in one change and identical in structure: `CHANGELOG.md`
-  (English) and `CHANGELOG.ru.md` (Russian).
-- The version number is never set by hand outside a release. `## [Unreleased]`
-  becomes `## [X.Y.Z] - YYYY-MM-DD` only in the release pull request
-  (`release/vX.Y.Z`); merging it lets a GitHub Action create the tag and the
-  GitHub Release from the changelog. The `git-workflow` skill has the order of
-  steps.
+- Two files, identical in structure: `CHANGELOG.md` (English) and
+  `CHANGELOG.ru.md` (Russian).
+- **A pending entry is a file in `changelog.d/`, not a line in either changelog.**
+  One entry, both languages, one file; the format and examples are in
+  `changelog.d/README.md`. Neither changelog carries an `## [Unreleased]`
+  section, because that was the one place every branch wrote into at once: two
+  open branches meant a conflict in both files, again after each merge.
+- `make changelog` prints what is waiting and touches nothing. Use it to read the
+  pending section.
+- The version number is never set by hand. In the release pull request
+  (`release/vX.Y.Z`), `make changelog RELEASE=X.Y.Z` writes the section into both
+  files and removes the entry files; merging that PR lets a GitHub Action create
+  the tag and the GitHub Release from the changelog. The `git-workflow` skill has
+  the order of steps.
+- The two files cannot drift apart in the number of entries: an entry carries
+  both languages, and the collector refuses a file missing one.
 - Chart changes are logged separately, in the chart's own `CHANGELOG.md` inside
   the charts repository, not here.
 
@@ -235,7 +250,7 @@ the Console repository.
 
 **Must**
 
-- Newest version first, `[Unreleased]` always on top.
+- Newest version first.
 - Dates in `YYYY-MM-DD`.
 - Every entry in a category, every category with at least one entry.
 - Every user-visible change gets an entry in the pull request that makes it.
