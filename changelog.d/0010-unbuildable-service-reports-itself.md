@@ -1,9 +1,7 @@
 ### Fixed
 
 #### en
-Fixed a service hanging on "Deploying" when its settings do not build: the order
-page now says so and quotes what the delivery system refused on.
+Added the reason for deployment failures to the order page and to notifications sent to the service owner.
 
 #### ru
-Исправили сервис, зависающий на «разворачивается», если с его настройками он не
-собирается: страница заказа говорит об этом и приводит отказ системы доставки.
+Добавили причину ошибки развёртывания на страницу заказа и в уведомление владельцу сервиса.

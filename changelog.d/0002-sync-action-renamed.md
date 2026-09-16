@@ -1,7 +1,7 @@
 ### Changed
 
 #### en
-Renamed the admin action on the order page: "Deploy from Git" is now "Synchronize with the cluster".
+Renamed the administrator command for applying settings from Git to "Synchronize with the cluster" in the orders table and on the order page.
 
 #### ru
-Переименовали действие администратора на странице заказа: «Выкатить из Git» стало «Синхронизировать с кластером».
+Переименовали команду администратора для применения настроек из Git в «Синхронизировать с кластером» в таблице заказов и на странице заказа.

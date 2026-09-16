@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-Fixed the order form garbling settings when a service is upgraded to a version where a list of settings became a single setting.
+Fixed saving settings in the service upgrade form when the selected version replaces a list with a group of fields.
 
 #### ru
-Исправили порчу настроек в форме заказа при обновлении сервиса на версию, где список настроек стал одной настройкой.
+Исправили сохранение настроек в форме обновления сервиса при выборе версии, в которой вместо списка используется группа полей.

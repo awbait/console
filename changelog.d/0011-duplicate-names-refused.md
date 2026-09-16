@@ -1,9 +1,7 @@
-### Fixed
+### Added
 
 #### en
-Fixed the order form accepting two entries with the same name in one list, and
-pointing at the entry to rename.
+Added duplicate name checks in the order form and service card, identifying the entry to rename (when uniqueness checking is configured for the list).
 
 #### ru
-Исправили приём двух записей с одним именем в списке формы заказа: портал
-называет запись, которую надо переименовать.
+Добавили проверку уникальности имён в форме заказа и карточке сервиса с подсказкой, какую запись переименовать (если проверка настроена для списка).

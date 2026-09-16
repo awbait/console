@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-Fixed the empty fields in the form that upgrades a service to a new version: the portal fills them in the way it does in a new order.
+Fixed prefilling the service upgrade form: new fields receive the initial values configured for the selected version, while existing settings are preserved.
 
 #### ru
-Исправили незаполненные поля в форме обновления сервиса на новую версию: портал подставляет в них значения так же, как в новом заказе.
+Исправили заполнение формы обновления сервиса: новые поля получают начальные значения, заданные для выбранной версии, а существующие настройки сохраняются.
