@@ -188,4 +188,20 @@ describe("writing a field named by a path", () => {
     const before = { pooler: { poolMode: "session", maxClientConn: 10 } };
     expect(setAt(before, ["pooler", "poolMode"], undefined)).toEqual({ pooler: { maxClientConn: 10 } });
   });
+
+  // Upgrading an order to a version where the field is an object and used to be
+  // a list: spreading the old array left its elements as keys "0", "1", ...
+  it("replaces a value of another shape instead of writing into it", () => {
+    const before = { gateway: [{ name: "nvpc", ips: ["10.0.0.1"] }] };
+    expect(setAt(before, ["gateway", "ips"], ["10.0.0.1"])).toEqual({
+      gateway: { ips: ["10.0.0.1"] },
+    });
+  });
+
+  it("writes into an object that is already there", () => {
+    const before = { gateway: { name: "nvpc" } };
+    expect(setAt(before, ["gateway", "ips"], ["10.0.0.1"])).toEqual({
+      gateway: { name: "nvpc", ips: ["10.0.0.1"] },
+    });
+  });
 });
