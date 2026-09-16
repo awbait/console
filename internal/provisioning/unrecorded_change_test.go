@@ -135,10 +135,11 @@ type staleOnce struct {
 func (s *staleOnce) Tx(ctx context.Context, fn func(store.Store) error) error {
 	if s.id != "" && !s.fired {
 		s.fired = true
-		if r, err := s.Store.GetRequest(ctx, s.id); err == nil {
-			_ = s.Store.UpdateRequest(ctx, r)
+		if r, err := s.GetRequest(ctx, s.id); err == nil {
+			_ = s.UpdateRequest(ctx, r)
 		}
 	}
+	// Through the embedded store on purpose: Tx is the method being overridden.
 	return s.Store.Tx(ctx, fn)
 }
 
