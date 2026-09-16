@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Clarified the grey hint in an empty field of the order form: a default value
+  is now labelled as one.
+
+### Fixed
+- Fixed the empty fields in the form that upgrades a service to a new version:
+  the portal fills them in the way it does in a new order.
+
 ## [0.15.0] - 2026-09-14
 
 A release about the sidebar and the "Order form constructor" documentation

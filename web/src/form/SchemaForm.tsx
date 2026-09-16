@@ -7,7 +7,13 @@ import {
   Heading,
 } from "react-aria-components";
 import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
-import { type FieldRequirement, fieldMsg, fieldRequirements, patternError } from "./fieldErrors";
+import {
+  defaultPlaceholder,
+  type FieldRequirement,
+  fieldMsg,
+  fieldRequirements,
+  patternError,
+} from "./fieldErrors";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -646,7 +652,7 @@ function Field({
           isDisabled={locked}
           errorText={err}
           hideLabel={hideLabel}
-          placeholder={s.default != null ? String(s.default) : undefined}
+          placeholder={s.default != null ? defaultPlaceholder(String(s.default)) : undefined}
           value={value != null ? String(value) : ""}
           onChange={(v) => change(v === "" ? undefined : v)}
         />

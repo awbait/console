@@ -51,6 +51,13 @@ export const fieldHint = {
   pathSlash: "Путь начинается с косой черты.",
 };
 
+// What an empty field with a value of its own shows in grey. Named, because
+// grey text shaped like a value reads as a value already filled in, and the
+// person walks past a field they were meant to look at.
+export function defaultPlaceholder(value: string): string {
+  return `по умолчанию ${value}`;
+}
+
 // withField prefixes a canonical message with a field label for error lists
 // where several fields report at once ("projectTag: не короче 2 символов.").
 export function withField(label: string, msg: string): string {

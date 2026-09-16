@@ -296,9 +296,22 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // see internal/views/initial.go). Once per form: re-seeding after the person
   // has started would overwrite what they decided. Best effort - a form without
   // them is still a form that can be filled in by hand.
+  // An upgrade is seeded too, and for the same reason a new order is: a field
+  // the new chart version brought with it is absent from the order's values, so
+  // there is nothing to overwrite and nowhere else for the person to learn what
+  // belongs in it. mergeUnder keeps that honest - a key the order already holds
+  // keeps its value. Changing an order without changing its version is not
+  // seeded: no field is new there, and a value somebody cleared on purpose would
+  // come back.
   const seeded = useRef(false);
   useEffect(() => {
-    if (editing || seeded.current || !project || !name || !effectiveVersion || !activeTeam) return;
+    if (seeded.current || !project || !name || !effectiveVersion || !activeTeam) return;
+    if (editing && !upgrade) return;
+    // On an upgrade the order's own values have to be in the form first: they
+    // arrive with the draft and replace the values wholesale, so a seed applied
+    // before them would be thrown away. Hydration runs in the effect above and
+    // on the same draft, so by the time this passes it has already happened.
+    if (upgrade && !hydrated.current) return;
     seeded.current = true;
     let alive = true;
     api
@@ -314,7 +327,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     return () => {
       alive = false;
     };
-  }, [editing, project, name, effectiveVersion, activeTeam]);
+  }, [editing, upgrade, draft, project, name, effectiveVersion, activeTeam]);
 
   // The extra values editor this chart version turns on, straight from its view
   // document: a version with no "graph" block simply has no third tab.
