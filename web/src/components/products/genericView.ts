@@ -43,6 +43,10 @@ export interface ResolvedTab {
   itemsPath: string;
   itemSchema: Schema;
   minItems: number;
+  // The field entries of this list are told apart by, when the chart says they
+  // are. A chart builds the name of a resource out of it, so two entries
+  // carrying one value ask for one resource twice.
+  uniqueBy: string;
   form: View | undefined;
   columns: TableColumn[];
   enums: EnumRule[];
@@ -93,6 +97,7 @@ export function resolveTab(schema: Schema | null | undefined, tab: ViewTab, doc:
     itemsPath: tab.items,
     itemSchema: arr.itemSchema,
     minItems: arr.minItems,
+    uniqueBy: typeof tab["ui:uniqueBy"] === "string" ? tab["ui:uniqueBy"] : "",
     form: doc.views?.[tab.form] as View,
     columns: cols.map((c) => ({
       path: c.path != null ? String(c.path) : undefined,

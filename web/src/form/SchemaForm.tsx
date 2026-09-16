@@ -137,6 +137,21 @@ function walkErrors(
     const arr = Array.isArray(value) ? value : [];
     if (typeof s.minItems === "number" && arr.length < s.minItems)
       out.set(base, fieldMsg.minItems(s.minItems));
+    // A chart builds the name of a resource in the cluster out of a field of a
+    // row, and says which field in its view ("ui:uniqueBy"). Two rows sharing
+    // that name ask for one resource twice, which the schema cannot see: two
+    // rows with one name and different contents are different rows. Reported on
+    // the second row, where the name was typed, and not on the list.
+    const uniqueBy = typeof s["ui:uniqueBy"] === "string" ? s["ui:uniqueBy"] : "";
+    if (uniqueBy) {
+      const seen = new Set<string>();
+      arr.forEach((it, i) => {
+        const name = (it as Values | null)?.[uniqueBy];
+        if (typeof name !== "string" || name === "") return;
+        if (seen.has(name)) out.set(`${base}/${i}/${uniqueBy}`, fieldMsg.taken(name));
+        seen.add(name);
+      });
+    }
     const items = deref(s.items ?? {}, root);
     const card = items.type === "object" && items.properties;
     arr.forEach((it, i) => {

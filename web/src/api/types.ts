@@ -519,6 +519,10 @@ export interface ViewTab {
   addLabel?: string;
   "ui:table"?: ViewTableColumn[];
   enums?: ViewEnumRule[];
+  // The field entries of this list are told apart by, when the chart says so.
+  // The chart builds the name of a resource out of it, so two entries carrying
+  // one value ask for one resource twice.
+  "ui:uniqueBy"?: string;
 }
 
 // Chart publication view document (formerly /schemas/{chart}.ui.json, now in the

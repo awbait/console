@@ -385,6 +385,16 @@ func checkView(path string, vm map[string]any, node, root map[string]any) []Issu
 			// to the element (an array renders as a list of cards or as single).
 			issues = append(issues, checkView(fp+"/ui:view", nested, itemNode(fieldNode, root), root)...)
 		}
+		if by, ok := ovm[uniqueByKey].(string); ok && by != "" {
+			// A name nobody carries would refuse nothing, quietly, for as long as
+			// the document lives. Caught here, where it costs a retype.
+			if props := nodeProperties(itemNode(fieldNode, root), root); props != nil {
+				if _, exists := props[by]; !exists {
+					issues = append(issues, Issue{fp + "/" + uniqueByKey,
+						fmt.Sprintf("Поле %q не найдено у записи этого списка. Проверьте имя", by)})
+				}
+			}
+		}
 	}
 	return issues
 }
@@ -598,6 +608,18 @@ func itemNode(node, root map[string]any) map[string]any {
 		return deref(items, root)
 	}
 	return node
+}
+
+// nodeProperties returns the fields a schema node describes, or nil when it
+// describes none - an opaque object, or a node the validator cannot see into.
+// nil means "no opinion": a check built on this must let the value through
+// rather than call it wrong on a schema it could not read.
+func nodeProperties(node, root map[string]any) map[string]any {
+	if node == nil {
+		return nil
+	}
+	props, _ := deref(node, root)["properties"].(map[string]any)
+	return props
 }
 
 // pointerResolves checks that a JSON pointer over values (for example
