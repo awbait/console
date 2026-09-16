@@ -3,9 +3,12 @@ package catalog
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"console/internal/cache"
+	"console/internal/harbor"
 	"console/pkg/models"
 )
 
@@ -86,3 +89,29 @@ func TestMissingChartStaysNotFound(t *testing.T) {
 }
 
 func mustErr[T any](_ T, err error) error { return err }
+
+// A cache entry written by an earlier build must not be read back. The body is
+// keyed by the chart's digest, which says the archive has not changed; it says
+// nothing about how much of that archive the portal takes out of it. When a
+// release starts reading more - the dependency list gained the subcharts'
+// values.yaml, without which an order is held to rules Helm does not apply - the
+// entries already in Redis stay valid for another month, and the fix reaches
+// nobody until they expire.
+func TestCacheIgnoresEntriesOfAnEarlierFormat(t *testing.T) {
+	ctx := context.Background()
+	c := cache.NewMemory()
+	svc := New(harbor.NewFake(), c)
+
+	// The key the previous format wrote under: the kind and the digest, with
+	// nothing between them.
+	if err := c.Set(ctx, "schema:sha256:pg1542", []byte(`{"stale":true}`), time.Hour); err != nil {
+		t.Fatalf("seed the cache: %v", err)
+	}
+	got, err := svc.GetSchema(ctx, "platform", "postgres", "15.4.2")
+	if err != nil {
+		t.Fatalf("GetSchema: %v", err)
+	}
+	if strings.Contains(string(got), "stale") {
+		t.Fatal("GetSchema read an entry written before the format changed")
+	}
+}
