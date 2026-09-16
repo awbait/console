@@ -229,3 +229,73 @@ func TestAFreshComplaintWithNoSyncWaitsBeforeFailingTheOrder(t *testing.T) {
 		t.Fatalf("order in %s, want DEGRADED once the complaint has held", got)
 	}
 }
+
+// A person who fixes one failure hits the next one, and the order used to go on
+// explaining the failure they had already dealt with: the reason was written
+// once, on the way into DEGRADED, and never again.
+func TestANewReasonForTheSameFailureIsWrittenDown(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	req := deployed(ctx, t, s, "pg-two-reasons")
+
+	const first = "ComparisonError: got object, want array"
+	const second = "ComparisonError: mode direct has no waypoint"
+	broken := argocd.Application{
+		Name:         req.ArgoCDAppName,
+		Cluster:      "in-cluster",
+		Health:       argocd.HealthUnknown,
+		Sync:         argocd.SyncUnknown,
+		ChartVersion: "15.4.1",
+		Error:        first,
+		ErrorSince:   time.Now().Add(-10 * time.Minute),
+	}
+	s.argo.Upsert(broken)
+	_ = s.prov.Reconcile(ctx)
+	if got := mustStatus(ctx, t, s.st, req.ID); got != models.StatusDegraded {
+		t.Fatalf("order in %s, want DEGRADED", got)
+	}
+
+	// The same reason a few ticks later has nothing to add.
+	_ = s.prov.Reconcile(ctx)
+	_ = s.prov.Reconcile(ctx)
+	if n := len(appErrorReasons(ctx, t, s, req.ID)); n != 1 {
+		t.Fatalf("the same reason was written %d times", n)
+	}
+
+	broken.Error = second
+	broken.ErrorSince = time.Now()
+	s.argo.Upsert(broken)
+	_ = s.prov.Reconcile(ctx)
+
+	reasons := appErrorReasons(ctx, t, s, req.ID)
+	if len(reasons) != 2 {
+		t.Fatalf("the order holds %d reasons, want both: %v", len(reasons), reasons)
+	}
+	if reasons[1] != second {
+		t.Errorf("the new reason did not reach the order: %q", reasons[1])
+	}
+
+	// And it, too, is said once.
+	_ = s.prov.Reconcile(ctx)
+	if n := len(appErrorReasons(ctx, t, s, req.ID)); n != 2 {
+		t.Fatalf("the new reason was written %d times", n)
+	}
+}
+
+// appErrorReasons lists the deployment failures written into an order's history,
+// oldest first.
+func appErrorReasons(ctx context.Context, t *testing.T, s *stack, id string) []string {
+	t.Helper()
+	events, err := s.st.ListEvents(ctx, id)
+	if err != nil {
+		t.Fatalf("events: %v", err)
+	}
+	var out []string
+	for _, e := range events {
+		if e.EventType == "app_error" {
+			reason, _ := e.Payload["error"].(string)
+			out = append(out, reason)
+		}
+	}
+	return out
+}

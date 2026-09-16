@@ -462,7 +462,12 @@ func (s *Service) handleAppError(ctx context.Context, r *models.Request, app *ar
 	// A sync that failed on the ordered version is an answer as it stands. With
 	// no sync to go by - an application ArgoCD cannot build never gets one - the
 	// condition speaks for itself, once it has held long enough to mean anything.
-	if !app.LastOp.Failed() && !app.ErrorSince.IsZero() && time.Since(app.ErrorSince) < appErrorGrace {
+	//
+	// The wait is for calling an order broken, not for explaining one that is
+	// broken already: an order in DEGRADED takes the new reason as it comes, and
+	// the person reading its page gets what ArgoCD is saying now.
+	if r.Status != models.StatusDegraded &&
+		!app.LastOp.Failed() && !app.ErrorSince.IsZero() && time.Since(app.ErrorSince) < appErrorGrace {
 		return true
 	}
 	return s.reportAppError(ctx, r, app)
@@ -510,17 +515,18 @@ func (s *Service) takeResync(orderID string) bool {
 // holding the reason in plain words, down to the field of the values that broke
 // the chart. This is that reason reaching the person whose order it is.
 //
-// Said once, on the way into DEGRADED. An order already in DEGRADED stays put
-// with no second announcement: the poller comes back every few seconds, and a
-// reason that is already on the card is not news. The cost is that an order
-// degraded for some other reason and then failing to render keeps the older
-// explanation, which is a fair trade against saying the same thing forever.
+// Said once per reason. The poller comes back every few seconds, so repeating a
+// reason already on the card would bury the order's history in one sentence -
+// but a DIFFERENT reason is news, and used to be lost: the person fixed the
+// first failure, hit the next one, and the card went on explaining the failure
+// they had already dealt with.
 func (s *Service) reportAppError(ctx context.Context, r *models.Request, app *argocd.Application) bool {
 	if app == nil || app.Error == "" {
 		return false
 	}
 	from := r.Status
 	if from == models.StatusDegraded {
+		s.reportNewReason(ctx, r, app.Error)
 		return true
 	}
 	s.tryTransition(ctx, r, models.StatusDegraded)
@@ -537,6 +543,55 @@ func (s *Service) reportAppError(ctx context.Context, r *models.Request, app *ar
 		s.notify.OrderDegraded(ctx, nil, r, app.Error)
 	}
 	return true
+}
+
+// reportNewReason records a failure of an already-degraded order when it is not
+// the failure the order is already carrying.
+//
+// The reason is compared with the last one written to the order's own history,
+// rather than with something kept in the process: the history is where the
+// person reads it, and a portal that restarted has no business announcing an
+// explanation that is already on the page. The order does not move - it is
+// degraded either way - so this writes a row and nothing else.
+//
+// No notification: the owner has already been told their service is not working,
+// and a second message saying so with different wording buys them nothing. What
+// changed is on the order's page, where somebody who went to look for it is
+// already standing.
+func (s *Service) reportNewReason(ctx context.Context, r *models.Request, reason string) {
+	last, err := s.lastAppError(ctx, r.ID)
+	if err != nil {
+		// Without the history there is no way to tell news from an echo, and an
+		// echo every few seconds is worse than a row that did not get written.
+		s.logger().Debug("could not read the order's history",
+			"order_id", r.ID, "err", err)
+		return
+	}
+	if last == reason {
+		return
+	}
+	observability.ObserveAppError()
+	s.logger().Warn("the application fails for a new reason",
+		"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", reason)
+	s.eventWith(ctx, r, bySystem(), "app_error", models.StatusDegraded, models.StatusDegraded,
+		map[string]any{"error": reason})
+}
+
+// lastAppError returns the reason the order last failed to deploy for, as it was
+// written into its history, or "" when there is none.
+func (s *Service) lastAppError(ctx context.Context, orderID string) (string, error) {
+	events, err := s.store.ListEvents(ctx, orderID)
+	if err != nil {
+		return "", err
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].EventType != "app_error" {
+			continue
+		}
+		reason, _ := events[i].Payload["error"].(string)
+		return reason, nil
+	}
+	return "", nil
 }
 
 func mapHealth(h argocd.HealthStatus) models.RequestStatus {
