@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - Fixed the order form refusing a service that is assembled from several charts.
+- Fixed the order form garbling settings when a service is upgraded to a version
+  where a list of settings became a single setting.
 
 ## [0.15.0] - 2026-09-14
 
