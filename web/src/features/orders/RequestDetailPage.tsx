@@ -239,7 +239,7 @@ export function RequestDetailPage() {
   async function onSync() {
     try {
       await api.syncRequest(id);
-      toast.success("Выкатка из Git запущена");
+      toast.success("Синхронизация запущена");
     } catch (e) {
       toast.error(errorMessage(e));
     }
