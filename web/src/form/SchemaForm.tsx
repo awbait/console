@@ -1021,12 +1021,17 @@ function ArrayField({
               </DisclosurePanel>
             </Disclosure>
           ) : (
-            // Primitive item: a single label-less control + a remove button,
-            // vertically centered so the button lines up with the input.
+            // Primitive item: a single label-less control + a remove button.
+            // Aligned to the top, not centred: hideLabel takes the label off the
+            // control but not the line under it, where its error or description
+            // goes, and centring put the button halfway down that pair instead of
+            // beside the input. The button is given the input's own height so the
+            // two still line up: the same py-1.5, the same text-sm line box around
+            // the icon, and a transparent border standing in for the input's.
             <div
               key={rowKey}
               id={fieldAnchorId(`${path}/${i}`)}
-              className="flex scroll-mt-24 items-center gap-2"
+              className="flex scroll-mt-24 items-start gap-2"
             >
               <div className="flex-1">
                 <Field
@@ -1044,10 +1049,12 @@ function ArrayField({
                 <Button
                   variant="danger"
                   aria-label="Удалить"
-                  className={noRemove ? "opacity-50" : ""}
+                  className={`border border-transparent ${noRemove ? "opacity-50" : ""}`}
                   onPress={() => !noRemove && removeAt(i)}
                 >
-                  <IconX size={16} stroke={2} />
+                  <span className="flex h-5 items-center">
+                    <IconX size={16} stroke={2} />
+                  </span>
                 </Button>
               </Hint>
             </div>
