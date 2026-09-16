@@ -22,6 +22,7 @@ import { actionViews, productTabs } from "@/components/products/genericView";
 import { Button, Card, ErrorBox, Loading } from "@/components/ui";
 import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { collectErrors, pruneEmpty } from "@/form/SchemaForm";
+import { adaptToSchema } from "@/form/valuesAdapt";
 import { mergeUnder } from "@/form/valuesMerge";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
@@ -328,6 +329,28 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       alive = false;
     };
   }, [editing, upgrade, draft, project, name, effectiveVersion, activeTeam]);
+
+  // Fit the order's values to the target version's schema (upgrade only).
+  //
+  // Between two versions a field changes shape - a list of gateways becomes the
+  // one gateway, a block moves under "global", a field goes away - and the
+  // values the order was saved with no longer describe anything the new form can
+  // draw. Left alone they reach the server as values no schema accepts, and the
+  // complaint names fields the person never saw. What the walk moves, and what
+  // it could not keep, is listed above the form: these values go out under their
+  // name, so a value that disappeared has to be visible before it does.
+  //
+  // Once, and after the order's own values are in the form - the same order the
+  // seed above follows, and for the same reason.
+  const adapted = useRef(false);
+  const [valueNotes, setValueNotes] = useState<string[]>([]);
+  useEffect(() => {
+    if (!upgrade || adapted.current || !schema || !hydrated.current) return;
+    adapted.current = true;
+    const fitted = adaptToSchema(schema as Record<string, unknown>, values, orderView);
+    setValues(fitted.values);
+    setValueNotes(fitted.notes);
+  }, [upgrade, schema, orderView, values]);
 
   // The extra values editor this chart version turns on, straight from its view
   // document: a version with no "graph" block simply has no third tab.
@@ -640,6 +663,17 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
             <span className="font-medium text-brand-700">{targetVersion}</span>. Идентификатор,
             кластер и namespace при обновлении не меняются - правятся только значения под новую схему.
           </p>
+          {valueNotes.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <p className="mb-1.5 font-medium">Значения перенесены в новую схему</p>
+              <ul className="flex list-disc flex-col gap-1 pl-4">
+                {valueNotes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+              <p className="mt-2">Проверьте значения перед обновлением.</p>
+            </div>
+          )}
           {changelog && changelog.length > 0 && (
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
               <p className="mb-1.5 font-semibold text-slate-700">Что изменилось в чарте</p>

@@ -110,6 +110,16 @@ func (s *Service) GetVersion(ctx context.Context, project, name, version string)
 	return v, upstream(err)
 }
 
+// blobFormat versions what the portal put in the cache, which the chart's own
+// digest cannot speak for: the digest says the archive is the same one, not that
+// the portal reads the same things out of it. When a release starts taking more
+// out of an archive - the dependency list gained each subchart's values.yaml,
+// and validation stopped working without it - every entry written by the
+// previous build is still there, valid for another month, and the new code reads
+// it as an archive that simply had none. Raising this number leaves those
+// entries behind and re-reads the charts once.
+const blobFormat = "2"
+
 // blob fetches a per-version file body, cached by content digest for 30 days.
 func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 	fetch func(ctx context.Context, p, n, v string) ([]byte, error)) ([]byte, error) {
@@ -118,7 +128,7 @@ func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 	if err != nil {
 		return nil, upstream(err)
 	}
-	key := kind + ":" + ver.Digest
+	key := kind + ":" + blobFormat + ":" + ver.Digest
 	if b, ok, _ := s.cache.Get(ctx, key); ok {
 		return b, nil
 	}
