@@ -191,6 +191,20 @@ button:is(:hover, :focus-visible) .sidebar-toggle-icon-expand .sidebar-toggle-ic
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .category-code-bracket-left, .category-code-bracket-right {
+    transition: transform 100ms ease-out;
+  }
+
+  :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-code-bracket-left,
+  .category-icon-code:is(:hover, :focus-visible) .category-code-bracket-left {
+    transform: translateX(-1px);
+  }
+
+  :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-code-bracket-right,
+  .category-icon-code:is(:hover, :focus-visible) .category-code-bracket-right {
+    transform: translateX(1px);
+  }
+
   :is(button, a, [role="option"]):is(:hover, :focus-visible) .category-icon-accent {
     animation: category-icon-lift 400ms ease-out;
   }

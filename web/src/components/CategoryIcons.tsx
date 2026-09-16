@@ -92,6 +92,11 @@ const glyphs: Record<string, ReactNode> = {
   cpu: <><rect x="5" y="5" width="14" height="14" rx="3" /><path d="M9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3" /><rect className="category-icon-accent" x="9" y="9" width="6" height="6" rx="1" fill="currentColor" fillOpacity=".2" /></>,
   apps: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /><path className="category-icon-accent" fill="currentColor" fillOpacity=".18" d="m17.5 2 4.5 5-4.5 5L13 7Z" /></>,
   messages: <><path d="M14 15v3a2 2 0 0 0 2 2h3l3 2V11a2 2 0 0 0-2-2h-3" /><path fill="currentColor" fillOpacity=".1" d="M4 3h11a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7l-5 4V5a2 2 0 0 1 2-2Z" /><path className="category-icon-accent" d="M6 7h7M6 11h4" /></>,
+  code: <>
+    <path className="category-code-bracket-left" d="m8 6-5 6 5 6" />
+    <path className="category-code-bracket-right" d="m16 6 5 6-5 6" />
+    <path d="m14 7-4 10" />
+  </>,
 };
 
 export const categoryGlyphs = Object.fromEntries(
