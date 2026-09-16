@@ -181,8 +181,11 @@ When a release is prepared:
 1. Collect everything written since the last release into a
    `## [X.Y.Z] - YYYY-MM-DD` section (the release date in ISO format), newest
    section on top. How that is done is in **This project**.
-2. Optionally open the section with one or two sentences that say what this
-   release is about, above the categories.
+2. Start directly with the first category after the version heading. Do not
+   add a release summary or introductory paragraph above the categories
+   (for example, "This release focuses on ordering and updating services").
+   Apply this to both English and Russian changelogs; concrete changes belong
+   in the entries themselves.
 3. Update the link references at the bottom of the file if the project uses
    them: add a line for the new version.
 4. Reread the section as a whole: merge entries that describe the same change,
