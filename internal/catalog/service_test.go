@@ -90,6 +90,53 @@ func TestMissingChartStaysNotFound(t *testing.T) {
 
 func mustErr[T any](_ T, err error) error { return err }
 
+// Re-reading a chart has to drop every file of every version. A chart pushed
+// again under a version that already exists is served from the entry written
+// before it for a month, and a kind left behind - the dependency list, say -
+// means the form keeps being drawn from the schema the person asked to replace.
+func TestForgetDropsEveryFileOfEveryVersion(t *testing.T) {
+	ctx := context.Background()
+	c := cache.NewMemory()
+	svc := New(harbor.NewFake(), c)
+
+	for _, v := range []string{"15.4.1", "15.4.2"} {
+		if _, err := svc.GetSchema(ctx, "platform", "postgres", v); err != nil {
+			t.Fatalf("GetSchema %s: %v", v, err)
+		}
+		if _, err := svc.GetValues(ctx, "platform", "postgres", v); err != nil {
+			t.Fatalf("GetValues %s: %v", v, err)
+		}
+	}
+	if _, ok, _ := c.Get(ctx, cacheKey(kindSchema, "sha256:pg1542")); !ok {
+		t.Fatal("the schema was not cached, so this test proves nothing")
+	}
+
+	versions, err := svc.Forget(ctx, "platform", "postgres")
+	if err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if versions != 2 {
+		t.Fatalf("Forget dropped %d versions, want 2", versions)
+	}
+	for _, digest := range []string{"sha256:pg1541", "sha256:pg1542"} {
+		for _, kind := range blobKinds {
+			if _, ok, _ := c.Get(ctx, cacheKey(kind, digest)); ok {
+				t.Errorf("%s of %s is still cached", kind, digest)
+			}
+		}
+	}
+}
+
+// A registry that cannot be reached cannot say which versions a chart has, and
+// the entries are keyed by digest - there is no way to find them without it. The
+// outage is reported rather than read as a chart with nothing cached.
+func TestForgetReportsAnUnreachableRegistry(t *testing.T) {
+	svc := New(downHarbor{err: errors.New("dial tcp: connection refused")}, cache.NewMemory())
+	if _, err := svc.Forget(context.Background(), "lib", "gw"); !errors.Is(err, models.ErrUpstream) {
+		t.Fatalf("Forget: got %v, want ErrUpstream", err)
+	}
+}
+
 // A cache entry written by an earlier build must not be read back. The body is
 // keyed by the chart's digest, which says the archive has not changed; it says
 // nothing about how much of that archive the portal takes out of it. When a

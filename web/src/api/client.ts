@@ -287,6 +287,10 @@ export const api = {
   updatePublication: (id: string, body: { category_id?: string; owner_team?: string }) =>
     req<ChartPublication>("PATCH", `/publications/${enc(id)}`, body),
   submitPublication: (id: string) => req<ChartPublication>("POST", `/publications/${enc(id)}/submit`),
+  // Drop what the portal cached about the chart, so its files are read from
+  // Harbor again. Answers with the number of versions it dropped.
+  refreshChart: (id: string) =>
+    req<{ versions: number }>("POST", `/publications/${enc(id)}/refresh`),
   withdrawPublication: (id: string) =>
     req<ChartPublication>("POST", `/publications/${enc(id)}/withdraw`),
   approvePublication: (id: string) =>

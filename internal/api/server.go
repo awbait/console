@@ -235,6 +235,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/publications/{id}/withdraw", s.handleWithdrawPublication) // withdraw from approval
 			r.Post("/publications/{id}/approve", s.handleApprovePublication)   // admin
 			r.Post("/publications/{id}/reject", s.handleRejectPublication)     // admin
+			r.Post("/publications/{id}/refresh", s.handleRefreshChart)         // re-read the chart from the registry
 
 			// per-version view builder + approval FSM (multi-version publications)
 			r.Get("/publications/pending-versions", s.handlePendingVersions) // admin queue (static path wins over /{id})

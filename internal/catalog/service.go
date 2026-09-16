@@ -120,6 +120,24 @@ func (s *Service) GetVersion(ctx context.Context, project, name, version string)
 // entries behind and re-reads the charts once.
 const blobFormat = "2"
 
+// The files of a version the portal keeps, one kind per cache entry. Listed
+// here because Forget has to name every one of them to drop a version: a kind
+// that exists only as a string at its call site is a kind that stays in the
+// cache after somebody asked for the chart to be re-read.
+const (
+	kindValues    = "values"
+	kindReadme    = "readme"
+	kindSchema    = "schema"
+	kindChangelog = "changelog"
+	kindDeps      = "deps"
+)
+
+var blobKinds = []string{kindValues, kindReadme, kindSchema, kindChangelog, kindDeps}
+
+// cacheKey is where one file of one version is kept: the kind, the format the
+// entry was written in, and the digest of the archive it came out of.
+func cacheKey(kind, digest string) string { return kind + ":" + blobFormat + ":" + digest }
+
 // blob fetches a per-version file body, cached by content digest for 30 days.
 func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 	fetch func(ctx context.Context, p, n, v string) ([]byte, error)) ([]byte, error) {
@@ -128,7 +146,7 @@ func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 	if err != nil {
 		return nil, upstream(err)
 	}
-	key := kind + ":" + blobFormat + ":" + ver.Digest
+	key := cacheKey(kind, ver.Digest)
 	if b, ok, _ := s.cache.Get(ctx, key); ok {
 		return b, nil
 	}
@@ -142,17 +160,56 @@ func (s *Service) blob(ctx context.Context, kind, project, name, version string,
 
 // GetValues returns the chart's values.yaml.
 func (s *Service) GetValues(ctx context.Context, project, name, version string) ([]byte, error) {
-	return s.blob(ctx, "values", project, name, version, s.hb.GetValues)
+	return s.blob(ctx, kindValues, project, name, version, s.hb.GetValues)
 }
 
 // GetReadme returns the chart's README.md.
 func (s *Service) GetReadme(ctx context.Context, project, name, version string) ([]byte, error) {
-	return s.blob(ctx, "readme", project, name, version, s.hb.GetReadme)
+	return s.blob(ctx, kindReadme, project, name, version, s.hb.GetReadme)
 }
 
 // GetSchema returns the chart's values.schema.json.
 func (s *Service) GetSchema(ctx context.Context, project, name, version string) ([]byte, error) {
-	return s.blob(ctx, "schema", project, name, version, s.hb.GetSchema)
+	return s.blob(ctx, kindSchema, project, name, version, s.hb.GetSchema)
+}
+
+// Forget drops what the portal has cached about a chart, so the next read of any
+// of its files goes to the registry again. It answers with the number of
+// versions it dropped.
+//
+// Nothing is fetched here and nothing about the chart changes: the entries go
+// away, and whoever reads next pays one request to Harbor. That is what makes it
+// safe to offer to the team that owns the chart - re-reading their own chart
+// after they push it again is their own business, not a reason to go looking for
+// an administrator with access to Redis.
+//
+// The versions come from the registry, not from the cache: an entry is keyed by
+// the digest of an archive and cannot say which chart it belonged to. A registry
+// that cannot be reached is reported as the outage it is, rather than as a chart
+// that turned out to have nothing cached.
+func (s *Service) Forget(ctx context.Context, project, name string) (int, error) {
+	versions, err := s.hb.ListVersions(ctx, project, name)
+	if err != nil {
+		return 0, upstream(err)
+	}
+	var failed error
+	for _, v := range versions {
+		if v.Digest == "" {
+			continue
+		}
+		for _, kind := range blobKinds {
+			// The first failure is what the caller hears about, and the rest of
+			// the entries are still dropped: a cache half emptied is better than
+			// one left whole, and the person gets one answer instead of a list.
+			if derr := s.cache.Delete(ctx, cacheKey(kind, v.Digest)); derr != nil && failed == nil {
+				failed = fmt.Errorf("catalog: drop the cached chart: %w", derr)
+			}
+		}
+	}
+	if failed != nil {
+		return 0, failed
+	}
+	return len(versions), nil
 }
 
 // LatestSchema returns the values.schema.json of the chart's latest version
@@ -204,7 +261,7 @@ func (s *Service) LatestIcon(ctx context.Context, project, name string) (string,
 
 // GetChangelog returns the parsed changelog entry for the given version.
 func (s *Service) GetChangelog(ctx context.Context, project, name, version string) (*models.ChangelogEntry, error) {
-	raw, err := s.blob(ctx, "changelog", project, name, version, s.hb.GetChangelog)
+	raw, err := s.blob(ctx, kindChangelog, project, name, version, s.hb.GetChangelog)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +300,7 @@ var requiredChartFiles = []struct {
 	{"values.schema.json", true, (*Service).GetSchema},
 	{"README.md", false, (*Service).GetReadme},
 	{"CHANGELOG.md", false, func(s *Service, ctx context.Context, p, n, v string) ([]byte, error) {
-		return s.blob(ctx, "changelog", p, n, v, s.hb.GetChangelog)
+		return s.blob(ctx, kindChangelog, p, n, v, s.hb.GetChangelog)
 	}},
 }
 
@@ -302,7 +359,7 @@ func (s *Service) GetAggregatedChangelog(ctx context.Context, project, name stri
 	if chart.LatestVersion == "" {
 		return nil, models.ErrNotFound
 	}
-	raw, err := s.blob(ctx, "changelog", project, name, chart.LatestVersion, s.hb.GetChangelog)
+	raw, err := s.blob(ctx, kindChangelog, project, name, chart.LatestVersion, s.hb.GetChangelog)
 	if err != nil {
 		return nil, err
 	}
