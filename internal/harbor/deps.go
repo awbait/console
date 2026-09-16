@@ -2,6 +2,7 @@ package harbor
 
 import (
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -58,6 +59,10 @@ func dependenciesOf(files map[string][]byte) []models.ChartDependency {
 		if sub, ok := packaged[d.Name]; ok {
 			dep.Schema = sub.schema
 			dep.Values = sub.values
+			// A dependency may bring dependencies of its own, and a field of one
+			// of those is still a field of the order form: the waypoint of an
+			// egress gateway lives in a chart two levels down.
+			dep.Dependencies = dependenciesOf(sub.files)
 			// The packaged version is what the schema shown actually belongs to;
 			// the declared one is often a range ("^7.0.0") and names no artifact.
 			if sub.version != "" {
@@ -78,6 +83,7 @@ func dependenciesOf(files map[string][]byte) []models.ChartDependency {
 		sub := packaged[name]
 		out = append(out, models.ChartDependency{
 			Name: name, Key: name, Version: sub.version, Schema: sub.schema, Values: sub.values,
+			Dependencies: dependenciesOf(sub.files),
 		})
 	}
 	if len(out) == 0 {
@@ -90,6 +96,11 @@ type packagedSubchart struct {
 	version string
 	schema  []byte
 	values  []byte
+	// files is everything that came with this dependency, addressed as if it
+	// were a chart of its own ("values.yaml", "charts/{sub}/values.yaml"). It is
+	// what lets the same reading run one level down: a dependency of a dependency
+	// is a dependency, and a field of it is a field of the order form.
+	files map[string][]byte
 }
 
 // packagedSubcharts collects what extractChartFiles took out of "charts/",
@@ -102,6 +113,10 @@ func packagedSubcharts(files map[string][]byte) map[string]packagedSubchart {
 			continue
 		}
 		sub := out[name]
+		if sub.files == nil {
+			sub.files = map[string][]byte{}
+		}
+		sub.files[file] = body
 		switch file {
 		case "values.schema.json":
 			sub.schema = body
@@ -118,17 +133,19 @@ func packagedSubcharts(files map[string][]byte) map[string]packagedSubchart {
 	return out
 }
 
-// splitSubchartKey reads back a key written by subchartKey.
+// splitSubchartKey reads back a key written by subchartKey: the chart it belongs
+// to, and where the file sits inside that chart. A file of a dependency's own
+// dependency keeps its path ("charts/waypoint/values.schema.json"), which is
+// what the next round of reading takes apart.
 func splitSubchartKey(key string) (chart, file string, ok bool) {
 	const prefix = "charts/"
-	if len(key) <= len(prefix) || key[:len(prefix)] != prefix {
+	rest, found := strings.CutPrefix(key, prefix)
+	if !found {
 		return "", "", false
 	}
-	rest := key[len(prefix):]
-	for i := len(rest) - 1; i >= 0; i-- {
-		if rest[i] == '/' {
-			return rest[:i], rest[i+1:], rest[:i] != "" && i+1 < len(rest)
-		}
+	name, file, found := strings.Cut(rest, "/")
+	if !found || name == "" || file == "" {
+		return "", "", false
 	}
-	return "", "", false
+	return name, file, true
 }

@@ -144,6 +144,21 @@ function PanelNotice({ Icon, text }: { Icon: typeof IconPackageOff; text: string
 // changed by releasing the dependency, not from here. What this tab is for is
 // the one thing the document cannot be written without - the key the dependency
 // sits under, and the fields it has.
+// flattenDependencies lays the chart tree out as one list, each entry keyed by
+// the path its values sit at ("waypointNamespace", then
+// "waypointNamespace/waypoint"). That path is how a view names the dependency's
+// fields, so the tab shows the author the string they have to write rather than
+// leaving them to work it out from the nesting.
+function flattenDependencies(deps: ChartDependency[], prefix = ""): ChartDependency[] {
+  const out: ChartDependency[] = [];
+  for (const d of deps) {
+    const key = prefix ? `${prefix}/${d.key}` : d.key;
+    out.push({ ...d, key });
+    out.push(...flattenDependencies(d.dependencies ?? [], key));
+  }
+  return out;
+}
+
 function DependencyPanel({
   dependencies,
   project,
@@ -272,7 +287,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
     [project, name, version],
     qk.dependencies(project, name, version),
   );
-  const dependencies = depsData?.dependencies ?? [];
+  const dependencies = flattenDependencies(depsData?.dependencies ?? []);
   const formSchema = depsData?.effective_schema ?? schema;
 
   // The document is written by hand, so the editor is taught what it is: the
