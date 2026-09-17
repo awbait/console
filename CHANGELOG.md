@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.17.1] - 2026-09-17
+
+### Fixed
+- Fixed an incorrect "Not working" order status during a service upgrade when
+  the error belongs to the version being replaced.
+- Fixed stalled service upgrades by automatically retrying deployment.
+- Fixed missing settings for nested components in the order form and service
+  details.
+
 ## [0.17.0] - 2026-09-16
 
 ### Added
@@ -729,7 +738,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.17.1...HEAD
+[0.17.1]: https://github.com/awbait/console/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/awbait/console/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/awbait/console/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/awbait/console/compare/v0.14.0...v0.15.0
