@@ -90,17 +90,22 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 	// 2) reconcile against ArgoCD
 	switch r.Status {
 	case models.StatusMRMerged:
-		if _, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {
+		if app, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {
 			s.tryTransition(ctx, r, models.StatusDeploying)
 			// Nudge ArgoCD to pull and apply the just-merged revision now instead
 			// of waiting for its own git poll; reconcile then gates Healthy on it.
-			_ = s.argo.Sync(ctx, r.ArgoCDAppName)
+			// Not while an upgrade is still on its way into the application: a sync
+			// run then is a sync of the previous chart version against the new
+			// values, which fails on the chart's own schema (see upgradeInFlight).
+			if !upgradeInFlight(r, app) {
+				_ = s.argo.Sync(ctx, r.ArgoCDAppName)
+			}
 		}
 	case models.StatusDeploying:
 		// Freshly merged: wait until ArgoCD has actually finished syncing before
 		// calling it Healthy, so we don't latch onto a stale pre-sync report.
 		if app, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {
-			if s.reportAppError(ctx, r, app) {
+			if s.handleAppError(ctx, r, app) {
 				return
 			}
 			if target := mapHealth(app.Health); target != "" &&
@@ -115,7 +120,7 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 		// this (unchanged) app OutOfSync; that must not demote a Healthy product
 		// back to DEPLOYING - its own manifests/values did not change.
 		if app, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {
-			if s.reportAppError(ctx, r, app) {
+			if s.handleAppError(ctx, r, app) {
 				return
 			}
 			if target := mapHealth(app.Health); target != "" {
@@ -373,6 +378,133 @@ func deploySettled(app *argocd.Application) bool {
 	return app.Sync == argocd.SyncSynced
 }
 
+// How long a failing condition has to hold before the portal calls it an
+// answer, when there is no sync operation to judge by. A condition outlives the
+// state it describes: ArgoCD leaves it on the application until something makes
+// it compare again, so a condition read once is as likely to be the remains of a
+// moment that has passed as it is to be news.
+const appErrorGrace = 3 * time.Minute
+
+// How long to leave ArgoCD alone between two syncs the portal asks for itself.
+// The reconciler comes back every few seconds and the operation it is waiting
+// for takes longer than that to even start, so without this it would ask again
+// before the previous answer existed.
+const resyncCooldown = time.Minute
+
+// upgradeInFlight reports that the application is still the version the order
+// was on before, so nothing it says is about the version being ordered.
+//
+// An upgrade reaches the application in two steps that are not one transaction:
+// the values.yaml of the order is read straight from the branch and is visible
+// at once, while the new chart version is in the Application manifest and gets
+// there only when the app-of-apps applies it. In between, the application is the
+// old chart with the new values - which fails on the chart's own schema, loudly
+// and truthfully, about a state nobody asked for.
+func upgradeInFlight(r *models.Request, app *argocd.Application) bool {
+	if app == nil || app.ChartVersion == "" || r.ChartVersion == "" {
+		// An application whose chart version cannot be read is judged the way it
+		// was before this existed: by what it reports about itself.
+		return false
+	}
+	return app.ChartVersion != r.ChartVersion
+}
+
+// staleSyncFailure reports that the last sync failed on a chart version other
+// than the one ordered - the failure belongs to what came before.
+//
+// ArgoCD will not retry it: an automated sync does not run again for a revision
+// it has already tried, so the application sits there with the failure of the
+// previous version on it and the new version never applied. Asking once more is
+// the whole fix.
+func staleSyncFailure(r *models.Request, app *argocd.Application) bool {
+	op := app.LastOp
+	if !op.Failed() || op.ChartVersion == "" || r.ChartVersion == "" {
+		return false
+	}
+	return op.ChartVersion != r.ChartVersion
+}
+
+// errorOutlivedTheSync reports that the condition on the application is older
+// than a sync that went through - it describes a state ArgoCD has since left.
+func errorOutlivedTheSync(app *argocd.Application) bool {
+	op := app.LastOp
+	if op == nil || op.Failed() || op.FinishedAt.IsZero() || app.ErrorSince.IsZero() {
+		return false
+	}
+	return app.ErrorSince.Before(op.FinishedAt)
+}
+
+// handleAppError decides what an application's complaint means for the order,
+// and answers whether the caller should stop reading health off it.
+//
+// The order of the questions is the point. Whether the application is even the
+// version the order asks for comes first, because until it is, both its error
+// and its health are about the version before - and reporting either of them
+// puts the wrong thing on the person's screen: a failure they did not cause, or
+// a success for an upgrade that has not happened.
+func (s *Service) handleAppError(ctx context.Context, r *models.Request, app *argocd.Application) bool {
+	if app == nil {
+		return false
+	}
+	if upgradeInFlight(r, app) {
+		s.logger().Debug("upgrade has not reached the application yet",
+			"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName,
+			"app_version", app.ChartVersion, "order_version", r.ChartVersion)
+		return true
+	}
+	if staleSyncFailure(r, app) {
+		s.resync(ctx, r, app)
+		return true
+	}
+	if app.Error == "" || errorOutlivedTheSync(app) {
+		return false
+	}
+	// A sync that failed on the ordered version is an answer as it stands. With
+	// no sync to go by - an application ArgoCD cannot build never gets one - the
+	// condition speaks for itself, once it has held long enough to mean anything.
+	//
+	// The wait is for calling an order broken, not for explaining one that is
+	// broken already: an order in DEGRADED takes the new reason as it comes, and
+	// the person reading its page gets what ArgoCD is saying now.
+	if r.Status != models.StatusDegraded &&
+		!app.LastOp.Failed() && !app.ErrorSince.IsZero() && time.Since(app.ErrorSince) < appErrorGrace {
+		return true
+	}
+	return s.reportAppError(ctx, r, app)
+}
+
+// resync asks ArgoCD to run the sync it will not run by itself, and leaves it
+// alone for a while afterwards.
+func (s *Service) resync(ctx context.Context, r *models.Request, app *argocd.Application) {
+	if !s.takeResync(r.ID) {
+		return
+	}
+	s.logger().Info("re-running a sync left failed on the previous version",
+		"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName,
+		"failed_on", app.LastOp.ChartVersion, "order_version", r.ChartVersion)
+	if err := s.argo.Sync(ctx, r.ArgoCDAppName); err != nil {
+		s.logger().Warn("sync could not be re-run",
+			"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", err)
+	}
+}
+
+// takeResync reports whether the portal may ask for a sync of this order now,
+// recording the attempt. The reconciler runs every few seconds, and ArgoCD takes
+// longer than that to even start an operation, so without a bound the portal
+// would ask again before the previous answer could exist.
+func (s *Service) takeResync(orderID string) bool {
+	s.resyncMu.Lock()
+	defer s.resyncMu.Unlock()
+	if s.resyncedAt == nil {
+		s.resyncedAt = map[string]time.Time{}
+	}
+	if at, asked := s.resyncedAt[orderID]; asked && time.Since(at) < resyncCooldown {
+		return false
+	}
+	s.resyncedAt[orderID] = time.Now()
+	return true
+}
+
 // reportAppError puts an order whose application ArgoCD cannot even build into
 // DEGRADED, carrying what ArgoCD said. Returns true when the order has an error
 // to answer for, so the caller stops reading health off it.
@@ -383,17 +515,18 @@ func deploySettled(app *argocd.Application) bool {
 // holding the reason in plain words, down to the field of the values that broke
 // the chart. This is that reason reaching the person whose order it is.
 //
-// Said once, on the way into DEGRADED. An order already in DEGRADED stays put
-// with no second announcement: the poller comes back every few seconds, and a
-// reason that is already on the card is not news. The cost is that an order
-// degraded for some other reason and then failing to render keeps the older
-// explanation, which is a fair trade against saying the same thing forever.
+// Said once per reason. The poller comes back every few seconds, so repeating a
+// reason already on the card would bury the order's history in one sentence -
+// but a DIFFERENT reason is news, and used to be lost: the person fixed the
+// first failure, hit the next one, and the card went on explaining the failure
+// they had already dealt with.
 func (s *Service) reportAppError(ctx context.Context, r *models.Request, app *argocd.Application) bool {
 	if app == nil || app.Error == "" {
 		return false
 	}
 	from := r.Status
 	if from == models.StatusDegraded {
+		s.reportNewReason(ctx, r, app.Error)
 		return true
 	}
 	s.tryTransition(ctx, r, models.StatusDegraded)
@@ -410,6 +543,55 @@ func (s *Service) reportAppError(ctx context.Context, r *models.Request, app *ar
 		s.notify.OrderDegraded(ctx, nil, r, app.Error)
 	}
 	return true
+}
+
+// reportNewReason records a failure of an already-degraded order when it is not
+// the failure the order is already carrying.
+//
+// The reason is compared with the last one written to the order's own history,
+// rather than with something kept in the process: the history is where the
+// person reads it, and a portal that restarted has no business announcing an
+// explanation that is already on the page. The order does not move - it is
+// degraded either way - so this writes a row and nothing else.
+//
+// No notification: the owner has already been told their service is not working,
+// and a second message saying so with different wording buys them nothing. What
+// changed is on the order's page, where somebody who went to look for it is
+// already standing.
+func (s *Service) reportNewReason(ctx context.Context, r *models.Request, reason string) {
+	last, err := s.lastAppError(ctx, r.ID)
+	if err != nil {
+		// Without the history there is no way to tell news from an echo, and an
+		// echo every few seconds is worse than a row that did not get written.
+		s.logger().Debug("could not read the order's history",
+			"order_id", r.ID, "err", err)
+		return
+	}
+	if last == reason {
+		return
+	}
+	observability.ObserveAppError()
+	s.logger().Warn("the application fails for a new reason",
+		"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", reason)
+	s.eventWith(ctx, r, bySystem(), "app_error", models.StatusDegraded, models.StatusDegraded,
+		map[string]any{"error": reason})
+}
+
+// lastAppError returns the reason the order last failed to deploy for, as it was
+// written into its history, or "" when there is none.
+func (s *Service) lastAppError(ctx context.Context, orderID string) (string, error) {
+	events, err := s.store.ListEvents(ctx, orderID)
+	if err != nil {
+		return "", err
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].EventType != "app_error" {
+			continue
+		}
+		reason, _ := events[i].Payload["error"].(string)
+		return reason, nil
+	}
+	return "", nil
 }
 
 func mapHealth(h argocd.HealthStatus) models.RequestStatus {

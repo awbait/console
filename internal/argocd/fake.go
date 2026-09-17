@@ -35,7 +35,9 @@ type Fake struct {
 	apps map[string]*Application
 	// cascading records the apps EnsureCascadingDelete was called on.
 	cascading map[string]bool
-	source    ManifestSource
+	// syncs counts the syncs the portal asked for, per app.
+	syncs  map[string]int
+	source ManifestSource
 }
 
 var _ Port = (*Fake)(nil)
@@ -113,8 +115,22 @@ func (f *Fake) Sync(ctx context.Context, name string) error {
 	if !ok {
 		return models.ErrNotFound
 	}
+	if f.syncs == nil {
+		f.syncs = map[string]int{}
+	}
+	f.syncs[name]++
 	a.Sync = SyncSynced
 	return nil
+}
+
+// Syncs reports how many times the portal asked for this app to be synced (test
+// helper). Asking again is how an upgrade gets past a sync that failed on the
+// version before it, and asking too often is how the portal would hammer ArgoCD,
+// so tests count.
+func (f *Fake) Syncs(name string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.syncs[name]
 }
 
 // EnsureCascadingDelete records that the app was made to take its resources with

@@ -71,6 +71,13 @@ type Service struct {
 	// restart is allowed to try again, but not to repeat itself.
 	mergeRetries map[string]int
 	mergeMu      sync.Mutex
+	// resyncedAt is when the portal last asked ArgoCD to run a sync of its own
+	// accord (see resync). Process-local for the same reason as mergeRetries: it
+	// bounds how often the portal talks to ArgoCD, and a restart asking once more
+	// costs one request. The reconciler comes back every few seconds, which is
+	// faster than the answer it is waiting for can exist.
+	resyncedAt map[string]time.Time
+	resyncMu   sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
 	// Hooks keeps the portal's merge-request webhook registered in GitLab. Wired
@@ -114,7 +121,7 @@ func New(st store.Store, gl gitlab.Port, argo argocd.Port, cat *catalog.Service,
 	g *GitOps, bus events.Bus, defaultCluster, defaultBranch string, autoMerge bool) *Service {
 	return &Service{store: st, gl: gl, argo: argo, catalog: cat, gitops: g,
 		bus: bus, defaultCluster: defaultCluster, defaultBranch: defaultBranch, autoMerge: autoMerge,
-		mergeRetries: map[string]int{}}
+		mergeRetries: map[string]int{}, resyncedAt: map[string]time.Time{}}
 }
 
 // CreateInput is the payload for a new order.

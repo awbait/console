@@ -3,6 +3,7 @@ package argocd
 
 import (
 	"context"
+	"time"
 )
 
 // SyncStatus mirrors ArgoCD's sync status.
@@ -46,6 +47,48 @@ type Application struct {
 	// Health stays Unknown in those cases, so without this the portal has nothing
 	// to go on and the order waits for a health that will never arrive.
 	Error string `json:"error,omitempty"`
+	// ErrorSince is when that condition last changed. A condition outlives what
+	// it was about - it stays on the application until something makes ArgoCD
+	// compare again - so its age is how the portal tells a failure happening now
+	// from one it is reading long after the fact.
+	ErrorSince time.Time `json:"error_since,omitzero"`
+	// ChartVersion is the version of the chart this application currently asks
+	// for: the targetRevision of its chart source. An upgrade reaches the
+	// application only when the app-of-apps applies the new manifest, so until
+	// this equals the version of the order, the application is still the previous
+	// one and whatever it reports is about the previous one too.
+	ChartVersion string `json:"chart_version,omitempty"`
+	// LastOp is the sync ArgoCD ran last, or nil when it has never run one. What
+	// it was for matters as much as how it ended: a sync that failed on the
+	// version before the upgrade says nothing about the version being ordered.
+	LastOp *Operation `json:"last_op,omitempty"`
+}
+
+// OperationPhase is how a sync ended (ArgoCD's own vocabulary).
+type OperationPhase string
+
+const (
+	OpRunning     OperationPhase = "Running"
+	OpSucceeded   OperationPhase = "Succeeded"
+	OpFailed      OperationPhase = "Failed"
+	OpError       OperationPhase = "Error"
+	OpTerminating OperationPhase = "Terminating"
+)
+
+// Operation is the sync ArgoCD ran last on an application.
+type Operation struct {
+	Phase OperationPhase `json:"phase"`
+	// ChartVersion is the version of the chart that sync was for, read off the
+	// revision ArgoCD recorded for the chart source.
+	ChartVersion string    `json:"chart_version,omitempty"`
+	Message      string    `json:"message,omitempty"`
+	FinishedAt   time.Time `json:"finished_at,omitzero"`
+}
+
+// Failed reports whether the operation ended badly. Anything still running has
+// not ended, and is not a failure yet.
+func (o *Operation) Failed() bool {
+	return o != nil && (o.Phase == OpFailed || o.Phase == OpError)
 }
 
 // errorCondition reports whether an ArgoCD condition type names a failure.

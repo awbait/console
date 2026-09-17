@@ -111,6 +111,11 @@ type apiApp struct {
 			Name   string `json:"name"`
 			Server string `json:"server"`
 		} `json:"destination"`
+		// source / sources: the portal writes multi-source applications (the
+		// chart from the registry plus this repo for values.yaml), but a chart
+		// somebody wired up by hand may still be single-source, so both are read.
+		Source  apiSource   `json:"source"`
+		Sources []apiSource `json:"sources"`
 	} `json:"spec"`
 	Status struct {
 		Sync struct {
@@ -125,10 +130,65 @@ type apiApp struct {
 		// says why. Health says nothing then - it stays Unknown - so this is the
 		// only thing to report and the only thing to act on.
 		Conditions []struct {
-			Type    string `json:"type"`
-			Message string `json:"message"`
+			Type               string `json:"type"`
+			Message            string `json:"message"`
+			LastTransitionTime string `json:"lastTransitionTime"`
 		} `json:"conditions"`
+		// operationState is the last sync ArgoCD ran: how it ended, what it was
+		// for, and when. An application carries a failed condition long after the
+		// sync that produced it, so this is what says whether the failure is about
+		// what the order asks for now.
+		OperationState struct {
+			Phase      string `json:"phase"`
+			Message    string `json:"message"`
+			FinishedAt string `json:"finishedAt"`
+			SyncResult struct {
+				Revision  string   `json:"revision"`
+				Revisions []string `json:"revisions"`
+			} `json:"syncResult"`
+		} `json:"operationState"`
 	} `json:"status"`
+}
+
+// apiSource is one source of an application: a Helm chart from a registry
+// (chart + targetRevision) or a Git repository (targetRevision is the branch).
+type apiSource struct {
+	RepoURL        string `json:"repoURL"`
+	Chart          string `json:"chart"`
+	TargetRevision string `json:"targetRevision"`
+}
+
+// chartSource finds the source that pulls the chart, and where it sits in the
+// list - ArgoCD records one revision per source, in the same order, so the
+// position is what connects a sync to the chart version it ran against.
+// Returns -1 when the application has no chart source at all.
+func (a *apiApp) chartSource() (apiSource, int) {
+	if len(a.Spec.Sources) == 0 {
+		if a.Spec.Source.Chart != "" {
+			return a.Spec.Source, 0
+		}
+		return apiSource{}, -1
+	}
+	for i, s := range a.Spec.Sources {
+		if s.Chart != "" {
+			return s, i
+		}
+	}
+	return apiSource{}, -1
+}
+
+// parseTime reads an ArgoCD timestamp, answering with the zero time for
+// anything it cannot read: an unparsable timestamp must not be mistaken for
+// 1970, which would make every age calculation say "long ago".
+func parseTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 func (a *apiApp) toApp() Application {
@@ -148,22 +208,50 @@ func (a *apiApp) toApp() Application {
 	// acts on, and ArgoCD repeats the same failure across conditions often enough
 	// that a list of them reads as noise.
 	var appErr string
+	var errSince time.Time
 	for _, c := range a.Status.Conditions {
 		if errorCondition(c.Type) && strings.TrimSpace(c.Message) != "" {
 			appErr = c.Type + ": " + strings.TrimSpace(c.Message)
+			errSince = parseTime(c.LastTransitionTime)
 			break
 		}
 	}
+	chart, chartIdx := a.chartSource()
 	return Application{
-		Name:      a.Metadata.Name,
-		Project:   a.Spec.Project,
-		Cluster:   cluster,
-		Sync:      sync,
-		Health:    health,
-		Labels:    a.Metadata.Labels,
-		Revision:  a.Status.Sync.Revision,
-		Revisions: a.Status.Sync.Revisions,
-		Error:     appErr,
+		Name:         a.Metadata.Name,
+		Project:      a.Spec.Project,
+		Cluster:      cluster,
+		Sync:         sync,
+		Health:       health,
+		Labels:       a.Metadata.Labels,
+		Revision:     a.Status.Sync.Revision,
+		Revisions:    a.Status.Sync.Revisions,
+		Error:        appErr,
+		ErrorSince:   errSince,
+		ChartVersion: chart.TargetRevision,
+		LastOp:       a.lastOperation(chartIdx),
+	}
+}
+
+// lastOperation reads the sync ArgoCD ran last, or nil when there has been
+// none. chartIdx is where the chart sits among the application's sources, which
+// is also where its revision sits among the ones the sync recorded.
+func (a *apiApp) lastOperation(chartIdx int) *Operation {
+	op := a.Status.OperationState
+	if op.Phase == "" {
+		return nil
+	}
+	// A single-source application records one revision; a multi-source one
+	// records them per source, in the order the sources are declared.
+	version := op.SyncResult.Revision
+	if chartIdx >= 0 && chartIdx < len(op.SyncResult.Revisions) {
+		version = op.SyncResult.Revisions[chartIdx]
+	}
+	return &Operation{
+		Phase:        OperationPhase(op.Phase),
+		ChartVersion: version,
+		Message:      strings.TrimSpace(op.Message),
+		FinishedAt:   parseTime(op.FinishedAt),
 	}
 }
 
