@@ -42,7 +42,8 @@ func TestExtractChartFilesReadsBothDependencyShapes(t *testing.T) {
 		"pgbouncer/Chart.yaml":         "name: pgbouncer\nversion: 1.22.0\n",
 		"pgbouncer/values.schema.json": poolerSchema,
 		"pgbouncer/values.yaml":        "poolMode: transaction\n",
-		// A dependency of the dependency: one level is what the portal projects.
+		// A dependency of the dependency, which is read too: its fields are as
+		// much a part of the order as any other.
 		"pgbouncer/charts/deep/values.schema.json": `{"type":"object"}`,
 	})
 	parent := tgz(t, map[string]string{
@@ -71,8 +72,66 @@ func TestExtractChartFilesReadsBothDependencyShapes(t *testing.T) {
 	if got := string(files[subchartKey("metrics", "values.yaml")]); got != "port: 9187\n" {
 		t.Errorf("unpacked dependency values = %q", got)
 	}
-	if _, ok := files[subchartKey("deep", "values.schema.json")]; ok {
-		t.Error("a dependency of a dependency was taken; only one level is projected")
+	// A dependency of a dependency keeps its place in the tree, under the
+	// dependency that brought it: that is where its fields live in the values
+	// too, and a view has no other way to name them.
+	for _, key := range []string{
+		subchartKey("pgbouncer", "charts/deep/values.schema.json"),
+		subchartKey("metrics", "charts/deep/values.schema.json"),
+	} {
+		if _, ok := files[key]; !ok {
+			t.Errorf("a dependency of a dependency was dropped: %s", key)
+		}
+	}
+}
+
+// The chart tree is read as deep as the archive goes, and the dependency list
+// keeps its shape: a waypoint under a namespace under a gateway is where the
+// order form finds the fields the view names.
+func TestDependenciesOfKeepsTheTree(t *testing.T) {
+	waypoint := tgz(t, map[string]string{
+		"waypoint/Chart.yaml":         "name: waypoint\nversion: 2.3.0\n",
+		"waypoint/values.schema.json": `{"type":"object","properties":{"waypoints":{"type":"array"}}}`,
+		"waypoint/values.yaml":        "waypoints: []\n",
+	})
+	namespace := tgz(t, map[string]string{
+		"namespace/Chart.yaml": "name: namespace\nversion: 6.1.0\n" +
+			"dependencies:\n  - name: waypoint\n    version: 2.3.0\n",
+		"namespace/values.schema.json":  `{"type":"object","properties":{"waypoint":{"type":"object"}}}`,
+		"namespace/values.yaml":         "podSecurity: baseline\n",
+		"namespace/charts/waypoint.tgz": string(waypoint),
+	})
+	parent := tgz(t, map[string]string{
+		"egress-gateway/Chart.yaml": "name: egress-gateway\nversion: 8.0.0\n" +
+			"dependencies:\n  - name: namespace\n    version: 6.1.0\n    alias: waypointNamespace\n",
+		"egress-gateway/values.schema.json":   `{"type":"object"}`,
+		"egress-gateway/charts/namespace.tgz": string(namespace),
+	})
+
+	files, err := extractChartFiles(parent)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	deps := dependenciesOf(files)
+	if len(deps) != 1 {
+		t.Fatalf("dependencies = %d, want the one namespace", len(deps))
+	}
+	ns := deps[0]
+	if ns.Key != "waypointNamespace" {
+		t.Errorf("key = %q, want the alias the values sit under", ns.Key)
+	}
+	if len(ns.Dependencies) != 1 {
+		t.Fatalf("the namespace brought %d dependencies, want its waypoint", len(ns.Dependencies))
+	}
+	wp := ns.Dependencies[0]
+	if wp.Key != "waypoint" || wp.Version != "2.3.0" {
+		t.Errorf("waypoint = %q %q", wp.Key, wp.Version)
+	}
+	if len(wp.Schema) == 0 {
+		t.Error("the waypoint's schema is what the order form draws, and it is missing")
+	}
+	if len(wp.Values) == 0 {
+		t.Error("the waypoint's own values decide what the order has to answer, and they are missing")
 	}
 }
 

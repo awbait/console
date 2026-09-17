@@ -708,16 +708,32 @@ const maxSubcharts = 64
 // rather than by the directory it happened to sit in.
 func subchartKey(chart, file string) string { return "charts/" + chart + "/" + file }
 
+// maxChartDepth is how far down the chart tree the portal reads. A chart of a
+// chart of a chart is already unusual; past that the archive is describing
+// something the order form was never going to draw, and an archive built by hand
+// must not be able to turn one pull into an unbounded amount of work.
+const maxChartDepth = 4
+
 // extractChartFiles untars a Helm chart .tgz and returns the files the catalog
 // serves: the chart's own top-level files keyed by base name ("values.yaml"),
-// and each first-level dependency's files keyed by "charts/{chart}/{file}".
+// and its dependencies' files keyed by the path they sit at
+// ("charts/{chart}/values.schema.json", and for a dependency of that dependency
+// "charts/{chart}/charts/{sub}/values.schema.json").
 //
 // A dependency arrives in one of two shapes, and both are met in practice: an
 // unpacked directory ("{chart}/charts/{dep}/values.schema.json") and a packaged
 // archive ("{chart}/charts/{dep}-{version}.tgz"), which is what "helm dependency
-// build" leaves behind. Anything deeper (a dependency of a dependency) is
-// dropped: the portal projects one level.
+// build" leaves behind. A packaged one is opened and its own dependencies are
+// read the same way, because that is where a field of the order form can be:
+// egress-gateway holds namespace, which holds waypoint, and the waypoint of the
+// order is a field of the last one.
 func extractChartFiles(tgz []byte) (map[string][]byte, error) {
+	return extractChartTree(tgz, 1)
+}
+
+// extractChartTree is extractChartFiles at a given depth in the chart tree,
+// which is what stops it descending forever.
+func extractChartTree(tgz []byte, depth int) (map[string][]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(tgz))
 	if err != nil {
 		return nil, err
@@ -739,26 +755,36 @@ func extractChartFiles(tgz []byte) (map[string][]byte, error) {
 		}
 		clean := path.Clean(h.Name)
 		parts := strings.Split(clean, "/")
+		// Everything in the archive sits under one directory named after the
+		// chart; what matters is the path inside it.
+		if len(parts) < 2 {
+			continue
+		}
+		rest := parts[1:]
 		switch {
-		case len(parts) == 2 && chartFiles[parts[1]]: // "{chart}/{file}"
+		case len(rest) == 1 && wantedFile(depth, rest[0]): // "{chart}/{file}"
 			b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
 			if err != nil {
 				return nil, err
 			}
-			out[parts[1]] = b
+			out[rest[0]] = b
 
-		case len(parts) == 4 && parts[1] == "charts" && subchartFiles[parts[3]]:
-			// "{chart}/charts/{dep}/{file}": an unpacked dependency. The directory
-			// name is the chart name for every chart Helm itself unpacks.
+		case len(rest) >= 3 && rest[0] == "charts" && subchartFiles[rest[len(rest)-1]]:
+			// "charts/{dep}/{file}", and deeper for a dependency of a dependency:
+			// an unpacked subchart. The directory name is the chart name for every
+			// chart Helm itself unpacks.
+			if (len(rest)-1)/2 >= maxChartDepth {
+				continue
+			}
 			b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
 			if err != nil {
 				return nil, err
 			}
-			out[subchartKey(parts[2], parts[3])] = b
+			out[strings.Join(rest, "/")] = b
 
-		case len(parts) == 3 && parts[1] == "charts" && strings.HasSuffix(parts[2], ".tgz"):
-			// "{chart}/charts/{dep}-{version}.tgz": a packaged dependency.
-			if packaged >= maxSubcharts {
+		case len(rest) == 2 && rest[0] == "charts" && strings.HasSuffix(rest[1], ".tgz"):
+			// "charts/{dep}-{version}.tgz": a packaged dependency.
+			if packaged >= maxSubcharts || depth >= maxChartDepth {
 				continue
 			}
 			packaged++
@@ -766,13 +792,13 @@ func extractChartFiles(tgz []byte) (map[string][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			nested, err := extractSubchartFiles(b)
+			nested, err := extractChartTree(b, depth+1)
 			if err != nil {
 				continue // a dependency we cannot read is not a broken parent chart
 			}
 			name := chartNameOf(nested["Chart.yaml"])
 			if name == "" {
-				name = strings.TrimSuffix(parts[2], ".tgz")
+				name = strings.TrimSuffix(rest[1], ".tgz")
 			}
 			for file, body := range nested {
 				out[subchartKey(name, file)] = body
@@ -782,37 +808,14 @@ func extractChartFiles(tgz []byte) (map[string][]byte, error) {
 	return out, nil
 }
 
-// extractSubchartFiles untars a packaged dependency and returns its top-level
-// files. Its own "charts/" is not followed: one level is what the portal shows.
-func extractSubchartFiles(tgz []byte) (map[string][]byte, error) {
-	gz, err := gzip.NewReader(bytes.NewReader(tgz))
-	if err != nil {
-		return nil, err
+// wantedFile says which of a chart's own files are worth keeping. The chart the
+// catalog serves is asked for its README and changelog as well; a dependency is
+// only ever read for its schema, its values and the Chart.yaml naming it.
+func wantedFile(depth int, file string) bool {
+	if depth == 1 {
+		return chartFiles[file]
 	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
-	out := map[string][]byte{}
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			return out, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if h.Typeflag != tar.TypeReg {
-			continue
-		}
-		parts := strings.Split(path.Clean(h.Name), "/")
-		if len(parts) != 2 || !subchartFiles[parts[1]] {
-			continue
-		}
-		b, err := io.ReadAll(io.LimitReader(tr, 16<<20))
-		if err != nil {
-			return nil, err
-		}
-		out[parts[1]] = b
-	}
+	return subchartFiles[file]
 }
 
 // chartNameOf reads the "name" of a Chart.yaml. Empty when there is none, and

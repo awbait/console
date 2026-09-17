@@ -18,6 +18,8 @@ import (
 	"context"
 
 	"gopkg.in/yaml.v3"
+
+	"console/pkg/models"
 )
 
 // ValuesForValidation returns the order's values with the defaults of the
@@ -54,6 +56,19 @@ func (s *Service) ValuesForValidation(ctx context.Context, project, name, versio
 			own = decoded
 		}
 	}
+	defaults := dependencyDefaults(deps, own)
+	if len(defaults) == 0 {
+		return values
+	}
+	return Coalesce(values, defaults)
+}
+
+// dependencyDefaults is what the chart answers for its dependencies: each one's
+// own values.yaml with what the parent says about it laid over the top, and the
+// same done for its own dependencies one level down. Helm coalesces the whole
+// tree before it checks anything, so a field answered by a chart three levels
+// down is answered as far as the order is concerned.
+func dependencyDefaults(deps []models.ChartDependency, own map[string]any) map[string]any {
 	defaults := map[string]any{}
 	for _, dep := range deps {
 		if dep.Key == "" {
@@ -68,6 +83,9 @@ func (s *Service) ValuesForValidation(ctx context.Context, project, name, versio
 		// "global" is the parent's, handed down by Helm; a dependency's own copy
 		// of it describes the chart installed on its own and says nothing here.
 		delete(sub, "global")
+		if nested := dependencyDefaults(dep.Dependencies, sub); len(nested) > 0 {
+			sub = Coalesce(sub, nested)
+		}
 		fromParent, _ := own[dep.Key].(map[string]any)
 		merged := Coalesce(fromParent, sub)
 		if len(merged) == 0 {
@@ -75,10 +93,7 @@ func (s *Service) ValuesForValidation(ctx context.Context, project, name, versio
 		}
 		defaults[dep.Key] = merged
 	}
-	if len(defaults) == 0 {
-		return values
-	}
-	return Coalesce(values, defaults)
+	return defaults
 }
 
 func decodeValues(b []byte) map[string]any {

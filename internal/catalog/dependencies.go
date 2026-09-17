@@ -113,8 +113,19 @@ func mountDependencies(parent []byte, deps []models.ChartDependency) ([]byte, []
 		if dep.Key == "" || len(dep.Schema) == 0 {
 			continue
 		}
+		// A dependency of a dependency is mounted into its own parent first, so
+		// what goes in here is the dependency as the order form will see it,
+		// fields of its subcharts included. Helm nests values the same way:
+		// waypointNamespace.waypoint.waypoints is a field of a chart two levels
+		// down, and a view has no other way to name it.
+		schema := dep.Schema
+		if len(dep.Dependencies) > 0 {
+			if merged, nested := mountDependencies(dep.Schema, dep.Dependencies); merged != nil {
+				schema, dep.Dependencies = merged, nested
+			}
+		}
 		var doc map[string]any
-		if json.Unmarshal(dep.Schema, &doc) != nil {
+		if json.Unmarshal(schema, &doc) != nil {
 			continue
 		}
 		def := depDefinition(dep.Key)

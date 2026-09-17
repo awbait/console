@@ -649,6 +649,10 @@ export interface ChartDependency {
   // The dependency's own values.schema.json. Absent for most external charts,
   // which is normal: then there is nothing to show and nothing to draw.
   schema?: JSONSchema;
+  // The dependency's own dependencies. A field can be two charts down - the
+  // waypoint of an egress gateway lives in a chart under the namespace chart -
+  // and a view names it by the whole path ("waypointNamespace/waypoint/...").
+  dependencies?: ChartDependency[];
   // What the portal noticed about this pair of charts and cannot fix itself.
   warning?: string;
 }

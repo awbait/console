@@ -80,6 +80,12 @@ type ChartDependency struct {
 	// arrive empty every time but the first. It rides next to the dependency's
 	// whole values.schema.json, which is the larger of the two by far.
 	Values []byte `json:"values,omitempty"`
+	// Dependencies are this dependency's own dependencies, read the same way it
+	// was. A chart of a chart of a chart is not a curiosity: an egress gateway
+	// holds a namespace, the namespace holds a waypoint, and the waypoint of the
+	// order is a field of that last one. Without them the order form has nowhere
+	// to draw it from, and a view naming the field draws nothing at all.
+	Dependencies []ChartDependency `json:"dependencies,omitempty"`
 	// Warning is a problem with the pair (parent, dependency) that the portal can
 	// see but not fix, shown in the version constructor. Empty when there is none.
 	Warning string `json:"warning,omitempty"`
