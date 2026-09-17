@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-Fixed a service upgrade stopping half-applied: the portal repeats the deployment itself instead of waiting for "Synchronize with the cluster".
+Fixed stalled service upgrades by automatically retrying deployment.
 
 #### ru
-Исправили остановку обновления сервиса на полпути: портал сам повторяет применение изменений, не дожидаясь команды «Синхронизировать с кластером».
+Исправили зависание обновления сервиса: повторное применение изменений выполняется автоматически.
