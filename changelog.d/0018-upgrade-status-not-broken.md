@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-Fixed an order showing as not working while the service is being upgraded, when the failure belongs to the version being replaced.
+Fixed an incorrect "Not working" order status during a service upgrade when the error belongs to the version being replaced.
 
 #### ru
-Исправили статус «Не работает» у заказа во время обновления сервиса, когда ошибка относится к заменяемой версии.
+Исправили ошибочный статус заказа «Не работает» во время обновления сервиса при сбое заменяемой версии.
