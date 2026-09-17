@@ -2,7 +2,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import { HttpError } from "../api/client";
 import type { FieldError } from "../api/types";
 import { schemaViolationText } from "../form/fieldErrors";
-import { fieldBreadcrumb, nodeAt, type Schema } from "../form/fieldPath";
+import { fieldBreadcrumb, nodeAt, pinnedAt, type Schema } from "../form/fieldPath";
 import { fieldAnchorId } from "../form/SchemaForm";
 
 // SubmitError is a normalized submission failure: the human message plus the
@@ -49,11 +49,30 @@ function afterLabel(msg: string): string {
 // A failure that names neither a field nor a rule has nothing to add to the
 // headline the server already sent, and a row saying "значения: значение не
 // подходит." would only push that headline out of the way.
-function expand(d: FieldError, root?: Schema, view?: Schema): { field: string; message: string }[] {
+function expand(
+  d: FieldError,
+  root?: Schema,
+  view?: Schema,
+  values?: unknown,
+): { field: string; message: string; path?: string }[] {
   if (!d.path && !d.keyword) return [];
   const base = fieldBreadcrumb(d.path, root, view);
-  const node = root ? nodeAt(d.path, root) : undefined;
-  return [{ field: base || "значения", message: afterLabel(schemaViolationText(d.keyword, node)) }];
+  let node = root ? nodeAt(d.path, root) : undefined;
+  // A field pinned by another field ("in direct mode there is no waypoint
+  // namespace") breaks a rule that is declared somewhere else entirely, so its
+  // own node knows nothing about it and the row used to read "значение не
+  // подходит". Ask what pins it, with the values the order was sent with.
+  if (root && values !== undefined && node && !("const" in node)) {
+    const pinned = pinnedAt(d.path, root, values);
+    if (pinned !== undefined) node = { ...node, const: pinned };
+  }
+  return [
+    {
+      field: base || "значения",
+      message: afterLabel(schemaViolationText(d.keyword, node)),
+      path: d.path || undefined,
+    },
+  ];
 }
 
 // FormErrors renders a submission error: a headline plus, when present, a tidy
@@ -64,6 +83,7 @@ export function FormErrors({
   fieldErrors,
   schema,
   view,
+  values,
 }: {
   message: string;
   details?: FieldError[];
@@ -72,11 +92,14 @@ export function FormErrors({
   fieldErrors?: Map<string, string>;
   schema?: Schema;
   view?: Schema;
+  // The values the order was sent with. Only a rule that depends on another
+  // field needs them - what pins a field is decided by what its neighbour holds.
+  values?: unknown;
 }) {
-  // Server-detail rows are static; client rows carry the field's pointer path so
-  // the row becomes a button that scrolls to and focuses the field.
+  // Every row carries the field's pointer path, so it becomes a button that
+  // scrolls to and focuses the field it is about.
   const serverRows: { field: string; message: string; path?: string }[] = (details ?? []).flatMap((d) =>
-    expand(d, schema, view),
+    expand(d, schema, view, values),
   );
   const clientRows: { field: string; message: string; path?: string }[] = fieldErrors
     ? [...fieldErrors].map(([path, msg]) => ({

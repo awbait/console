@@ -761,6 +761,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           fieldErrors={showErrors && clientErrors.size > 0 ? clientErrors : undefined}
           schema={schema ?? undefined}
           view={orderView}
+          values={effectiveValues}
         />
       )}
 
