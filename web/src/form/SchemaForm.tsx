@@ -14,6 +14,7 @@ import {
   fieldRequirements,
   patternError,
 } from "./fieldErrors";
+import { matchedThens, pinnedAt } from "./fieldPath";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -137,6 +138,15 @@ function walkErrors(
       if ((required.has(field.label) || viewRequired.has(k)) && emptyVal(cv) && !hasDefault) {
         // A required empty array needs an element added, not a value typed in.
         out.set(cpath, child.type === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
+        continue;
+      }
+      // A field another field decides: a chart declares the rule where both are
+      // visible (usually the root), so nothing on this field's own node says it
+      // is pinned. Checked here rather than left to the server, because the
+      // person can put the field right while they are still looking at it.
+      const pinned = pinnedAt(k, s, value);
+      if (pinned !== undefined && cv !== undefined && cv !== pinned) {
+        out.set(cpath, fieldMsg.pinned(pinned));
         continue;
       }
       if (cv === undefined) continue;
@@ -330,30 +340,6 @@ export function orderedKeys(s: Schema): string[] {
   const order: string[] = Array.isArray(s.propertyOrder) ? s.propertyOrder : [];
   const inOrder = order.filter((k) => props.includes(k));
   return [...inOrder, ...props.filter((k) => !inOrder.includes(k))];
-}
-
-// ifMatches evaluates a JSON Schema "if" against a value for the subset we use:
-// properties with const/enum, plus the if's own required (presence) list.
-function ifMatches(ifSchema: Schema, value: Values, root: Schema): boolean {
-  for (const [k, cond] of Object.entries(ifSchema.properties ?? {})) {
-    const c = deref(cond as Schema, root);
-    const v = value?.[k];
-    if ("const" in c && v !== c.const) return false;
-    if (Array.isArray(c.enum) && !c.enum.includes(v)) return false;
-  }
-  for (const k of ifSchema.required ?? []) if (value?.[k] === undefined) return false;
-  return true;
-}
-
-// matchedThens returns the "then" schemas of the if/then branches (top-level and
-// inside allOf) whose condition holds for the current value.
-function matchedThens(schema: Schema, value: Values, root: Schema): Schema[] {
-  const branches: Schema[] = [];
-  if (schema.if) branches.push(schema);
-  for (const a of (schema.allOf as Schema[]) ?? []) if (a.if) branches.push(a);
-  return branches
-    .filter((b) => b.then && ifMatches(b.if, value ?? {}, root))
-    .map((b) => b.then as Schema);
 }
 
 // conditionalRequired returns keys made required by satisfied if/then branches

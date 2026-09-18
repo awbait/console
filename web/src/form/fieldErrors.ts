@@ -26,6 +26,15 @@ export const fieldMsg = {
   // more than it does.
   badValue: "Значение не подходит.",
   notUnique: "Значения не должны повторяться.",
+  // What a field pinned to one value says when it holds another. A chart pins a
+  // field when another field decides it: an egress gateway in mode "direct" has
+  // no waypoint, so its namespace must not be created. The person is told which
+  // way to put the field, because that is the only thing left to do about it.
+  pinned: (value: unknown) => {
+    if (value === true) return "Включите это поле.";
+    if (value === false) return "Выключите это поле.";
+    return `Допустимое значение: ${String(value)}.`;
+  },
   minLen: (n: number) => `Не короче ${n} символов.`,
   maxLen: (n: number) => `Не длиннее ${n} символов.`,
   min: (n: number) => `Не меньше ${n}.`,
@@ -397,7 +406,11 @@ export function schemaViolationText(keyword: string | undefined, s: SchemaRule =
       return typeof s.pattern === "string" ? patternError(s.pattern) : fieldMsg.badFormat;
     case "enum":
     case "const": {
-      const values = s.enum ?? (s.const === undefined ? [] : [s.const]);
+      // A field pinned to a single value is not a choice, and reading "допустимые
+      // значения: false" as a list of one is how the person ends up looking for
+      // the other options.
+      if (s.enum === undefined && s.const !== undefined) return fieldMsg.pinned(s.const);
+      const values = s.enum ?? [];
       const named = values.filter((v) => v !== null && v !== undefined).map(String);
       return named.length > 0 ? fieldMsg.oneOf(named) : fieldMsg.badValue;
     }
