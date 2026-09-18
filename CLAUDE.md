@@ -38,4 +38,4 @@
 | `config.md` | переменные окружения и их описания | `internal/config/**`, `.env.example` |
 | `observability.md` | логи и метрики | `**/*.go` |
 | `stand.md` | PowerShell 5.1, docker compose, сеть стенда, переводы строк в сборке | `deployments/**`, `**/*.ps1`, `Makefile` |
-| `changelog.md` | записи журнала изменений: пары «было/стало» на наших ошибках | `CHANGELOG.md`, `CHANGELOG.ru.md` |
+| `changelog.md` | соглашения проекта для журнала и ссылка на правила текста в скилле | `CHANGELOG.md`, `CHANGELOG.ru.md`, `changelog.d/**` |
