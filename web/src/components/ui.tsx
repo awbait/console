@@ -534,8 +534,9 @@ export function Skeleton({ className = "" }: { className?: string }) {
 }
 
 // Placeholder wraps a skeleton layout: it holds the delay and makes the whole
-// group one polite announcement.
-function Placeholder({
+// group one polite announcement. A page that lays out its own skeleton out of
+// the bare pieces below wraps them in this, once, at the top.
+export function Placeholder({
   label,
   className = "",
   children,
@@ -618,6 +619,67 @@ export function SkeletonCards({ count = 6, className = "" }: { count?: number; c
             </div>
           </div>
         ))}
+      </div>
+    </Placeholder>
+  );
+}
+
+// SkeletonFieldBoxes are the bare pieces of a form on its way: one label and
+// one input per field, at the height a TextField takes (text-sm label, gap-1,
+// py-1.5 input), so the fields land where the boxes were and nothing moves. The
+// labels differ in width like real ones do. Bare: a page composing its own
+// skeleton puts these inside one Placeholder of its own.
+export function SkeletonFieldBoxes({ fields = 4, className = "" }: { fields?: number; className?: string }) {
+  const widths = ["w-1/3", "w-1/4", "w-2/5", "w-1/5"];
+  return (
+    <div className={`flex flex-col gap-4 ${className}`}>
+      {Array.from({ length: fields }, (_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
+        <div key={i} className="flex flex-col gap-1">
+          <Skeleton className={`h-4 ${widths[i % widths.length]}`} />
+          <Skeleton className="h-[34px] w-full rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// SkeletonFields stands in for a schema-driven form while its schema is on the
+// way, on its own: in a dialog, or wherever the form is the whole content.
+export function SkeletonFields({ fields = 4, className = "" }: { fields?: number; className?: string }) {
+  return (
+    <Placeholder label="Готовим форму" className={className}>
+      <SkeletonFieldBoxes fields={fields} />
+    </Placeholder>
+  );
+}
+
+// SkeletonListTab stands in for a product tab that edits a list: the tab's
+// heading with its actions button on the right, then one line per row of the
+// table that is coming.
+export function SkeletonListTab({ rows = 3, className = "" }: { rows?: number; className?: string }) {
+  return (
+    <Placeholder label="Готовим список" className={className}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-8 w-28 rounded-md" />
+        </div>
+        <div className="flex flex-col">
+          <div className="flex gap-4 py-1">
+            <Skeleton className="h-3 w-1/6" />
+            <Skeleton className="h-3 w-1/6" />
+            <Skeleton className="h-3 w-1/6" />
+          </div>
+          {Array.from({ length: rows }, (_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length decorative list
+            <div key={i} className="flex items-center gap-4 border-t border-gray-100 py-2.5">
+              <Skeleton className="h-4 w-1/4" />
+              <Skeleton className="h-4 w-1/6" />
+              <Skeleton className="h-4 w-1/6" />
+            </div>
+          ))}
+        </div>
       </div>
     </Placeholder>
   );

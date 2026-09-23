@@ -6,7 +6,7 @@ import Editor from "@monaco-editor/react";
 import { Suspense } from "react";
 import type { JSONSchema } from "@/api/types";
 import { useTheme } from "@/app/ThemeContext";
-import { Card, Loading, Select, TextField } from "@/components/ui";
+import { Card, Loading, Placeholder, Select, Skeleton, SkeletonFieldBoxes, TextField } from "@/components/ui";
 import { fieldKind, fieldMsg } from "@/form/fieldErrors";
 import { namespaceKind } from "@/form/namespace";
 import { SchemaForm, type View } from "@/form/SchemaForm";
@@ -151,6 +151,31 @@ export function OrderMetaCard({
         )}
       </p>
     </Card>
+  );
+}
+
+// OrderPageSkeleton is the order page before its chart has arrived: the crumbs
+// and the title, the card with the order's own fields, then the values card
+// with its heading and the first fields of the form. Same gaps and cards as the
+// real page, so the form lands in place instead of jumping in after a spinner.
+export function OrderPageSkeleton() {
+  return (
+    <Placeholder label="Готовим форму заказа">
+      <div className="flex flex-col gap-4 pb-8">
+        <Skeleton className="h-4 w-56" />
+        <Skeleton className="h-7 w-80" />
+        <Card>
+          <SkeletonFieldBoxes fields={3} />
+        </Card>
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-6 w-28 rounded-md" />
+          </div>
+          <SkeletonFieldBoxes fields={5} />
+        </Card>
+      </div>
+    </Placeholder>
   );
 }
 
