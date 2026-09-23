@@ -55,6 +55,7 @@ import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
 import {
   chartModelPath,
   dependencyModelPath,
+  useSchemaRefNavigation,
   useViewDocumentHints,
   viewModelPath,
 } from "../features/publications/monacoHints";
@@ -298,6 +299,9 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
   // catalogue plus the platform variables that exist right now.
   const { data: viewRefs } = useAsync(() => api.viewRefs(), [], qk.viewRefs());
   useViewDocumentHints(viewFormat, formSchema, viewRefs);
+  // The schema tabs are read-only, so the one thing to do in them is follow a
+  // $ref: this makes the pointer a link to its definition.
+  useSchemaRefNavigation();
 
   const pending = curStatus === "PENDING";
   const isOwner = canModify(user, pub.owner_team);
@@ -813,7 +817,7 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                   </div>
                   <p className="text-xs text-slate-400">
                     values.schema.json из чарта (v{version}), только чтение. Схема меняется только
-                    новой версией чарта.
+                    новой версией чарта. К определению по ссылке $ref можно перейти: Ctrl+клик или F12.
                   </p>
                 </>
               ) : (

@@ -2,6 +2,7 @@ import { useMonaco } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { useEffect, useRef } from "react";
 import type { TemplateRef } from "@/api/types";
+import { refAt, refName } from "./schemaRefs";
 import { hintsAt } from "./viewHints";
 
 // The editor side of the version constructor: what Monaco has to be told before
@@ -38,6 +39,57 @@ export function dependencyModelPath(
 }
 
 const VIEW_MODEL_SUFFIX = "view-document.json";
+const SCHEMA_MODEL_SUFFIX = "values.schema.json";
+
+// useSchemaRefNavigation makes a "$ref" in a chart schema a place to jump to.
+// The schemas are shown read-only and written by somebody else, so a reader
+// follows "#/definitions/tls" by scrolling and searching for the name; with
+// this, Ctrl+click or F12 on the pointer lands on the definition, and hovering
+// it says so, or says that the definition is not there. Monaco's own JSON
+// service does not do this here: it resolves $ref for validation only.
+export function useSchemaRefNavigation(): void {
+  const monaco = useMonaco();
+  useEffect(() => {
+    if (!monaco) return;
+    const isSchema = (model: Monaco.editor.ITextModel) => model.uri.path.endsWith(SCHEMA_MODEL_SUFFIX);
+    const range = (model: Monaco.editor.ITextModel, from: number, to: number) =>
+      monaco.Range.fromPositions(model.getPositionAt(from), model.getPositionAt(to));
+
+    const definition = monaco.languages.registerDefinitionProvider("json", {
+      provideDefinition(model, position) {
+        if (!isSchema(model)) return null;
+        const ref = refAt(model.getValue(), model.getOffsetAt(position));
+        if (!ref?.target) return null;
+        return [
+          {
+            uri: model.uri,
+            range: range(model, ref.target.offset, ref.target.offset + ref.target.length),
+            // The whole pointer is underlined, not the word under the cursor.
+            originSelectionRange: range(model, ref.from, ref.to),
+          },
+        ];
+      },
+    });
+
+    const hover = monaco.languages.registerHoverProvider("json", {
+      provideHover(model, position) {
+        if (!isSchema(model)) return null;
+        const ref = refAt(model.getValue(), model.getOffsetAt(position));
+        if (!ref) return null;
+        const name = refName(ref.pointer);
+        const text = ref.target
+          ? `Определение **${name}**. Перейти к нему: Ctrl+клик или F12.`
+          : `Определения **${name}** в этой схеме нет.`;
+        return { range: range(model, ref.from, ref.to), contents: [{ value: text }] };
+      },
+    });
+
+    return () => {
+      definition.dispose();
+      hover.dispose();
+    };
+  }, [monaco]);
+}
 
 // useViewDocumentHints teaches the editor this document and this chart. Both
 // arrive over the network, so both may be null for a moment; until they do, the
