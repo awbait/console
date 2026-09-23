@@ -26,7 +26,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { FormDialogShell } from "../FormDialogShell";
 import { FormErrors, type SubmitError, toSubmitError } from "../FormErrors";
-import { Button, Hint, Loading } from "../ui";
+import { Button, Hint, SkeletonFields, SkeletonListTab } from "../ui";
 import {
   type ActionPlacement,
   actionViews,
@@ -185,7 +185,7 @@ export function GenericListTab({
   const resolved = useMemo(() => resolveTab(schema, tab, doc), [schema, tab, doc]);
   const label = tab.title ?? tab.id;
 
-  if (loading) return <Loading label="Готовим форму" />;
+  if (loading) return <SkeletonListTab />;
   if (error) return <SchemaLoadError request={request} error={error} />;
   if (!schema) return <p className="text-sm text-gray-500">Нет схемы.</p>;
   if (!resolved) {
@@ -740,7 +740,7 @@ function ViewFormModal({
       )}
     >
       {loading ? (
-        <Loading label="Готовим форму" />
+        <SkeletonFields fields={3} />
       ) : error ? (
         <SchemaLoadError request={request} error={error} />
       ) : schema ? (

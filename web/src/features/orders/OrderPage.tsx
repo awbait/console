@@ -19,7 +19,7 @@ import {
   type PersistValues,
 } from "@/components/products/GenericProductTabs";
 import { actionViews, productTabs } from "@/components/products/genericView";
-import { Button, Card, ErrorBox, Loading } from "@/components/ui";
+import { Button, Card, ErrorBox } from "@/components/ui";
 import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { collectErrors, pruneEmpty } from "@/form/SchemaForm";
 import { adaptToSchema } from "@/form/valuesAdapt";
@@ -27,7 +27,7 @@ import { mergeUnder } from "@/form/valuesMerge";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { countGraphRules } from "../graph/mapping";
-import { OrderMetaCard, OrderValuesCard } from "./OrderFormParts";
+import { OrderMetaCard, OrderPageSkeleton, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";
 import { valuesEditorFor } from "./valuesEditors";
 
@@ -366,7 +366,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setMode("form");
   }, [editor, mode]);
 
-  if (editing && existingLoading) return <Loading label="Загружаем заказ" />;
+  if (editing && existingLoading) return <OrderPageSkeleton />;
   if (editing && existingErr) return <ErrorBox error={existingErr} />;
   if (editing && !upgrade && draft && draft.status !== "DRAFT") {
     // Only drafts are editable here; live orders bounce to the read-only detail
@@ -375,14 +375,14 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     // React 19/StrictMode and can double-navigate).
     return <Navigate to={`/requests/${draft.id}`} replace />;
   }
-  if (chartLoading) return <Loading label="Готовим форму заказа" />;
+  if (chartLoading) return <OrderPageSkeleton />;
   if (chartErr) return <ErrorBox error={chartErr} />;
   if (!chart) return null;
 
   // Upgrade guard: wait for the catalog (source of allowed versions), then check
   // ?to=. A disallowed/missing target version won't open the upgrade form.
   if (upgrade) {
-    if (catalogLoading) return <Loading label="Готовим форму заказа" />;
+    if (catalogLoading) return <OrderPageSkeleton />;
     if (!targetVersion || !allowedUpgrades.includes(targetVersion)) {
       return (
         <NotFound
