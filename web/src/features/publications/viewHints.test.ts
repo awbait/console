@@ -98,7 +98,18 @@ describe("a column is written against one row", () => {
 
 describe("field lists name fields, not paths", () => {
   test("include at the top level names fields of the chart", () => {
-    expect(values(at(`{"views":{"order":{"include":["|"]}}}`))).toEqual(["naming", "gateways"]);
+    expect(values(at(`{"views":{"order":{"include":["|"]}}}`))).toEqual(["naming", "naming/env", "gateways"]);
+  });
+
+  // An object is offered whole and field by field: "naming/env" picks the one
+  // field without the section the whole object would bring. A list is not
+  // walked into - its rows belong to a tab, and a path into them means nothing.
+  test("a field of an object is offered as a path, a row of a list is not", () => {
+    const got = at(`{"views":{"order":{"include":["|"]}}}`)?.items ?? [];
+    const env = got.find((i) => i.value === "naming/env");
+    expect(env?.detail).toBe("Среда");
+    expect(env?.doc).toBe("prod или stage");
+    expect(values({ items: got } as ReturnType<typeof at>)).not.toContain("gateways/name");
   });
 
   test("a nested ui:view names fields of the row it projects", () => {
@@ -107,7 +118,7 @@ describe("field lists name fields, not paths", () => {
   });
 
   test("an override key names a field too", () => {
-    expect(values(at(`{"views":{"order":{"overrides":{"|":{}}}}}`))).toEqual(["naming", "gateways"]);
+    expect(values(at(`{"views":{"order":{"overrides":{"|":{}}}}}`))).toEqual(["naming", "naming/env", "gateways"]);
   });
 
   test("a view used as a tab's form projects the row of that tab's list", () => {
