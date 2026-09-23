@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.18.0] - 2026-09-23
+
+### Added
+- In the version constructor, a $ref in the chart schema now leads to its
+  definition: Ctrl+click or F12 on the pointer jumps there, and hovering it says
+  where it goes or that the definition is missing.
+
+### Changed
+- In the version constructor, the field suggestions for a view now include the
+  fields of a nested section as paths, such as tls/certificates. A form can then
+  show one field without the heading of the whole section.
+- The order form, the list tabs of a service and the edit dialogs now show the
+  outline of their fields while loading instead of a loading indicator, so the
+  form no longer jumps when it appears.
+
+### Fixed
+- Fixed error messages in the order form for a field that another field enables:
+  the message uses the field label and says whether to turn the field on or off.
+
 ## [0.17.1] - 2026-09-17
 
 ### Fixed
@@ -738,7 +757,8 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 - Builds and releases on GitHub Actions: PR checks, a tag and a GitHub Release,
   and images of the portal and the collector.
 
-[Unreleased]: https://github.com/awbait/console/compare/v0.17.1...HEAD
+[Unreleased]: https://github.com/awbait/console/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/awbait/console/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/awbait/console/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/awbait/console/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/awbait/console/compare/v0.15.0...v0.16.0
