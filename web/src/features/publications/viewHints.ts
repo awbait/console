@@ -233,11 +233,15 @@ function fields(
 // names lists the fields of one node by name: what include/exclude/overrides and
 // the match/get of a lookup are written with.
 //
-// A chart dependency is listed twice over: once as itself, which means the whole
-// subchart, and once per field it has, as "<key>/<field>". The second form is
-// the only way to name one field of a dependency, and it is not something anyone
-// guesses - the key is the alias from Chart.yaml, which is nowhere on screen
-// until the dependency tab is opened.
+// An object is listed twice over: once as itself, which means the whole object
+// with its heading, and once per field it has, as "<key>/<field>". The second
+// form is how a view picks one field out of an object without dragging the
+// object's own section around it: a list that sits alone inside an object which
+// is titled the same way would otherwise show its heading twice. For a chart
+// dependency the second form is the only way to name one of its fields at all,
+// and it is not something anyone guesses - the key is the alias from Chart.yaml,
+// which is nowhere on screen until the dependency tab is opened. One level is
+// enough: the form reads deeper paths too, but the list would drown in them.
 function names(node: Schema | null | undefined, chart: Schema | null): Suggestion[] {
   if (!node || !chart) return [];
   const out: Suggestion[] = [];
@@ -250,12 +254,13 @@ function names(node: Schema | null | undefined, chart: Schema | null): Suggestio
       detail: from ? `зависимость ${from}` : hintText(s.title),
       doc: hintText(s.description),
     });
-    if (!from) continue;
+    // A list is not walked into: its rows are named by a tab, not by a path.
+    if (s.type === "array" || s.items) continue;
     for (const [field, sub] of Object.entries(properties(s, chart))) {
       const f = deref(sub, chart);
       out.push({
         value: `${key}/${field}`,
-        detail: hintText(f.title) ?? `поле чарта ${from}`,
+        detail: hintText(f.title) ?? (from ? `поле чарта ${from}` : `поле ${hintText(s.title) ?? key}`),
         doc: hintText(f.description),
       });
     }
