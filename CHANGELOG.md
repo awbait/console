@@ -5,21 +5,22 @@ All notable changes to this project are documented in this file.
 ## [0.18.0] - 2026-09-23
 
 ### Added
-- In the version constructor, a $ref in the chart schema now leads to its
-  definition: Ctrl+click or F12 on the pointer jumps there, and hovering it says
-  where it goes or that the definition is missing.
+- In the version constructor, you can now follow a $ref reference in the chart
+  schema to its definition using Ctrl+click or F12. Hovering over the reference
+  shows its destination or indicates that the definition is missing.
 
 ### Changed
-- In the version constructor, the field suggestions for a view now include the
-  fields of a nested section as paths, such as tls/certificates. A form can then
-  show one field without the heading of the whole section.
-- The order form, the list tabs of a service and the edit dialogs now show the
-  outline of their fields while loading instead of a loading indicator, so the
-  form no longer jumps when it appears.
+- In the version constructor, field suggestions for a form view now include
+  nested fields as paths, such as tls/certificates. You can display an
+  individual field without the heading of its parent section.
+- The order form, service list tabs and edit dialogs now show field outlines
+  instead of a loading indicator while loading. This prevents the layout from
+  shifting when the fields appear.
 
 ### Fixed
-- Fixed error messages in the order form for a field that another field enables:
-  the message uses the field label and says whether to turn the field on or off.
+- Fixed error messages in the order form when one field controls whether another
+  is enabled. The messages now use the field label and explain whether to turn
+  the field on or off.
 
 ## [0.17.1] - 2026-09-17
 
