@@ -7,6 +7,10 @@
           {
             "type": "command",
             "command": "jq -r '.tool_input.file_path // \"\"' | grep -qiE 'web[/\\\\]src[/\\\\].*\\.(tsx|css)$' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Правка разметки в web/src. Правило .claude/rules/frontend.md: оформление выбирается ДО кода скиллом ui-ux-pro-max (python .claude/skills/ui-ux-pro-max/scripts/search.py \\\"<что за экран>\\\" --design-system), а результат проверяется bun run detect и playwright-cli. Если скилл уже вызван в этой сессии, просто продолжай.\"}}' || true"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // \"\"' | grep -qE '(changelog\\.d[/\\][^/\\]+\\.md|CHANGELOG(\\.ru)?\\.md|docs-content[/\\].*\\.md|configText\\.ts|fieldErrors\\.ts)$' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Текст для пользователя. Правило .claude/rules/user-facing-text.md: слова генерирует codex (codex exec -s read-only --ephemeral --color never -o out.md - < brief.md), Claude собирает бриф с фактами и правилами текста, проверяет ответ и кладёт как есть. Если этот текст уже пришёл от codex в этой сессии, просто продолжай.\"}}' || true"
           }
         ]
       }
