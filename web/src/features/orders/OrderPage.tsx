@@ -180,19 +180,17 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // its latest version there would open the form on whatever was pushed to the
   // registry last - not on the version the service actually offers. Once set,
   // this effect leaves the choice alone, so getting it wrong once is permanent.
+  const defaultVersion = recommendedVersion || orderableVersions[0] || chart?.latest_version || "";
   useEffect(() => {
     if (editing || upgrade || selectedVersion || catalogLoading) return;
-    const def = recommendedVersion || orderableVersions[0] || chart?.latest_version || "";
-    if (def) setSelectedVersion(def);
-  }, [
-    editing,
-    upgrade,
-    selectedVersion,
-    catalogLoading,
-    recommendedVersion,
-    orderableVersions,
-    chart?.latest_version,
-  ]);
+    if (defaultVersion) setSelectedVersion(defaultVersion);
+  }, [editing, upgrade, selectedVersion, catalogLoading, defaultVersion]);
+  // A new order has no version yet while the catalog is on its way, and for
+  // one more render after it: the effect above picks the version after the
+  // paint. The values card stays an outline through both, not a note that
+  // there is no schema.
+  const versionPending =
+    !editing && !upgrade && !selectedVersion && (catalogLoading || defaultVersion !== "");
 
   // Upgrade: the chart's CHANGELOG between the order's current version and the
   // target, so the changes are visible.
@@ -217,7 +215,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // dependency mounted under the key its values sit at. Without it a view naming
   // a dependency's field would point at nothing, and the order would be checked
   // against half the rules Helm applies.
-  const { data: form } = useAsync(
+  const { data: form, loading: formLoading } = useAsync(
     async (signal) => {
       if (!project || !name || !effectiveVersion) return null;
       const { effective_schema: schema } = await api.getDependencies(
@@ -237,6 +235,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const schema = form?.schema ?? null;
   const orderView = form?.view;
   const viewDoc = form?.doc ?? null;
+  // The form is loading until a version has been asked for and has answered.
+  // A version switch asks again, and the card goes back to the outline until
+  // the new schema is in, instead of saying for a moment that there is none.
+  const schemaLoading = !schema && (versionPending || formLoading);
   // A view may declare which values field supplies the deploy identity
   // (service_name). When set, we source the name from the form instead of a
   // separate "Service name" input - e.g. the gateway's own name field.
@@ -722,6 +724,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
 
       <OrderValuesCard
         schema={schema}
+        schemaLoading={schemaLoading}
         view={orderView}
         values={values}
         onValues={setValues}

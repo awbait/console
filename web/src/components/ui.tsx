@@ -506,10 +506,12 @@ const LOADING_DELAY_MS = 300;
 
 // useDelayed reports whether the wait has lasted long enough to be worth
 // showing. Shared by every loading state below so they all appear on the same
-// beat instead of one panel flashing ahead of another.
+// beat instead of one panel flashing ahead of another. A zero delay is ready on
+// the first render, with no blank frame in front.
 function useDelayed(ms = LOADING_DELAY_MS): boolean {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(ms <= 0);
   useEffect(() => {
+    if (ms <= 0) return;
     const t = setTimeout(() => setReady(true), ms);
     return () => clearTimeout(t);
   }, [ms]);
@@ -536,16 +538,23 @@ export function Skeleton({ className = "" }: { className?: string }) {
 // Placeholder wraps a skeleton layout: it holds the delay and makes the whole
 // group one polite announcement. A page that lays out its own skeleton out of
 // the bare pieces below wraps them in this, once, at the top.
+//
+// `immediate` skips the delay. It is for a skeleton that replaces a whole page
+// or fills a card that is already drawn: there the delay does not save a flash,
+// it adds one - the region is blank first, then the outline appears, then the
+// content, and the outline was supposed to be the one thing that never moved.
 export function Placeholder({
   label,
   className = "",
+  immediate = false,
   children,
 }: {
   label: string;
   className?: string;
+  immediate?: boolean;
   children: ReactNode;
 }) {
-  const ready = useDelayed();
+  const ready = useDelayed(immediate ? 0 : LOADING_DELAY_MS);
   if (!ready) return null;
   return (
     <output aria-label={label} className={`block ${className}`}>

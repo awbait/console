@@ -154,13 +154,22 @@ export function OrderMetaCard({
   );
 }
 
+// The values form on its way: as many field boxes as the form usually opens
+// with. The page skeleton and the values card draw the same ones, so the card
+// keeps its height when the page skeleton gives way to the real page.
+const VALUES_SKELETON_FIELDS = 5;
+
 // OrderPageSkeleton is the order page before its chart has arrived: the crumbs
 // and the title, the card with the order's own fields, then the values card
 // with its heading and the first fields of the form. Same gaps and cards as the
 // real page, so the form lands in place instead of jumping in after a spinner.
+//
+// Immediate: the page is opened fresh every time (the chart comes from the
+// registry, not from a cache), so the delay never hid a flash - it only put a
+// blank screen in front of the outline.
 export function OrderPageSkeleton() {
   return (
-    <Placeholder label="Готовим форму заказа">
+    <Placeholder label="Готовим форму заказа" immediate>
       <div className="flex flex-col gap-4 pb-8">
         <Skeleton className="h-4 w-56" />
         <Skeleton className="h-7 w-80" />
@@ -172,7 +181,7 @@ export function OrderPageSkeleton() {
             <Skeleton className="h-4 w-40" />
             <Skeleton className="h-6 w-28 rounded-md" />
           </div>
-          <SkeletonFieldBoxes fields={5} />
+          <SkeletonFieldBoxes fields={VALUES_SKELETON_FIELDS} />
         </Card>
       </div>
     </Placeholder>
@@ -185,6 +194,7 @@ export function OrderPageSkeleton() {
 // via onSwitchMode, so the parent keeps a single source of truth for submit.
 export function OrderValuesCard({
   schema,
+  schemaLoading = false,
   view,
   values,
   onValues,
@@ -204,6 +214,10 @@ export function OrderValuesCard({
   onPluginState,
 }: {
   schema: JSONSchema | null;
+  // The schema is still on its way (or the version it is asked for is still
+  // being chosen): the form area shows the outline of its fields, not the word
+  // that there is no schema.
+  schemaLoading?: boolean;
   view?: View;
   values: Values;
   onValues: (v: Values) => void;
@@ -284,7 +298,13 @@ export function OrderValuesCard({
           />
         </Suspense>
       ) : mode === "form" ? (
-        schema ? (
+        schemaLoading ? (
+          // Immediate: the card is already drawn around it, and the boxes are
+          // the same ones the page skeleton held here, so nothing moves.
+          <Placeholder label="Готовим форму" immediate>
+            <SkeletonFieldBoxes fields={VALUES_SKELETON_FIELDS} />
+          </Placeholder>
+        ) : schema ? (
           <SchemaForm
             schema={schema}
             value={values}
