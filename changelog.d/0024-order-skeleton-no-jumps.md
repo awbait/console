@@ -1,7 +1,7 @@
 ### Fixed
 
 #### en
-The order form no longer opens in three steps. The outline of the page appears the moment the page opens, and the service parameters keep their outline until the form itself arrives, instead of a blank screen, then the outline, then the form.
+Opening the order form now immediately shows a page outline instead of a blank screen. The "Service parameters" card shows field outlines until the form loads and keeps the same height when the fields appear.
 
 #### ru
-Форма заказа больше не появляется в три приёма. Контур страницы виден сразу при открытии, а параметры сервиса держат контур полей, пока не придёт сама форма, вместо пустого экрана, затем контура, затем формы.
+При открытии формы заказа сразу виден контур страницы вместо пустого экрана. Карточка «Параметры сервиса» показывает контуры полей до загрузки формы и сохраняет высоту при появлении полей.
