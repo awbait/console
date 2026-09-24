@@ -168,6 +168,39 @@ func TestAFailureOnTheOrderedVersionFailsTheOrder(t *testing.T) {
 	}
 }
 
+// A sync ArgoCD is retrying has not gone through, however much it looks like
+// one: between attempts the operation is Running and carries the time of the
+// failure as its finish time. The condition it keeps failing on is still the
+// answer, and the order does not wait out the whole retry schedule for it.
+func TestAComplaintIsNotOutlivedByASyncArgoCDIsRetrying(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	req := deployed(ctx, t, s, "pg-retried")
+	deploying(ctx, t, s, req.ID)
+
+	s.argo.Upsert(argocd.Application{
+		Name:         req.ArgoCDAppName,
+		Cluster:      "in-cluster",
+		Health:       argocd.HealthHealthy, // the previous release is still running
+		Sync:         argocd.SyncUnknown,
+		ChartVersion: "15.4.2",
+		Error:        upgradeComplaint,
+		ErrorSince:   time.Now().Add(-10 * time.Minute),
+		LastOp: &argocd.Operation{
+			Phase:        argocd.OpRunning,
+			ChartVersion: "15.4.2",
+			Message:      upgradeComplaint + ". Retrying attempt #2 at 2026-09-24T10:04:07Z.",
+			FinishedAt:   time.Now().Add(-30 * time.Second),
+		},
+	})
+
+	_ = s.prov.Reconcile(ctx)
+
+	if got := mustStatus(ctx, t, s.st, req.ID); got != models.StatusDegraded {
+		t.Fatalf("order in %s, want DEGRADED while ArgoCD retries a sync that keeps failing", got)
+	}
+}
+
 // A condition older than a sync that went through describes a state ArgoCD has
 // since left. The application is healthy and synced; the order follows it.
 func TestAComplaintOlderThanASuccessfulSyncIsIgnored(t *testing.T) {
