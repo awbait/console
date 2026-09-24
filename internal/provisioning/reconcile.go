@@ -426,9 +426,18 @@ func staleSyncFailure(r *models.Request, app *argocd.Application) bool {
 
 // errorOutlivedTheSync reports that the condition on the application is older
 // than a sync that went through - it describes a state ArgoCD has since left.
+//
+// Only a sync that succeeded counts. A running one has not gone anywhere yet,
+// and it may well carry a finish time: when a sync fails and the application's
+// syncPolicy allows retries, ArgoCD puts the operation back to Running with
+// finishedAt set to the moment it failed, and leaves it there until the next
+// attempt. Reading that as a sync that went through made the portal drop the
+// very condition the retries kept failing on, and the order sat in DEPLOYING
+// for as long as ArgoCD kept trying - twelve minutes and more with the retry
+// policy the portal writes into every application.
 func errorOutlivedTheSync(app *argocd.Application) bool {
 	op := app.LastOp
-	if op == nil || op.Failed() || op.FinishedAt.IsZero() || app.ErrorSince.IsZero() {
+	if op == nil || op.Phase != argocd.OpSucceeded || op.FinishedAt.IsZero() || app.ErrorSince.IsZero() {
 		return false
 	}
 	return app.ErrorSince.Before(op.FinishedAt)
