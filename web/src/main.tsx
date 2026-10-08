@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ComponentType, lazy, type ReactNode, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, Navigate, Outlet, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import "./index.css";
 import "./lib/monaco";
 import { CatalogProvider } from "./app/CatalogContext";
@@ -92,25 +92,13 @@ function RoleHome() {
   return <Navigate to={home} replace />;
 }
 
-// PlatformOnly guards the product (platform) routes. The security role lives in
-// its own section and has no order/catalog access, so a direct URL bounces it
-// back to /security. Other roles pass through.
-function PlatformOnly() {
-  const { user } = useUser();
-  if (user?.role === "security") return <Navigate to="/security" replace />;
-  return <Outlet />;
-}
-
 const router = createBrowserRouter([
   {
     path: "/",
     element: <Layout />,
     children: [
       { index: true, element: <RoleHome /> },
-      // About is informational and available to every role (outside PlatformOnly).
       { path: "about", element: <AboutPage /> },
-      // The feed belongs to whoever is reading it, whatever section they work
-      // in, so it sits beside About rather than inside PlatformOnly.
       { path: "notifications", element: <NotificationsPage /> },
       {
         path: "security",
@@ -151,22 +139,17 @@ const router = createBrowserRouter([
           { path: "requests", element: <SupportRequestsPage /> },
         ],
       },
-      // Platform (product) routes: blocked for the security role.
-      {
-        element: <PlatformOnly />,
-        children: [
-          { path: "catalog", element: <CatalogPage /> },
-          { path: "catalog/:project/:name", element: <ChartDetailPage /> },
-          { path: "catalog/:project/:name/order", element: <OrderPage /> },
-          { path: "catalog/:project/:name/manage", element: <ChartManagePage /> },
-          { path: "catalog/:project/:name/manage/:version", element: <ChartVersionEditPage /> },
-          { path: "requests", element: <RequestsPage /> },
-          { path: "requests/:id/edit", element: <OrderPage /> },
-          { path: "requests/:id/upgrade", element: <OrderPage upgrade /> },
-          { path: "products/:project/:name", element: <ProductPage /> },
-          { path: "requests/:id", element: <RequestDetailPage /> },
-        ],
-      },
+      // Platform (product) routes: open to every role.
+      { path: "catalog", element: <CatalogPage /> },
+      { path: "catalog/:project/:name", element: <ChartDetailPage /> },
+      { path: "catalog/:project/:name/order", element: <OrderPage /> },
+      { path: "catalog/:project/:name/manage", element: <ChartManagePage /> },
+      { path: "catalog/:project/:name/manage/:version", element: <ChartVersionEditPage /> },
+      { path: "requests", element: <RequestsPage /> },
+      { path: "requests/:id/edit", element: <OrderPage /> },
+      { path: "requests/:id/upgrade", element: <OrderPage upgrade /> },
+      { path: "products/:project/:name", element: <ProductPage /> },
+      { path: "requests/:id", element: <RequestDetailPage /> },
       { path: "*", element: <NotFound /> },
     ],
   },

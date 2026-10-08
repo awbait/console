@@ -8,14 +8,12 @@ import {
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client";
-import { useUser } from "../auth/UserContext";
 import { Changelog, withContent } from "../components/Changelog";
 import { Card, ErrorBox, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isRelease, releaseAnchor } from "../lib/release";
 
 export function AboutPage() {
-  const { user } = useUser();
   const about = useAsync(() => api.getAbout(), []);
   const changelog = useAsync(() => api.getChangelog(), []);
 
@@ -28,16 +26,10 @@ export function AboutPage() {
   const target = hash.replace(/^#/, "");
 
   // User-facing portal links (not infra consoles - those live on the status page).
-  // The security role has no catalog/orders, so it only gets documentation.
-  const platform = user?.role !== "security";
   const links = [
     { to: "/docs", label: "Документация", hint: "Гайды и справка", Icon: IconBook },
-    ...(platform
-      ? [
-          { to: "/catalog", label: "Каталог чартов", hint: "Сервисы для заказа", Icon: IconPackages },
-          { to: "/requests", label: "Мои заказы", hint: "Инстансы и статусы", Icon: IconBox },
-        ]
-      : []),
+    { to: "/catalog", label: "Каталог чартов", hint: "Сервисы для заказа", Icon: IconPackages },
+    { to: "/requests", label: "Мои заказы", hint: "Инстансы и статусы", Icon: IconBox },
   ];
 
   const info = about.data;

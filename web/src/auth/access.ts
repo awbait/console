@@ -31,7 +31,9 @@ export interface NoTeamNotice {
 export function noTeamNotice(user: User | null): NoTeamNotice | null {
   if (canOrder(user)) return null;
   const role = user?.role;
-  if (role === "admin" || role === "support" || role === "security") {
+  // Security is not here: its teams count like anybody else's, so the advice to
+  // ask for a team is the right one for it too.
+  if (role === "admin" || role === "support") {
     return {
       short: "Сервисы заказывают участники команд",
       orders: "Сервисы заказывают участники команд, а ваша роль в портале другая.",
