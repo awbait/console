@@ -127,14 +127,16 @@ func (r RBAC) BuildUser(sub, email, username, name string, groups []string) *mod
 	case admin:
 		u.Role = models.RoleAdmin
 	case support:
-		// Support and security are pure platform roles: their access comes from the
-		// role across all teams, never from a team membership. Drop any teams so the
-		// role is unambiguous (no accidental member-style create/delete on own team).
+		// Support is a pure platform role: its access comes from the role across all
+		// teams, never from a team membership. Drop any teams so the role is
+		// unambiguous (no accidental member-style create/delete on own team).
 		u.Role = models.RoleSupport
 		u.Teams = nil
 	case security:
+		// Security adds its own section on top of the regular platform; it grants
+		// nothing over orders. Its teams are kept, so an InfoSec engineer who is
+		// also in a team still orders and edits that team's services as a member.
 		u.Role = models.RoleSecurity
-		u.Teams = nil
 	case len(u.Teams) > 0:
 		u.Role = models.RoleMember
 	}

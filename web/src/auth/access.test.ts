@@ -23,10 +23,10 @@ describe("who may order a service", () => {
     expect(notice?.ordering).toContain("администратора платформы");
   });
 
-  // Support and security hold their access through the role and never through a
+  // Support and admin hold their access through the role and never through a
   // team, so "ask to be added to a team" would be wrong advice for them.
   test("a platform role is told its own reason instead", () => {
-    for (const role of ["support", "security", "admin"] as Role[]) {
+    for (const role of ["support", "admin"] as Role[]) {
       const notice = noTeamNotice(user(role, []));
       expect(canOrder(user(role, []))).toBe(false);
       expect(notice?.ordering).toContain("ваша роль в портале другая");

@@ -386,14 +386,14 @@ export function Layout() {
   if (loading) return <ShellSkeleton width={shellWidth} collapsed={collapsed} />;
   if (unauthenticated || !user) return <LoginScreen />;
 
-  // Sections by role: security sees only its own section, admin sees all three,
-  // everyone else only the platform section. The active section follows the URL,
-  // clamped to what the role may actually see.
+  // Sections by role: everyone sees the platform, and a privileged role adds its
+  // own section on top (admin sees all of them). The active section follows the
+  // URL, clamped to what the role may actually see.
   const availableSections = SECTIONS.filter((s) => {
     if (s.id === "security") return user.role === "security" || user.role === "admin";
     if (s.id === "admin") return user.role === "admin";
     if (s.id === "support") return user.role === "support" || user.role === "admin";
-    return user.role !== "security"; // platform
+    return true; // platform
   });
   const pathSection: SectionId = pathname.startsWith("/security")
     ? "security"

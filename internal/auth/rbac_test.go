@@ -57,13 +57,13 @@ func TestBuildUser(t *testing.T) {
 		}
 	})
 
-	t.Run("security drops teams", func(t *testing.T) {
+	t.Run("security keeps teams", func(t *testing.T) {
 		u := r.BuildUser("s7", "", "ivy", "Ivy", []string{"team-core", "infosec"})
 		if u.Role != models.RoleSecurity || !u.IsSecurity() {
 			t.Fatalf("want security, got %s", u.Role)
 		}
-		if len(u.Teams) != 0 {
-			t.Fatalf("security must not carry teams, got %+v", u.Teams)
+		if len(u.Teams) != 1 || u.Teams[0] != "core" {
+			t.Fatalf("security must keep its teams, got %+v", u.Teams)
 		}
 	})
 
