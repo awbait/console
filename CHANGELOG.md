@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.18.1] - 2026-10-08
+
+### Changed
+- Rewrote the page about the version constructor in the portal's "Documentation"
+  section. It now describes every feature of the version document with a
+  ready-to-use example. Constructor error messages are grouped into tables by
+  topic, with explanations of what to fix.
+
+### Fixed
+- Opening the order form now immediately shows a page outline instead of a blank
+  screen. The "Service parameters" card shows field outlines until the form
+  loads and keeps the same height when the fields appear.
+- Fixed orders staying in “deploying” without an error reason while Argo CD
+  retried after failing to build the service. The order now switches to “failed”
+  a few minutes after the error appears, even during retries, and its card shows
+  the reason reported by Argo CD. Once the service builds successfully again,
+  the order automatically returns to “running”. No action is required.
+- Security users can now open the Platform section and work with orders for
+  their teams. Users without a team cannot see or place orders. Ask an
+  administrator to add you to a team. Security access does not include orders
+  from other teams.
+
 ## [0.18.0] - 2026-09-23
 
 ### Added
