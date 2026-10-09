@@ -40,6 +40,16 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 			known[r.ArgoCDAppName] = struct{}{}
 		}
 	}
+	// A discovered manifest is adopted onto the default stand: the group being
+	// walked is the one that stand writes to, and a cluster alone cannot name
+	// a stand, since one stand may span several. A store with no stands at all
+	// (nothing seeded) adopts without one, as before.
+	standID := ""
+	if def, err := s.store.DefaultStand(ctx); err == nil {
+		standID = def.ID
+	} else if !errors.Is(err, models.ErrNotFound) {
+		return err
+	}
 
 	for _, d := range discovered {
 		r := s.parseDiscovered(d)
@@ -49,6 +59,7 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if _, ok := known[r.ArgoCDAppName]; ok {
 			continue
 		}
+		r.StandID = standID
 		// Only adopt VALID, conforming instances:
 		//  1) the adjacent values.yaml must exist (a complete instance folder), and
 		//  2) the application.yaml must be exactly what the portal would generate for

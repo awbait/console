@@ -34,6 +34,8 @@ export const qk = {
   // Platform variables: the admin page and the version constructor both read
   // them, so a switch between the two hits the cache instead of the network.
   variables: (): QueryKey => ["variables"],
+  // Stands: the order form, the orders list and the admin page all read them.
+  stands: (): QueryKey => ["stands"],
   requests: (): QueryKey => ["requests"],
   platformHealth: (): QueryKey => ["platform-health"],
 };

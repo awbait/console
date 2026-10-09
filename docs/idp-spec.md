@@ -94,11 +94,11 @@ Approval flow не нужен (только dev). Tenant-единица - **ко
 
 Approval flow и роль `approver` **не закладываются** - у нас только dev, staging/prod не планируются.
 
-## Кластеры
+## Стенды и кластеры
 
-**Сейчас:** один кластер (dev). В форме заказа выбора кластера нет, все деплои идут в `in-cluster`.
+Стенд - глобальная сущность, к которой привязан заказ (`requests.stand_id`, таблица `stands`). Стенды заводит администратор на странице «Стенды»; один из них помечен как стенд по умолчанию. При первом запуске новой версии портал сам создаёт стенд `default` из `ARGOCD_DEFAULT_CLUSTER` и присоединяет к нему все существующие заказы. Полная модель стенда (переменные по стендам, раскладка git, режимы, удаление) описана в issue #419 и вводится по этапам.
 
-**Архитектурно заложено на будущее:** в БД у заказа есть поле `cluster`, в Application манифесте используется `destination.name`. Когда появится второй кластер - добавится dropdown в форму, и список доступных кластеров будет читаться из ArgoCD (`GET /api/v1/clusters`) с фильтрацией по правам команды.
+Кластер остаётся полем заказа: у стенда может быть несколько кластеров, поэтому стенд хранит только кластер по умолчанию, которым форма заказа предзаполняется при выборе стенда. Поле `cluster` по-прежнему уходит в путь в git (`{cluster}/{namespace}/{instance}`) и в `destination.name` манифеста Application. Список кластеров из Argo CD (`GET /api/v1/clusters`) в форму не читается: кластер вводится вручную и проверяется как DNS-метка.
 
 ## Источники данных
 
@@ -439,7 +439,8 @@ CREATE TABLE requests (
   chart_name      TEXT NOT NULL,
   chart_version   TEXT NOT NULL,
   service_name    TEXT NOT NULL,
-  cluster         TEXT NOT NULL DEFAULT 'in-cluster',  -- задел на multi-cluster
+  stand_id        UUID REFERENCES stands(id),          -- стенд заказа, см. «Стенды и кластеры»
+  cluster         TEXT NOT NULL DEFAULT 'in-cluster',  -- кластер назначения, предзаполняется из стенда
   values_yaml     TEXT NOT NULL,
   status          TEXT NOT NULL,        -- DRAFT, MR_CREATED, DEPLOYING, HEALTHY, ...
   argocd_app_name TEXT,                  -- вычисляется один раз при создании

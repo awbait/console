@@ -15,6 +15,7 @@ import {
   IconPackage,
   IconPencil,
   IconPlus,
+  IconServer,
   IconSettings,
   IconStack,
   IconTags,
@@ -57,6 +58,7 @@ import { useTeamLabel, useUser } from "../auth/UserContext";
 import { CATEGORY_ICON_CHOICES, categoryIcon, categoryIconName, ProductIcon } from "../components/icons";
 import { PublicationReview } from "../components/PublicationReview";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
+import { standText } from "../features/stands/text";
 import { fieldMsg, ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
@@ -245,6 +247,13 @@ export function AdminOverviewPage() {
             Icon={IconTags}
             title="Категории каталога"
             desc="структура разделов каталога"
+          />
+          <QuickLink
+            to="/admin/stands"
+            tone="slate"
+            Icon={IconServer}
+            title={standText.navLabel}
+            desc={standText.quickLinkDesc}
           />
           <QuickLink
             to="/admin/variables"

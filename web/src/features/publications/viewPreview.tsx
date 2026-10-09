@@ -20,6 +20,8 @@ import {
   TooltipTrigger,
 } from "react-aria-components";
 import { IconInfoCircle } from "@tabler/icons-react";
+import { api } from "@/api/client";
+import { qk } from "@/api/queryKeys";
 import type { OrderRequest, ViewDocument } from "@/api/types";
 import { useUser } from "@/auth/UserContext";
 import { ProductIcon } from "@/components/icons";
@@ -28,6 +30,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui";
 import { parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { pruneEmpty, type View } from "@/form/SchemaForm";
+import { useAsync } from "@/hooks/useAsync";
 import { OrderMetaCard, OrderValuesCard } from "../orders/OrderFormParts";
 import { Meta, ProductView } from "../orders/requestDetailParts";
 import { valuesEditorFor } from "../orders/valuesEditors";
@@ -206,7 +209,22 @@ export function PreviewPane({
   const [values, setValues] = useState<Values>({});
   const [displayName, setDisplayName] = useState(label);
   const [serviceName, setServiceName] = useState("");
-  const [cluster, setCluster] = useState("in-cluster");
+  // The real stands, so the preview's selector is the one the order form has.
+  // Picking one here changes nothing outside the preview.
+  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
+  const [standId, setStandId] = useState("");
+  const [cluster, setCluster] = useState("");
+  function pickStand(id: string) {
+    setStandId(id);
+    const st = stands?.find((s) => s.id === id);
+    if (st) setCluster(st.default_cluster);
+  }
+  useEffect(() => {
+    if (standId || !stands?.length) return;
+    const def = stands.find((s) => s.default) ?? stands[0];
+    setStandId(def.id);
+    setCluster((c) => c || def.default_cluster);
+  }, [standId, stands]);
   const [namespace, setNamespace] = useState("");
   const [mode, setMode] = useState<string>("form");
   const [raw, setRaw] = useState("");
@@ -256,6 +274,7 @@ export function PreviewPane({
     chart_version: version,
     service_name: svcName,
     display_name: displayName,
+    stand_id: standId,
     cluster,
     namespace: namespace || svcName,
     values_yaml: yaml.dump(pruneEmpty(values)),
@@ -296,6 +315,9 @@ export function PreviewPane({
               onDisplayName={setDisplayName}
               serviceName={serviceName}
               onServiceName={setServiceName}
+              stands={stands ?? []}
+              standId={standId}
+              onStand={pickStand}
               cluster={cluster}
               onCluster={setCluster}
               namespace={namespace}

@@ -4,12 +4,13 @@
 // and OrderValuesCard (Form/Raw YAML toggle over the schema-driven form).
 import Editor from "@monaco-editor/react";
 import { Suspense } from "react";
-import type { JSONSchema } from "@/api/types";
+import type { JSONSchema, Stand } from "@/api/types";
 import { useTheme } from "@/app/ThemeContext";
 import { Card, Loading, Placeholder, Select, Skeleton, SkeletonFieldBoxes, TextField } from "@/components/ui";
 import { fieldKind, fieldMsg } from "@/form/fieldErrors";
 import { namespaceKind } from "@/form/namespace";
 import { SchemaForm, type View } from "@/form/SchemaForm";
+import { standText } from "../stands/text";
 import type { ActiveValuesEditor } from "./valuesEditors";
 
 type Values = Record<string, unknown>;
@@ -23,6 +24,9 @@ export function OrderMetaCard({
   onDisplayName,
   serviceName,
   onServiceName,
+  stands,
+  standId,
+  onStand,
   cluster,
   onCluster,
   namespace,
@@ -43,6 +47,12 @@ export function OrderMetaCard({
   onDisplayName: (v: string) => void;
   serviceName: string;
   onServiceName: (v: string) => void;
+  // The stands to choose from and the chosen one. Picking a stand is expected
+  // to restart the cluster below from that stand's default (the caller does
+  // it: the card holds no state of its own).
+  stands: Stand[];
+  standId: string;
+  onStand: (id: string) => void;
   cluster: string;
   onCluster: (v: string) => void;
   namespace: string;
@@ -86,9 +96,23 @@ export function OrderMetaCard({
           errorText={showErrors && !serviceName ? fieldMsg.required : undefined}
         />
       )}
+      {stands.length > 0 ? (
+        <Select
+          label={standText.orderStandLabel}
+          description={standText.orderStandDescription}
+          isRequired
+          selectedKey={standId || null}
+          onSelectionChange={onStand}
+          options={stands.map((s) => ({ id: s.id, label: s.name }))}
+        />
+      ) : (
+        // No stand to choose from yet: the order still goes to the one the
+        // platform falls back to, so the form is not blocked, only told.
+        <p className="text-sm text-gray-500">{standText.noStands}</p>
+      )}
       <TextField
         label="Кластер"
-        description="Кластер назначения ArgoCD (destination.name)."
+        description={standText.orderClusterDescription}
         isRequired
         placeholder="in-cluster"
         kind={fieldKind.dnsLabel()}

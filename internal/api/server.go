@@ -215,6 +215,13 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/categories/{id}", s.handleUpdateCategory)  // admin
 			r.Delete("/categories/{id}", s.handleDeleteCategory) // admin
 
+			// stands: the places orders are placed on. Reading is open (the order
+			// form offers them, the list filters by them), writing is admin.
+			r.Get("/stands", s.handleListStands)
+			r.Post("/stands", s.handleCreateStand)                  // admin
+			r.Patch("/stands/{id}", s.handleUpdateStand)            // admin
+			r.Post("/stands/{id}/default", s.handleSetDefaultStand) // admin
+
 			// platform variables: named values a version document references as
 			// "{{.Vars.OPS}}". Reading is open (the constructor offers them),
 			// writing is admin.

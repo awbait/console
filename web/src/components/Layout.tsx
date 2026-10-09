@@ -12,6 +12,7 @@ import {
   IconLifebuoy,
   IconLogout,
   IconScan,
+  IconServer,
   IconSettings,
   IconShieldCheck,
   IconShieldLock,
@@ -38,6 +39,7 @@ import { useTeam } from "../app/TeamContext";
 import { ROLE_LABELS } from "../auth/roles";
 import { useUser } from "../auth/UserContext";
 import { NotificationsBell } from "../features/notifications/NotificationsBell";
+import { standText } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
 import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
@@ -96,6 +98,7 @@ const adminSectionNav: SectionNavItem[] = [
   { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
   { to: "/admin/config", label: "Конфигурация", Icon: IconAdjustments },
   { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
+  { to: "/admin/stands", label: standText.navLabel, Icon: IconServer },
   { to: "/admin/variables", label: "Переменные", Icon: IconVariable },
 ];
 
