@@ -230,6 +230,10 @@ func (s *Server) Router() http.Handler {
 			r.Put("/variables/{name}", s.handleSetVariable)       // admin
 			r.Post("/variables", s.handleSetVariable)             // admin
 			r.Delete("/variables/{name}", s.handleDeleteVariable) // admin
+			// a variable's own value on one stand; the shared value is the
+			// variable itself
+			r.Put("/variables/{name}/stands/{stand}", s.handleSetVariableOverride)       // admin
+			r.Delete("/variables/{name}/stands/{stand}", s.handleDeleteVariableOverride) // admin
 
 			// chart publications: metadata + view builder + approval
 			r.Get("/view-schema", s.handleViewSchema) // format of the view document, for the constructor's editor

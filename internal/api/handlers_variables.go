@@ -55,6 +55,35 @@ func (s *Server) handleDeleteVariable(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
+// handleSetVariableOverride gives the variable its own value on the stand in
+// the path, or takes it away when the value is empty. Answers with the whole
+// variable: the page redraws the row from it.
+func (s *Server) handleSetVariableOverride(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	v, err := s.Pubs.SetVariableOverride(r.Context(), u, chi.URLParam(r, "name"), chi.URLParam(r, "stand"), body.Value)
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (s *Server) handleDeleteVariableOverride(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	if err := s.Pubs.DeleteVariableOverride(r.Context(), u, chi.URLParam(r, "name"), chi.URLParam(r, "stand")); err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusNoContent, nil)
+}
+
 // handleViewRefs answers with what a version document may reference in its
 // "defaults" and "initial" blocks: the fixed catalogue plus the variables that
 // exist right now. The constructor completes from it, so the list it offers is

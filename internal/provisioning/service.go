@@ -342,6 +342,7 @@ func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName,
 type stampContext struct {
 	Team        string
 	ServiceName string
+	StandID     string // decides which value a platform variable takes
 	Cluster     string
 	UserName    string
 	UserSubject string
@@ -350,7 +351,7 @@ type stampContext struct {
 // stampOf reads the substitution context off an existing order.
 func stampOf(r *models.Request) stampContext {
 	return stampContext{
-		Team: r.Team, ServiceName: r.ServiceName, Cluster: r.Cluster,
+		Team: r.Team, ServiceName: r.ServiceName, StandID: r.StandID, Cluster: r.Cluster,
 		UserName: r.CreatedByName, UserSubject: r.CreatedBy,
 	}
 }
@@ -369,7 +370,7 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 	if len(view) == 0 {
 		return values, nil
 	}
-	vars, err := s.templateVars(ctx, view)
+	vars, standName, err := s.templateVars(ctx, view, sc.StandID)
 	if err != nil {
 		return values, err
 	}
@@ -382,12 +383,19 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 		ChartVersion: version,
 		User:         views.TemplateUser{Name: sc.UserName, Subject: sc.UserSubject},
 		Vars:         vars,
+		Stand:        standName,
 	}, schemaJSON)
 	if err != nil {
 		// The person ordering cannot fix this, and the owner who can is not the
 		// one seeing the refusal: leave the platform a line naming the version.
 		s.logger().Warn("view defaults render failed",
 			"chart", chartName, "chart_project", chartProject, "chart_version", version, "err", err)
+		// A variable with no value for this stand is the platform admin's to
+		// fix, not the service owner's, and the error already says so.
+		var empty *views.VarEmptyError
+		if errors.As(err, &empty) {
+			return values, &ValidationError{Message: empty.Error()}
+		}
 		return values, &ValidationError{Message: MsgViewDefaults + err.Error() + " " + MsgViewDefaultsOwner}
 	}
 	// A pointer that found nothing to write into is not the order's fault and
@@ -401,23 +409,24 @@ func (s *Service) applyViewStamps(ctx context.Context, chartProject, chartName, 
 	return views.BindNamespace(values, view, namespace), nil
 }
 
-// templateVars reads the platform variables, but only for a document that names
-// one: most do not, and an order write should not query a table it has no
-// question for. An unreadable table refuses the write rather than stamping the
-// values a document did not ask for.
-func (s *Service) templateVars(ctx context.Context, view []byte) (map[string]string, error) {
+// templateVars reads the platform variables as the order's stand sees them,
+// but only for a document that names one: most do not, and an order write
+// should not query a table it has no question for. An unreadable table refuses
+// the write rather than stamping the values a document did not ask for. The
+// stand's name comes back with them, for the refusal that names it.
+func (s *Service) templateVars(ctx context.Context, view []byte, standID string) (map[string]string, string, error) {
 	if len(views.VariablesUsed(view)) == 0 {
-		return nil, nil
+		return nil, "", nil
+	}
+	stand, err := s.resolveStand(ctx, standID)
+	if err != nil {
+		return nil, "", err
 	}
 	list, err := s.store.ListVariables(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("variables: %w", err)
+		return nil, "", fmt.Errorf("variables: %w", err)
 	}
-	vars := make(map[string]string, len(list))
-	for _, v := range list {
-		vars[v.Name] = v.Value
-	}
-	return vars, nil
+	return models.VariableValuesOn(list, stand.ID), stand.Name, nil
 }
 
 // checkServiceName mirrors the uniq_active_service index (team, chart_name,
@@ -568,7 +577,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	// The order does not exist yet, so the author of a template's "{{.User.Name}}"
 	// is the person creating it - the one time the session IS the order's author.
 	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft,
-		stampContext{Team: in.Team, ServiceName: in.ServiceName, Cluster: cluster, UserName: u.Name, UserSubject: u.Subject})
+		stampContext{Team: in.Team, ServiceName: in.ServiceName, StandID: stand.ID, Cluster: cluster, UserName: u.Name, UserSubject: u.Subject})
 	if err != nil {
 		return nil, err
 	}

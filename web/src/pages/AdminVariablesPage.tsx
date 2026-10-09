@@ -1,18 +1,20 @@
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconChevronDown, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api/client";
 import { qk } from "../api/queryKeys";
-import type { Variable } from "../api/types";
+import type { Stand, Variable } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, ErrorBox, SkeletonRows } from "../components/ui";
+import { variableText as vt } from "../features/variables/text";
 import { fieldMsg } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
 // Переменные платформы: именованные значения, на которые ссылается документ
 // версии сервиса ("{{.Vars.OPS_DOMAIN}}"). Страница живёт по тем же правилам,
 // что и «Категории каталога»: правка по месту с сохранением на blur, добавление
-// снизу, удаление через подтверждение.
+// снизу, удаление через подтверждение. У переменной общее значение и, по
+// желанию, своё на отдельных стендах: блок стендов раскрывается под строкой.
 
 // The name rule mirrors the one the portal checks (models.ValidVariableName),
 // worded from the shared table so the complaint here and the one from the server
@@ -26,6 +28,9 @@ function nameError(name: string): string | null {
 
 export function AdminVariablesPage() {
   const { data, error, loading, reload } = useAsync(() => api.listVariables(), [], qk.variables());
+  // The stands, for the per-stand values under each variable. Under the shared
+  // key: the stands page and the order form read the same rows.
+  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const toast = useToast();
@@ -56,7 +61,7 @@ export function AdminVariablesPage() {
             {"{{.Vars.ИМЯ}}"}
           </code>
           . Портал подставляет их, когда сохраняет заказ. Меняйте значение здесь, и новые заказы
-          получат его сразу, а существующие - при следующем изменении.
+          получат его сразу, а существующие - при следующем изменении. {vt.pageIntroStands}
         </p>
         <p className="mt-1 max-w-3xl text-sm text-amber-700">
           Это не хранилище секретов: значение уезжает в values.yaml в Git и видно всем, у кого есть
@@ -81,9 +86,21 @@ export function AdminVariablesPage() {
                 <VariableRow
                   key={v.name}
                   variable={v}
+                  stands={stands ?? []}
                   busy={busy}
                   onSave={(patch) =>
                     run(() => api.setVariable({ ...v, ...patch }), `Переменная ${v.name} сохранена`)
+                  }
+                  onOverride={(stand, value) =>
+                    value
+                      ? run(
+                          () => api.setVariableOverride(v.name, stand.id, value),
+                          vt.toastOverrideSaved(v.name, stand.name),
+                        )
+                      : run(
+                          () => api.deleteVariableOverride(v.name, stand.id),
+                          vt.toastOverrideCleared(v.name, stand.name),
+                        )
                   }
                   onDelete={() => run(() => api.deleteVariable(v.name), `Переменная ${v.name} удалена`)}
                 />
@@ -101,62 +118,178 @@ export function AdminVariablesPage() {
 const cellInput =
   "min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-slate-800 outline-none hover:border-slate-200 focus:border-brand-500 focus:bg-surface focus:ring-1 focus:ring-brand-500 disabled:opacity-50";
 
+// The stands toggle: quiet by default, amber when the shared value is empty
+// and some stand has nothing of its own (its orders will not go through).
+const toggleBase =
+  "inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500";
+const toggleCalm = "text-slate-600 hover:bg-slate-100";
+const toggleGaps = "text-amber-700 hover:bg-amber-50";
+
 function VariableRow({
   variable,
+  stands,
   busy,
   onSave,
+  onOverride,
   onDelete,
 }: {
   variable: Variable;
+  stands: Stand[];
   busy: boolean;
   onSave: (patch: Partial<Variable>) => void;
+  // An empty value clears the stand's own value.
+  onOverride: (stand: Stand, value: string) => void;
   onDelete: () => void;
 }) {
   const [value, setValue] = useState(variable.value);
   const [desc, setDesc] = useState(variable.description ?? "");
+  const [open, setOpen] = useState(false);
   useEffect(() => setValue(variable.value), [variable.value]);
   useEffect(() => setDesc(variable.description ?? ""), [variable.description]);
 
-  return (
-    <div className="flex flex-wrap items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
-      <code
-        title="Так на переменную ссылается документ версии"
-        className="shrink-0 rounded bg-slate-100 px-2 py-1 font-mono text-[12px] font-medium text-slate-700"
-      >
-        {variable.name}
-      </code>
+  const overrides = variable.overrides ?? [];
+  const set = stands.filter((s) => overrides.some((o) => o.stand_id === s.id)).length;
+  // A shared value left empty while some stand has nothing of its own: orders
+  // on that stand will not go through, which is either the intent or an
+  // oversight, and the toggle says which stands are in that position.
+  const gaps = !variable.value && set < stands.length;
 
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
+        <code
+          title="Так на переменную ссылается документ версии"
+          className="shrink-0 rounded bg-slate-100 px-2 py-1 font-mono text-[12px] font-medium text-slate-700"
+        >
+          {variable.name}
+        </code>
+
+        <input
+          value={value}
+          disabled={busy}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => {
+            if (value !== variable.value) onSave({ value });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          placeholder={vt.sharedPlaceholder}
+          aria-label={vt.sharedAria(variable.name)}
+          className={`${cellInput} w-56 flex-1 font-mono text-[13px]`}
+        />
+
+        <input
+          value={desc}
+          disabled={busy}
+          onChange={(e) => setDesc(e.target.value)}
+          onBlur={() => {
+            if (desc !== (variable.description ?? "")) onSave({ description: desc });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          placeholder="зачем она нужна"
+          aria-label={`Описание переменной ${variable.name}`}
+          className={`${cellInput} w-56 flex-1`}
+        />
+
+        {stands.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-label={vt.standsToggleAria(variable.name)}
+            className={`${toggleBase} ${gaps ? toggleGaps : toggleCalm}`}
+          >
+            {vt.standsToggle(set, stands.length)}
+            <IconChevronDown
+              size={14}
+              stroke={2}
+              className={`transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+            />
+          </button>
+        )}
+
+        <DeleteVariableButton name={variable.name} onConfirm={onDelete} />
+      </div>
+
+      {open && stands.length > 0 && (
+        <div className="border-t border-slate-100 bg-slate-50/70 px-3 pb-3 pt-2">
+          <p className="mb-1.5 text-[12px] text-slate-500">{vt.overridesHint}</p>
+          <div className="flex flex-col gap-1">
+            {stands.map((s) => (
+              <StandValueRow
+                key={s.id}
+                variable={variable}
+                stand={s}
+                override={overrides.find((o) => o.stand_id === s.id)?.value ?? null}
+                busy={busy}
+                onChange={(v) => onOverride(s, v)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One stand's value of a variable: empty means the shared value applies. The
+// field saves on blur like the rest of the page, and the cross beside a value
+// of its own takes the stand back to the shared one.
+function StandValueRow({
+  variable,
+  stand,
+  override,
+  busy,
+  onChange,
+}: {
+  variable: Variable;
+  stand: Stand;
+  override: string | null;
+  busy: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [value, setValue] = useState(override ?? "");
+  useEffect(() => setValue(override ?? ""), [override]);
+  const missing = override === null && !variable.value;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 pl-1">
+      <span className="w-40 shrink-0 truncate text-sm text-slate-700" title={stand.name}>
+        {stand.name}
+      </span>
       <input
         value={value}
         disabled={busy}
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => {
-          if (value !== variable.value) onSave({ value });
+          const v = value.trim();
+          if (v !== (override ?? "")) onChange(v);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        placeholder="значение"
-        aria-label={`Значение переменной ${variable.name}`}
-        className={`${cellInput} w-56 flex-1 font-mono text-[13px]`}
+        placeholder={missing ? vt.overrideMissing : vt.overridePlaceholder(variable.value)}
+        aria-label={vt.overrideAria(variable.name, stand.name)}
+        className={`${cellInput} w-56 flex-1 font-mono text-[13px] ${
+          missing ? "placeholder:text-amber-700" : "placeholder:text-slate-400"
+        }`}
       />
-
-      <input
-        value={desc}
-        disabled={busy}
-        onChange={(e) => setDesc(e.target.value)}
-        onBlur={() => {
-          if (desc !== (variable.description ?? "")) onSave({ description: desc });
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-        placeholder="зачем она нужна"
-        aria-label={`Описание переменной ${variable.name}`}
-        className={`${cellInput} w-56 flex-1`}
-      />
-
-      <DeleteVariableButton name={variable.name} onConfirm={onDelete} />
+      {override !== null ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          disabled={busy}
+          aria-label={vt.clearAria(variable.name, stand.name)}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 outline-none hover:bg-slate-200 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-50"
+        >
+          <IconX size={14} stroke={2} />
+        </button>
+      ) : (
+        <span className="h-7 w-7 shrink-0" aria-hidden="true" />
+      )}
     </div>
   );
 }
@@ -237,7 +370,8 @@ function AddVariable({
   function add() {
     if (!canAdd) return;
     run(
-      () => api.setVariable({ name: name.trim(), value: value.trim(), description: desc.trim() }),
+      () =>
+        api.setVariable({ name: name.trim(), value: value.trim(), description: desc.trim(), overrides: [] }),
       `Переменная ${name.trim()} создана`,
     ).then(() => {
       setName("");
@@ -281,8 +415,8 @@ function AddVariable({
         onKeyDown={(e) => {
           if (e.key === "Enter") add();
         }}
-        placeholder="значение"
-        aria-label="Значение новой переменной"
+        placeholder={vt.sharedPlaceholder}
+        aria-label="Общее значение новой переменной"
         className="h-[30px] w-56 flex-1 rounded-md border border-slate-200 bg-transparent px-2.5 font-mono text-[13px] text-slate-800 outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
       />
 

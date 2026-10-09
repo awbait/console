@@ -141,7 +141,7 @@ func TestOrderInitialValues(t *testing.T) {
 		`"/ingress/domain":"{{.Vars.OPS_DOMAIN}}"}}`)
 	publishVersion(t, svc, member("core"), p.ID, "1.0.0", view)
 
-	values, err := svc.OrderInitialValues(ctx, member("core"), "platform", "postgres", "1.0.0", "core")
+	values, err := svc.OrderInitialValues(ctx, member("core"), "platform", "postgres", "1.0.0", "core", "")
 	if err != nil {
 		t.Fatalf("initial: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestOrderInitialValuesWithoutBlock(t *testing.T) {
 	p := newPub(t, svc, member("core"), "postgres")
 	publishVersion(t, svc, member("core"), p.ID, "1.0.0", json.RawMessage(`{"views":{"order":{}}}`))
 
-	values, err := svc.OrderInitialValues(ctx, member("core"), "platform", "postgres", "1.0.0", "core")
+	values, err := svc.OrderInitialValues(ctx, member("core"), "platform", "postgres", "1.0.0", "core", "")
 	if err != nil || len(values) != 0 {
 		t.Fatalf("want an empty seed, got %#v (%v)", values, err)
 	}

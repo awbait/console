@@ -674,8 +674,9 @@ func (s *Server) handleCheckChart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleOrderInitial(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	project, name := chi.URLParam(r, "project"), chi.URLParam(r, "name")
+	q := r.URL.Query()
 	values, err := s.Pubs.OrderInitialValues(r.Context(), u, project, name,
-		r.URL.Query().Get("version"), r.URL.Query().Get("team"))
+		q.Get("version"), q.Get("team"), q.Get("stand"))
 	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			// No published view is not a failure here: there is simply nothing
