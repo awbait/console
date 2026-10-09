@@ -49,6 +49,11 @@ type TemplateData struct {
 	// environment prefix that moves does not cost every service owner an edit
 	// and a fresh approval of their document.
 	Vars map[string]string
+	// Stand is the name of the stand the order goes to, as seen from Vars: the
+	// values there are already the stand's own where it has one. It is not a
+	// reference a document may use (see lookup); it only names the stand in
+	// the refusal when a variable is empty there.
+	Stand string
 }
 
 // TemplateUser is the order's author: the display name a person recognizes and
@@ -103,15 +108,22 @@ func varName(ref string) (string, bool) {
 	return name, true
 }
 
-// resolve answers one reference or says what is wrong with it. The two failures
+// resolve answers one reference or says what is wrong with it. The failures
 // are kept apart on purpose: a name nobody answers to is a mistake in the
-// document, while a variable that is simply not set is a mistake in the portal,
-// and they are fixed by different people.
+// document, while a variable that is missing or empty is a mistake in the
+// portal, and they are fixed by different people.
+//
+// An empty variable is refused rather than stamped: the shared value is left
+// empty on purpose when every stand must say its own, and an order on a stand
+// that did not is the case the emptiness exists to catch.
 func (d TemplateData) resolve(ref string) (string, error) {
 	if name, ok := varName(ref); ok {
 		v, set := d.Vars[name]
 		if !set {
 			return "", varNotSet(name)
+		}
+		if v == "" {
+			return "", varEmpty(name, d.Stand)
 		}
 		return v, nil
 	}
@@ -314,3 +326,22 @@ func unknownRef(ref string) error {
 func varNotSet(name string) error {
 	return fmt.Errorf("нет переменной «%s»: их заводит администратор платформы в разделе «Переменные»", name)
 }
+
+// VarEmptyError is what a variable that exists but has nothing to say for this
+// stand reads as: neither a value of its own there nor a shared one. It is a
+// type of its own because the person who fixes it is the platform admin, not
+// the service owner the other document errors point at, and the order write
+// words its refusal accordingly. Stand is empty in a portal without stands.
+type VarEmptyError struct {
+	Name  string
+	Stand string
+}
+
+func (e *VarEmptyError) Error() string {
+	if e.Stand == "" {
+		return fmt.Sprintf("У переменной %s нет значения. Попросите администратора платформы задать общее значение в разделе «Переменные».", e.Name)
+	}
+	return fmt.Sprintf("У переменной %s нет значения для стенда %s. Попросите администратора платформы задать общее значение или значение для этого стенда в разделе «Переменные».", e.Name, e.Stand)
+}
+
+func varEmpty(name, stand string) error { return &VarEmptyError{Name: name, Stand: stand} }

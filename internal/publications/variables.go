@@ -2,6 +2,7 @@ package publications
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -121,7 +122,9 @@ func referencesVariable(view []byte, name string) bool {
 // returns options rather than names so "could not read" stays distinct from
 // "there are none", which would flag every reference.
 func (s *Service) checkAgainstVariables(ctx context.Context) []views.Option {
-	vars, err := s.variableValues(ctx)
+	// The shared values: the checker asks which variables exist and what shape
+	// their values have, and a document is not written for one stand.
+	vars, err := s.variableValues(ctx, "")
 	if err != nil {
 		s.logger().Warn("variables unreadable, view checked without them", "err", err)
 		return nil
@@ -129,18 +132,81 @@ func (s *Service) checkAgainstVariables(ctx context.Context) []views.Option {
 	return []views.Option{views.WithVariables(vars)}
 }
 
-// variableValues reads the variables as name -> value, the shape both the
-// checker and the order stamp want.
-func (s *Service) variableValues(ctx context.Context) (map[string]string, error) {
+// variableValues reads the variables as name -> value, as seen from the stand:
+// the stand's own value where it has one, the shared value elsewhere. An empty
+// stand id reads the shared values.
+func (s *Service) variableValues(ctx context.Context, standID string) (map[string]string, error) {
 	list, err := s.store.ListVariables(ctx)
 	if err != nil {
 		return nil, err
 	}
-	vars := make(map[string]string, len(list))
-	for _, v := range list {
-		vars[v.Name] = v.Value
+	return models.VariableValuesOn(list, standID), nil
+}
+
+// standFor is the stand an order would go to: the one named, or the default
+// when none is. A portal without stands has neither, and that is not a failure
+// here: the shared values are then the only ones there are.
+func (s *Service) standFor(ctx context.Context, id string) (*models.Stand, error) {
+	if id != "" {
+		return s.store.GetStand(ctx, id)
 	}
-	return vars, nil
+	st, err := s.store.DefaultStand(ctx)
+	if errors.Is(err, models.ErrNotFound) {
+		return nil, nil
+	}
+	return st, err
+}
+
+// SetVariableOverride gives a variable its own value on one stand. An empty
+// value is not a value of its own: it removes the override, and the stand is
+// back on the shared value. Admin only, for the reason SetVariable is.
+func (s *Service) SetVariableOverride(ctx context.Context, u *models.User, name, standID, value string) (*models.Variable, error) {
+	if !u.IsAdmin() {
+		return nil, ErrForbidden
+	}
+	value = strings.TrimSpace(value)
+	if len(value) > maxVariableValue {
+		return nil, invalid("Значение переменной длиннее %d символов.", maxVariableValue)
+	}
+	if value == "" {
+		if err := s.store.DeleteVariableOverride(ctx, name, standID); err != nil && !errors.Is(err, models.ErrNotFound) {
+			return nil, err
+		}
+	} else {
+		o := &models.VariableOverride{StandID: standID, Value: value, UpdatedBy: u.Subject}
+		if err := s.store.SetVariableOverride(ctx, name, o); err != nil {
+			return nil, err
+		}
+	}
+	s.logger().Info("variable override set", "variable", name, "stand", standID, "cleared", value == "", "actor", u.Subject)
+	return s.variable(ctx, name)
+}
+
+// DeleteVariableOverride puts the stand back on the variable's shared value.
+func (s *Service) DeleteVariableOverride(ctx context.Context, u *models.User, name, standID string) error {
+	if !u.IsAdmin() {
+		return ErrForbidden
+	}
+	if err := s.store.DeleteVariableOverride(ctx, name, standID); err != nil {
+		return err
+	}
+	s.logger().Info("variable override deleted", "variable", name, "stand", standID, "actor", u.Subject)
+	return nil
+}
+
+// variable reads one variable with its overrides. The store lists them whole,
+// which is fine for the handful there are.
+func (s *Service) variable(ctx context.Context, name string) (*models.Variable, error) {
+	list, err := s.store.ListVariables(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range list {
+		if v.Name == name {
+			return v, nil
+		}
+	}
+	return nil, models.ErrNotFound
 }
 
 // OrderInitialValues renders the "initial" block of a version's approved view:
@@ -148,10 +214,11 @@ func (s *Service) variableValues(ctx context.Context) (map[string]string, error)
 //
 // The rendering happens here rather than in the browser so there is one template
 // engine and one catalogue of references. The context is only what an unfilled
-// form knows: the team it is being made for, the chart, the person opening it,
-// and the platform variables. A document that asks for more is refused by the
-// version constructor, so nothing here has to guess.
-func (s *Service) OrderInitialValues(ctx context.Context, u *models.User, project, name, version, team string) (map[string]any, error) {
+// form knows: the team it is being made for, the stand it is going to, the
+// chart, the person opening it, and the platform variables as that stand sees
+// them. A document that asks for more is refused by the version constructor,
+// so nothing here has to guess.
+func (s *Service) OrderInitialValues(ctx context.Context, u *models.User, project, name, version, team, standID string) (map[string]any, error) {
 	view, err := s.ActiveViewVersion(ctx, project, name, version)
 	if err != nil {
 		return nil, err
@@ -161,7 +228,14 @@ func (s *Service) OrderInitialValues(ctx context.Context, u *models.User, projec
 		User: views.TemplateUser{Name: u.Name, Subject: u.Subject},
 	}
 	if len(views.VariablesUsed(view)) > 0 {
-		vars, lerr := s.variableValues(ctx)
+		stand, serr := s.standFor(ctx, standID)
+		if serr != nil {
+			return nil, serr
+		}
+		if stand != nil {
+			standID, data.Stand = stand.ID, stand.Name
+		}
+		vars, lerr := s.variableValues(ctx, standID)
 		if lerr != nil {
 			return nil, lerr
 		}

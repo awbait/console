@@ -232,12 +232,13 @@ export const api = {
   // constructor's completions: one list, the same the portal resolves against.
   viewRefs: () => req<TemplateRef[]>("GET", "/view-refs"),
   // The values a new order form opens with (the version's "initial" block,
-  // rendered for this person and team). Best effort: a form that does not get
-  // them is still a form somebody can fill in.
-  orderInitial: (project: string, name: string, version: string, team: string, signal?: AbortSignal) =>
+  // rendered for this person, team and stand: a variable is worth what the
+  // stand says). Best effort: a form that does not get them is still a form
+  // somebody can fill in.
+  orderInitial: (project: string, name: string, version: string, team: string, stand = "", signal?: AbortSignal) =>
     req<{ values: Record<string, unknown> }>(
       "GET",
-      `/charts/${enc(project)}/${enc(name)}/initial?version=${enc(version)}&team=${enc(team)}`,
+      `/charts/${enc(project)}/${enc(name)}/initial?version=${enc(version)}&team=${enc(team)}&stand=${enc(stand)}`,
       undefined,
       signal,
     ),
@@ -262,6 +263,12 @@ export const api = {
   deleteVariable: (name: string) => req<void>("DELETE", `/variables/${enc(name)}`),
   variableUsage: (name: string) =>
     req<{ used_by: string[] }>("GET", `/variables/${enc(name)}/usage`),
+  // A variable's own value on one stand. An empty value clears it, the same
+  // as the delete; both answer with the variable as it now stands.
+  setVariableOverride: (name: string, standId: string, value: string) =>
+    req<Variable>("PUT", `/variables/${enc(name)}/stands/${enc(standId)}`, { value }),
+  deleteVariableOverride: (name: string, standId: string) =>
+    req<void>("DELETE", `/variables/${enc(name)}/stands/${enc(standId)}`),
 
   // catalog categories (CRUD - admin)
   listCategories: () => req<Category[]>("GET", "/categories"),

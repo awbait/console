@@ -156,6 +156,11 @@ type Store interface {
 	// existing one. The name is the key: renaming is deleting and creating.
 	UpsertVariable(ctx context.Context, v *models.Variable) error
 	DeleteVariable(ctx context.Context, name string) error // ErrNotFound when there is nothing to delete
+	// SetVariableOverride gives the named variable its own value on the stand,
+	// creating the row or replacing it. ErrNotFound when the variable or the
+	// stand does not exist. The variable's overrides are listed by ListVariables.
+	SetVariableOverride(ctx context.Context, name string, o *models.VariableOverride) error
+	DeleteVariableOverride(ctx context.Context, name, standID string) error // ErrNotFound when there is nothing to delete
 
 	// Stands: the places orders are placed on (models.Stand). A handful of rows
 	// the platform team keeps by hand, read whole by every reader: the order
