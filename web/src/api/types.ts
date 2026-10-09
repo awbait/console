@@ -71,6 +71,9 @@ export interface OrderRequest {
   chart_version: string;
   service_name: string;
   display_name: string;
+  // The stand the order is placed on (see Stand). Empty only on rows written
+  // before stands existed and not yet attached to one.
+  stand_id: string;
   cluster: string;
   namespace: string;
   values_yaml: string;
@@ -368,6 +371,18 @@ export interface Variable {
   value: string;
   description: string;
   updated_by?: string;
+  updated_at?: string;
+}
+
+// A stand: a named place orders are placed on. It carries the cluster the
+// order form opens with; the order may name another cluster of the same stand.
+// Exactly one stand is the default: where an order lands when it names none.
+export interface Stand {
+  id: string;
+  name: string;
+  default_cluster: string;
+  default: boolean;
+  created_at?: string;
   updated_at?: string;
 }
 
@@ -672,7 +687,8 @@ export interface CreateOrderBody {
   team: string;
   service_name: string;
   display_name?: string;
-  cluster?: string; // ArgoCD destination cluster
+  stand_id?: string; // the stand to place the order on; omitted means the default stand
+  cluster?: string; // ArgoCD destination cluster; omitted means the stand's default
   namespace?: string; // ArgoCD destination namespace
   values: Record<string, unknown>;
   // Opaque state of the visual values editor, stored with the order.
@@ -680,12 +696,13 @@ export interface CreateOrderBody {
   draft?: boolean; // persist as DRAFT without opening an MR
 }
 
-// Patch for an existing order. service_name/display_name/cluster/namespace are
-// honoured only while the order is still a DRAFT.
+// Patch for an existing order. service_name/display_name/stand_id/cluster/
+// namespace are honoured only while the order is still a DRAFT.
 export interface UpdateOrderBody {
   version?: string;
   service_name?: string;
   display_name?: string;
+  stand_id?: string;
   cluster?: string;
   namespace?: string;
   values: Record<string, unknown>;

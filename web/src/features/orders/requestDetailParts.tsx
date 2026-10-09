@@ -40,6 +40,8 @@ import {
   TabPanel,
   Tabs,
 } from "react-aria-components";
+import { api } from "@/api/client";
+import { qk } from "@/api/queryKeys";
 import type {
   OrderRequest,
   RequestDetail,
@@ -60,9 +62,11 @@ import { productTabs } from "@/components/products/genericView";
 import { statusMeta, statusTitle } from "@/components/StatusBadge";
 import { buttonClass, Card, Checkbox } from "@/components/ui";
 import { orderNamespace } from "@/form/namespace";
+import { useAsync } from "@/hooks/useAsync";
 import { useMatchMedia } from "@/hooks/useMatchMedia";
 import { safeHref } from "@/lib/href";
 import { dayLabel, fmtDateTime, fmtRelative } from "@/lib/time";
+import { standText } from "../stands/text";
 import { mergeBlockReason } from "./mergeBlock";
 import { OrderGraphDialog } from "./OrderGraphDialog";
 import { graphFor } from "./orderGraph";
@@ -634,6 +638,9 @@ function InfoTab({
   // change the service, and the graph is the fastest answer to "what talks to
   // what" for everyone else - auditors and security included.
   const graph = graphFor(doc);
+  // The stand's name: the order carries only its id.
+  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
+  const standName = stands?.find((s) => s.id === r.stand_id)?.name;
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -671,6 +678,7 @@ function InfoTab({
         <Field label="Продукт" value={chartLabel(r.chart_name)} />
         <Field label="Версия" value={r.chart_version} />
         <Field label="Команда" value={r.team} />
+        {standName && <Field label={standText.detailField} value={standName} />}
         <Field label="Кластер" value={r.cluster} />
         <Field label="Namespace" value={orderNamespace(r)} />
       </Fields>

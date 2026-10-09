@@ -23,6 +23,7 @@ type Memory struct {
 	pubEventSeq   int64
 	users         map[string]*models.PlatformUser // sign-in directory, keyed by OIDC subject
 	variables     map[string]*models.Variable     // platform variables, keyed by name
+	stands        map[string]*models.Stand        // deployment stands, keyed by id
 	notifications []*models.Notification
 	notifRead     map[string]map[string]bool // subject -> notification id -> read
 	notifCursor   map[string]time.Time       // subject -> "everything before this is read"
@@ -45,6 +46,7 @@ func NewMemory() *Memory {
 		pubVersions: map[string]*models.PublicationVersion{},
 		users:       map[string]*models.PlatformUser{},
 		variables:   map[string]*models.Variable{},
+		stands:      map[string]*models.Stand{},
 		notifRead:   map[string]map[string]bool{},
 		notifCursor: map[string]time.Time{},
 		notifSince:  map[string]map[audienceRef]time.Time{},
@@ -155,6 +157,9 @@ func (m *Memory) ListRequests(ctx context.Context, f RequestFilter) ([]*models.R
 			continue
 		}
 		if f.Chart != "" && r.ChartName != f.Chart {
+			continue
+		}
+		if f.Stand != "" && r.StandID != f.Stand {
 			continue
 		}
 		out = append(out, listed(r))

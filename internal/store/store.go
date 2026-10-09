@@ -17,6 +17,7 @@ type RequestFilter struct {
 	Team           string
 	Status         models.RequestStatus
 	Chart          string
+	Stand          string // the orders placed on one stand (by id)
 	IncludeDeleted bool
 }
 
@@ -155,6 +156,27 @@ type Store interface {
 	// existing one. The name is the key: renaming is deleting and creating.
 	UpsertVariable(ctx context.Context, v *models.Variable) error
 	DeleteVariable(ctx context.Context, name string) error // ErrNotFound when there is nothing to delete
+
+	// Stands: the places orders are placed on (models.Stand). A handful of rows
+	// the platform team keeps by hand, read whole by every reader: the order
+	// form's selector, the list's filter, the admin page.
+	ListStands(ctx context.Context) ([]*models.Stand, error)
+	GetStand(ctx context.Context, id string) (*models.Stand, error)
+	// DefaultStand returns the one stand marked default, or ErrNotFound while
+	// there is none (a store nothing has been seeded into).
+	DefaultStand(ctx context.Context) (*models.Stand, error)
+	CreateStand(ctx context.Context, s *models.Stand) error // ErrConflict on a taken name
+	// UpdateStand replaces the name and the cluster. The default flag is not
+	// written here: it moves between stands as one operation, see SetDefaultStand.
+	UpdateStand(ctx context.Context, s *models.Stand) error // ErrNotFound, ErrConflict on a taken name
+	// SetDefaultStand makes this stand the default and takes the flag off
+	// whichever stand held it, as one write.
+	SetDefaultStand(ctx context.Context, id string) error // ErrNotFound
+	// AdoptOrphanRequests attaches every order that has no stand to the given
+	// one and returns how many it moved. Orders written before stands existed
+	// are the only such rows, so this runs once, on the first start after the
+	// upgrade (see SeedDefaultStand).
+	AdoptOrphanRequests(ctx context.Context, standID string) (int, error)
 
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id

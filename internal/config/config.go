@@ -133,7 +133,7 @@ type Config struct {
 	// Application CR. Argo CD reads Applications from its own namespace only, so
 	// this has to be the namespace Argo CD itself runs in, whatever it is called.
 	ArgoCDNamespace string `env:"ARGOCD_NAMESPACE" envDefault:"argocd" desc:"Namespace Argo CD runs in. The portal writes it into every application.yaml it commits, because Argo CD only picks up applications from its own namespace."`
-	ArgoCDCluster string `env:"ARGOCD_DEFAULT_CLUSTER" envDefault:"in-cluster" desc:"Cluster orders are deployed to unless they say otherwise."`
+	ArgoCDCluster string `env:"ARGOCD_DEFAULT_CLUSTER" envDefault:"in-cluster" desc:"Cluster of the default stand, created on the first start. Stands are managed in the admin section afterwards; this only seeds the first one."`
 	// Includes the chart so two different charts ordered under the same service
 	// name into one namespace do not collide on a single Application, and the
 	// namespace so one chart ordered under one name into two namespaces does not

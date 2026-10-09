@@ -101,8 +101,14 @@ type Request struct {
 	ChartVersion  string `json:"chart_version"`
 	ServiceName   string `json:"service_name"` // deploy identity: GitOps folder, ArgoCD app, unique index
 	DisplayName   string `json:"display_name"` // cosmetic, user-facing, mutable; no deploy impact
-	Cluster       string `json:"cluster"`      // ArgoCD Application destination.name
-	Namespace     string `json:"namespace"`    // ArgoCD Application destination.namespace (empty -> service_name)
+	// StandID is the stand this order was placed on (see Stand). Set at creation
+	// and never moved afterwards. Cluster is copied from the stand at the same
+	// moment: the paths in Git and the uniqueness keys are built on it, so it
+	// stays on the order even though the stand is where it comes from. Empty
+	// only on rows written before stands existed and not yet adopted.
+	StandID   string `json:"stand_id"`
+	Cluster   string `json:"cluster"`   // ArgoCD Application destination.name
+	Namespace string `json:"namespace"` // ArgoCD Application destination.namespace (empty -> service_name)
 	// ResourceIdentity is the values field that names the rendered resources (the
 	// chart view's "identity" pointer, e.g. gateways[0].name), or service_name as
 	// a fallback. Unique per (cluster, namespace, chart_name): prevents two orders
