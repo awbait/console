@@ -368,8 +368,19 @@ export interface TemplateRef {
 // stamped into an order and lands in Git.
 export interface Variable {
   name: string;
+  // The shared value: what the variable is worth on every stand without a value
+  // of its own. Empty on purpose when each stand has to say its own.
   value: string;
   description: string;
+  updated_by?: string;
+  updated_at?: string;
+  // The stands where the variable is worth something else, in stand order.
+  overrides: VariableOverride[];
+}
+
+export interface VariableOverride {
+  stand_id: string;
+  value: string;
   updated_by?: string;
   updated_at?: string;
 }
