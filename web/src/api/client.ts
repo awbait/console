@@ -27,7 +27,8 @@ import type {
   PublicationVersion,
   RequestDetail,
   Stand,
-  StandCheck,
+  StandChecksRun,
+  StandChecksSummary,
   SystemStatus,
   TemplateRef,
   UpdateOrderBody,
@@ -272,7 +273,10 @@ export const api = {
   standManifests: (id: string, signal?: AbortSignal) =>
     req<string>("GET", `/stands/${enc(id)}/manifests`, undefined, signal),
   standChecks: (id: string, signal?: AbortSignal) =>
-    req<{ results: StandCheck[] }>("GET", `/stands/${enc(id)}/checks`, undefined, signal),
+    req<StandChecksRun>("GET", `/stands/${enc(id)}/checks`, undefined, signal),
+  // Every stand's stored checks, for the status page. Admin only.
+  standChecksSummary: (signal?: AbortSignal) =>
+    req<{ stands: StandChecksSummary[] }>("GET", "/stands/checks", undefined, signal),
 
   // platform variables: read by anybody signed in (the version constructor
   // offers them), written by admins.

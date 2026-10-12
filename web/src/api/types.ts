@@ -406,6 +406,11 @@ export interface Stand {
   mode: StandMode;
   // The registry Argo CD takes the stand's charts from; "" is the platform's.
   chart_registry: string;
+  // Argo CD sees the stand's applications, as its last check found. False
+  // means the stand's orders wait after their merge: nothing deploys them.
+  argo_connected: boolean;
+  // When the stand's checks last ran; absent before the first.
+  checked_at?: string;
   // The stand has orders in Git, so its layout, path and mode are read-only.
   locked: boolean;
   created_at?: string;
@@ -423,13 +428,30 @@ export function deploys(stand: Stand | undefined | null): boolean {
   return !stand?.mode || stand.mode === "deploy";
 }
 
-// One check of a stand, run when its page opens (see GET /stands/{id}/checks).
+// One check of a stand, run when its page opens (see GET /stands/{id}/checks)
+// and in the background, stored either way.
 export interface StandCheck {
   id: string;
   component: string;
   verdict: "ok" | "warn" | "fail" | "skip" | "unknown";
   reason?: string;
   facts?: Record<string, string>;
+  checked_at?: string;
+}
+
+// What the stand page gets back from running the checks now.
+export interface StandChecksRun {
+  results: StandCheck[];
+  checked_at?: string;
+  argo_connected: boolean;
+}
+
+// One stand on the status page: its stored checks and the worst of them
+// (see GET /stands/checks).
+export interface StandChecksSummary {
+  stand: Stand;
+  worst: "ok" | "warn" | "fail" | "skip" | "unknown";
+  results: StandCheck[];
 }
 
 export interface Category {

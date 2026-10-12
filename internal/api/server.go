@@ -96,12 +96,6 @@ type Server struct {
 	// ping. Optional: nil serves an empty set and changes nothing else.
 	Checks checksSnapshotter
 
-	// StandGitLab and StandArgo are what the checks of one stand read through
-	// (GET /api/v1/stands/{id}/checks). Optional: nil leaves those checks
-	// unanswered, which is what tests and a portal without that upstream want.
-	StandGitLab checks.GitLabAPI
-	StandArgo   checks.StandArgoAPI
-
 	// TestWebhookDelivery asks GitLab to deliver a sample event to the portal and
 	// reports whether it arrived (see internal/checks.TestGitLabDelivery). A
 	// function rather than a port: it is one call, wired in cmd/portal where the
@@ -233,6 +227,7 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/stands/{id}", s.handleUpdateStand)            // admin
 			r.Post("/stands/{id}/default", s.handleSetDefaultStand) // admin
 			r.Get("/stands/{id}/manifests", s.handleStandManifests) // admin: the Argo CD wiring to apply
+			r.Get("/stands/checks", s.handleStandsChecksSummary)    // admin: every stand's stored checks, for the status page
 			r.Get("/stands/{id}/checks", s.handleStandChecks)       // admin: run the stand's checks now
 
 			// platform variables: named values a version document references as

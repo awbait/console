@@ -255,6 +255,14 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if cfg.DriftDetection {
 		reconcilers = append(reconcilers, status.Named("drift", driftReconciler{provSvc})) // flag Git-side drift
 	}
+	// The stands' own checks, on their own slower clock inside the poller's:
+	// what the status page summarises, and what says whether Argo CD is wired
+	// to a stand. The clients are the ones the configuration checks read with.
+	provSvc.StandGitLab, provSvc.StandArgo = gl, argo
+	provSvc.StandChecksInterval = cfg.StandChecksInterval
+	if cfg.StandChecksInterval > 0 {
+		reconcilers = append(reconcilers, status.Named("stand-checks", standChecksReconciler{provSvc}))
+	}
 	if cfg.ImportDiscovery {
 		reconcilers = append(reconcilers, status.Named("import", importReconciler{provSvc})) // adopt Git-created apps
 	}
@@ -399,9 +407,6 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		observability.Component(log, "checks"))
 	srv.Checks = configChecks
 	srv.TestWebhookDelivery = webhookDeliveryTest(cfg, gl, hooks, webhookHandler)
-	// The checks of one stand read through the same clients as the configured
-	// set, when a stand page is opened.
-	srv.StandGitLab, srv.StandArgo = gl, argo
 	// Part of what these checks catch breaks with nobody touching the portal: a
 	// token reaches its expiry, a webhook is switched off after failed
 	// deliveries, a project is deleted. That is told to the platform team
@@ -599,6 +604,12 @@ func (a announceIfLeading) Round(ctx context.Context, results []checks.CheckResu
 type driftReconciler struct{ s *provisioning.Service }
 
 func (d driftReconciler) Reconcile(ctx context.Context) error { return d.s.CheckDrift(ctx) }
+
+// standChecksReconciler runs every stand's checks on the stand-check interval
+// (the service keeps that clock itself and returns at once in between).
+type standChecksReconciler struct{ s *provisioning.Service }
+
+func (c standChecksReconciler) Reconcile(ctx context.Context) error { return c.s.RunStandChecks(ctx) }
 
 // notifySweeper drops notifications that have been read and are older than the
 // retention window. It rides the poller rather than a timer of its own: there is

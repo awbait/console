@@ -13,10 +13,11 @@ import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { CapabilityStatus, ComponentStatus, ReconcilerStatus } from "../api/types";
+import type { CapabilityStatus, ComponentStatus, ReconcilerStatus, StandChecksSummary } from "../api/types";
 import { capabilityText } from "../app/capabilities";
 import { useUser } from "../auth/UserContext";
 import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
+import { standText } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
 import { safeHref } from "../lib/href";
 
@@ -76,6 +77,25 @@ const RECONCILERS: Record<string, { label: string; what: string }> = {
     label: "Уборка уведомлений",
     what: "Удаляет старые прочитанные уведомления, непрочитанные остаются.",
   },
+  "stand-checks": {
+    label: "Проверка стендов",
+    what: "Проверяет доступ к пути в GitLab, кластеры и видимость приложений стендов в Argo CD и сохраняет результаты.",
+  },
+};
+
+// A stand's worst verdict, in the words of the stand page's own rows.
+const STAND_VERDICT: Record<string, { ok: boolean; label: string }> = {
+  ok: { ok: true, label: "В норме" },
+  skip: { ok: true, label: "В норме" },
+  warn: { ok: false, label: "Есть замечания" },
+  fail: { ok: false, label: "Есть проблемы" },
+  unknown: { ok: false, label: "Не проверен" },
+};
+
+const STAND_MODE: Record<string, string> = {
+  deploy: standText.modeDeploy,
+  git: standText.modeGit,
+  console: standText.modeConsole,
 };
 
 // ago renders a coarse "N units назад" from an RFC3339 timestamp.
@@ -101,10 +121,16 @@ function tally<T>(items: T[], ok: (x: T) => boolean): { ok: number; total: numbe
 export function StatusPage() {
   const { user } = useUser();
   const { data, error, loading, reload } = useAsync(() => api.getSystemStatus(), []);
+  // The stands' stored checks ride the same refresh: the background round
+  // writes them, this page only reads.
+  const standsChecks = useAsync((signal) => api.standChecksSummary(signal), []);
 
   // Auto-refresh: status is live, keep the page fresh without manual reload.
   useEffect(() => {
-    const t = setInterval(reload, REFRESH_SECONDS * 1000);
+    const t = setInterval(() => {
+      reload();
+      standsChecks.reload();
+    }, REFRESH_SECONDS * 1000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -242,6 +268,20 @@ export function StatusPage() {
             </Section>
 
             <ChecksLine />
+
+            <Section title={standText.statusSectionTitle} hint={standText.statusSectionHint}>
+              {standsChecks.error ? (
+                <ErrorBox error={standsChecks.error} onRetry={standsChecks.reload} />
+              ) : standsChecks.loading && !standsChecks.data ? (
+                <SkeletonRows rows={2} />
+              ) : (
+                <Grid cols={2}>
+                  {(standsChecks.data?.stands ?? []).map((s) => (
+                    <StandCard key={s.stand.id} s={s} />
+                  ))}
+                </Grid>
+              )}
+            </Section>
 
             <Section title="Хранилища" hint="База данных портала и кеш.">
               <Grid cols={2}>
@@ -410,6 +450,40 @@ function ReconcilerCard({ r }: { r: ReconcilerStatus }) {
         {r.last_run_ms ? ` · ${r.last_run_ms} мс` : ""}
       </p>
       {!ok && r.last_error && <Detail text={r.last_error} />}
+    </Card>
+  );
+}
+
+// StandCard is one stand as the status page sums it up: the worst of its
+// stored verdicts, whether Argo CD is wired to it, when it was last looked at,
+// and the way to its own page, where the verdicts are spelled out.
+function StandCard({ s }: { s: StandChecksSummary }) {
+  const v = STAND_VERDICT[s.worst] ?? STAND_VERDICT.unknown;
+  const st = s.stand;
+  const deploying = !st.mode || st.mode === "deploy";
+  return (
+    <Card ok={v.ok} title={st.name} verdict={v.label}>
+      <p className="mt-1 text-xs leading-relaxed text-slate-500">
+        {STAND_MODE[st.mode] ?? st.mode}
+        {deploying && (
+          <>
+            {" · "}
+            <span className={st.argo_connected ? "" : "font-medium text-amber-700"}>
+              {st.argo_connected ? standText.argoConnected : standText.argoNotConnected}
+            </span>
+          </>
+        )}
+      </p>
+      <p className="mt-1.5 text-xs text-slate-400">
+        {st.checked_at ? standText.checkedAgo(ago(st.checked_at)) : standText.neverChecked}
+      </p>
+      <Link
+        to={`/admin/stands/${st.id}`}
+        className="mt-1.5 inline-flex items-center gap-1 text-xs text-brand-600 hover:text-brand-700 hover:underline"
+      >
+        {standText.openPage}
+        <IconExternalLink size={12} stroke={1.8} />
+      </Link>
     </Card>
   );
 }

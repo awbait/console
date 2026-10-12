@@ -42,11 +42,31 @@ type Stand struct {
 	// their chart from, "{ChartRegistry}/{chart_project}". Empty means the
 	// platform's configured registry (CHART_REGISTRY).
 	ChartRegistry string `json:"chart_registry"`
+	// ArgoConnected reports that Argo CD sees the stand's applications, as the
+	// stand's last application check found. Set by the checks, never by hand:
+	// true until a check with live orders finds none of them, so a stand nobody
+	// has looked at is not called disconnected. While it is false, orders of
+	// the stand wait after their merge, and the order page says what for.
+	ArgoConnected bool `json:"argo_connected"`
+	// CheckedAt is when the stand's checks last ran; nil before the first.
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
 	// Locked reports that the stand has orders beyond drafts and deleted ones,
 	// so its layout, path and mode are read-only. Computed on read, never stored.
 	Locked    bool      `json:"locked"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// StandCheck is the stored outcome of one check of a stand (see
+// internal/checks.Stand): identifiers only, the front end owns the wording.
+type StandCheck struct {
+	StandID   string            `json:"-"`
+	ID        string            `json:"id"`
+	Component string            `json:"component"`
+	Verdict   string            `json:"verdict"`
+	Reason    string            `json:"reason,omitempty"`
+	Facts     map[string]string `json:"facts,omitempty"`
+	CheckedAt time.Time         `json:"checked_at"`
 }
 
 // The two layouts of a stand in Git.

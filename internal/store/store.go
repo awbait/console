@@ -182,6 +182,14 @@ type Store interface {
 	// are the only such rows, so this runs once, on the first start after the
 	// upgrade (see SeedDefaultStand).
 	AdoptOrphanRequests(ctx context.Context, standID string) (int, error)
+	// SaveStandChecks replaces the stored checks of a stand with these, stamps
+	// the stand's CheckedAt from them, and sets ArgoConnected when the check
+	// could tell (nil leaves it). ErrNotFound when the stand does not exist.
+	SaveStandChecks(ctx context.Context, standID string, results []*models.StandCheck, argoConnected *bool) error
+	ListStandChecks(ctx context.Context, standID string) ([]*models.StandCheck, error)
+	// ListAllStandChecks returns the stored checks of every stand, for the
+	// status page's summary.
+	ListAllStandChecks(ctx context.Context) ([]*models.StandCheck, error)
 
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id
