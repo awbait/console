@@ -17,6 +17,7 @@ import { useToast } from "../app/ToastContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { NotFound } from "../components/NotFound";
 import { Button, ErrorBox, SkeletonRows } from "../components/ui";
+import { StandJobs } from "../features/stands/StandJobs";
 import { standCheckReasons, standText as t } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
 
@@ -43,7 +44,7 @@ const VERDICT: Record<string, { tone: string; Icon: typeof IconCheck }> = {
 
 export function AdminStandPage() {
   const { id = "" } = useParams();
-  const { data: stand, error, loading } = useAsync((signal) => api.getStand(id, signal), [id], qk.stand(id));
+  const { data: stand, error, loading, reload } = useAsync((signal) => api.getStand(id, signal), [id], qk.stand(id));
   const checks = useAsync((signal) => api.standChecks(id, signal), [id]);
   const manifests = useAsync((signal) => api.standManifests(id, signal), [id]);
   const toast = useToast();
@@ -112,6 +113,8 @@ export function AdminStandPage() {
             {stand.locked && <Field label="" value={t.lockedHint} muted />}
           </dl>
         </section>
+
+        <StandJobs standId={stand.id} onChanged={reload} />
 
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">

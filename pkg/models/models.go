@@ -45,6 +45,14 @@ const (
 	ActionCreate MRAction = "create"
 	ActionUpdate MRAction = "update"
 	ActionDelete MRAction = "delete"
+	// ActionPublish writes the files of an order kept in the portal into Git,
+	// when its stand moves from console-only to a mode that writes Git.
+	// Closed instead of merged, the order stays in the portal.
+	ActionPublish MRAction = "publish"
+	// ActionUnpublish takes the files of an order out of Git, when its stand
+	// moves to console-only. Merged, the order is kept in the portal; closed,
+	// its files stay where they were.
+	ActionUnpublish MRAction = "unpublish"
 )
 
 // Role is a portal authorization role. Exactly one role per user, derived from

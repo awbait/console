@@ -73,7 +73,7 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 		case models.StatusMRCreated:
 			switch latest.Status {
 			case models.MRMerged:
-				s.tryTransition(ctx, r, models.StatusMRMerged)
+				s.tryTransition(ctx, r, mergedChangeTarget(latest.Action))
 			case models.MRClosed:
 				s.tryTransition(ctx, r, closedChangeTarget(latest.Action))
 			}
@@ -648,9 +648,26 @@ func closedChangeTarget(action models.MRAction) models.RequestStatus {
 	switch action {
 	case models.ActionUpdate, models.ActionDelete:
 		return models.StatusMRMerged
+	case models.ActionPublish:
+		// The files never reached Git: the order is kept in the portal, as before.
+		return models.StatusConsoleSaved
+	case models.ActionUnpublish:
+		// The files stayed in Git: the order is where its files are.
+		return models.StatusMRMerged
 	default:
 		return models.StatusMRClosed
 	}
+}
+
+// mergedChangeTarget is where an order goes when its change was merged. Every
+// change lands the order in MR_MERGED, from where the reconciler follows the
+// stand's mode, except taking the files out of Git: that leaves the order
+// kept in the portal.
+func mergedChangeTarget(action models.MRAction) models.RequestStatus {
+	if action == models.ActionUnpublish {
+		return models.StatusConsoleSaved
+	}
+	return models.StatusMRMerged
 }
 
 // tryTransition transitions, ignoring no-op and stale-version races (retried next tick).

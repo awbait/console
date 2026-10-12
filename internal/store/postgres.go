@@ -74,6 +74,13 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// isForeignKeyViolation reports a write that pointed at a row that is not
+// there (23503).
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
 // isInvalidUUID reports a Postgres invalid_text_representation error (22P02),
 // raised when a malformed UUID is compared against a uuid column. A value that
 // cannot be a valid id can never match a row, so we treat it as "not found".

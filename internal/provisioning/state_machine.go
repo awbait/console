@@ -11,8 +11,9 @@ var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 	// A change closed instead of merged lands the order in one of these two, and
 	// which one depends on what the change was for - see closedChangeTarget.
 	models.StatusMRCreated: {
-		models.StatusMRClosed: true, // the first order was turned down: no service was ever created
-		models.StatusMRMerged: true,
+		models.StatusMRClosed:     true, // the first order was turned down: no service was ever created
+		models.StatusMRMerged:     true,
+		models.StatusConsoleSaved: true, // files taken out of Git, or never let in: kept in the portal
 	},
 	// Once the create MR is merged (the instance exists in Git), the order can be
 	// edited (update -> MR_CREATED) or deleted (-> DELETE_REQUESTED) from any of
@@ -35,9 +36,11 @@ var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 		models.StatusMRCreated:       true,
 		models.StatusDeleteRequested: true,
 		models.StatusMRMerged:        true,
+		models.StatusConsoleSaved:    true, // moved to console-only with its files already gone from Git
 	},
 	models.StatusConsoleSaved: {
-		models.StatusDeleted: true,
+		models.StatusDeleted:   true,
+		models.StatusMRCreated: true, // the stand moved to a mode that writes Git: its files go in
 	},
 	models.StatusDeploying: {
 		models.StatusHealthy:         true,

@@ -263,6 +263,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if cfg.StandChecksInterval > 0 {
 		reconcilers = append(reconcilers, status.Named("stand-checks", standChecksReconciler{provSvc}))
 	}
+	// Moving a stand's orders to the mode it was switched to, a batch a tick.
+	reconcilers = append(reconcilers, status.Named("stand-jobs", standJobsReconciler{provSvc}))
 	if cfg.ImportDiscovery {
 		reconcilers = append(reconcilers, status.Named("import", importReconciler{provSvc})) // adopt Git-created apps
 	}
@@ -610,6 +612,11 @@ func (d driftReconciler) Reconcile(ctx context.Context) error { return d.s.Check
 type standChecksReconciler struct{ s *provisioning.Service }
 
 func (c standChecksReconciler) Reconcile(ctx context.Context) error { return c.s.RunStandChecks(ctx) }
+
+// standJobsReconciler runs one pass of every running stand job.
+type standJobsReconciler struct{ s *provisioning.Service }
+
+func (c standJobsReconciler) Reconcile(ctx context.Context) error { return c.s.RunStandJobs(ctx) }
 
 // notifySweeper drops notifications that have been read and are older than the
 // retention window. It rides the poller rather than a timer of its own: there is

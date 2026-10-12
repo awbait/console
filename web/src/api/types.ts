@@ -411,10 +411,38 @@ export interface Stand {
   argo_connected: boolean;
   // When the stand's checks last ran; absent before the first.
   checked_at?: string;
-  // The stand has orders in Git, so its layout, path and mode are read-only.
+  // The job moving the stand's orders right now, if one is running.
+  job?: StandJob;
+  // The stand has orders, so its layout and path are read-only, and its mode
+  // changes through a job.
   locked: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+// Background work on a stand's orders: moving them to the mode the stand was
+// switched to (GET /stands/{id}/jobs).
+export interface StandJob {
+  id: string;
+  stand_id: string;
+  kind: "mode_change";
+  from_mode: StandMode;
+  to_mode: StandMode;
+  status: "running" | "done" | "stopped";
+  total: number;
+  done: number;
+  waiting: number;
+  failures: StandJobFailure[];
+  created_by: string;
+  created_at: string;
+  finished_at?: string;
+}
+
+export interface StandJobFailure {
+  order_id: string;
+  service_name: string;
+  reason: "mr_closed" | "rejected" | "upstream" | string;
+  detail?: string;
 }
 
 export type StandLayout = "group" | "repository";

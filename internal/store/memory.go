@@ -26,6 +26,7 @@ type Memory struct {
 	overrides     map[string]map[string]*models.VariableOverride // variable name -> stand id -> its value there
 	stands        map[string]*models.Stand        // deployment stands, keyed by id
 	standChecks   map[string][]*models.StandCheck // stand id -> the stored outcome of its last checks
+	standJobs     map[string]*models.StandJob     // background jobs on stands' orders, keyed by id
 	notifications []*models.Notification
 	notifRead     map[string]map[string]bool // subject -> notification id -> read
 	notifCursor   map[string]time.Time       // subject -> "everything before this is read"
@@ -51,6 +52,7 @@ func NewMemory() *Memory {
 		overrides:   map[string]map[string]*models.VariableOverride{},
 		stands:      map[string]*models.Stand{},
 		standChecks: map[string][]*models.StandCheck{},
+		standJobs:   map[string]*models.StandJob{},
 		notifRead:   map[string]map[string]bool{},
 		notifCursor: map[string]time.Time{},
 		notifSince:  map[string]map[audienceRef]time.Time{},

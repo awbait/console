@@ -50,7 +50,28 @@ export const standText = {
     "Портал сохраняет файлы заказа в Git и открывает merge request. Argo CD к стенду не подключён, файлы применяют вне портала.",
   modeConsoleHint:
     "Заказ хранится только в базе портала, файлы в Git не создаются. Изменения и удаление выполняются сразу, без merge request.",
-  modeLockedHint: "Нельзя изменить режим, пока на стенде есть заказы, кроме черновиков и удалённых.",
+  deployLeaveHint:
+    "Нельзя изменить режим «Разворачивать»: сначала удалите заказы стенда. Черновики и удалённые заказы не мешают смене режима.",
+  jobRunningHint:
+    "Нельзя изменить режим, раскладку или путь стенда, пока идёт перевод заказов. Дождитесь завершения задачи или остановите её.",
+  jobsTitle: "Задачи стенда",
+  jobsIntro: "Здесь показаны задачи перевода заказов в другой режим. Перевод идёт в фоне, задачу можно остановить.",
+  jobModeChange: (from: string, to: string) => `Перевод заказов из режима «${from}» в режим «${to}»`,
+  jobProgress: (done: number, total: number) => `Переведено заказов: ${done} из ${total}.`,
+  jobStatusRunning: "Идёт",
+  jobStatusDone: "Завершена",
+  jobStatusStopped: "Остановлена",
+  jobFailuresTitle: "Не удалось перевести",
+  jobStop: "Остановить задачу",
+  jobStopConfirm:
+    "Остановить задачу? Уже переведённые заказы останутся в новом режиме, остальные сохранят прежний режим.",
+  jobStoppedToast: "Задача перевода заказов остановлена.",
+  jobStartedToast: (name: string) => `Запущена задача перевода заказов стенда «${name}».`,
+  jobWaitingMerge: "Часть заказов ожидает слияния запросов в Git.",
+  jobNone: "На этом стенде ещё не было задач.",
+  rowJobBadge: (done: number, total: number) => `Перевод: ${done} из ${total}`,
+  modeChangeConfirm: (to: string) =>
+    `Перевести стенд в режим «${to}»? Режим стенда изменится сразу, новые заказы будут создаваться в нём. Существующие заказы переведёт фоновая задача. Это займёт время. Задачу можно остановить.`,
   registryLabel: "Реестр чартов",
   registryPlaceholder: "harbor.example.com",
   registryHint:
@@ -116,4 +137,12 @@ export const standCheckReasons: Record<string, string> = {
   apps_missing: "Argo CD не видит приложения ни одного из проверенных заказов стенда.",
   apps_partial: "Argo CD видит приложения только части проверенных заказов стенда.",
   apps_found: "Argo CD видит приложения всех проверенных заказов стенда.",
+};
+
+// Why a stand job could not move an order, by the reason the portal names.
+// "rejected" carries the portal's own sentence in the failure's detail.
+export const standJobFailures: Record<string, string> = {
+  mr_closed: "Merge request заказа закрыт без слияния.",
+  upstream:
+    "Не удалось перевести заказ из-за ошибки или отсутствия ответа GitLab или Argo CD. Повторно смените режим стенда, когда система снова станет доступна.",
 };

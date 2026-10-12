@@ -222,13 +222,15 @@ func (s *Server) Router() http.Handler {
 			// stands: the places orders are placed on. Reading is open (the order
 			// form offers them, the list filters by them), writing is admin.
 			r.Get("/stands", s.handleListStands)
-			r.Post("/stands", s.handleCreateStand)                  // admin
+			r.Post("/stands", s.handleCreateStand) // admin
 			r.Get("/stands/{id}", s.handleGetStand)
-			r.Patch("/stands/{id}", s.handleUpdateStand)            // admin
-			r.Post("/stands/{id}/default", s.handleSetDefaultStand) // admin
-			r.Get("/stands/{id}/manifests", s.handleStandManifests) // admin: the Argo CD wiring to apply
-			r.Get("/stands/checks", s.handleStandsChecksSummary)    // admin: every stand's stored checks, for the status page
-			r.Get("/stands/{id}/checks", s.handleStandChecks)       // admin: run the stand's checks now
+			r.Patch("/stands/{id}", s.handleUpdateStand)                 // admin
+			r.Post("/stands/{id}/default", s.handleSetDefaultStand)      // admin
+			r.Get("/stands/{id}/manifests", s.handleStandManifests)      // admin: the Argo CD wiring to apply
+			r.Get("/stands/checks", s.handleStandsChecksSummary)         // admin: every stand's stored checks, for the status page
+			r.Get("/stands/{id}/checks", s.handleStandChecks)            // admin: run the stand's checks now
+			r.Get("/stands/{id}/jobs", s.handleListStandJobs)            // admin: the stand's jobs, newest first
+			r.Post("/stands/{id}/jobs/{job}/stop", s.handleStopStandJob) // admin
 
 			// platform variables: named values a version document references as
 			// "{{.Vars.OPS}}". Reading is open (the constructor offers them),
