@@ -383,6 +383,10 @@ export const api = {
   submitRequest: (id: string) => req<OrderRequest>("POST", `/requests/${enc(id)}/submit`),
   deleteRequest: (id: string) => req<OrderRequest>("DELETE", `/requests/${enc(id)}`),
   syncRequest: (id: string) => req<unknown>("POST", `/requests/${enc(id)}/sync`),
+  // A draft of the order on another stand: same service, team and values,
+  // with what the portal fills in from variables rendered for that stand.
+  copyRequest: (id: string, body: { stand_id: string; cluster?: string; service_name?: string }) =>
+    req<OrderRequest>("POST", `/requests/${enc(id)}/copy`, body),
   // Adopt the order's current Git state (values + version) into the portal.
   pullRequest: (id: string) => req<OrderRequest>("POST", `/requests/${enc(id)}/pull`),
 

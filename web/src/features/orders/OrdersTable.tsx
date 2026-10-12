@@ -41,6 +41,8 @@ import { isNewer } from "@/lib/semver";
 import { fmtDateTime } from "@/lib/time";
 import { subscribe } from "@/lib/sse";
 import { standText } from "../stands/text";
+import { copyText } from "./copyText";
+import { CopyToStandDialog } from "./CopyToStandDialog";
 
 interface Props {
   title: string;
@@ -139,6 +141,8 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const [standFilter, setStandFilter] = useState<Set<string>>(new Set());
   // The order pending delete confirmation (null = dialog closed).
   const [deleting, setDeleting] = useState<OrderRequest | null>(null);
+  // The order being copied to another stand (null = panel closed).
+  const [copying, setCopying] = useState<OrderRequest | null>(null);
 
   // Everything this table is about, before any of the filters a person sets:
   // the team scoping and the caller's own filter (one product, on the product
@@ -504,6 +508,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       onOpen={() => navigate(`/requests/${r.id}`)}
                       onContinue={() => navigate(`/requests/${r.id}/edit`)}
                       onSync={!isDraft && user?.role === "admin" ? () => onSync(r) : undefined}
+                      onCopy={modifiable ? () => setCopying(r) : undefined}
                       onDelete={modifiable ? () => setDeleting(r) : undefined}
                     />
                   </Cell>
@@ -534,6 +539,16 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           )
         }
         onConfirm={onConfirmDelete}
+      />
+      <CopyToStandDialog
+        order={copying}
+        onClose={() => setCopying(null)}
+        onCopied={(draft, stand) => {
+          setCopying(null);
+          toast.success(copyText.toast(stand?.name ?? ""));
+          reload();
+          navigate(`/requests/${draft.id}/edit`);
+        }}
       />
     </div>
   );
@@ -707,12 +722,14 @@ function RowActions({
   onOpen,
   onContinue,
   onSync,
+  onCopy,
   onDelete,
 }: {
   isDraft: boolean;
   onOpen: () => void;
   onContinue: () => void;
   onSync?: () => void;
+  onCopy?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -730,6 +747,7 @@ function RowActions({
             if (key === "open") onOpen();
             else if (key === "continue") onContinue();
             else if (key === "sync") onSync?.();
+            else if (key === "copy") onCopy?.();
             else if (key === "delete") onDelete?.();
           }}
         >
@@ -745,6 +763,11 @@ function RowActions({
           {onSync && (
             <MenuItem id="sync" className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50">
               Синхронизировать с кластером
+            </MenuItem>
+          )}
+          {onCopy && (
+            <MenuItem id="copy" className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50">
+              {copyText.menuItem}
             </MenuItem>
           )}
           {onDelete && (

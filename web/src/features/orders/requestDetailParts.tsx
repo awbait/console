@@ -10,6 +10,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconCircleX,
+  IconCopy,
   IconDotsVertical,
   IconExternalLink,
   IconFileCode,
@@ -67,6 +68,7 @@ import { useMatchMedia } from "@/hooks/useMatchMedia";
 import { safeHref } from "@/lib/href";
 import { dayLabel, fmtDateTime, fmtRelative } from "@/lib/time";
 import { standText } from "../stands/text";
+import { copyText } from "./copyText";
 import { mergeBlockReason } from "./mergeBlock";
 import { OrderGraphDialog } from "./OrderGraphDialog";
 import { graphFor } from "./orderGraph";
@@ -186,6 +188,7 @@ export function DetailActions({
   onSubmit,
   onSync,
   onUpgrade,
+  onCopy,
   onDelete,
   notify = false,
 }: {
@@ -194,11 +197,12 @@ export function DetailActions({
   onSubmit?: () => void;
   onSync?: () => void;
   onUpgrade?: () => void;
+  onCopy?: () => void;
   onDelete?: () => void;
   // Show a notification dot on the trigger (e.g. an upgrade is available).
   notify?: boolean;
 }) {
-  if (!onContinue && !onSubmit && !onSync && !onUpgrade && !onDelete) return null;
+  if (!onContinue && !onSubmit && !onSync && !onUpgrade && !onCopy && !onDelete) return null;
   const item = "cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50";
   return (
     <MenuTrigger>
@@ -217,6 +221,7 @@ export function DetailActions({
             else if (key === "submit") onSubmit?.();
             else if (key === "sync") onSync?.();
             else if (key === "upgrade") onUpgrade?.();
+            else if (key === "copy") onCopy?.();
             else if (key === "delete") onDelete?.();
           }}
         >
@@ -238,6 +243,11 @@ export function DetailActions({
           {onSync && (
             <MenuItem id="sync" className={item}>
               Синхронизировать с кластером
+            </MenuItem>
+          )}
+          {onCopy && (
+            <MenuItem id="copy" className={item}>
+              {copyText.menuItem}
             </MenuItem>
           )}
           {onDelete && (
@@ -378,6 +388,7 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
   drift_cleared: { label: "Расхождение с Git устранено", Icon: IconGitMerge, tint: "emerald" },
   git_pulled: { label: "Заказ обновлён из Git", Icon: IconGitFork, tint: "sky" },
   imported: { label: "Заказ импортирован из Git", Icon: IconGitFork, tint: "sky" },
+  copied: { label: copyText.eventLabel, Icon: IconCopy, tint: "slate" },
   merge_blocked: {
     label: "Изменение не удалось применить автоматически",
     Icon: IconAlertTriangle,
@@ -444,6 +455,7 @@ const MR_ACTION_EVENT: Record<string, string> = {
 const NOTABLE_EVENTS = new Set([
   "created",
   "draft_created",
+  "copied",
   "draft_discarded",
   "renamed",
   "deleted",
@@ -497,6 +509,12 @@ function eventLabel(e: TimelineEvent): string {
   if (e.event_type === "app_error") {
     const why = String(e.payload?.error ?? "").trim();
     return why ? `${label}: ${why}` : label;
+  }
+  // A copy names what it was copied from: the draft is on another stand, and
+  // the original is where the values came from.
+  if (e.event_type === "copied") {
+    const source = String(e.payload?.source_name ?? "").trim();
+    return source ? `${label}. ${copyText.eventDetail(source)}` : label;
   }
   return label;
 }
