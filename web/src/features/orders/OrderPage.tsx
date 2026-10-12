@@ -24,7 +24,7 @@ import { Button, Card, ErrorBox } from "@/components/ui";
 import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { collectErrors, pruneEmpty } from "@/form/SchemaForm";
 import { adaptToSchema } from "@/form/valuesAdapt";
-import { mergeUnder } from "@/form/valuesMerge";
+import { reseed } from "@/form/valuesMerge";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { countGraphRules } from "../graph/mapping";
@@ -129,7 +129,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Where the order goes: the stand, then the ArgoCD destination (cluster +
   // target namespace). A new order opens on the default stand with that stand's
   // default cluster; both arrive with the stands list, so they start empty.
-  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
+  const { data: stands, loading: standsLoading } = useAsync((signal) => api.listStands(signal), [], qk.stands());
   const [standId, setStandId] = useState("");
   const [cluster, setCluster] = useState("");
   const [namespace, setNamespace] = useState("");
@@ -318,41 +318,50 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
 
   // Seed a NEW order from the version's "initial" block: values the form opens
   // with, filled in and editable (the portal renders them - one template engine,
-  // see internal/views/initial.go). Once per form: re-seeding after the person
-  // has started would overwrite what they decided. Best effort - a form without
-  // them is still a form that can be filled in by hand.
+  // see internal/views/initial.go). Once per stand: a variable is worth what
+  // the order's stand says, so picking another stand asks again, and reseed
+  // replaces only what the previous seed put there and nobody touched. What
+  // the person decided stays. Best effort - a form without them is still a
+  // form that can be filled in by hand.
   // An upgrade is seeded too, and for the same reason a new order is: a field
   // the new chart version brought with it is absent from the order's values, so
   // there is nothing to overwrite and nowhere else for the person to learn what
-  // belongs in it. mergeUnder keeps that honest - a key the order already holds
-  // keeps its value. Changing an order without changing its version is not
+  // belongs in it. Changing an order without changing its version is not
   // seeded: no field is new there, and a value somebody cleared on purpose would
   // come back.
-  const seeded = useRef(false);
+  const seededFor = useRef<string | null>(null);
+  const lastSeed = useRef<Values>({});
   useEffect(() => {
-    if (seeded.current || !project || !name || !effectiveVersion || !activeTeam) return;
+    if (!project || !name || !effectiveVersion || !activeTeam) return;
     if (editing && !upgrade) return;
     // On an upgrade the order's own values have to be in the form first: they
     // arrive with the draft and replace the values wholesale, so a seed applied
     // before them would be thrown away. Hydration runs in the effect above and
     // on the same draft, so by the time this passes it has already happened.
     if (upgrade && !hydrated.current) return;
-    seeded.current = true;
+    // The first seed waits for the stand the order opens on, so it is rendered
+    // for that stand rather than for the default and then again.
+    if (standsLoading) return;
+    if (seededFor.current === standId) return;
+    seededFor.current = standId;
     let alive = true;
     api
-      .orderInitial(project, name, effectiveVersion, activeTeam)
+      .orderInitial(project, name, effectiveVersion, activeTeam, standId)
       .then((r) => {
-        const seed = r.values ?? {};
-        if (!alive || Object.keys(seed).length === 0) return;
+        if (!alive) return;
+        const seed = (r.values ?? {}) as Values;
+        const previous = lastSeed.current;
+        lastSeed.current = seed;
+        if (Object.keys(seed).length === 0 && Object.keys(previous).length === 0) return;
         // Merge under what is already there: the person may have typed while
         // this was in flight, and their input wins.
-        setValues((cur) => mergeUnder(cur, seed as Values));
+        setValues((cur) => reseed(cur, previous, seed));
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [editing, upgrade, draft, project, name, effectiveVersion, activeTeam]);
+  }, [editing, upgrade, draft, project, name, effectiveVersion, activeTeam, standId, standsLoading]);
 
   // Fit the order's values to the target version's schema (upgrade only).
   //
