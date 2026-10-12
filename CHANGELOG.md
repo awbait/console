@@ -2,6 +2,73 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.19.0] - 2026-10-12
+
+### Added
+- You can now route service orders to named stands such as dev, stage, or prod,
+  managed by administrators on the “Stands” page. Choose a stand in the order
+  form to fill in its default cluster, and see the stand in the orders list and
+  on each order’s page. Existing orders are assigned to the default stand
+  without affecting their deployments.
+- Administrators can set a shared value for each variable and, when needed, a
+  separate value for each stand. When an order is saved, the portal uses the
+  value for the selected stand or the shared value if no stand value is set. An
+  empty shared value now prevents an order from being saved on a stand without
+  its own value. Previously, the portal used an empty string.
+- You can now copy an order to another stand from the orders list or the order
+  page. This creates a draft of the same service and version in the same team.
+  Values from variables are filled in again for the new stand, while other
+  values are preserved. Review the draft, make any changes you need, and submit
+  it as a regular order.
+- You can now choose a Git layout and GitLab path for each stand: a group with
+  separate team permissions or a single repository without that separation. The
+  layout and path cannot be changed while the stand has orders other than drafts
+  or deleted orders. Each stand now has a page with GitLab access checks, Argo
+  CD checks, and manifests that you apply manually once per stand. The portal
+  creates nothing in Argo CD. Git imports now scan each stand’s path and assign
+  discovered orders to that stand.
+- Stands now support three modes. "Deploy" keeps the existing workflow: the
+  portal saves order files to Git and opens a merge request. After the merge,
+  Argo CD deploys the service while the portal tracks its status. "Git only"
+  saves the same files to Git and opens a merge request. After the merge, the
+  order receives the status "Saved in Git" and no further action runs. "Console
+  only" stores the order in the portal without writing to Git and immediately
+  sets its status to "Saved in console". Edits and deletion apply immediately
+  without a merge request. Each stand can also specify its own chart registry
+  for Argo CD. Leave this value empty to use the platform registry.
+- Added background stand checks and a Stands section on the platform status page
+  with each stand's worst check result, last check time, and a link to its page.
+  Orders on stands not yet connected to Argo CD now show a waiting notice with a
+  link to connection manifests for administrators. The new Nested paths check
+  warns on both stand pages when Argo CD for a stand in "Deploy" mode would also
+  deploy files from a nested stand in "Git only" or "Console only" mode.
+- Added support for changing a stand's mode when it has orders. Existing orders
+  move in the background from "Console only" to "Git only" or "Deploy", and from
+  "Git only" to "Console only" or "Deploy". The stand's mode changes immediately
+  and applies to new orders. The stand page shows progress and orders that could
+  not be moved, with reasons. You can stop the task. Orders already moved keep
+  their new mode, and the remaining orders keep their previous mode. While the
+  task is running, the stand's mode, layout, and path cannot be changed. If
+  automatic merging is disabled, the task waits for manual merging of merge
+  requests. Leaving "Deploy" still requires deleting the stand's orders, except
+  drafts and deleted orders.
+- Administrators can now delete a stand and its orders from the stand list.
+  Deletion runs in the background and blocks new orders on the stand. Once all
+  orders are deleted, the portal removes the stand, its variable values, and its
+  GitLab group or repository if created by the portal. The group specified in
+  platform settings and groups created outside the portal are preserved. The
+  default stand, the last remaining stand, and stands with an active task cannot
+  be deleted. If any order fails to delete or the task is stopped, the stand
+  remains. Deleted orders cannot be restored. After successful deletion,
+  administrators must manually remove the stand's ApplicationSet and secrets
+  from Argo CD.
+- Added a support chat button in the bottom-right corner of every portal page.
+  It opens the platform support chat in a messenger in a new tab. Occasional
+  hints next to the button invite you to ask questions or report problems. You
+  can dismiss the hints with the close icon while keeping the button available.
+  Administrators set the chat address using the `SUPPORT_CHAT_URL` environment
+  variable. The button is hidden if the variable is not set.
+
 ## [0.18.1] - 2026-10-08
 
 ### Changed
