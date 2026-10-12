@@ -1,7 +1,0 @@
-### Added
-
-#### en
-Added support for changing a stand's mode when it has orders. Existing orders move in the background from "Console only" to "Git only" or "Deploy", and from "Git only" to "Console only" or "Deploy". The stand's mode changes immediately and applies to new orders. The stand page shows progress and orders that could not be moved, with reasons. You can stop the task. Orders already moved keep their new mode, and the remaining orders keep their previous mode. While the task is running, the stand's mode, layout, and path cannot be changed. If automatic merging is disabled, the task waits for manual merging of merge requests. Leaving "Deploy" still requires deleting the stand's orders, except drafts and deleted orders.
-
-#### ru
-Добавлена возможность менять режим стенда с заказами. Существующие заказы переводятся в фоне из режима «Только консоль» в «Только Git» или «Разворачивать», а из режима «Только Git» в «Только консоль» или «Разворачивать». Режим стенда меняется сразу и применяется к новым заказам. На странице стенда показаны прогресс и заказы, которые перевести не удалось, с причинами. Задачу можно остановить. Уже переведённые заказы сохранят новый режим, остальные сохранят прежний. Пока задача идёт, менять режим, раскладку и путь стенда нельзя. Если автослияние выключено, задача ждёт ручного слияния запросов в Git. Для выхода из режима «Разворачивать» по-прежнему нужно удалить заказы стенда, кроме черновиков и удалённых.
