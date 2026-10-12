@@ -19,7 +19,8 @@ type createReq struct {
 	Team        string         `json:"team"`
 	ServiceName string         `json:"service_name"`
 	DisplayName string         `json:"display_name"`
-	Cluster     string         `json:"cluster"`   // ArgoCD destination cluster
+	StandID     string         `json:"stand_id"`  // the stand the order is placed on; empty means the default one
+	Cluster     string         `json:"cluster"`   // ArgoCD destination cluster; empty means the stand's default
 	Namespace   string         `json:"namespace"` // ArgoCD destination namespace
 	Values      map[string]any `json:"values"`
 	// EditorState is opaque UI state of the visual values editor (see
@@ -32,6 +33,7 @@ type patchReq struct {
 	Version     string         `json:"version"`
 	ServiceName string         `json:"service_name"` // draft only
 	DisplayName string         `json:"display_name"` // draft only
+	StandID     string         `json:"stand_id"`     // draft only
 	Cluster     string         `json:"cluster"`      // draft only
 	Namespace   string         `json:"namespace"`    // draft only
 	Values      map[string]any `json:"values"`
@@ -46,6 +48,7 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
 		Team:           q.Get("team"),
 		Status:         models.RequestStatus(q.Get("status")),
 		Chart:          q.Get("chart"),
+		Stand:          q.Get("stand"),
 		IncludeDeleted: q.Get("include_deleted") == "true",
 	}
 	reqs, err := s.Prov.List(r.Context(), u, f)
@@ -71,7 +74,7 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 	req, err := s.Prov.Create(r.Context(), u, provisioning.CreateInput{
 		ChartProject: project, ChartName: name, Version: body.Version,
 		Team: body.Team, ServiceName: body.ServiceName, DisplayName: body.DisplayName,
-		Cluster: body.Cluster, Namespace: body.Namespace,
+		StandID: body.StandID, Cluster: body.Cluster, Namespace: body.Namespace,
 		Values: body.Values, EditorState: body.EditorState, Draft: body.Draft,
 	})
 	if err != nil {
@@ -156,7 +159,7 @@ func (s *Server) handlePatchRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	req, err := s.Prov.Update(r.Context(), u, chi.URLParam(r, "id"), provisioning.UpdateInput{
 		Version: body.Version, ServiceName: body.ServiceName, DisplayName: body.DisplayName,
-		Cluster: body.Cluster, Namespace: body.Namespace, Values: body.Values,
+		StandID: body.StandID, Cluster: body.Cluster, Namespace: body.Namespace, Values: body.Values,
 		EditorState: body.EditorState,
 	})
 	if err != nil {

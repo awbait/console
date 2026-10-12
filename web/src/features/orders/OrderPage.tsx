@@ -4,6 +4,7 @@ import { TabList, TabPanel, Tabs } from "react-aria-components";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
+import { qk } from "@/api/queryKeys";
 import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "@/api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
 import { usePlatformHealth } from "@/app/PlatformHealthContext";
@@ -125,9 +126,29 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Gateway"); user can edit or clear it (empty falls back to service_name).
   // In edit mode it's hydrated from the draft below.
   const [displayName, setDisplayName] = useState(() => (id ? "" : nParam ? chartLabel(nParam) : ""));
-  // ArgoCD destination: cluster (default in-cluster) + target namespace.
-  const [cluster, setCluster] = useState("in-cluster");
+  // Where the order goes: the stand, then the ArgoCD destination (cluster +
+  // target namespace). A new order opens on the default stand with that stand's
+  // default cluster; both arrive with the stands list, so they start empty.
+  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
+  const [standId, setStandId] = useState("");
+  const [cluster, setCluster] = useState("");
   const [namespace, setNamespace] = useState("");
+  // Picking a stand restarts the cluster from that stand's default: the two are
+  // one choice to the person, even though the cluster stays editable.
+  function pickStand(id: string) {
+    setStandId(id);
+    const st = stands?.find((s) => s.id === id);
+    if (st) setCluster(st.default_cluster);
+  }
+  useEffect(() => {
+    if (editing || standId || !stands?.length) return;
+    const def = stands.find((s) => s.default) ?? stands[0];
+    setStandId(def.id);
+    setCluster((c) => c || def.default_cluster);
+  }, [editing, standId, stands]);
+  // The stand's name, for the read-only summary of an upgrade; the selector
+  // shows it on its own while the stand can still be picked.
+  const standName = stands?.find((s) => s.id === (draft?.stand_id || standId))?.name;
   // New-order chart version: defaults to the recommended (or highest orderable)
   // version once the catalog loads; the user can switch it (initialized below).
   const [selectedVersion, setSelectedVersion] = useState("");
@@ -282,6 +303,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (!editing || hydrated.current || !draft) return;
     setServiceName(draft.service_name);
     setDisplayName(draft.display_name);
+    if (draft.stand_id) setStandId(draft.stand_id);
     if (draft.cluster) setCluster(draft.cluster);
     if (draft.namespace) setNamespace(draft.namespace);
     try {
@@ -495,6 +517,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         await api.updateRequest(id!, {
           service_name: sentName(c.svcName),
           display_name: displayName || undefined,
+          stand_id: standId || undefined,
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
           values: c.values,
@@ -507,6 +530,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           team: activeTeam!,
           service_name: c.svcName,
           display_name: displayName || undefined,
+          stand_id: standId || undefined,
           cluster: cluster || undefined,
           namespace: c.destNamespace || undefined,
           values: c.values,
@@ -571,6 +595,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         await api.updateRequest(id!, {
           service_name: sentName(c.svcName),
           display_name: displayName || undefined,
+          stand_id: standId || undefined,
           cluster,
           namespace: c.destNamespace,
           values: c.values,
@@ -585,6 +610,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           team: activeTeam!,
           service_name: c.svcName,
           display_name: displayName || undefined,
+          stand_id: standId || undefined,
           cluster,
           namespace: c.destNamespace,
           values: c.values,
@@ -656,8 +682,13 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         <Card className="flex flex-col gap-3">
           <p className="text-sm text-gray-600">
             Сервис <span className="font-medium text-gray-800">{draft?.service_name}</span> · команда{" "}
-            <span className="font-medium text-gray-800">{draft?.team}</span> · кластер{" "}
-            <span className="font-medium text-gray-800">{draft?.cluster}</span> · namespace{" "}
+            <span className="font-medium text-gray-800">{draft?.team}</span>
+            {standName && (
+              <>
+                {" "}· стенд <span className="font-medium text-gray-800">{standName}</span>
+              </>
+            )}{" "}
+            · кластер <span className="font-medium text-gray-800">{draft?.cluster}</span> · namespace{" "}
             <span className="font-medium text-gray-800">{draft?.namespace}</span>
           </p>
           <p className="text-sm text-gray-600">
@@ -705,6 +736,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           onDisplayName={setDisplayName}
           serviceName={serviceName}
           onServiceName={setServiceName}
+          stands={stands ?? []}
+          standId={standId}
+          onStand={pickStand}
           cluster={cluster}
           onCluster={setCluster}
           namespace={namespace}

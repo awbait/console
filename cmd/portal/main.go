@@ -127,6 +127,14 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	if err := store.SeedCategories(ctx, st); err != nil {
 		return fmt.Errorf("seed categories: %w", err)
 	}
+	// The stand every order lands on until an admin adds more. Made from the
+	// configured default cluster on the first start after the upgrade; orders
+	// written before stands existed are attached to it here, without moving.
+	if adopted, err := store.SeedDefaultStand(ctx, st, cfg.ArgoCDCluster); err != nil {
+		return fmt.Errorf("seed default stand: %w", err)
+	} else if adopted > 0 {
+		log.Info("orders attached to the default stand", "count", adopted)
+	}
 
 	// --- upstreams ---
 	// Always the real clients. The in-memory fakes live next to each client and

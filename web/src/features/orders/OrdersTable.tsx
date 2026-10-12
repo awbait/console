@@ -40,6 +40,7 @@ import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
 import { fmtDateTime } from "@/lib/time";
 import { subscribe } from "@/lib/sse";
+import { standText } from "../stands/text";
 
 interface Props {
   title: string;
@@ -95,6 +96,9 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     [],
     qk.requests(),
   );
+  // Stands, to name the one each order is on: the row carries only the id.
+  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
+  const standName = (r: OrderRequest) => stands?.find((s) => s.id === r.stand_id)?.name ?? "";
 
   // Live updates: a global SSE stream pushes a "status_changed" signal on any
   // request status change; we re-fetch the (team-scoped) list. Browser handles
@@ -132,6 +136,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
   const [productFilter, setProductFilter] = useState<Set<string>>(new Set());
   const [namespaceFilter, setNamespaceFilter] = useState<Set<string>>(new Set());
+  const [standFilter, setStandFilter] = useState<Set<string>>(new Set());
   // The order pending delete confirmation (null = dialog closed).
   const [deleting, setDeleting] = useState<OrderRequest | null>(null);
 
@@ -156,12 +161,20 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     () => [...new Set(scoped.map(orderNamespace))].filter(Boolean).sort(),
     [scoped],
   );
+  // By name, the word the column shows; an order whose stand is unknown here
+  // (not attached yet, or the list not loaded) has no option.
+  const standOptions = useMemo(
+    () => [...new Set(scoped.map(standName))].filter(Boolean).sort(),
+    // biome-ignore lint/correctness/useExhaustiveDependencies: standName reads stands, which is the dependency
+    [scoped, stands],
+  );
 
   const rows = useMemo(() => {
     const base = scoped
       .filter((r) => teamFilter.size === 0 || teamFilter.has(r.team))
       .filter((r) => productFilter.size === 0 || productFilter.has(r.chart_name))
       .filter((r) => namespaceFilter.size === 0 || namespaceFilter.has(orderNamespace(r)))
+      .filter((r) => standFilter.size === 0 || standFilter.has(standName(r)))
       // A state this build does not know has no group to filter by, and hiding
       // an order nobody can name is worse than showing it.
       .filter((r) => {
@@ -248,6 +261,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     teamFilter.size === 0 &&
     productFilter.size === 0 &&
     namespaceFilter.size === 0 &&
+    standFilter.size === 0 &&
     ALL_GROUPS.every((g) => shown.has(g) === !DEFAULT_HIDDEN.includes(g));
   const resetFilters = () => {
     setShown(new Set(ALL_GROUPS.filter((g) => !DEFAULT_HIDDEN.includes(g))));
@@ -255,6 +269,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     setTeamFilter(new Set());
     setProductFilter(new Set());
     setNamespaceFilter(new Set());
+    setStandFilter(new Set());
   };
 
   return (
@@ -311,6 +326,16 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
             onChange={setNamespaceFilter}
           />
         )}
+        {/* Same rule for stands: one stand is every row's stand. */}
+        {standOptions.length > 1 && (
+          <SearchFilter
+            label={standText.filterLabel}
+            searchPlaceholder={standText.filterSearch}
+            options={standOptions}
+            selected={standFilter}
+            onChange={setStandFilter}
+          />
+        )}
         <button
           onClick={() => setNewestFirst((v) => !v)}
           className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -350,8 +375,10 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
             {allTeams && <Column className="px-4 py-2.5 text-left">Команда</Column>}
             <Column className="px-4 py-2.5 text-left">Продукт</Column>
             <Column isRowHeader className="px-4 py-2.5 text-left">Имя</Column>
-            {/* Where the order landed, next to what it is called: the two
-                together are what a person matches against the cluster. */}
+            {/* Where the order landed, next to what it is called: the stand,
+                then the namespace in it, are what a person matches against
+                the cluster. */}
+            <Column className="px-4 py-2.5 text-left">{standText.tableColumn}</Column>
             <Column className="px-4 py-2.5 text-left">Неймспейс</Column>
             <Column className="px-4 py-2.5 text-left">Метка</Column>
             <Column className="px-4 py-2.5 text-left">Создатель</Column>
@@ -446,6 +473,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       })()}
                     </span>
                   </Cell>
+                  <Cell className="px-4 py-3 text-left text-slate-600">{standName(r) || "-"}</Cell>
                   {/* An order without an explicit namespace still lands in one,
                       named after the service; the cell says where it is, not
                       what the field holds. */}

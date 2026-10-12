@@ -132,9 +132,14 @@ type CreateInput struct {
 	Team         string
 	ServiceName  string
 	DisplayName  string // optional; cosmetic. Defaults to ServiceName when empty.
-	Cluster      string // ArgoCD destination cluster; defaults to the configured cluster when empty.
-	Namespace    string // ArgoCD destination namespace; defaults to ServiceName when empty.
-	Values       map[string]any
+	// StandID names the stand the order is placed on; empty means the default
+	// stand.
+	StandID string
+	// Cluster is the ArgoCD destination cluster; empty means the stand's
+	// default cluster. A stand may span several, so the order says which.
+	Cluster   string
+	Namespace string // ArgoCD destination namespace; defaults to ServiceName when empty.
+	Values    map[string]any
 	// EditorState is the opaque UI state of the visual editor that produced the
 	// values (see models.Request.EditorState). Stored as given, never inspected.
 	EditorState json.RawMessage
@@ -169,6 +174,7 @@ type UpdateInput struct {
 	Version     string // optional new chart version
 	ServiceName string // draft only: change the deploy identity
 	DisplayName string // draft only: change the cosmetic name
+	StandID     string // draft only: move the draft to another stand
 	Cluster     string // draft only: change the destination cluster
 	Namespace   string // draft only: change the destination namespace
 	Values      map[string]any
@@ -546,16 +552,16 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err != nil {
 		return nil, err
 	}
-	cluster := in.Cluster
-	if cluster == "" {
-		cluster = s.defaultCluster
+	// The stand, then the cluster: the one named or the stand's default. Both
+	// resolved before the values are marshalled, because a view template may
+	// stamp the cluster into them.
+	stand, err := s.resolveStand(ctx, in.StandID)
+	if err != nil {
+		return nil, err
 	}
-	// Cluster lands in commit paths ({cluster}/{namespace}/{service}) and the rendered
-	// application.yaml destination; validate it like service_name so it cannot
-	// carry "../" or newlines into Git paths/manifests. Resolved before the values
-	// are marshalled, because a view template may stamp it into them.
-	if !nameRe.MatchString(cluster) || len(cluster) > 63 {
-		return nil, &ValidationError{Message: MsgCluster}
+	cluster, err := orderCluster(in.Cluster, stand)
+	if err != nil {
+		return nil, err
 	}
 	// A draft may hold incomplete values; defer schema validation to Submit.
 	// namespace is passed so a view "namespace" mirror can stamp it into values.
@@ -581,6 +587,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		ChartVersion:  in.Version,
 		ServiceName:   in.ServiceName,
 		DisplayName:   displayName,
+		StandID:       stand.ID,
 		Cluster:       cluster,
 		Namespace:     namespace,
 		ValuesYAML:    valuesYAML,
@@ -812,8 +819,20 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	if in.DisplayName != "" {
 		r.DisplayName = in.DisplayName
 	}
+	if in.StandID != "" && in.StandID != r.StandID {
+		stand, err := s.resolveStand(ctx, in.StandID)
+		if err != nil {
+			return nil, err
+		}
+		r.StandID = stand.ID
+		// A draft moved to another stand starts from that stand's cluster unless
+		// the same edit names one.
+		if in.Cluster == "" {
+			in.Cluster = stand.DefaultCluster
+		}
+	}
 	if in.Cluster != "" {
-		if !nameRe.MatchString(in.Cluster) || len(in.Cluster) > 63 {
+		if !validCluster(in.Cluster) {
 			return nil, &ValidationError{Message: MsgCluster}
 		}
 		r.Cluster = in.Cluster

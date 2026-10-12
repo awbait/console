@@ -26,6 +26,7 @@ import type {
   PublicationDetail,
   PublicationVersion,
   RequestDetail,
+  Stand,
   SystemStatus,
   UpdateOrderBody,
   TemplateRef,
@@ -240,6 +241,15 @@ export const api = {
       undefined,
       signal,
     ),
+
+  // stands: read by anybody signed in (the order form offers them, the list
+  // filters by them), written by admins.
+  listStands: (signal?: AbortSignal) => req<Stand[]>("GET", "/stands", undefined, signal),
+  createStand: (s: Pick<Stand, "name" | "default_cluster">) =>
+    req<Stand>("POST", "/stands", { name: s.name, default_cluster: s.default_cluster }),
+  updateStand: (s: Pick<Stand, "id" | "name" | "default_cluster">) =>
+    req<Stand>("PATCH", `/stands/${enc(s.id)}`, { name: s.name, default_cluster: s.default_cluster }),
+  setDefaultStand: (id: string) => req<void>("POST", `/stands/${enc(id)}/default`),
 
   // platform variables: read by anybody signed in (the version constructor
   // offers them), written by admins.

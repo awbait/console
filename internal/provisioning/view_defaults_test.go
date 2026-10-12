@@ -81,7 +81,7 @@ func TestOrderRendersTemplatedDefaults(t *testing.T) {
 
 	r, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "alpha", Cluster: "in-cluster", Namespace: "ns-a",
+		Team: "core", ServiceName: "alpha", Namespace: "ns-a",
 		Values: draft("app"), Draft: true,
 	})
 	if err != nil {

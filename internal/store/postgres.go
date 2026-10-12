@@ -90,11 +90,11 @@ func (p *Postgres) CreateRequest(ctx context.Context, r *models.Request) error {
 		INSERT INTO requests
 		(id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
 		 service_name, display_name, cluster, namespace, values_yaml, status, argocd_app_name, version, imported, resource_identity,
-		 editor_state, instance_path)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+		 editor_state, instance_path, stand_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 		r.ID, r.CreatedBy, r.CreatedByName, r.Team, r.ChartProject, r.ChartName, r.ChartVersion,
 		r.ServiceName, r.DisplayName, r.Cluster, r.Namespace, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.Version, r.Imported, r.ResourceIdentity,
-		nullJSON(r.EditorState), nullStr(r.InstancePath))
+		nullJSON(r.EditorState), nullStr(r.InstancePath), nullStr(r.StandID))
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -104,7 +104,7 @@ func (p *Postgres) CreateRequest(ctx context.Context, r *models.Request) error {
 const reqBase = `id, created_by, created_by_name, team, chart_project, chart_name, chart_version,
 	service_name, COALESCE(display_name,''), cluster, COALESCE(namespace,''), values_yaml, status, COALESCE(argocd_app_name,''), version,
 	created_at, updated_at, deleted_at, COALESCE(drifted,false), COALESCE(drift_detail,''), COALESCE(imported,false), COALESCE(resource_identity,''),
-	COALESCE(instance_path,'')`
+	COALESCE(instance_path,''), COALESCE(stand_id::text,'')`
 
 // reqCols reads the whole row; reqColsLight keeps the same shape but skips the
 // editor state, which only the order page needs and which is large enough to
@@ -118,7 +118,7 @@ func scanRequest(row pgx.Row) (*models.Request, error) {
 	err := row.Scan(&r.ID, &r.CreatedBy, &r.CreatedByName, &r.Team, &r.ChartProject, &r.ChartName,
 		&r.ChartVersion, &r.ServiceName, &r.DisplayName, &r.Cluster, &r.Namespace, &r.ValuesYAML, &r.Status, &r.ArgoCDAppName,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &r.DeletedAt, &r.Drifted, &r.DriftDetail, &r.Imported, &r.ResourceIdentity,
-		&r.InstancePath, &editorState)
+		&r.InstancePath, &r.StandID, &editorState)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}
@@ -154,6 +154,11 @@ func (p *Postgres) ListRequests(ctx context.Context, f RequestFilter) ([]*models
 	if f.Chart != "" {
 		add(" AND chart_name=", f.Chart)
 	}
+	if f.Stand != "" {
+		// Compared as text: an id that is not a UUID is a filter nothing
+		// matches, not a query error.
+		add(" AND stand_id::text=", f.Stand)
+	}
 	q += " ORDER BY created_at DESC"
 
 	rows, err := p.db.Query(ctx, q, args...)
@@ -181,11 +186,11 @@ func (p *Postgres) UpdateRequest(ctx context.Context, r *models.Request) error {
 		UPDATE requests SET
 		  chart_version=$1, values_yaml=$2, status=$3, argocd_app_name=$4, display_name=$5,
 		  service_name=$6, cluster=$7, namespace=$8, resource_identity=$9, deleted_at=$10,
-		  editor_state=COALESCE($11::jsonb, editor_state), version=version+1, updated_at=NOW()
+		  editor_state=COALESCE($11::jsonb, editor_state), stand_id=$14, version=version+1, updated_at=NOW()
 		WHERE id=$12 AND version=$13`,
 		r.ChartVersion, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.DisplayName,
 		r.ServiceName, r.Cluster, r.Namespace, r.ResourceIdentity, r.DeletedAt,
-		nullJSON(r.EditorState), r.ID, r.Version)
+		nullJSON(r.EditorState), r.ID, r.Version, nullStr(r.StandID))
 	if isUniqueViolation(err) {
 		return models.ErrConflict // identity collides with another active order
 	}
