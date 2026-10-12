@@ -443,8 +443,10 @@ func (s *Service) templateVars(ctx context.Context, view []byte, standID string)
 	return models.VariableValuesOn(list, stand.ID), stand.Name, nil
 }
 
-// checkServiceName mirrors the uniq_active_service index (team, chart_name,
-// service_name, cluster, effective namespace among active orders). Without it
+// checkServiceName mirrors the uniq_active_service index (stand, team,
+// chart_name, service_name, cluster, effective namespace among active orders).
+// The stand is in the key because cluster names are only unique within one
+// stand's Argo CD: in-cluster on two stands is two clusters. Without it
 // the collision surfaces as the index's bare "conflict", which tells the user
 // nothing - and for a chart whose view sources the identity from the values
 // (the policies graph names the order after its first policy) it is not even
@@ -466,7 +468,7 @@ func (s *Service) checkServiceName(ctx context.Context, r *models.Request) error
 		if ex.ID == r.ID || ex.DeletedAt != nil {
 			continue
 		}
-		if ex.Cluster == r.Cluster && ex.ServiceName == r.ServiceName &&
+		if ex.StandID == r.StandID && ex.Cluster == r.Cluster && ex.ServiceName == r.ServiceName &&
 			ex.DestNamespace() == r.DestNamespace() {
 			return conflict(
 				"Имя «%s» уже занято заказом «%s» в namespace «%s». Укажите другое имя или другой namespace.",
@@ -478,7 +480,7 @@ func (s *Service) checkServiceName(ctx context.Context, r *models.Request) error
 
 // checkNamespaceIdentity returns a friendly ValidationError when another active
 // order of the same chart already deploys the same resource identity into the
-// same namespace+cluster. The DB partial unique index is the race-safe backstop;
+// same namespace+cluster of the same stand. The DB partial unique index is the race-safe backstop;
 // this pre-check exists only to turn a bare 409 into an actionable message.
 func (s *Service) checkNamespaceIdentity(ctx context.Context, r *models.Request) error {
 	if r.Namespace == "" || r.ResourceIdentity == "" {
@@ -492,7 +494,8 @@ func (s *Service) checkNamespaceIdentity(ctx context.Context, r *models.Request)
 		if ex.ID == r.ID || ex.DeletedAt != nil {
 			continue
 		}
-		if ex.Cluster == r.Cluster && ex.Namespace == r.Namespace && ex.ResourceIdentity == r.ResourceIdentity {
+		if ex.StandID == r.StandID && ex.Cluster == r.Cluster && ex.Namespace == r.Namespace &&
+			ex.ResourceIdentity == r.ResourceIdentity {
 			return conflict(
 				"в namespace %q уже есть инстанс чарта %q с идентификатором %q (заказ %q). Выберите другой идентификатор или добавьте ресурс в существующий заказ",
 				r.Namespace, r.ChartName, r.ResourceIdentity, ex.ServiceName)

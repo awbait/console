@@ -87,10 +87,11 @@ func (m *Memory) stamp() time.Time {
 // namespaces (dev and stage of one thing), and only a second order into the
 // same namespace is a collision. Compared by the effective namespace, so an
 // order that left the field empty lands on the same key as one that named the
-// service's own namespace outright.
+// service's own namespace outright. The stand is part of it too: two stands may
+// name different clusters alike (each Argo CD has its own in-cluster).
 func activeKey(r *models.Request) string {
-	return r.Team + "\x00" + r.ChartName + "\x00" + r.ServiceName + "\x00" + r.Cluster +
-		"\x00" + r.DestNamespace()
+	return r.StandID + "\x00" + r.Team + "\x00" + r.ChartName + "\x00" + r.ServiceName +
+		"\x00" + r.Cluster + "\x00" + r.DestNamespace()
 }
 
 // namespaceKey mirrors the partial unique index uniq_active_namespace_identity:
@@ -98,7 +99,8 @@ func activeKey(r *models.Request) string {
 // namespace. Only meaningful when both namespace and resource_identity are set
 // (see namespaceGuarded).
 func namespaceKey(r *models.Request) string {
-	return r.Cluster + "\x00" + r.Namespace + "\x00" + r.ChartName + "\x00" + r.ResourceIdentity
+	return r.StandID + "\x00" + r.Cluster + "\x00" + r.Namespace + "\x00" + r.ChartName +
+		"\x00" + r.ResourceIdentity
 }
 
 // namespaceGuarded reports whether r participates in the namespace-identity
