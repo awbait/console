@@ -188,8 +188,16 @@ func (s *Service) StandManifests(st *models.Stand) (string, error) {
 	if st.GitPath == "" {
 		return "", &ValidationError{Message: MsgStandPathEmpty}
 	}
+	// The stand's Argo CD may see GitLab under another address, and run in
+	// another namespace: the manifests are written as it sees things.
 	base := strings.TrimRight(s.GitLabURL, "/")
+	if st.GitURL != "" {
+		base = strings.TrimRight(st.GitURL, "/")
+	}
 	ns := s.ArgoCDNamespace
+	if st.ArgoNamespace != "" {
+		ns = st.ArgoNamespace
+	}
 	if ns == "" {
 		ns = defaultAppNamespace
 	}

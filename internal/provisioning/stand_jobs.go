@@ -288,7 +288,7 @@ func (s *Service) publishOrder(ctx context.Context, r *models.Request, st *model
 	if err != nil {
 		return err
 	}
-	appYAML, err := s.gitops.RenderApplication(r, proj.WebURL, st.ChartRegistry)
+	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL)
 	if err != nil {
 		return err
 	}

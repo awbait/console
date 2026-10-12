@@ -657,7 +657,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err != nil {
 		return r, err // DRAFT persists; caller sees upstream error
 	}
-	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL, stand.ChartRegistry)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -716,7 +716,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if err != nil {
 		return r, err
 	}
-	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL, stand.ChartRegistry)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -825,7 +825,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	r.ChartVersion = version
 	r.ValuesYAML = valuesYAML
 	r.EditorState = in.EditorState // nil keeps what the store already holds
-	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL, stand.ChartRegistry)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
 	actions := []gitlab.FileAction{
 		{Action: "update", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "update", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},

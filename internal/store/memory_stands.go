@@ -106,6 +106,7 @@ func (m *Memory) UpdateStand(ctx context.Context, s *models.Stand) error {
 	cur.Name, cur.DefaultCluster = s.Name, s.DefaultCluster
 	cur.Layout, cur.GitPath = s.Layout, s.GitPath
 	cur.Mode, cur.ChartRegistry = s.Mode, s.ChartRegistry
+	cur.GitURL, cur.ArgoNamespace = s.GitURL, s.ArgoNamespace
 	cur.UpdatedAt = m.stamp()
 	*s = *clone(cur)
 	return nil
