@@ -123,6 +123,10 @@ type Port interface {
 	GetProject(ctx context.Context, fullPath string) (*Project, error)
 	// CreateProject creates a repo inside a namespace (the team subgroup).
 	CreateProject(ctx context.Context, namespaceID int, name string) (*Project, error)
+	// DeleteGroup and DeleteProject remove what a deleted stand's portal made
+	// in GitLab. One already gone counts as deleted.
+	DeleteGroup(ctx context.Context, id int) error
+	DeleteProject(ctx context.Context, id int) error
 
 	// CreateBranch creates a branch from ref on a project.
 	CreateBranch(ctx context.Context, projectID int, branch, ref string) error

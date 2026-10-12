@@ -425,7 +425,7 @@ export interface Stand {
 export interface StandJob {
   id: string;
   stand_id: string;
-  kind: "mode_change";
+  kind: "mode_change" | "delete";
   from_mode: StandMode;
   to_mode: StandMode;
   status: "running" | "done" | "stopped";

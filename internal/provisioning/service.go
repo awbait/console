@@ -703,6 +703,9 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	r.ValuesYAML = valuesYAML
 
 	stand := s.standOf(ctx, r)
+	if err := s.refuseDeleting(ctx, stand); err != nil {
+		return nil, err
+	}
 	if !stand.WritesGit() {
 		if err := s.transition(ctx, r, models.StatusConsoleSaved, byUser(u)); err != nil {
 			return r, err
@@ -1431,7 +1434,26 @@ func (s *Service) ensureStandGroup(ctx context.Context, st *models.Stand) (*gitl
 		return nil, gitopsErr("create group", err)
 	}
 	s.logger().Info("stand group created", "stand", st.ID, "group", groupPath, "gitlab_group_id", grp.ID)
+	// Under the group layout this group is the stand's storage: what deleting
+	// the stand may remove, because the portal made it.
+	if st.Layout != models.LayoutRepository {
+		s.markStorageCreated(ctx, st)
+	}
 	return grp, nil
+}
+
+// markStorageCreated records that the portal made the stand's own group or
+// repository. Best effort: a stand not marked only keeps its storage when it
+// is deleted, which is the safe way to be wrong.
+func (s *Service) markStorageCreated(ctx context.Context, st *models.Stand) {
+	if st == nil || st.ID == "" {
+		return
+	}
+	if err := s.store.MarkStandStorageCreated(ctx, st.ID); err != nil {
+		s.logger().Warn("stand storage not marked as the portal's", "stand", st.ID, "err", err)
+		return
+	}
+	st.StorageCreated = true
 }
 
 // ensureRepo resolves the repository an order of the team and chart lives in
@@ -1474,6 +1496,9 @@ func (s *Service) ensureRepo(ctx context.Context, st *models.Stand, team, chart 
 		proj, err = s.gl.CreateProject(ctx, grp.ID, repoName)
 		if err != nil {
 			return nil, gitopsErr("create repo", err)
+		}
+		if st != nil && st.Layout == models.LayoutRepository && repoPath == st.GitPath {
+			s.markStorageCreated(ctx, st)
 		}
 		// A group or system hook already covers the new repo; a per-repo one does
 		// not exist yet. Never fail the order over it: a missing webhook only

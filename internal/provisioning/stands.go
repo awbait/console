@@ -72,6 +72,11 @@ func (s *Service) GetStand(ctx context.Context, id string) (*models.Stand, error
 	if err != nil {
 		return nil, err
 	}
+	// A deleted stand stays a row for the history of its orders, and is gone
+	// from everything an admin acts on.
+	if st.DeletedAt != nil {
+		return nil, models.ErrNotFound
+	}
 	locked, err := s.standLocked(ctx, id)
 	if err != nil {
 		return nil, err
@@ -146,10 +151,16 @@ func (s *Service) ListStands(ctx context.Context) ([]*models.Stand, error) {
 func (s *Service) resolveStand(ctx context.Context, id string) (*models.Stand, error) {
 	if id != "" {
 		st, err := s.store.GetStand(ctx, id)
-		if errors.Is(err, models.ErrNotFound) {
+		if errors.Is(err, models.ErrNotFound) || (err == nil && st.DeletedAt != nil) {
 			return nil, &ValidationError{Message: MsgStandUnknown}
 		}
-		return st, err
+		if err != nil {
+			return nil, err
+		}
+		if err := s.refuseDeleting(ctx, st); err != nil {
+			return nil, err
+		}
+		return st, nil
 	}
 	st, err := s.store.DefaultStand(ctx)
 	if errors.Is(err, models.ErrNotFound) {
@@ -270,6 +281,9 @@ func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.St
 	if err != nil {
 		return err
 	}
+	if cur.DeletedAt != nil {
+		return models.ErrNotFound
+	}
 	// A path once set is not cleared: the orders made since are under it.
 	if st.GitPath == "" && cur.GitPath != "" {
 		return &ValidationError{Message: MsgStandPathClear}
@@ -327,6 +341,15 @@ func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.St
 func (s *Service) SetDefaultStand(ctx context.Context, u *models.User, id string) error {
 	if !u.IsAdmin() {
 		return ErrForbidden
+	}
+	// Not onto a stand that is gone or going: the default is where orders
+	// without a stand land.
+	st, err := s.GetStand(ctx, id)
+	if err != nil {
+		return err
+	}
+	if st.Job != nil && st.Job.Kind == models.StandJobDelete {
+		return &ValidationError{Message: MsgStandDeleteJob}
 	}
 	if err := s.store.SetDefaultStand(ctx, id); err != nil {
 		return err

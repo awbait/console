@@ -38,6 +38,9 @@ type StandJobFailure struct {
 // Kinds and statuses of a stand job.
 const (
 	StandJobModeChange = "mode_change"
+	// StandJobDelete deletes every order of the stand the ordinary way, then
+	// the stand itself.
+	StandJobDelete = "delete"
 
 	StandJobRunning = "running"
 	StandJobDone    = "done"

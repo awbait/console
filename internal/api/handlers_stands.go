@@ -174,3 +174,21 @@ func (s *Server) handleStopStandJob(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, j)
 }
+
+// handleDeleteStand starts deleting the stand. The body names the stand, as
+// the admin typed it to confirm; the answer is the job that does the work.
+func (s *Server) handleDeleteStand(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	j, err := s.Prov.DeleteStand(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"), body.Name)
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, j)
+}

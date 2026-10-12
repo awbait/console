@@ -70,14 +70,16 @@ function JobRow({ job, onStopped }: { job: StandJob; onStopped: () => void }) {
   const [confirm, setConfirm] = useState(false);
   const status = STATUS[job.status] ?? STATUS.stopped;
   const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
+  const isDelete = job.kind === "delete";
+  const title = isDelete
+    ? t.jobDelete
+    : t.jobModeChange(MODE_LABEL[job.from_mode] ?? job.from_mode, MODE_LABEL[job.to_mode] ?? job.to_mode);
   return (
     <li className="rounded-md border border-slate-200 px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${status.tone}`}>{status.label}</span>
-          <p className="truncate text-sm font-medium text-slate-800">
-            {t.jobModeChange(MODE_LABEL[job.from_mode] ?? job.from_mode, MODE_LABEL[job.to_mode] ?? job.to_mode)}
-          </p>
+          <p className="truncate text-sm font-medium text-slate-800">{title}</p>
         </div>
         {job.status === "running" && (
           <Button variant="secondary" onPress={() => setConfirm(true)} className="h-[30px] shrink-0 text-xs">
@@ -96,10 +98,17 @@ function JobRow({ job, onStopped }: { job: StandJob; onStopped: () => void }) {
         >
           <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
         </div>
-        <p className="text-xs text-slate-600">{t.jobProgress(job.done, job.total)}</p>
+        <p className="text-xs text-slate-600">
+          {isDelete ? t.jobDeleteProgress(job.done, job.total) : t.jobProgress(job.done, job.total)}
+        </p>
       </div>
       {job.status === "running" && job.waiting > 0 && (
         <p className="mt-1 text-xs text-slate-500">{t.jobWaitingMerge}</p>
+      )}
+      {/* A finished deletion that kept the stand says why; one that did not
+          cannot be seen here, since the stand page is gone with the stand. */}
+      {isDelete && job.status === "done" && job.failures.length > 0 && (
+        <p className="mt-1 text-xs text-amber-700">{t.jobDeleteKept}</p>
       )}
       {job.failures.length > 0 && (
         <div className="mt-2">

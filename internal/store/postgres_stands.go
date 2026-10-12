@@ -12,11 +12,12 @@ import (
 // by hand, read whole by every reader (the order form, the list filter, the
 // admin page), the way the variables are.
 
-const standCols = `id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, argo_connected, checked_at, created_at, updated_at`
+const standCols = `id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, argo_connected, checked_at, storage_created, deleted_at, created_at, updated_at`
 
 func scanStand(row pgx.Row) (*models.Stand, error) {
 	var s models.Stand
-	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.Mode, &s.ChartRegistry, &s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.Mode, &s.ChartRegistry,
+		&s.ArgoConnected, &s.CheckedAt, &s.StorageCreated, &s.DeletedAt, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}
@@ -41,7 +42,7 @@ func standDefaults(s *models.Stand) {
 func (p *Postgres) ListStands(ctx context.Context) ([]*models.Stand, error) {
 	// The default first, then by name: the selector and the admin page both
 	// open on it.
-	rows, err := p.db.Query(ctx, `SELECT `+standCols+` FROM stands ORDER BY is_default DESC, name`)
+	rows, err := p.db.Query(ctx, `SELECT `+standCols+` FROM stands WHERE deleted_at IS NULL ORDER BY is_default DESC, name`)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +63,40 @@ func (p *Postgres) GetStand(ctx context.Context, id string) (*models.Stand, erro
 }
 
 func (p *Postgres) DefaultStand(ctx context.Context) (*models.Stand, error) {
-	return scanStand(p.db.QueryRow(ctx, `SELECT `+standCols+` FROM stands WHERE is_default`))
+	return scanStand(p.db.QueryRow(ctx, `SELECT `+standCols+` FROM stands WHERE is_default AND deleted_at IS NULL`))
+}
+
+// MarkStandStorageCreated records that the portal made the stand's group or
+// repository in GitLab, so deleting the stand may remove it.
+func (p *Postgres) MarkStandStorageCreated(ctx context.Context, id string) error {
+	_, err := p.db.Exec(ctx, `UPDATE stands SET storage_created = TRUE WHERE id = $1`, id)
+	if isInvalidUUID(err) {
+		return models.ErrNotFound
+	}
+	return err
+}
+
+// DeleteStand marks the stand deleted and drops its variable values, in one
+// transaction. The default stand is never deleted: the caller refuses first,
+// and the WHERE keeps it so if it does not.
+func (p *Postgres) DeleteStand(ctx context.Context, id string) error {
+	return p.Tx(ctx, func(s Store) error {
+		tx := s.(*Postgres)
+		tag, err := tx.db.Exec(ctx, `
+			UPDATE stands SET deleted_at = NOW(), updated_at = NOW()
+			WHERE id = $1 AND deleted_at IS NULL AND NOT is_default`, id)
+		if isInvalidUUID(err) {
+			return models.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return models.ErrNotFound
+		}
+		_, err = tx.db.Exec(ctx, `DELETE FROM variable_overrides WHERE stand_id = $1`, id)
+		return err
+	})
 }
 
 func (p *Postgres) CreateStand(ctx context.Context, s *models.Stand) error {
