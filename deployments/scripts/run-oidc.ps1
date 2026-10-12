@@ -121,6 +121,10 @@ $env:OIDC_SCOPES = "openid,profile,email"
 $env:RBAC_ADMIN_GROUPS = "platform-admins"
 $env:RBAC_SUPPORT_GROUPS = "support"
 $env:RBAC_SECURITY_GROUPS = "security"
+# Support chat button in the corner of every page. The stand has no chat of its
+# own, so a placeholder keeps the button visible; set SUPPORT_CHAT_URL before
+# running the script to point it at a real one.
+if (-not $env:SUPPORT_CHAT_URL) { $env:SUPPORT_CHAT_URL = "https://t.me/" }
 
 # Real GitLab CE + compose Postgres/Valkey (ports exposed on the host).
 $env:GITLAB_URL           = "http://localhost:8929"
