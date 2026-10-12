@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.20.1] - 2026-10-12
+
+### Fixed
+- Creating or copying orders to another stand no longer triggers a false
+  duplicate-name error when the order name, namespace and cluster name match.
+  Duplicate names in the same namespace and cluster are still refused within one
+  stand. Importing orders from Git no longer skips an order because the same
+  application name exists on another stand.
+
 ## [0.20.0] - 2026-10-12
 
 ### Added
