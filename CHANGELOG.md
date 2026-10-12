@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.20.0] - 2026-10-12
+
+### Added
+- Added optional Git URL and Argo CD namespace settings for each stand. When
+  left empty, they use the portal's GitLab URL and the namespace from the
+  platform settings. The values are applied to order `application.yaml` files
+  and Argo CD connection manifests on the stand page. Existing orders receive
+  the new values when next modified. Changing the Git URL preserves the
+  repository path, so a mirror must use the same path.
+
 ## [0.19.0] - 2026-10-12
 
 ### Added
