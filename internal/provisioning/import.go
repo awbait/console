@@ -65,15 +65,18 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 	// same identity reappears in Git later it's a genuinely new instance and should
 	// be re-adopted rather than blocked forever by the old deleted row. In-progress
 	// deletes (DELETE_REQUESTED/DELETE_MR_MERGED) are still non-deleted, so they
-	// stay in the set and aren't re-imported mid-flight.
+	// stay in the set and aren't re-imported mid-flight. Keyed per stand: an order
+	// copied to another stand keeps its application name, and that copy is not
+	// the original.
 	existing, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true})
 	if err != nil {
 		return err
 	}
+	appKey := func(r *models.Request) string { return r.StandID + "\x00" + r.ArgoCDAppName }
 	known := make(map[string]struct{}, len(existing))
 	for _, r := range existing {
 		if r.ArgoCDAppName != "" {
-			known[r.ArgoCDAppName] = struct{}{}
+			known[appKey(r)] = struct{}{}
 		}
 	}
 	for _, dd := range discovered {
@@ -82,11 +85,11 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if r == nil {
 			continue // couldn't determine the essential identity - skip
 		}
-		if _, ok := known[r.ArgoCDAppName]; ok {
-			continue
-		}
 		if dd.stand != nil {
 			r.StandID = dd.stand.ID
+		}
+		if _, ok := known[appKey(r)]; ok {
+			continue
 		}
 		// Only adopt VALID, conforming instances:
 		//  1) the adjacent values.yaml must exist (a complete instance folder), and
@@ -135,11 +138,11 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if err := s.store.CreateRequest(ctx, r); err != nil {
 			// ErrConflict => an active order already owns this identity; treat as known.
 			if errors.Is(err, models.ErrConflict) {
-				known[r.ArgoCDAppName] = struct{}{}
+				known[appKey(r)] = struct{}{}
 			}
 			continue
 		}
-		known[r.ArgoCDAppName] = struct{}{}
+		known[appKey(r)] = struct{}{}
 		// The portal did not create this repo, so nothing has hooked it: under the
 		// per-repository scope its merges would go unnoticed until the next restart
 		// swept the group. Done here, at adoption, rather than per discovered app -

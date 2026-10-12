@@ -113,6 +113,37 @@ func TestCopyNeedsAnotherNameOnTheSameCluster(t *testing.T) {
 	}
 }
 
+// Cluster names belong to each stand's Argo CD, so two stands may both call
+// theirs in-cluster. A copy to such a stand is not a repeat of the original,
+// neither by name nor by the resource identity in the namespace.
+func TestCopyToAnotherStandWithTheSameClusterName(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	idp := mustStand(ctx, t, s, "idp", "in-cluster")
+	edp := mustStand(ctx, t, s, "edp", "in-cluster")
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", []byte(`{"views":{"order":{"identity":"/auth/database"}}}`))
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(idp.ID), func(in *provisioning.CreateInput) {
+		in.Namespace = "db"
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if src.ResourceIdentity == "" {
+		t.Fatalf("the order needs a resource identity for this test")
+	}
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: edp.ID})
+	if err != nil {
+		t.Fatalf("copy to a stand with the same cluster name: %v", err)
+	}
+	if cp.StandID != edp.ID || cp.Cluster != "in-cluster" || cp.ServiceName != "pg1" || cp.Namespace != "db" {
+		t.Fatalf("copy: %+v", cp)
+	}
+	// On one stand the same name is still a collision.
+	if _, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: edp.ID}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("second copy to the same stand: want a conflict, got %v", err)
+	}
+}
+
 // Copying is ordering: members of the team and admins, not readers of it, and
 // not a deleted order.
 func TestCopyAccess(t *testing.T) {
