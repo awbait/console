@@ -283,6 +283,9 @@ export const api = {
     req<{ jobs: StandJob[] }>("GET", `/stands/${enc(id)}/jobs`, undefined, signal),
   stopStandJob: (id: string, jobId: string) =>
     req<StandJob>("POST", `/stands/${enc(id)}/jobs/${enc(jobId)}/stop`),
+  // Starts the job that deletes the stand; name is what the admin typed to
+  // confirm. Admin only.
+  deleteStand: (id: string, name: string) => req<StandJob>("DELETE", `/stands/${enc(id)}`, { name }),
 
   // platform variables: read by anybody signed in (the version constructor
   // offers them), written by admins.

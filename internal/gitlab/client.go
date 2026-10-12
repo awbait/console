@@ -196,6 +196,25 @@ func (c *Client) CreateBranch(ctx context.Context, projectID int, branch, ref st
 		fmt.Sprintf("/projects/%d/repository/branches", projectID), q, nil, nil)
 }
 
+// DeleteGroup removes a group with everything under it. GitLab may keep it
+// pending deletion for a while, depending on the instance's settings.
+func (c *Client) DeleteGroup(ctx context.Context, id int) error {
+	err := c.do(ctx, http.MethodDelete, fmt.Sprintf("/groups/%d", id), nil, nil, nil)
+	if errors.Is(err, models.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
+// DeleteProject removes a repository.
+func (c *Client) DeleteProject(ctx context.Context, id int) error {
+	err := c.do(ctx, http.MethodDelete, fmt.Sprintf("/projects/%d", id), nil, nil, nil)
+	if errors.Is(err, models.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 // DeleteBranch removes a branch. A branch that is not there counts as deleted:
 // the caller asked for it to be gone, and GitLab removing it on merge by itself
 // is the ordinary way that happens.

@@ -55,9 +55,15 @@ type Stand struct {
 	Job *StandJob `json:"job,omitempty"`
 	// Locked reports that the stand has orders beyond drafts and deleted ones,
 	// so its layout, path and mode are read-only. Computed on read, never stored.
-	Locked    bool      `json:"locked"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Locked bool `json:"locked"`
+	// StorageCreated reports that the portal made the stand's group or
+	// repository in GitLab itself, so it may remove it with the stand.
+	StorageCreated bool `json:"storage_created"`
+	// DeletedAt is when the stand was deleted. A deleted stand is gone from
+	// every list; the row stays for the history of the orders it had.
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // StandCheck is the stored outcome of one check of a stand (see

@@ -181,13 +181,16 @@ func (s *Service) RunStandJobs(ctx context.Context) error {
 // once every order has arrived or been given up on.
 func (s *Service) advanceJob(ctx context.Context, j *models.StandJob) error {
 	st, err := s.store.GetStand(ctx, j.StandID)
-	if errors.Is(err, models.ErrNotFound) {
+	if errors.Is(err, models.ErrNotFound) || (err == nil && st.DeletedAt != nil) {
 		now := time.Now()
 		j.Status, j.FinishedAt = models.StandJobStopped, &now
 		return s.store.UpdateStandJob(ctx, j)
 	}
 	if err != nil {
 		return err
+	}
+	if j.Kind == models.StandJobDelete {
+		return s.advanceDeleteJob(ctx, j, st)
 	}
 	orders, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true, Stand: st.ID})
 	if err != nil {

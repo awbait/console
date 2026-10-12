@@ -1,4 +1,4 @@
-import { IconExternalLink, IconPlus, IconStar } from "@tabler/icons-react";
+import { IconExternalLink, IconPlus, IconStar, IconTrash } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api/client";
@@ -6,7 +6,7 @@ import { qk } from "../api/queryKeys";
 import type { Stand, StandLayout, StandMode } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Button, ErrorBox, SkeletonRows } from "../components/ui";
+import { Button, ErrorBox, SkeletonRows, TextField } from "../components/ui";
 import { standText as t } from "../features/stands/text";
 import { dnsLabelError, fieldMsg } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
@@ -105,6 +105,12 @@ export function AdminStandsPage() {
                   busy={busy}
                   onSave={(patch) => run(() => api.updateStand({ ...s, ...patch }), t.toastSaved(patch.name ?? s.name))}
                   onStartJob={(mode) => run(() => api.updateStand({ ...s, mode }), t.jobStartedToast(s.name))}
+                  isLast={stands.length <= 1}
+                  onDelete={async (name) => {
+                    await api.deleteStand(s.id, name);
+                    reload();
+                    toast.success(t.deleteStartedToast(s.name));
+                  }}
                   onMakeDefault={() => run(() => api.setDefaultStand(s.id), t.toastDefault(s.name))}
                 />
               ))
@@ -128,6 +134,8 @@ function StandRow({
   busy,
   onSave,
   onStartJob,
+  isLast,
+  onDelete,
   onMakeDefault,
 }: {
   stand: Stand;
@@ -135,9 +143,24 @@ function StandRow({
   onSave: (patch: StandPatch) => void;
   // A new mode for a stand with orders: the portal moves them in a job.
   onStartJob: (mode: StandMode) => Promise<void>;
+  // The only stand left cannot be deleted.
+  isLast: boolean;
+  // Starts deleting the stand; name is what the admin typed. Throws to keep
+  // the dialog open with the reason.
+  onDelete: (name: string) => Promise<void>;
   onMakeDefault: () => void;
 }) {
   const [pendingMode, setPendingMode] = useState<StandMode | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  // Why the stand cannot be deleted right now, or null when it can.
+  const deleteBlocked = stand.default
+    ? t.deleteDisabledDefault
+    : isLast
+      ? t.deleteDisabledLast
+      : stand.job
+        ? t.deleteDisabledJob
+        : null;
   const [name, setName] = useState(stand.name);
   const [cluster, setCluster] = useState(stand.default_cluster);
   const [path, setPath] = useState(stand.git_path);
@@ -206,7 +229,9 @@ function StandRow({
           className="w-32 shrink-0 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
           title={t.jobRunningHint}
         >
-          {t.rowJobBadge(stand.job.done, stand.job.total)}
+          {stand.job.kind === "delete"
+            ? t.rowDeleteBadge(stand.job.done, stand.job.total)
+            : t.rowJobBadge(stand.job.done, stand.job.total)}
         </span>
       ) : stand.locked && mode.id === "deploy" ? (
         <span className="w-32 shrink-0 px-2 text-sm text-slate-500" title={t.deployLeaveHint}>
@@ -344,6 +369,40 @@ function StandRow({
           {t.makeDefault}
         </Button>
       )}
+
+      {/* Deleting asks for the stand's name, the way a repository is deleted
+          in GitLab: it takes every order of the stand with it. */}
+      <span title={deleteBlocked ?? undefined} className="shrink-0">
+        <Button
+          variant="secondary"
+          onPress={() => {
+            setConfirmName("");
+            setDeleting(true);
+          }}
+          isDisabled={busy || deleteBlocked !== null}
+          aria-label={t.deleteButton}
+          className="h-[30px] px-2 text-rose-600"
+        >
+          <IconTrash size={15} stroke={1.8} />
+        </Button>
+      </span>
+      <ConfirmDialog
+        isOpen={deleting}
+        onOpenChange={setDeleting}
+        title={t.deleteTitle(stand.name)}
+        danger
+        confirmLabel={t.deleteConfirm}
+        message={
+          <div className="flex flex-col gap-3">
+            <p>{t.deleteMessage}</p>
+            <TextField label={t.deleteNameLabel(stand.name)} value={confirmName} onChange={setConfirmName} />
+          </div>
+        }
+        onConfirm={async () => {
+          if (confirmName.trim() !== stand.name) throw new Error(t.deleteNameMismatch);
+          await onDelete(confirmName.trim());
+        }}
+      />
 
       <Link
         to={`/admin/stands/${stand.id}`}

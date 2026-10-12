@@ -89,6 +89,41 @@ func (f *Fake) addGroup(fullPath string) *Group {
 	return g
 }
 
+func (f *Fake) DeleteGroup(ctx context.Context, id int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	g, ok := f.groupByID[id]
+	if !ok {
+		return nil
+	}
+	prefix := g.FullPath + "/"
+	for path, sub := range f.groups {
+		if path == g.FullPath || strings.HasPrefix(path, prefix) {
+			delete(f.groups, path)
+			delete(f.groupByID, sub.ID)
+		}
+	}
+	for path, p := range f.projects {
+		if strings.HasPrefix(path, prefix) {
+			delete(f.projects, path)
+			delete(f.projByID, p.proj.ID)
+		}
+	}
+	return nil
+}
+
+func (f *Fake) DeleteProject(ctx context.Context, id int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.projByID[id]
+	if !ok {
+		return nil
+	}
+	delete(f.projects, p.proj.PathWithNamespace)
+	delete(f.projByID, id)
+	return nil
+}
+
 func (f *Fake) GetGroup(ctx context.Context, fullPath string) (*Group, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

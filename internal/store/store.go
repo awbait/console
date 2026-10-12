@@ -182,6 +182,14 @@ type Store interface {
 	// are the only such rows, so this runs once, on the first start after the
 	// upgrade (see SeedDefaultStand).
 	AdoptOrphanRequests(ctx context.Context, standID string) (int, error)
+	// MarkStandStorageCreated records that the portal made the stand's group
+	// or repository in GitLab itself.
+	MarkStandStorageCreated(ctx context.Context, id string) error
+	// DeleteStand marks the stand deleted and drops its variable values. A
+	// deleted stand leaves ListStands and DefaultStand, and GetStand still
+	// reads it, for the history of its orders. ErrNotFound for the default
+	// stand, an unknown one, or one already deleted.
+	DeleteStand(ctx context.Context, id string) error
 	// SaveStandChecks replaces the stored checks of a stand with these, stamps
 	// the stand's CheckedAt from them, and sets ArgoConnected when the check
 	// could tell (nil leaves it). ErrNotFound when the stand does not exist.
