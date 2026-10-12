@@ -24,7 +24,7 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 		return nil, models.ErrNotFound
 	}
 
-	proj, err := s.gl.GetProject(ctx, s.gitops.RepoPath(r.Team, r.ChartName))
+	proj, err := s.gl.GetProject(ctx, s.repoPathOf(ctx, r))
 	if err != nil {
 		return nil, gitopsErr("resolve repo", err)
 	}

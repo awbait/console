@@ -43,11 +43,19 @@ func SeedCategories(ctx context.Context, s Store) error {
 // Orphans are adopted on every start, not only the first: a row with no stand
 // cannot be written by this version of the portal, so finding one means the
 // previous adoption did not finish, and the right thing is to finish it.
-func SeedDefaultStand(ctx context.Context, s Store, cluster string) (adopted int, err error) {
+//
+// gitPath is the configured GitOps group: the place every order was written to
+// before stands had one of their own. The seeded stand takes it with the group
+// layout, and a stand written before the path was stored gets it filled in the
+// same way, once, so nothing of what is in Git moves.
+func SeedDefaultStand(ctx context.Context, s Store, cluster, gitPath string) (adopted int, err error) {
 	def, err := s.DefaultStand(ctx)
 	switch {
 	case errors.Is(err, models.ErrNotFound):
-		def = &models.Stand{ID: uuid.NewString(), Name: models.DefaultStandName, DefaultCluster: cluster, Default: true}
+		def = &models.Stand{
+			ID: uuid.NewString(), Name: models.DefaultStandName, DefaultCluster: cluster, Default: true,
+			Layout: models.LayoutGroup, GitPath: gitPath,
+		}
 		if err := s.CreateStand(ctx, def); err != nil {
 			if !errors.Is(err, models.ErrConflict) {
 				return 0, err
@@ -59,6 +67,12 @@ func SeedDefaultStand(ctx context.Context, s Store, cluster string) (adopted int
 		}
 	case err != nil:
 		return 0, err
+	}
+	if def.GitPath == "" && gitPath != "" {
+		def.GitPath, def.Layout = gitPath, models.LayoutGroup
+		if err := s.UpdateStand(ctx, def); err != nil {
+			return 0, err
+		}
 	}
 	return s.AdoptOrphanRequests(ctx, def.ID)
 }

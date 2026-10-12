@@ -53,6 +53,9 @@ func (m *Memory) CreateStand(ctx context.Context, s *models.Stand) error {
 			return models.ErrConflict
 		}
 	}
+	if s.Layout == "" {
+		s.Layout = models.LayoutGroup
+	}
 	now := m.stamp()
 	s.CreatedAt, s.UpdatedAt = now, now
 	m.stands[s.ID] = clone(s)
@@ -71,7 +74,11 @@ func (m *Memory) UpdateStand(ctx context.Context, s *models.Stand) error {
 			return models.ErrConflict
 		}
 	}
+	if s.Layout == "" {
+		s.Layout = models.LayoutGroup
+	}
 	cur.Name, cur.DefaultCluster = s.Name, s.DefaultCluster
+	cur.Layout, cur.GitPath = s.Layout, s.GitPath
 	cur.UpdatedAt = m.stamp()
 	*s = *clone(cur)
 	return nil

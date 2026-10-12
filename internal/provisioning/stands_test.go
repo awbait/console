@@ -15,7 +15,9 @@ func admin() *models.User {
 
 func mustStand(ctx context.Context, t *testing.T, s *stack, name, cluster string) *models.Stand {
 	t.Helper()
-	st := &models.Stand{Name: name, DefaultCluster: cluster}
+	// On the configured group, where the fake GitLab already has the team
+	// subgroups: these tests are about stands, not about Git layouts.
+	st := &models.Stand{Name: name, DefaultCluster: cluster, GitPath: "managed-services"}
 	if err := s.prov.CreateStand(ctx, admin(), st); err != nil {
 		t.Fatalf("create stand %s: %v", name, err)
 	}
@@ -56,7 +58,7 @@ func TestStandDefaultClusterIsChecked(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"", "   "} {
-		err := s.prov.CreateStand(ctx, admin(), &models.Stand{Name: bad, DefaultCluster: "in-cluster"})
+		err := s.prov.CreateStand(ctx, admin(), &models.Stand{Name: bad, DefaultCluster: "in-cluster", GitPath: "managed-services/x"})
 		var ve *provisioning.ValidationError
 		if !errors.As(err, &ve) {
 			t.Errorf("name %q: want ValidationError, got %v", bad, err)
@@ -70,7 +72,7 @@ func TestStandDefaultClusterIsChecked(t *testing.T) {
 	if st.ID == "" {
 		t.Fatal("a created stand carries its id")
 	}
-	if err := s.prov.CreateStand(ctx, admin(), &models.Stand{Name: "dev", DefaultCluster: "other"}); !errors.Is(err, models.ErrConflict) {
+	if err := s.prov.CreateStand(ctx, admin(), &models.Stand{Name: "dev", DefaultCluster: "other", GitPath: "managed-services/other"}); !errors.Is(err, models.ErrConflict) {
 		t.Fatalf("duplicate name: want ErrConflict, got %v", err)
 	}
 	second := mustStand(ctx, t, s, "edge", "edge")
@@ -85,11 +87,11 @@ func TestStandsAreAdminWritten(t *testing.T) {
 	s := newStack(t)
 	u := member("core")
 
-	if err := s.prov.CreateStand(ctx, u, &models.Stand{Name: "dev", DefaultCluster: "in-cluster"}); !errors.Is(err, provisioning.ErrForbidden) {
+	if err := s.prov.CreateStand(ctx, u, &models.Stand{Name: "dev", DefaultCluster: "in-cluster", GitPath: "managed-services/dev"}); !errors.Is(err, provisioning.ErrForbidden) {
 		t.Fatalf("member create: want ErrForbidden, got %v", err)
 	}
 	st := mustStand(ctx, t, s, "dev", "in-cluster")
-	if err := s.prov.UpdateStand(ctx, u, &models.Stand{ID: st.ID, Name: "dev2", DefaultCluster: "in-cluster"}); !errors.Is(err, provisioning.ErrForbidden) {
+	if err := s.prov.UpdateStand(ctx, u, &models.Stand{ID: st.ID, Name: "dev2", DefaultCluster: "in-cluster", GitPath: st.GitPath}); !errors.Is(err, provisioning.ErrForbidden) {
 		t.Fatalf("member update: want ErrForbidden, got %v", err)
 	}
 	if err := s.prov.SetDefaultStand(ctx, u, st.ID); !errors.Is(err, provisioning.ErrForbidden) {
@@ -230,7 +232,7 @@ func TestStandChangesDoNotMoveOrders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := s.prov.UpdateStand(ctx, admin(), &models.Stand{ID: dev.ID, Name: "dev", DefaultCluster: "moved"}); err != nil {
+	if err := s.prov.UpdateStand(ctx, admin(), &models.Stand{ID: dev.ID, Name: "dev", DefaultCluster: "moved", GitPath: dev.GitPath}); err != nil {
 		t.Fatalf("update stand: %v", err)
 	}
 	got, err := s.prov.Get(ctx, u, before.ID)

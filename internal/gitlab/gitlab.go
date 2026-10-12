@@ -136,9 +136,14 @@ type Port interface {
 	// GetFile returns a file's verbatim content on a ref; ErrNotFound if absent.
 	// Used by drift detection to read back committed values.yaml/application.yaml.
 	GetFile(ctx context.Context, projectID int, path, ref string) ([]byte, error)
-	// DiscoverApplications returns every application.yaml under the GitOps group
-	// with its location (for import/discovery of orders created outside the portal).
-	DiscoverApplications(ctx context.Context) ([]DiscoveredApp, error)
+	// DiscoverGroupApplications returns every application.yaml committed on the
+	// default branch of any repository under the group, with its location (for
+	// import of orders created outside the portal). A group that is not there
+	// yields nothing: a stand whose group nobody has created has no orders.
+	DiscoverGroupApplications(ctx context.Context, groupPath string) ([]DiscoveredApp, error)
+	// DiscoverProjectApplications is the same for one repository, the way a
+	// stand laid out as a single repository holds its orders.
+	DiscoverProjectApplications(ctx context.Context, projectPath string) ([]DiscoveredApp, error)
 	// LastCommitAuthor returns the author (name, email) of the most recent commit
 	// touching path on ref. Empty strings if unknown; used to attribute imported
 	// orders to whoever created the manifest in Git.

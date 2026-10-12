@@ -56,7 +56,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 	if !s.takeMergeRetry(r.ID) {
 		return retryNotDone
 	}
-	proj, err := s.gl.GetProject(ctx, s.gitops.RepoPath(r.Team, r.ChartName))
+	proj, err := s.gl.GetProject(ctx, s.repoPathOf(ctx, r))
 	if err != nil {
 		s.logger().Debug("merge retry skipped: repo unavailable", "order_id", r.ID, "err", err)
 		return retryNotDone

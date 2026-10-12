@@ -26,7 +26,7 @@ func TestHTTPVariableOverrides(t *testing.T) {
 		}
 	}
 
-	rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "prod", "default_cluster": "prod-a"}))
+	rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "prod", "default_cluster": "prod-a", "git_path": "managed-services/prod"}))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create stand: %d %s", rec.Code, rec.Body.String())
 	}

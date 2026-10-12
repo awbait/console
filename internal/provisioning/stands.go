@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"console/internal/store"
 	"console/pkg/models"
 )
 
@@ -21,7 +22,67 @@ const (
 	MsgStandCluster   = "Используйте строчные латинские буквы, цифры и дефис."
 	MsgStandNameTaken = "Имя «%s» уже занято."
 	MsgStandUnknown   = "Этот стенд больше не существует. Обновите страницу и выберите стенд из списка."
+	MsgStandPathEmpty = "Обязательное поле."
+	MsgStandPath      = "Используйте латинские буквы, цифры, точку, дефис, подчёркивание и разделитель «/»."
+	MsgStandLayout    = "Выберите раскладку из списка."
+	MsgStandGitLocked = "Нельзя изменить раскладку или путь: на стенде есть заказы, кроме черновиков и удалённых."
+	MsgStandPathClear = "Путь в GitLab нельзя оставить пустым."
+	MsgStandNoPath    = "У стенда «%s» не задан путь в GitLab, поэтому заказ не отправлен. Попросите администратора указать путь на странице стенда."
 )
+
+// standOf is the stand an order is on, for the paths its files take. An order
+// whose stand is gone, or one written before stands existed in a store that
+// has none, falls back to the configured group: that is where such an order's
+// files are.
+func (s *Service) standOf(ctx context.Context, r *models.Request) *models.Stand {
+	if r.StandID != "" {
+		if st, err := s.store.GetStand(ctx, r.StandID); err == nil {
+			return st
+		}
+	}
+	return s.fallbackStand()
+}
+
+// fallbackStand is the shape of a portal with no stand to answer with: the
+// configured cluster and group, laid out the way every order always was.
+func (s *Service) fallbackStand() *models.Stand {
+	return &models.Stand{DefaultCluster: s.defaultCluster, Layout: models.LayoutGroup, GitPath: s.gitops.TopGroup}
+}
+
+// repoPathOf is the full path of the repository an order's files are in.
+func (s *Service) repoPathOf(ctx context.Context, r *models.Request) string {
+	return s.gitops.RepoPath(s.standOf(ctx, r), r.Team, r.ChartName)
+}
+
+// GetStand returns one stand, with whether its layout is locked by orders.
+func (s *Service) GetStand(ctx context.Context, id string) (*models.Stand, error) {
+	st, err := s.store.GetStand(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	locked, err := s.standLocked(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	st.Locked = locked
+	return st, nil
+}
+
+// standLocked reports whether the stand has orders that live in Git: anything
+// but drafts and deleted ones. Their folders are where the layout says, so
+// the layout cannot change under them.
+func (s *Service) standLocked(ctx context.Context, id string) (bool, error) {
+	list, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true, Stand: id})
+	if err != nil {
+		return false, err
+	}
+	for _, r := range list {
+		if r.DeletedAt == nil && r.Status != models.StatusDraft && r.Status != models.StatusDeleted {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 // ListStands returns every stand, the default first. Open to anybody signed in:
 // the order form offers them and the list filters by them.
@@ -31,7 +92,22 @@ func (s *Service) ListStands(ctx context.Context) ([]*models.Stand, error) {
 		return nil, err
 	}
 	if list == nil {
-		list = []*models.Stand{}
+		return []*models.Stand{}, nil
+	}
+	// Which stands have orders in Git, in one read: the page greys out the
+	// layout of those.
+	orders, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true})
+	if err != nil {
+		return nil, err
+	}
+	locked := map[string]bool{}
+	for _, r := range orders {
+		if r.DeletedAt == nil && r.Status != models.StatusDraft && r.Status != models.StatusDeleted {
+			locked[r.StandID] = true
+		}
+	}
+	for _, st := range list {
+		st.Locked = locked[st.ID]
 	}
 	return list, nil
 }
@@ -53,7 +129,7 @@ func (s *Service) resolveStand(ctx context.Context, id string) (*models.Stand, e
 	}
 	st, err := s.store.DefaultStand(ctx)
 	if errors.Is(err, models.ErrNotFound) {
-		return &models.Stand{DefaultCluster: s.defaultCluster}, nil
+		return s.fallbackStand(), nil
 	}
 	return st, err
 }
@@ -78,8 +154,11 @@ func validCluster(cluster string) bool {
 }
 
 // checkStand validates what an admin typed. The default cluster follows the
-// rule of the order's cluster, because that is what it becomes.
-func checkStand(st *models.Stand) error {
+// rule of the order's cluster, because that is what it becomes. A new stand
+// has to name its path; a stand made before paths existed may still have none,
+// and renaming it must not wait for the path, so an update tolerates the
+// empty one it already has (ensureRepo refuses to write for such a stand).
+func checkStand(st *models.Stand, requirePath bool) error {
 	st.Name = strings.TrimSpace(st.Name)
 	st.DefaultCluster = strings.TrimSpace(st.DefaultCluster)
 	if st.Name == "" {
@@ -91,6 +170,23 @@ func checkStand(st *models.Stand) error {
 	if !validCluster(st.DefaultCluster) {
 		return &ValidationError{Message: MsgStandCluster}
 	}
+	st.Layout = strings.TrimSpace(st.Layout)
+	st.GitPath = strings.Trim(strings.TrimSpace(st.GitPath), "/")
+	if st.Layout == "" {
+		st.Layout = models.LayoutGroup
+	}
+	if !models.ValidLayout(st.Layout) {
+		return &ValidationError{Message: MsgStandLayout}
+	}
+	if st.GitPath == "" {
+		if requirePath {
+			return &ValidationError{Message: MsgStandPathEmpty}
+		}
+		return nil
+	}
+	if !models.ValidGitPath(st.GitPath) {
+		return &ValidationError{Message: MsgStandPath}
+	}
 	return nil
 }
 
@@ -101,7 +197,7 @@ func (s *Service) CreateStand(ctx context.Context, u *models.User, st *models.St
 	if !u.IsAdmin() {
 		return ErrForbidden
 	}
-	if err := checkStand(st); err != nil {
+	if err := checkStand(st, true); err != nil {
 		return err
 	}
 	st.ID = newID()
@@ -122,16 +218,35 @@ func (s *Service) CreateStand(ctx context.Context, u *models.User, st *models.St
 	return nil
 }
 
-// UpdateStand renames a stand or changes the cluster its form opens with. The
-// orders already on it are untouched: each keeps the cluster it was written
-// with, the way it keeps its folder, because that is where its files and its
-// application are.
+// UpdateStand renames a stand, changes the cluster its form opens with, or,
+// while nothing is in Git for it yet, its layout and path. The orders already
+// on it are untouched: each keeps the cluster it was written with, the way it
+// keeps its folder, because that is where its files and its application are.
+// Which is also why the layout is locked once there are such orders: it would
+// put the next order of the stand somewhere else than the rest.
 func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.Stand) error {
 	if !u.IsAdmin() {
 		return ErrForbidden
 	}
-	if err := checkStand(st); err != nil {
+	if err := checkStand(st, false); err != nil {
 		return err
+	}
+	cur, err := s.store.GetStand(ctx, st.ID)
+	if err != nil {
+		return err
+	}
+	// A path once set is not cleared: the orders made since are under it.
+	if st.GitPath == "" && cur.GitPath != "" {
+		return &ValidationError{Message: MsgStandPathClear}
+	}
+	if cur.Layout != st.Layout || cur.GitPath != st.GitPath {
+		locked, err := s.standLocked(ctx, st.ID)
+		if err != nil {
+			return err
+		}
+		if locked {
+			return &ValidationError{Message: MsgStandGitLocked}
+		}
 	}
 	if err := s.store.UpdateStand(ctx, st); err != nil {
 		if errors.Is(err, models.ErrConflict) {

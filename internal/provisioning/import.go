@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,9 +20,39 @@ import (
 // the catalog. Idempotent: an order whose ArgoCD app name is already known (a
 // portal order or a previously imported one) is skipped. Read-only w.r.t. Git.
 func (s *Service) ImportFromGit(ctx context.Context) error {
-	discovered, err := s.gl.DiscoverApplications(ctx)
+	// Every stand's own path is walked, and what is found there is adopted
+	// onto that stand: the path is the one thing that says which stand a
+	// manifest belongs to, since a cluster alone cannot (a stand may span
+	// several). A store with no stands at all (nothing seeded) walks the
+	// configured group and adopts without one, as before.
+	stands, err := s.store.ListStands(ctx)
 	if err != nil {
 		return err
+	}
+	if len(stands) == 0 {
+		stands = []*models.Stand{nil}
+	}
+	// One stand's path may sit inside another's (a repository under a group),
+	// and a group walk sees everything below it. The most specific path claims
+	// a manifest first, and the walks above it skip what is already claimed.
+	sort.SliceStable(stands, func(i, j int) bool {
+		return len(gitPathOf(stands[i])) > len(gitPathOf(stands[j]))
+	})
+	var discovered []discoveredOn
+	claimed := map[string]bool{}
+	for _, st := range stands {
+		apps, err := s.discoverStand(ctx, st)
+		if err != nil {
+			return err
+		}
+		for _, d := range apps {
+			key := d.ProjectPath + "\x00" + d.FilePath
+			if claimed[key] {
+				continue
+			}
+			claimed[key] = true
+			discovered = append(discovered, discoveredOn{d, st})
+		}
 	}
 	// Known identities = the ArgoCD app name of every NON-deleted order. We
 	// deliberately exclude fully-deleted orders: a normal delete removes the
@@ -40,26 +71,18 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 			known[r.ArgoCDAppName] = struct{}{}
 		}
 	}
-	// A discovered manifest is adopted onto the default stand: the group being
-	// walked is the one that stand writes to, and a cluster alone cannot name
-	// a stand, since one stand may span several. A store with no stands at all
-	// (nothing seeded) adopts without one, as before.
-	standID := ""
-	if def, err := s.store.DefaultStand(ctx); err == nil {
-		standID = def.ID
-	} else if !errors.Is(err, models.ErrNotFound) {
-		return err
-	}
-
-	for _, d := range discovered {
-		r := s.parseDiscovered(d)
+	for _, dd := range discovered {
+		d := dd.app
+		r := s.parseDiscovered(dd.stand, d)
 		if r == nil {
 			continue // couldn't determine the essential identity - skip
 		}
 		if _, ok := known[r.ArgoCDAppName]; ok {
 			continue
 		}
-		r.StandID = standID
+		if dd.stand != nil {
+			r.StandID = dd.stand.ID
+		}
 		// Only adopt VALID, conforming instances:
 		//  1) the adjacent values.yaml must exist (a complete instance folder), and
 		//  2) the application.yaml must be exactly what the portal would generate for
@@ -123,6 +146,29 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 	return nil
 }
 
+func gitPathOf(st *models.Stand) string {
+	if st == nil {
+		return ""
+	}
+	return st.GitPath
+}
+
+// discoveredOn is a manifest with the stand whose path it was found under.
+type discoveredOn struct {
+	app   gitlab.DiscoveredApp
+	stand *models.Stand
+}
+
+// discoverStand lists the manifests under a stand's path: the group's
+// repositories or the one repository, by layout. A nil stand is the
+// configured group.
+func (s *Service) discoverStand(ctx context.Context, st *models.Stand) ([]gitlab.DiscoveredApp, error) {
+	if st != nil && st.Layout == models.LayoutRepository && st.GitPath != "" {
+		return s.gl.DiscoverProjectApplications(ctx, st.GitPath)
+	}
+	return s.gl.DiscoverGroupApplications(ctx, s.gitops.GroupOf(st))
+}
+
 // appManifest is the subset of an application.yaml the importer reads.
 type appManifest struct {
 	Metadata struct {
@@ -149,7 +195,7 @@ type appSource struct {
 // prefers the portal's idp.* labels, falling back to the repo path / sources so a
 // hand-written manifest is still importable. Returns nil if the essential
 // identity (team, chart, service) can't be determined.
-func (s *Service) parseDiscovered(d gitlab.DiscoveredApp) *models.Request {
+func (s *Service) parseDiscovered(st *models.Stand, d gitlab.DiscoveredApp) *models.Request {
 	var m appManifest
 	if err := yaml.Unmarshal(d.Content, &m); err != nil {
 		return nil
@@ -170,13 +216,26 @@ func (s *Service) parseDiscovered(d gitlab.DiscoveredApp) *models.Request {
 	chart := firstNonEmpty(lbl["idp.chart"], chartSrc.Chart)
 	service := lbl["idp.service"]
 
-	// Path fallbacks. ProjectPath: {group}/{subgroup}/{repo}; FilePath: {cluster}/{service}/application.yaml.
-	projSegs := strings.Split(strings.Trim(d.ProjectPath, "/"), "/")
-	if team == "" && len(projSegs) >= 2 {
-		team = s.gitops.TeamFromSubgroup(projSegs[len(projSegs)-2])
-	}
-	if chart == "" && len(projSegs) >= 1 {
-		chart = projSegs[len(projSegs)-1]
+	// Path fallbacks. Under the group layout the team and the chart are the
+	// subgroup and the repository ({group}/{subgroup}/{repo}); under the
+	// repository layout they are the first two folders of the file path
+	// ({team}/{chart}/{cluster}/{namespace}/{instance}/application.yaml).
+	if st != nil && st.Layout == models.LayoutRepository {
+		fileSegs := strings.Split(strings.Trim(d.FilePath, "/"), "/")
+		if team == "" && len(fileSegs) >= 3 {
+			team = s.gitops.TeamFromSubgroup(fileSegs[0])
+		}
+		if chart == "" && len(fileSegs) >= 3 {
+			chart = fileSegs[1]
+		}
+	} else {
+		projSegs := strings.Split(strings.Trim(d.ProjectPath, "/"), "/")
+		if team == "" && len(projSegs) >= 2 {
+			team = s.gitops.TeamFromSubgroup(projSegs[len(projSegs)-2])
+		}
+		if chart == "" && len(projSegs) >= 1 {
+			chart = projSegs[len(projSegs)-1]
+		}
 	}
 	if service == "" {
 		service = path.Base(path.Dir(d.FilePath)) // {cluster}/{service}/application.yaml -> service

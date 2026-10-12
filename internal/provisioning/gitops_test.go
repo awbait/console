@@ -35,12 +35,12 @@ func TestInstancePathsIncludeClusterAndNamespace(t *testing.T) {
 	g := newGitOps(t)
 	prod := instanceOf("prod", "pg1")
 
-	if got, want := g.NewInstancePath(prod), "prod/apps/pg1"; got != want {
+	if got, want := g.NewInstancePath(nil,prod), "prod/apps/pg1"; got != want {
 		t.Errorf("NewInstancePath = %q, want %q", got, want)
 	}
 	// The files live in the folder the order was given, which is what an order
 	// carries from creation on.
-	prod.InstancePath = g.NewInstancePath(prod)
+	prod.InstancePath = g.NewInstancePath(nil,prod)
 	if got, want := g.AppPath(prod), "prod/apps/pg1/application.yaml"; got != want {
 		t.Errorf("AppPath = %q, want %q", got, want)
 	}
@@ -49,7 +49,7 @@ func TestInstancePathsIncludeClusterAndNamespace(t *testing.T) {
 	}
 
 	// Same service in different clusters lives in separate folders.
-	if g.NewInstancePath(instanceOf("dev", "pg1")) == g.NewInstancePath(prod) {
+	if g.NewInstancePath(nil,instanceOf("dev", "pg1")) == g.NewInstancePath(nil,prod) {
 		t.Error("instances in different clusters must not collide")
 	}
 
@@ -57,7 +57,7 @@ func TestInstancePathsIncludeClusterAndNamespace(t *testing.T) {
 	// is the ordinary case of dev beside stage, not a collision.
 	other := instanceOf("prod", "pg1")
 	other.Namespace = "apps-stage"
-	if g.NewInstancePath(other) == g.NewInstancePath(prod) {
+	if g.NewInstancePath(nil,other) == g.NewInstancePath(nil,prod) {
 		t.Error("instances in different namespaces must not collide")
 	}
 
@@ -79,7 +79,7 @@ func TestInstanceTemplate(t *testing.T) {
 	if err := g.SetInstanceTemplate("{{.Namespace}}-{{.ServiceName}}"); err != nil {
 		t.Fatalf("SetInstanceTemplate: %v", err)
 	}
-	if got, want := g.NewInstancePath(r), "in-cluster/apps/apps-pg1"; got != want {
+	if got, want := g.NewInstancePath(nil,r), "in-cluster/apps/apps-pg1"; got != want {
 		t.Fatalf("NewInstancePath = %q, want %q", got, want)
 	}
 
@@ -96,7 +96,7 @@ func TestInstanceTemplate(t *testing.T) {
 	}
 	empty := instanceOf("in-cluster", "pg1")
 	empty.Team = ""
-	if got, want := g.NewInstancePath(empty), "in-cluster/apps/pg1"; got != want {
+	if got, want := g.NewInstancePath(nil,empty), "in-cluster/apps/pg1"; got != want {
 		t.Fatalf("empty render = %q, want the service name %q", got, want)
 	}
 

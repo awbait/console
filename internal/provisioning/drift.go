@@ -44,7 +44,7 @@ func driftCheckable(st models.RequestStatus) bool {
 }
 
 func (s *Service) checkDriftOne(ctx context.Context, r *models.Request) {
-	proj, err := s.gl.GetProject(ctx, s.gitops.RepoPath(r.Team, r.ChartName))
+	proj, err := s.gl.GetProject(ctx, s.repoPathOf(ctx, r))
 	if err != nil {
 		// Can't resolve the repo (transient/absent) - skip this order this tick.
 		// Logged at Debug: it is expected and recovers on its own, but should not
