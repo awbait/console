@@ -68,6 +68,8 @@ type Config struct {
 	// Server
 	HTTPPort  string `env:"HTTP_PORT" envDefault:"8080" desc:"Port the portal serves its API and UI on."`
 	PublicURL string `env:"PUBLIC_URL" envDefault:"http://localhost:8080" desc:"External address the portal is opened at."`
+	// Any messenger: the portal only links to it, it never talks to it.
+	SupportChatURL string `env:"SUPPORT_CHAT_URL" desc:"Link to the platform support chat. When set, every page shows a chat button in the corner; empty hides it." example:"https://t.me/+platform-support"`
 	// Its own listener, separate from the API port, so scraping is not exposed
 	// through the public app ingress.
 	MetricsPort string `env:"METRICS_PORT" envDefault:"2112" desc:"Separate port for Prometheus metrics, kept off the public ingress."`

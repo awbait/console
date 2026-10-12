@@ -356,7 +356,8 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		Activity: activityRec, Leader: elector.IsLeader,
 		// Which groups grant a role rather than being a team. The interface
 		// names such an owner by its role instead of printing the group path.
-		RoleGroups: roleGroups(cfg),
+		RoleGroups:     roleGroups(cfg),
+		SupportChatURL: cfg.SupportChatURL,
 		// The loaded config backs the admin configuration page (read-only).
 		Config: cfg,
 		System: api.SystemInfo{

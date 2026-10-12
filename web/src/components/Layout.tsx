@@ -16,8 +16,8 @@ import {
   IconShieldCheck,
   IconShieldLock,
   IconTags,
-  IconVariable,
   IconUsers,
+  IconVariable,
 } from "@tabler/icons-react";
 import { type CSSProperties, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
@@ -42,16 +42,17 @@ import { useAsync } from "../hooks/useAsync";
 import { useMatchMedia } from "../hooks/useMatchMedia";
 import { useStored } from "../hooks/useStored";
 import { categoryIcon, type TablerIcon } from "./icons";
+import { SupportChat } from "./SupportChat";
 import "./sidebar.css";
 import { CatalogIcon } from "./CatalogIcon";
 import { DocumentationIcon } from "./DocumentationIcon";
-import { SidebarToggleIcon } from "./SidebarToggleIcon";
+import { LoginScreen } from "./LoginScreen";
 import { NavbarInfoIcon, NavbarUserIcon } from "./NavbarIcons";
 import { OrdersIcon } from "./OrdersIcon";
-import { ProjectsIcon } from "./ProjectsIcon";
-import { LoginScreen } from "./LoginScreen";
 import { PlatformHealthBanner } from "./PlatformHealthBanner";
 import { PlatformHealthIndicator } from "./PlatformHealthIndicator";
+import { ProjectsIcon } from "./ProjectsIcon";
+import { SidebarToggleIcon } from "./SidebarToggleIcon";
 import { ThemeMenu } from "./ThemeMenu";
 import { Loading, Skeleton, SkeletonText } from "./ui";
 
@@ -763,6 +764,7 @@ export function Layout() {
           </div>
         </main>
       </div>
+      <SupportChat />
     </div>
   );
 }

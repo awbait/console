@@ -93,7 +93,8 @@ export function useToast(): ToastApi {
 function ToastRegion({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
   if (toasts.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    // The support chat button holds the same corner; the toasts stack above it.
+    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2 [.has-support-chat_&]:bottom-24">
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => onDismiss(t.id)} />
       ))}

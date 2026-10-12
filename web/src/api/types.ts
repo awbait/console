@@ -14,6 +14,8 @@ export interface User {
   // means nothing to a reader, so the portal names it by the role: see
   // teamLabel in auth/roles.ts. Absent where nothing is configured.
   role_groups?: Record<string, Role>;
+  // Support chat the corner button opens (SUPPORT_CHAT_URL). Absent hides it.
+  support_chat_url?: string;
 }
 
 export interface Chart {

@@ -59,6 +59,10 @@ type Server struct {
 	// their role. Optional: empty leaves every owner printed as stored.
 	RoleGroups map[string]models.Role
 
+	// SupportChatURL is the support chat the corner button opens
+	// (SUPPORT_CHAT_URL). Travels in GET /auth/me; empty hides the button.
+	SupportChatURL string
+
 	// Upstream ports + their configured modes, used by the system status page
 	// (GET /api/v1/status) to probe and report integration health.
 	Harbor harbor.Port
@@ -378,11 +382,15 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 type meResponse struct {
 	*models.User
 	RoleGroups map[string]models.Role `json:"role_groups,omitempty"`
+	// SupportChatURL rides along for the same reason: every page needs it, and
+	// the session is the one request every page already makes.
+	SupportChatURL string `json:"support_chat_url,omitempty"`
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, meResponse{
-		User:       auth.UserFrom(r.Context()),
-		RoleGroups: s.RoleGroups,
+		User:           auth.UserFrom(r.Context()),
+		RoleGroups:     s.RoleGroups,
+		SupportChatURL: s.SupportChatURL,
 	})
 }
