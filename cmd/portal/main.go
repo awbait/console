@@ -130,7 +130,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// The stand every order lands on until an admin adds more. Made from the
 	// configured default cluster on the first start after the upgrade; orders
 	// written before stands existed are attached to it here, without moving.
-	if adopted, err := store.SeedDefaultStand(ctx, st, cfg.ArgoCDCluster); err != nil {
+	if adopted, err := store.SeedDefaultStand(ctx, st, cfg.ArgoCDCluster, cfg.GitLabGitopsGroup); err != nil {
 		return fmt.Errorf("seed default stand: %w", err)
 	} else if adopted > 0 {
 		log.Info("orders attached to the default stand", "count", adopted)
@@ -181,6 +181,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	provSvc := provisioning.New(st, gl, argo, catalogSvc, gitops, bus, cfg.ArgoCDCluster, cfg.GitLabDefaultBranch, cfg.GitLabAutoMerge)
 	provSvc.Log = observability.Component(log, "provisioning")
 	provSvc.CreateTeamSubgroup = cfg.GitLabCreateGroup
+	// What the stand page renders into its Argo CD manifests: where GitLab is,
+	// and where Argo CD reads applications from.
+	provSvc.GitLabURL = cfg.GitLabURL
+	provSvc.ArgoCDNamespace = cfg.ArgoCDNamespace
 	// Self-registration of the inbound GitLab webhook. Both halves are needed: the
 	// secret proves the delivery, the URL is where GitLab sends it. Registered
 	// below, once; under the per-repository scope provSvc adds one to every repo
@@ -395,6 +399,9 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		observability.Component(log, "checks"))
 	srv.Checks = configChecks
 	srv.TestWebhookDelivery = webhookDeliveryTest(cfg, gl, hooks, webhookHandler)
+	// The checks of one stand read through the same clients as the configured
+	// set, when a stand page is opened.
+	srv.StandGitLab, srv.StandArgo = gl, argo
 	// Part of what these checks catch breaks with nobody touching the portal: a
 	// token reaches its expiry, a webhook is switched off after failed
 	// deliveries, a project is deleted. That is told to the platform team

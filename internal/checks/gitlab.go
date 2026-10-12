@@ -68,6 +68,7 @@ type GitLabAPI interface {
 	CurrentUser(ctx context.Context) (*gitlab.Account, error)
 	TokenInfo(ctx context.Context) (*gitlab.TokenInfo, error)
 	GetGroup(ctx context.Context, fullPath string) (*gitlab.Group, error)
+	GetProject(ctx context.Context, fullPath string) (*gitlab.Project, error)
 	GroupAccessLevel(ctx context.Context, groupPath string, userID int) (int, error)
 	ListGroupHooks(ctx context.Context, groupPath string) ([]gitlab.HookInfo, error)
 	ListSystemHooks(ctx context.Context) ([]gitlab.HookInfo, error)

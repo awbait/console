@@ -318,38 +318,74 @@ func (c *Client) ListApplicationManifests(ctx context.Context) ([][]byte, error)
 	return out, nil
 }
 
-// DiscoverApplications walks every repo under the GitOps group and returns each
-// application.yaml with its location. Implements gitlab.Port.
+// DiscoverApplications walks every repo under the configured GitOps group and
+// returns each application.yaml with its location. What the fake Argo CD
+// reconciles from; the import walks each stand's own path instead.
 func (c *Client) DiscoverApplications(ctx context.Context) ([]DiscoveredApp, error) {
 	if c.gitopsGroup == "" {
 		return nil, nil
 	}
-	projects, err := c.listGroupProjects(ctx, c.gitopsGroup)
+	return c.DiscoverGroupApplications(ctx, c.gitopsGroup)
+}
+
+// DiscoverGroupApplications implements gitlab.Port.
+func (c *Client) DiscoverGroupApplications(ctx context.Context, groupPath string) ([]DiscoveredApp, error) {
+	if groupPath == "" {
+		return nil, nil
+	}
+	projects, err := c.listGroupProjects(ctx, groupPath)
 	if err != nil {
 		return nil, err
 	}
 	var out []DiscoveredApp
 	for _, p := range projects {
-		if p.DefaultBranch == "" {
-			continue // empty repo, nothing committed yet
-		}
-		paths, err := c.ListTree(ctx, p.ID, p.DefaultBranch, "")
+		apps, err := c.discoverProject(ctx, p)
 		if err != nil {
 			return nil, err
 		}
-		for _, fp := range paths {
-			if !isAppManifest(fp) {
-				continue
-			}
-			content, ferr := c.getRawFile(ctx, p.ID, fp, p.DefaultBranch)
-			if ferr != nil {
-				return nil, ferr
-			}
-			out = append(out, DiscoveredApp{
-				ProjectID: p.ID, ProjectPath: p.PathWithNamespace, ProjectWebURL: p.WebURL,
-				Branch: p.DefaultBranch, FilePath: fp, Content: content,
-			})
+		out = append(out, apps...)
+	}
+	return out, nil
+}
+
+// DiscoverProjectApplications implements gitlab.Port.
+func (c *Client) DiscoverProjectApplications(ctx context.Context, projectPath string) ([]DiscoveredApp, error) {
+	if projectPath == "" {
+		return nil, nil
+	}
+	p, err := c.GetProject(ctx, projectPath)
+	if errors.Is(err, models.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return c.discoverProject(ctx, *p)
+}
+
+// discoverProject lists the application.yaml files of one repository's default
+// branch. An empty repository has nothing committed yet.
+func (c *Client) discoverProject(ctx context.Context, p Project) ([]DiscoveredApp, error) {
+	if p.DefaultBranch == "" {
+		return nil, nil
+	}
+	paths, err := c.ListTree(ctx, p.ID, p.DefaultBranch, "")
+	if err != nil {
+		return nil, err
+	}
+	var out []DiscoveredApp
+	for _, fp := range paths {
+		if !isAppManifest(fp) {
+			continue
 		}
+		content, ferr := c.getRawFile(ctx, p.ID, fp, p.DefaultBranch)
+		if ferr != nil {
+			return nil, ferr
+		}
+		out = append(out, DiscoveredApp{
+			ProjectID: p.ID, ProjectPath: p.PathWithNamespace, ProjectWebURL: p.WebURL,
+			Branch: p.DefaultBranch, FilePath: fp, Content: content,
+		})
 	}
 	return out, nil
 }

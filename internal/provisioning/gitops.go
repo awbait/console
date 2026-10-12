@@ -116,14 +116,44 @@ func render(t *template.Template, d tmplData) string {
 	return b.String()
 }
 
-// SubgroupPath returns e.g. "managed-services/team-core".
-func (g *GitOps) SubgroupPath(team string) string {
-	return g.TopGroup + "/" + render(g.SubgroupTmpl, tmplData{Team: team})
+// Where a stand's orders go in Git. A nil stand, or one without a path, is
+// the layout every order had before stands existed: the configured top group
+// with a subgroup per team. That is also what a store with no stands (the
+// tests' in-memory one) falls back to.
+
+// GroupOf is the group a stand's team subgroups live under. For a stand laid
+// out as one repository it is the group that repository is in.
+func (g *GitOps) GroupOf(st *models.Stand) string {
+	if st == nil || st.GitPath == "" {
+		return g.TopGroup
+	}
+	if st.Layout == models.LayoutRepository {
+		if i := strings.LastIndex(st.GitPath, "/"); i > 0 {
+			return st.GitPath[:i]
+		}
+		return ""
+	}
+	return st.GitPath
 }
 
-// RepoPath returns the chart repo full path, e.g. "managed-services/team-core/postgres".
-func (g *GitOps) RepoPath(team, chart string) string {
-	return g.SubgroupPath(team) + "/" + chart
+// TeamSegment is the team's own folder or subgroup name, e.g. "team-core".
+func (g *GitOps) TeamSegment(team string) string {
+	return render(g.SubgroupTmpl, tmplData{Team: team})
+}
+
+// SubgroupPath returns e.g. "managed-services/team-core" on the stand.
+func (g *GitOps) SubgroupPath(st *models.Stand, team string) string {
+	return g.GroupOf(st) + "/" + g.TeamSegment(team)
+}
+
+// RepoPath is the full path of the repository an order of the team and chart
+// is written to on the stand: the chart repository of the team under the
+// group layout, the stand's one repository under the repository layout.
+func (g *GitOps) RepoPath(st *models.Stand, team, chart string) string {
+	if st != nil && st.Layout == models.LayoutRepository && st.GitPath != "" {
+		return st.GitPath
+	}
+	return g.SubgroupPath(st, team) + "/" + chart
 }
 
 // AppName renders the ArgoCD Application name (computed once at creation). The
@@ -181,8 +211,15 @@ func (g *GitOps) InstanceName(r *models.Request) string {
 // rather than a piece of the instance name, is what makes that hold whatever
 // GITLAB_INSTANCE_DIR_TEMPLATE renders. It is stored on the order and read from
 // there afterwards - see InstanceDir.
-func (g *GitOps) NewInstancePath(r *models.Request) string {
-	segments := make([]string, 0, 3)
+//
+// Under the repository layout the whole stand is one repository, so the path
+// starts with the team's segment and the chart: the two levels the group
+// layout keeps as a subgroup and a repository, kept as folders instead.
+func (g *GitOps) NewInstancePath(st *models.Stand, r *models.Request) string {
+	segments := make([]string, 0, 5)
+	if st != nil && st.Layout == models.LayoutRepository && st.GitPath != "" {
+		segments = append(segments, g.TeamSegment(r.Team), r.ChartName)
+	}
 	if r.Cluster != "" {
 		segments = append(segments, r.Cluster)
 	}

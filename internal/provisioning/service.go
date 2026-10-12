@@ -89,6 +89,10 @@ type Service struct {
 	// where subgroups come from somewhere else, and off by default here so a
 	// service assembled by hand never invents groups in GitLab on its own.
 	CreateTeamSubgroup bool
+	// GitLabURL and ArgoCDNamespace are rendered into the manifests a stand's
+	// page offers for wiring Argo CD to it (see StandManifests). Wired by main.
+	GitLabURL       string
+	ArgoCDNamespace string
 	// notify tells the person who ordered a service what became of it. Optional:
 	// nil in tests, where nobody is listening.
 	notify Notifier
@@ -608,7 +612,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	// creation, and carried on the row. Re-rendering it later would follow a
 	// changed GITLAB_INSTANCE_DIR_TEMPLATE and point the portal at a folder its
 	// files are not in.
-	r.InstancePath = s.gitops.NewInstancePath(r)
+	r.InstancePath = s.gitops.NewInstancePath(stand, r)
 	r.ResourceIdentity = s.resourceIdentity(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.ServiceName, in.Values)
 	if err := s.checkServiceName(ctx, r); err != nil {
 		return nil, err
@@ -631,7 +635,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	}
 	s.event(ctx, r, byUser(u), "created", "", "")
 
-	proj, err := s.ensureRepo(ctx, r.Team, r.ChartName)
+	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {
 		return r, err // DRAFT persists; caller sees upstream error
 	}
@@ -680,7 +684,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	}
 	r.ValuesYAML = valuesYAML
 
-	proj, err := s.ensureRepo(ctx, r.Team, r.ChartName)
+	proj, err := s.ensureRepo(ctx, s.standOf(ctx, r), r.Team, r.ChartName)
 	if err != nil {
 		return r, err
 	}
@@ -782,7 +786,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		}
 	}
 
-	proj, err := s.ensureRepo(ctx, r.Team, r.ChartName)
+	proj, err := s.ensureRepo(ctx, s.standOf(ctx, r), r.Team, r.ChartName)
 	if err != nil {
 		return nil, err
 	}
@@ -864,7 +868,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	// re-rendered here and nowhere else: a draft has nothing in Git yet, while an
 	// order that does keeps what it was created with - see NewInstancePath.
 	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName)
-	r.InstancePath = s.gitops.NewInstancePath(r)
+	r.InstancePath = s.gitops.NewInstancePath(s.standOf(ctx, r), r)
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false, stampOf(r))
 	if err != nil {
 		return nil, err
@@ -946,7 +950,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	if err := s.guardOpenMR(ctx, id); err != nil {
 		return nil, err
 	}
-	proj, err := s.ensureRepo(ctx, r.Team, r.ChartName)
+	proj, err := s.ensureRepo(ctx, s.standOf(ctx, r), r.Team, r.ChartName)
 	if err != nil {
 		return nil, err
 	}
@@ -1297,22 +1301,85 @@ func (s *Service) createSubgroup(ctx context.Context, subgroup string) (*gitlab.
 	return grp, nil
 }
 
-// ensureRepo resolves the team subgroup and idempotently creates the chart repo.
-func (s *Service) ensureRepo(ctx context.Context, team, chart string) (*gitlab.Project, error) {
-	subgroup := s.gitops.SubgroupPath(team)
-	grp, err := s.gl.GetGroup(ctx, subgroup)
+// ensureStandGroup makes sure the group a stand writes under exists. The
+// stand the portal seeded is the configured GitOps group, which is not for
+// the portal to invent in somebody's GitLab; a stand an admin added names a
+// group of its own, and that one is created under its parent, which has to
+// be there. Admin-created stands are the only ones that get here with a path
+// nobody has made yet.
+func (s *Service) ensureStandGroup(ctx context.Context, st *models.Stand) (*gitlab.Group, error) {
+	groupPath := s.gitops.GroupOf(st)
+	grp, err := s.gl.GetGroup(ctx, groupPath)
+	if err == nil {
+		return grp, nil
+	}
+	if !errors.Is(err, models.ErrNotFound) {
+		return nil, gitopsErr("group", err)
+	}
+	if st == nil || st.GitPath == "" || groupPath == s.gitops.TopGroup {
+		return nil, fmt.Errorf("%w: GitOps group %q not found", ErrNotConfigured, groupPath)
+	}
+	i := strings.LastIndex(groupPath, "/")
+	if i <= 0 || i == len(groupPath)-1 {
+		return nil, fmt.Errorf("%w: the stand's group %q has no parent group to be created in", ErrNotConfigured, groupPath)
+	}
+	parentPath, leaf := groupPath[:i], groupPath[i+1:]
+	parent, err := s.gl.GetGroup(ctx, parentPath)
 	if err != nil {
-		if !errors.Is(err, models.ErrNotFound) {
+		if errors.Is(err, models.ErrNotFound) {
+			return nil, fmt.Errorf("%w: the parent group %q of stand %q is not there", ErrNotConfigured, parentPath, st.Name)
+		}
+		return nil, gitopsErr("group", err)
+	}
+	grp, err = s.gl.CreateGroup(ctx, parent.ID, leaf, leaf)
+	switch {
+	case errors.Is(err, models.ErrConflict):
+		if grp, err = s.gl.GetGroup(ctx, groupPath); err != nil {
 			return nil, gitopsErr("group", err)
 		}
-		if grp, err = s.createSubgroup(ctx, subgroup); err != nil {
-			return nil, err // already classified
-		}
+	case errors.Is(err, gitlab.ErrForbidden):
+		return nil, fmt.Errorf("%w: not allowed to create the group %q (the token needs the Owner role on %q): %v",
+			ErrNotConfigured, groupPath, parentPath, err)
+	case err != nil:
+		return nil, gitopsErr("create group", err)
 	}
-	repoPath := s.gitops.RepoPath(team, chart)
+	s.logger().Info("stand group created", "stand", st.ID, "group", groupPath, "gitlab_group_id", grp.ID)
+	return grp, nil
+}
+
+// ensureRepo resolves the repository an order of the team and chart lives in
+// on the stand and creates it when it is missing: the team subgroup and the
+// chart repository under the group layout, the stand's one repository under
+// the repository layout.
+func (s *Service) ensureRepo(ctx context.Context, st *models.Stand, team, chart string) (*gitlab.Project, error) {
+	var grp *gitlab.Group
+	var repoName string
+	if st != nil && st.Layout == models.LayoutRepository && st.GitPath != "" {
+		g, err := s.ensureStandGroup(ctx, st)
+		if err != nil {
+			return nil, err
+		}
+		grp, repoName = g, st.GitPath[strings.LastIndex(st.GitPath, "/")+1:]
+	} else {
+		if _, err := s.ensureStandGroup(ctx, st); err != nil {
+			return nil, err
+		}
+		subgroup := s.gitops.SubgroupPath(st, team)
+		g, err := s.gl.GetGroup(ctx, subgroup)
+		if err != nil {
+			if !errors.Is(err, models.ErrNotFound) {
+				return nil, gitopsErr("group", err)
+			}
+			if g, err = s.createSubgroup(ctx, subgroup); err != nil {
+				return nil, err // already classified
+			}
+		}
+		grp, repoName = g, chart
+	}
+	repoPath := s.gitops.RepoPath(st, team, chart)
 	proj, err := s.gl.GetProject(ctx, repoPath)
 	if errors.Is(err, models.ErrNotFound) {
-		proj, err = s.gl.CreateProject(ctx, grp.ID, chart)
+		proj, err = s.gl.CreateProject(ctx, grp.ID, repoName)
 		if err != nil {
 			return nil, gitopsErr("create repo", err)
 		}

@@ -24,6 +24,8 @@ type fakeGitLab struct {
 	tokenErr    error
 	group       *gitlab.Group
 	groupErr    error
+	project     *gitlab.Project
+	projectErr  error
 	access      int
 	accessErr   error
 	groupHooks  []gitlab.HookInfo
@@ -500,6 +502,7 @@ type fakeArgo struct {
 	canErr        error
 	namespace     string
 	namespaceErr  error
+	apps          map[string]bool // the applications Argo CD knows, by name
 }
 
 func (f *fakeArgo) ProjectExists(context.Context, string) (bool, error) {

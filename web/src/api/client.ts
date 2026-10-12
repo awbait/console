@@ -27,6 +27,7 @@ import type {
   PublicationVersion,
   RequestDetail,
   Stand,
+  StandCheck,
   SystemStatus,
   UpdateOrderBody,
   TemplateRef,
@@ -246,11 +247,28 @@ export const api = {
   // stands: read by anybody signed in (the order form offers them, the list
   // filters by them), written by admins.
   listStands: (signal?: AbortSignal) => req<Stand[]>("GET", "/stands", undefined, signal),
-  createStand: (s: Pick<Stand, "name" | "default_cluster">) =>
-    req<Stand>("POST", "/stands", { name: s.name, default_cluster: s.default_cluster }),
-  updateStand: (s: Pick<Stand, "id" | "name" | "default_cluster">) =>
-    req<Stand>("PATCH", `/stands/${enc(s.id)}`, { name: s.name, default_cluster: s.default_cluster }),
+  getStand: (id: string, signal?: AbortSignal) => req<Stand>("GET", `/stands/${enc(id)}`, undefined, signal),
+  createStand: (s: Pick<Stand, "name" | "default_cluster" | "layout" | "git_path">) =>
+    req<Stand>("POST", "/stands", {
+      name: s.name,
+      default_cluster: s.default_cluster,
+      layout: s.layout,
+      git_path: s.git_path,
+    }),
+  updateStand: (s: Pick<Stand, "id" | "name" | "default_cluster" | "layout" | "git_path">) =>
+    req<Stand>("PATCH", `/stands/${enc(s.id)}`, {
+      name: s.name,
+      default_cluster: s.default_cluster,
+      layout: s.layout,
+      git_path: s.git_path,
+    }),
   setDefaultStand: (id: string) => req<void>("POST", `/stands/${enc(id)}/default`),
+  // The Argo CD wiring of a stand, as YAML text ops applies by hand, and the
+  // stand's own checks, run on request. Both admin only.
+  standManifests: (id: string, signal?: AbortSignal) =>
+    req<string>("GET", `/stands/${enc(id)}/manifests`, undefined, signal),
+  standChecks: (id: string, signal?: AbortSignal) =>
+    req<{ results: StandCheck[] }>("GET", `/stands/${enc(id)}/checks`, undefined, signal),
 
   // platform variables: read by anybody signed in (the version constructor
   // offers them), written by admins.

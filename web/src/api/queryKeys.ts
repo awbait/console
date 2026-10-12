@@ -36,6 +36,7 @@ export const qk = {
   variables: (): QueryKey => ["variables"],
   // Stands: the order form, the orders list and the admin page all read them.
   stands: (): QueryKey => ["stands"],
+  stand: (id: string): QueryKey => ["stands", id],
   requests: (): QueryKey => ["requests"],
   platformHealth: (): QueryKey => ["platform-health"],
 };

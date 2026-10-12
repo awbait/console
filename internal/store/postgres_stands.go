@@ -12,11 +12,11 @@ import (
 // by hand, read whole by every reader (the order form, the list filter, the
 // admin page), the way the variables are.
 
-const standCols = `id, name, default_cluster, is_default, created_at, updated_at`
+const standCols = `id, name, default_cluster, is_default, layout, git_path, created_at, updated_at`
 
 func scanStand(row pgx.Row) (*models.Stand, error) {
 	var s models.Stand
-	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}
@@ -54,11 +54,14 @@ func (p *Postgres) DefaultStand(ctx context.Context) (*models.Stand, error) {
 }
 
 func (p *Postgres) CreateStand(ctx context.Context, s *models.Stand) error {
+	if s.Layout == "" {
+		s.Layout = models.LayoutGroup
+	}
 	err := p.db.QueryRow(ctx, `
-		INSERT INTO stands (id, name, default_cluster, is_default)
-		VALUES ($1,$2,$3,$4)
+		INSERT INTO stands (id, name, default_cluster, is_default, layout, git_path)
+		VALUES ($1,$2,$3,$4,$5,$6)
 		RETURNING created_at, updated_at`,
-		s.ID, s.Name, s.DefaultCluster, s.Default).Scan(&s.CreatedAt, &s.UpdatedAt)
+		s.ID, s.Name, s.DefaultCluster, s.Default, s.Layout, s.GitPath).Scan(&s.CreatedAt, &s.UpdatedAt)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -66,11 +69,14 @@ func (p *Postgres) CreateStand(ctx context.Context, s *models.Stand) error {
 }
 
 func (p *Postgres) UpdateStand(ctx context.Context, s *models.Stand) error {
+	if s.Layout == "" {
+		s.Layout = models.LayoutGroup
+	}
 	err := p.db.QueryRow(ctx, `
-		UPDATE stands SET name=$2, default_cluster=$3, updated_at=NOW()
+		UPDATE stands SET name=$2, default_cluster=$3, layout=$4, git_path=$5, updated_at=NOW()
 		WHERE id=$1
 		RETURNING is_default, created_at, updated_at`,
-		s.ID, s.Name, s.DefaultCluster).Scan(&s.Default, &s.CreatedAt, &s.UpdatedAt)
+		s.ID, s.Name, s.DefaultCluster, s.Layout, s.GitPath).Scan(&s.Default, &s.CreatedAt, &s.UpdatedAt)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}

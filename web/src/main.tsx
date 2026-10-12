@@ -45,6 +45,7 @@ const AdminApprovalDetailPage = page(
 );
 const AdminCategoriesPage = page(() => import("./pages/AdminSection"), "AdminCategoriesPage");
 const AdminStandsPage = page(() => import("./pages/AdminStandsPage"), "AdminStandsPage");
+const AdminStandPage = page(() => import("./pages/AdminStandPage"), "AdminStandPage");
 const AdminVariablesPage = page(() => import("./pages/AdminVariablesPage"), "AdminVariablesPage");
 const AdminUsersPage = page(() => import("./pages/AdminUsersPage"), "AdminUsersPage");
 const ChartManagePage = page(() => import("./pages/ChartManagePage"), "ChartManagePage");
@@ -123,6 +124,7 @@ const router = createBrowserRouter([
           { path: "approvals/:project/:name/:version", element: <VersionApprovalPage /> },
           { path: "categories", element: <AdminCategoriesPage /> },
           { path: "stands", element: <AdminStandsPage /> },
+          { path: "stands/:id", element: <AdminStandPage /> },
           { path: "variables", element: <AdminVariablesPage /> },
           { path: "users", element: <AdminUsersPage /> },
           { path: "status", element: <StatusPage /> },

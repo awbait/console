@@ -395,8 +395,25 @@ export interface Stand {
   name: string;
   default_cluster: string;
   default: boolean;
+  // How the stand's orders are laid out in Git, and where: the group the team
+  // subgroups live under, or the one repository every order is a folder in.
+  layout: StandLayout;
+  git_path: string;
+  // The stand has orders in Git, so its layout and path are read-only.
+  locked: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export type StandLayout = "group" | "repository";
+
+// One check of a stand, run when its page opens (see GET /stands/{id}/checks).
+export interface StandCheck {
+  id: string;
+  component: string;
+  verdict: "ok" | "warn" | "fail" | "skip" | "unknown";
+  reason?: string;
+  facts?: Record<string, string>;
 }
 
 export interface Category {

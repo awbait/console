@@ -511,12 +511,33 @@ func (f *Fake) ListGroupProjects(ctx context.Context) ([]Project, error) {
 }
 
 // DiscoverApplications returns every application.yaml on default branches with
-// its location. Implements gitlab.Port.
+// its location, in every repository the fake holds.
 func (f *Fake) DiscoverApplications(ctx context.Context) ([]DiscoveredApp, error) {
+	return f.discover(func(string) bool { return true }), nil
+}
+
+// DiscoverGroupApplications implements gitlab.Port: the repositories under
+// the group, subgroups included.
+func (f *Fake) DiscoverGroupApplications(ctx context.Context, groupPath string) ([]DiscoveredApp, error) {
+	if groupPath == "" {
+		return nil, nil
+	}
+	return f.discover(func(p string) bool { return strings.HasPrefix(p, groupPath+"/") }), nil
+}
+
+// DiscoverProjectApplications implements gitlab.Port: one repository.
+func (f *Fake) DiscoverProjectApplications(ctx context.Context, projectPath string) ([]DiscoveredApp, error) {
+	return f.discover(func(p string) bool { return p == projectPath }), nil
+}
+
+func (f *Fake) discover(want func(projectPath string) bool) []DiscoveredApp {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []DiscoveredApp
 	for _, p := range f.projByID {
+		if !want(p.proj.PathWithNamespace) {
+			continue
+		}
 		branch := p.proj.DefaultBranch
 		for fp, content := range p.branches[branch] {
 			if strings.HasSuffix(fp, "application.yaml") || strings.HasSuffix(fp, "application.yml") {
@@ -527,5 +548,5 @@ func (f *Fake) DiscoverApplications(ctx context.Context) ([]DiscoveredApp, error
 			}
 		}
 	}
-	return out, nil
+	return out
 }

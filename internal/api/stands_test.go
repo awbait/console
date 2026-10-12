@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"console/pkg/models"
@@ -43,41 +44,75 @@ func TestHTTPStands(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Body.String() != "[]\n" {
 		t.Fatalf("member list: %d %q", rec.Code, rec.Body.String())
 	}
-	if rec := do(devReq("POST", "/api/v1/stands", "core", map[string]any{"name": "dev", "default_cluster": "in-cluster"})); rec.Code != http.StatusForbidden {
+	if rec := do(devReq("POST", "/api/v1/stands", "core", map[string]any{"name": "dev", "default_cluster": "in-cluster", "git_path": "managed-services/dev"})); rec.Code != http.StatusForbidden {
 		t.Fatalf("member create: want 403, got %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "Bad Name"})); rec.Code != http.StatusUnprocessableEntity {
+	if rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "Bad Name", "git_path": "managed-services/dev"})); rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("bad cluster: want 422, got %d %s", rec.Code, rec.Body.String())
 	}
+	if rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "in-cluster"})); rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("no path: want 422, got %d %s", rec.Code, rec.Body.String())
+	}
 
-	rec = do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "in-cluster"}))
+	rec = do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "in-cluster", "git_path": "managed-services/dev"}))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
 	var dev models.Stand
 	decode(t, rec, &dev)
-	if dev.ID == "" || !dev.Default || dev.DefaultCluster != "in-cluster" {
+	if dev.ID == "" || !dev.Default || dev.DefaultCluster != "in-cluster" || dev.Layout != models.LayoutGroup || dev.GitPath != "managed-services/dev" {
 		t.Fatalf("created stand: %+v", dev)
 	}
-	if rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "other"})); rec.Code != http.StatusConflict {
+	if rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "other", "git_path": "managed-services/other"})); rec.Code != http.StatusConflict {
 		t.Fatalf("duplicate name: want 409, got %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "edge", "default_cluster": "edge"}))
+	rec = do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "edge", "default_cluster": "edge", "layout": "repository", "git_path": "managed-services/edge-gitops"}))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create edge: %d %s", rec.Code, rec.Body.String())
 	}
 	var edge models.Stand
 	decode(t, rec, &edge)
-	if edge.Default {
-		t.Fatal("the second stand is not the default")
+	if edge.Default || edge.Layout != models.LayoutRepository {
+		t.Fatalf("the second stand is not the default and keeps its layout: %+v", edge)
 	}
 
-	rec = do(adminReq("PATCH", "/api/v1/stands/"+edge.ID, map[string]any{"name": "edge-2", "default_cluster": "edge"}))
+	rec = do(adminReq("PATCH", "/api/v1/stands/"+edge.ID, map[string]any{"name": "edge-2", "default_cluster": "edge", "layout": "repository", "git_path": "managed-services/edge-gitops"}))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := do(adminReq("PATCH", "/api/v1/stands/missing", map[string]any{"name": "x", "default_cluster": "x"})); rec.Code != http.StatusNotFound {
+	rec = do(adminReq("GET", "/api/v1/stands/"+edge.ID, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get: %d %s", rec.Code, rec.Body.String())
+	}
+	decode(t, rec, &edge)
+	if edge.Name != "edge-2" || edge.Locked {
+		t.Fatalf("get after rename: %+v", edge)
+	}
+	// What ops applies to wire the stand, and the stand's own checks: without
+	// upstreams here the checks say they could not look, and say so for each.
+	rec = do(adminReq("GET", "/api/v1/stands/"+edge.ID+"/manifests", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "managed-services/edge-gitops") {
+		t.Fatalf("manifests: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(devReq("GET", "/api/v1/stands/"+edge.ID+"/manifests", "core", nil)); rec.Code != http.StatusForbidden {
+		t.Fatalf("member manifests: want 403, got %d", rec.Code)
+	}
+	rec = do(adminReq("GET", "/api/v1/stands/"+edge.ID+"/checks", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("checks: %d %s", rec.Code, rec.Body.String())
+	}
+	var checksBody struct {
+		Results []struct {
+			ID      string `json:"id"`
+			Verdict string `json:"verdict"`
+		} `json:"results"`
+	}
+	decode(t, rec, &checksBody)
+	if len(checksBody.Results) != 3 || checksBody.Results[0].Verdict != "unknown" {
+		t.Fatalf("stand checks: %+v", checksBody.Results)
+	}
+	if rec := do(adminReq("PATCH", "/api/v1/stands/missing", map[string]any{"name": "x", "default_cluster": "x", "git_path": "x"})); rec.Code != http.StatusNotFound {
 		t.Fatalf("rename missing: want 404, got %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := do(adminReq("POST", "/api/v1/stands/"+edge.ID+"/default", nil)); rec.Code != http.StatusNoContent {

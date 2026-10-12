@@ -27,9 +27,9 @@ func TestHTTPCopyRequest(t *testing.T) {
 		}
 	}
 	var dev, prod models.Stand
-	rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "in-cluster"}))
+	rec := do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "dev", "default_cluster": "in-cluster", "git_path": "managed-services"}))
 	decode(t, rec, &dev)
-	rec = do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "prod", "default_cluster": "prod-a"}))
+	rec = do(adminReq("POST", "/api/v1/stands", map[string]any{"name": "prod", "default_cluster": "prod-a", "git_path": "managed-services/prod"}))
 	decode(t, rec, &prod)
 
 	rec = do(devReq("POST", "/api/v1/requests", "core", map[string]any{
