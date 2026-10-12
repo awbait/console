@@ -81,6 +81,10 @@ const RECONCILERS: Record<string, { label: string; what: string }> = {
     label: "Проверка стендов",
     what: "Проверяет доступ к пути в GitLab, кластеры и видимость приложений стендов в Argo CD и сохраняет результаты.",
   },
+  "stand-jobs": {
+    label: "Перевод заказов",
+    what: "Переводит существующие заказы в новый режим стенда по несколько заказов за проход и сохраняет результаты.",
+  },
 };
 
 // A stand's worst verdict, in the words of the stand page's own rows.

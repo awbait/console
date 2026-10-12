@@ -5,6 +5,7 @@ import { api, errorMessage } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { Stand, StandLayout, StandMode } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Button, ErrorBox, SkeletonRows } from "../components/ui";
 import { standText as t } from "../features/stands/text";
 import { dnsLabelError, fieldMsg } from "../form/fieldErrors";
@@ -103,6 +104,7 @@ export function AdminStandsPage() {
                   stand={s}
                   busy={busy}
                   onSave={(patch) => run(() => api.updateStand({ ...s, ...patch }), t.toastSaved(patch.name ?? s.name))}
+                  onStartJob={(mode) => run(() => api.updateStand({ ...s, mode }), t.jobStartedToast(s.name))}
                   onMakeDefault={() => run(() => api.setDefaultStand(s.id), t.toastDefault(s.name))}
                 />
               ))
@@ -125,13 +127,17 @@ function StandRow({
   stand,
   busy,
   onSave,
+  onStartJob,
   onMakeDefault,
 }: {
   stand: Stand;
   busy: boolean;
   onSave: (patch: StandPatch) => void;
+  // A new mode for a stand with orders: the portal moves them in a job.
+  onStartJob: (mode: StandMode) => Promise<void>;
   onMakeDefault: () => void;
 }) {
+  const [pendingMode, setPendingMode] = useState<StandMode | null>(null);
   const [name, setName] = useState(stand.name);
   const [cluster, setCluster] = useState(stand.default_cluster);
   const [path, setPath] = useState(stand.git_path);
@@ -191,17 +197,30 @@ function StandRow({
         )}
       </div>
 
-      {/* The mode, the layout and the path: editable until the stand has
-          orders, then shown as they are, with the reason on hover. */}
-      {stand.locked ? (
-        <span className="w-32 shrink-0 px-2 text-sm text-slate-500" title={t.modeLockedHint}>
+      {/* The mode: free on a stand without orders. With orders it changes
+          through a job that moves them, asked for first; a deploying stand is
+          emptied before it may leave deploy, and nothing changes while a job
+          is at work. */}
+      {stand.job ? (
+        <span
+          className="w-32 shrink-0 rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+          title={t.jobRunningHint}
+        >
+          {t.rowJobBadge(stand.job.done, stand.job.total)}
+        </span>
+      ) : stand.locked && mode.id === "deploy" ? (
+        <span className="w-32 shrink-0 px-2 text-sm text-slate-500" title={t.deployLeaveHint}>
           {mode.label}
         </span>
       ) : (
         <select
           value={mode.id}
           disabled={busy}
-          onChange={(e) => onSave({ mode: e.target.value as StandMode })}
+          onChange={(e) => {
+            const next = e.target.value as StandMode;
+            if (stand.locked) setPendingMode(next);
+            else onSave({ mode: next });
+          }}
           aria-label={t.modeLabel}
           title={mode.hint}
           className={`${cellSelect} w-32 shrink-0`}
@@ -213,6 +232,18 @@ function StandRow({
           ))}
         </select>
       )}
+      <ConfirmDialog
+        isOpen={pendingMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMode(null);
+        }}
+        title={t.modeLabel}
+        message={t.modeChangeConfirm(MODES.find((m) => m.id === pendingMode)?.label ?? "")}
+        onConfirm={async () => {
+          if (pendingMode) await onStartJob(pendingMode);
+          setPendingMode(null);
+        }}
+      />
 
       {stand.locked ? (
         <span className="w-28 shrink-0 px-2 text-sm text-slate-500" title={t.lockedHint}>

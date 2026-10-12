@@ -259,11 +259,6 @@ func TestStandModeIsChecked(t *testing.T) {
 	if _, err := s.prov.Create(ctx, member("core"), newOrder("pg1", placed("pg1", ok.ID))); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	back := toConsole
-	back.Mode = models.ModeDeploy
-	if err := s.prov.UpdateStand(ctx, admin(), &back); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandModeLock {
-		t.Fatalf("switching a stand with an order: %v", err)
-	}
 	// The registry is not locked: it only shapes what is rendered next.
 	reg := toConsole
 	reg.ChartRegistry = "other.example.com"
@@ -272,5 +267,25 @@ func TestStandModeIsChecked(t *testing.T) {
 	}
 	if _, err := s.prov.StandManifests(&reg); !errors.As(err, &verr) || verr.Message != provisioning.MsgManifestsMode {
 		t.Fatalf("manifests of a console stand: %v", err)
+	}
+	// With an order on it, leaving console-only starts a job that moves it.
+	back := reg
+	back.Mode = models.ModeDeploy
+	if err := s.prov.UpdateStand(ctx, admin(), &back); err != nil || back.Job == nil {
+		t.Fatalf("switching a stand with an order starts a job: %v %+v", err, back.Job)
+	}
+	// And a deploying stand with an order cannot leave deploy.
+	d := standInMode("d", models.ModeDeploy)
+	d.GitPath = "managed-services"
+	if err := s.prov.CreateStand(ctx, admin(), d); err != nil {
+		t.Fatalf("create stand: %v", err)
+	}
+	if _, err := s.prov.Create(ctx, member("core"), newOrder("pg9", placed("pg9", d.ID))); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	leave := *d
+	leave.Mode = models.ModeGit
+	if err := s.prov.UpdateStand(ctx, admin(), &leave); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandDeployLeave {
+		t.Fatalf("leaving deploy with an order: %v", err)
 	}
 }

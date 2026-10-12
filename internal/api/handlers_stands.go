@@ -153,3 +153,24 @@ func (s *Server) handleSetDefaultStand(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusNoContent, nil)
 }
+
+// handleListStandJobs answers with the stand's jobs, newest first: what the
+// stand page shows under the jobs section.
+func (s *Server) handleListStandJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.Prov.ListStandJobs(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
+// handleStopStandJob stops a running job of the stand.
+func (s *Server) handleStopStandJob(w http.ResponseWriter, r *http.Request) {
+	j, err := s.Prov.StopStandJob(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "job"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, j)
+}

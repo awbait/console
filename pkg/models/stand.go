@@ -50,6 +50,9 @@ type Stand struct {
 	ArgoConnected bool `json:"argo_connected"`
 	// CheckedAt is when the stand's checks last ran; nil before the first.
 	CheckedAt *time.Time `json:"checked_at,omitempty"`
+	// Job is the job running on the stand right now, if any. Computed on
+	// read, never stored with the stand.
+	Job *StandJob `json:"job,omitempty"`
 	// Locked reports that the stand has orders beyond drafts and deleted ones,
 	// so its layout, path and mode are read-only. Computed on read, never stored.
 	Locked    bool      `json:"locked"`

@@ -3,6 +3,7 @@ package provisioning
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"console/internal/store"
@@ -30,7 +31,6 @@ const (
 	MsgStandNoPath    = "У стенда «%s» не задан путь в GitLab, поэтому заказ не отправлен. Попросите администратора указать путь на странице стенда."
 	MsgStandMode      = "Выберите режим из списка."
 	MsgStandRegistry  = "Укажите адрес реестра без схемы, например harbor.example.com. Допустимы латинские буквы, цифры, точка, дефис, двоеточие для порта и «/» для пути."
-	MsgStandModeLock  = "Нельзя изменить режим: на стенде есть заказы, кроме черновиков и удалённых."
 	MsgSyncMode       = "Нельзя запустить синхронизацию с кластером: стенд не разворачивает сервисы. Синхронизация доступна только в режиме «Разворачивать»."
 	MsgPullMode       = "Нельзя загрузить значения из Git: в режиме «Только консоль» файлы заказа в Git не создаются."
 	MsgManifestsMode  = "Манифесты Argo CD доступны только для стендов в режиме «Разворачивать»."
@@ -77,6 +77,9 @@ func (s *Service) GetStand(ctx context.Context, id string) (*models.Stand, error
 		return nil, err
 	}
 	st.Locked = locked
+	if st.Job, err = s.runningJob(ctx, id); err != nil {
+		return nil, err
+	}
 	return st, nil
 }
 
@@ -118,8 +121,17 @@ func (s *Service) ListStands(ctx context.Context) ([]*models.Stand, error) {
 			locked[r.StandID] = true
 		}
 	}
+	jobs, err := s.store.ListRunningStandJobs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	running := map[string]*models.StandJob{}
+	for _, j := range jobs {
+		running[j.StandID] = j
+	}
 	for _, st := range list {
 		st.Locked = locked[st.ID]
+		st.Job = running[st.ID]
 	}
 	return list, nil
 }
@@ -262,19 +274,36 @@ func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.St
 	if st.GitPath == "" && cur.GitPath != "" {
 		return &ValidationError{Message: MsgStandPathClear}
 	}
-	// The mode is locked for the same reason as the layout: the orders on the
-	// stand went as far as the mode said, and a new mode would leave them
-	// somewhere the next order is not. Moving them is a later stage's job.
+	// The layout and the path are where the orders' files are: fixed while
+	// there are orders. The mode is not: a stand with orders changes it, and a
+	// job moves the orders after it (stand_jobs.go). Nothing of the three
+	// moves while such a job is still at work.
+	needJob := false
 	if cur.Layout != st.Layout || cur.GitPath != st.GitPath || cur.Mode != st.Mode {
+		job, err := s.runningJob(ctx, st.ID)
+		if err != nil {
+			return err
+		}
+		if job != nil {
+			return &ValidationError{Message: MsgStandJobRunning}
+		}
 		locked, err := s.standLocked(ctx, st.ID)
 		if err != nil {
 			return err
 		}
-		if locked && cur.Mode != st.Mode {
-			return &ValidationError{Message: MsgStandModeLock}
-		}
-		if locked {
+		if locked && (cur.Layout != st.Layout || cur.GitPath != st.GitPath) {
 			return &ValidationError{Message: MsgStandGitLocked}
+		}
+		if locked && cur.Mode != st.Mode {
+			// Leaving deploy would make the app-of-apps take down what it
+			// deployed the moment the files go: the stand is emptied first.
+			if cur.Deploys() {
+				return &ValidationError{Message: MsgStandDeployLeave}
+			}
+			if st.WritesGit() && st.GitPath == "" {
+				return &ValidationError{Message: fmt.Sprintf(MsgStandNoPath, st.Name)}
+			}
+			needJob = true
 		}
 	}
 	if err := s.store.UpdateStand(ctx, st); err != nil {
@@ -284,6 +313,13 @@ func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.St
 		return err
 	}
 	s.logger().Info("stand updated", "stand", st.ID, "stand_name", st.Name, "cluster", st.DefaultCluster, "actor", u.Subject)
+	if needJob {
+		job, err := s.startModeJob(ctx, u, st, cur.Mode)
+		if err != nil {
+			return err
+		}
+		st.Job = job
+	}
 	return nil
 }
 

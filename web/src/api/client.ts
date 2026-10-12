@@ -29,6 +29,7 @@ import type {
   Stand,
   StandChecksRun,
   StandChecksSummary,
+  StandJob,
   SystemStatus,
   TemplateRef,
   UpdateOrderBody,
@@ -277,6 +278,11 @@ export const api = {
   // Every stand's stored checks, for the status page. Admin only.
   standChecksSummary: (signal?: AbortSignal) =>
     req<{ stands: StandChecksSummary[] }>("GET", "/stands/checks", undefined, signal),
+  // A stand's jobs, newest first, and stopping the running one. Admin only.
+  standJobs: (id: string, signal?: AbortSignal) =>
+    req<{ jobs: StandJob[] }>("GET", `/stands/${enc(id)}/jobs`, undefined, signal),
+  stopStandJob: (id: string, jobId: string) =>
+    req<StandJob>("POST", `/stands/${enc(id)}/jobs/${enc(jobId)}/stop`),
 
   // platform variables: read by anybody signed in (the version constructor
   // offers them), written by admins.

@@ -190,6 +190,15 @@ type Store interface {
 	// ListAllStandChecks returns the stored checks of every stand, for the
 	// status page's summary.
 	ListAllStandChecks(ctx context.Context) ([]*models.StandCheck, error)
+	// Stand jobs: background work on a stand's orders. CreateStandJob is
+	// ErrConflict while another job of the stand is running.
+	CreateStandJob(ctx context.Context, j *models.StandJob) error
+	UpdateStandJob(ctx context.Context, j *models.StandJob) error // ErrNotFound
+	GetStandJob(ctx context.Context, id string) (*models.StandJob, error)
+	// ListStandJobs returns a stand's jobs, newest first.
+	ListStandJobs(ctx context.Context, standID string) ([]*models.StandJob, error)
+	// ListRunningStandJobs returns every running job, of every stand.
+	ListRunningStandJobs(ctx context.Context) ([]*models.StandJob, error)
 
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id
