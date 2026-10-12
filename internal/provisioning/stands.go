@@ -26,6 +26,8 @@ const (
 	MsgStandPath      = "Используйте латинские буквы, цифры, точку, дефис, подчёркивание и разделитель «/»."
 	MsgStandLayout    = "Выберите раскладку из списка."
 	MsgStandGitLocked = "Нельзя изменить раскладку или путь: на стенде есть заказы, кроме черновиков и удалённых."
+	MsgStandPathClear = "Путь в GitLab нельзя оставить пустым."
+	MsgStandNoPath    = "У стенда «%s» не задан путь в GitLab, поэтому заказ не отправлен. Попросите администратора указать путь на странице стенда."
 )
 
 // standOf is the stand an order is on, for the paths its files take. An order
@@ -152,8 +154,11 @@ func validCluster(cluster string) bool {
 }
 
 // checkStand validates what an admin typed. The default cluster follows the
-// rule of the order's cluster, because that is what it becomes.
-func checkStand(st *models.Stand) error {
+// rule of the order's cluster, because that is what it becomes. A new stand
+// has to name its path; a stand made before paths existed may still have none,
+// and renaming it must not wait for the path, so an update tolerates the
+// empty one it already has (ensureRepo refuses to write for such a stand).
+func checkStand(st *models.Stand, requirePath bool) error {
 	st.Name = strings.TrimSpace(st.Name)
 	st.DefaultCluster = strings.TrimSpace(st.DefaultCluster)
 	if st.Name == "" {
@@ -174,7 +179,10 @@ func checkStand(st *models.Stand) error {
 		return &ValidationError{Message: MsgStandLayout}
 	}
 	if st.GitPath == "" {
-		return &ValidationError{Message: MsgStandPathEmpty}
+		if requirePath {
+			return &ValidationError{Message: MsgStandPathEmpty}
+		}
+		return nil
 	}
 	if !models.ValidGitPath(st.GitPath) {
 		return &ValidationError{Message: MsgStandPath}
@@ -189,7 +197,7 @@ func (s *Service) CreateStand(ctx context.Context, u *models.User, st *models.St
 	if !u.IsAdmin() {
 		return ErrForbidden
 	}
-	if err := checkStand(st); err != nil {
+	if err := checkStand(st, true); err != nil {
 		return err
 	}
 	st.ID = newID()
@@ -220,12 +228,16 @@ func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.St
 	if !u.IsAdmin() {
 		return ErrForbidden
 	}
-	if err := checkStand(st); err != nil {
+	if err := checkStand(st, false); err != nil {
 		return err
 	}
 	cur, err := s.store.GetStand(ctx, st.ID)
 	if err != nil {
 		return err
+	}
+	// A path once set is not cleared: the orders made since are under it.
+	if st.GitPath == "" && cur.GitPath != "" {
+		return &ValidationError{Message: MsgStandPathClear}
 	}
 	if cur.Layout != st.Layout || cur.GitPath != st.GitPath {
 		locked, err := s.standLocked(ctx, st.ID)

@@ -1352,6 +1352,11 @@ func (s *Service) ensureStandGroup(ctx context.Context, st *models.Stand) (*gitl
 // chart repository under the group layout, the stand's one repository under
 // the repository layout.
 func (s *Service) ensureRepo(ctx context.Context, st *models.Stand, team, chart string) (*gitlab.Project, error) {
+	// A stand made before paths existed has none until an admin fills it in;
+	// there is nowhere to write for it, and the user is told whom to ask.
+	if st != nil && st.ID != "" && st.GitPath == "" {
+		return nil, &ValidationError{Message: fmt.Sprintf(MsgStandNoPath, st.Name)}
+	}
 	var grp *gitlab.Group
 	var repoName string
 	if st != nil && st.Layout == models.LayoutRepository && st.GitPath != "" {

@@ -123,6 +123,7 @@ function StandRow({
   useEffect(() => setPath(stand.git_path), [stand.git_path]);
   const clusterErr = clusterError(cluster.trim());
   const pathErr = pathError(path.trim());
+  const pathMissing = stand.git_path === "" && path.trim() === "";
   const layoutHint = LAYOUTS.find((l) => l.id === stand.layout)?.hint ?? "";
 
   return (
@@ -215,13 +216,16 @@ function StandRow({
               aria-label={t.pathLabel}
               aria-invalid={!!pathErr}
               title={t.pathHint}
-              className={`${cellInput} w-full font-mono text-[13px] ${pathErr ? "border-red-400" : ""}`}
+              className={`${cellInput} w-full font-mono text-[13px] ${pathErr ? "border-red-400" : pathMissing ? "border-amber-400" : ""}`}
             />
             {pathErr && (
               <p role="alert" className="px-2 text-[11px] text-red-600">
                 {pathErr}
               </p>
             )}
+            {/* A stand made before paths existed: orders on it go nowhere
+                until the path is filled in, so say so under the field. */}
+            {!pathErr && pathMissing && <p className="px-2 text-[11px] text-amber-700">{t.pathMissing}</p>}
           </>
         )}
       </div>

@@ -3,6 +3,7 @@ package provisioning_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +141,50 @@ func TestStandLayoutIsChecked(t *testing.T) {
 	}
 	if ok.Layout != models.LayoutGroup || ok.GitPath != "managed-services/e" {
 		t.Fatalf("stored as %q %q", ok.Layout, ok.GitPath)
+	}
+}
+
+// A stand made before paths existed has none. Renaming it does not wait for
+// the path, a path once set cannot be cleared, and an order on the pathless
+// stand is refused with a message naming the stand, while a draft is fine.
+func TestStandWithoutPath(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	legacy := &models.Stand{ID: "legacy", Name: "old", DefaultCluster: "in-cluster", Layout: models.LayoutGroup}
+	if err := s.st.CreateStand(ctx, legacy); err != nil {
+		t.Fatalf("seed a pathless stand: %v", err)
+	}
+	renamed := *legacy
+	renamed.Name = "older"
+	if err := s.prov.UpdateStand(ctx, admin(), &renamed); err != nil {
+		t.Fatalf("rename without a path: %v", err)
+	}
+	withPath := renamed
+	withPath.GitPath = "managed-services/old"
+	if err := s.prov.UpdateStand(ctx, admin(), &withPath); err != nil {
+		t.Fatalf("set the path: %v", err)
+	}
+	cleared := withPath
+	cleared.GitPath = ""
+	var verr *provisioning.ValidationError
+	if err := s.prov.UpdateStand(ctx, admin(), &cleared); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandPathClear {
+		t.Fatalf("clearing a set path: want %q, got %v", provisioning.MsgStandPathClear, err)
+	}
+
+	pathless := &models.Stand{ID: "pathless", Name: "sandbox", DefaultCluster: "in-cluster", Layout: models.LayoutGroup}
+	if err := s.st.CreateStand(ctx, pathless); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(pathless.ID))); err != nil {
+		t.Fatalf("a draft on a pathless stand: %v", err)
+	}
+	_, err := s.prov.Create(ctx, member("core"), newOrder("pg2", onStand(pathless.ID), func(in *provisioning.CreateInput) {
+		in.Draft = false
+		in.Values = validValues()
+	}))
+	want := fmt.Sprintf(provisioning.MsgStandNoPath, "sandbox")
+	if !errors.As(err, &verr) || verr.Message != want {
+		t.Fatalf("an order on a pathless stand: want %q, got %v", want, err)
 	}
 }
 

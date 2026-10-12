@@ -26,6 +26,7 @@ const (
 
 // Reasons the stand checks return, beside the shared ones.
 const (
+	reasonPathEmpty   = "path_empty"   // the stand names no path yet (made before paths existed)
 	reasonRepoMissing = "repo_missing" // the stand's repository is not there under that path
 	reasonRepoFound   = "repo_found"   // it is
 	reasonNoOrders    = "no_orders"    // nothing deployed from this stand yet
@@ -73,7 +74,7 @@ func standGit(ctx context.Context, api GitLabAPI, st *models.Stand) Result {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
 	if st.GitPath == "" {
-		return verdict(VerdictFail, ReasonNotConfigured, nil)
+		return verdict(VerdictFail, reasonPathEmpty, nil)
 	}
 	if st.Layout != models.LayoutRepository {
 		// Subgroups are created under the stand's group, so the role asked for

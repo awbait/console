@@ -74,7 +74,9 @@ func TestStandGitGroupLayout(t *testing.T) {
 	if r := got[IDStandGit]; r.Verdict != VerdictFail || r.Reason != reasonNeedsOwner {
 		t.Fatalf("maintainer where subgroups are created: %+v", r)
 	}
-	if r := byID(Stand(ctx, &fakeGitLab{}, nil, &models.Stand{Name: "x"}, nil))[IDStandGit]; r.Verdict != VerdictFail || r.Reason != ReasonNotConfigured {
+	// A stand with no path yet (made before paths existed) has nothing to look
+	// up, and the reason says that rather than blaming the upstream.
+	if r := byID(Stand(ctx, &fakeGitLab{}, nil, &models.Stand{Name: "x"}, nil))[IDStandGit]; r.Verdict != VerdictFail || r.Reason != reasonPathEmpty {
 		t.Fatalf("a stand without a path: %+v", r)
 	}
 }

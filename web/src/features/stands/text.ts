@@ -52,12 +52,14 @@ export const standText = {
     "Здесь собраны манифесты ApplicationSet или Application для раскладки «репозиторий» и секреты с токенами GitLab. Портал ничего не создаёт в Argo CD. Замените заглушки токенами GitLab и примените манифесты вручную один раз для этого стенда.",
   manifestsCopy: "Скопировать манифесты",
   manifestsCopied: "Манифесты скопированы.",
+  pathMissing: "Путь не задан, поэтому заказы на стенд не отправляются. Укажите путь в GitLab.",
   errPathEmpty: "Обязательное поле.",
   errPath: "Используйте латинские буквы, цифры, точку, дефис, подчёркивание и разделитель «/».",
 } as const;
 
 // Why a stand check came out the way it did, by the reason the portal names.
 export const standCheckReasons: Record<string, string> = {
+  path_empty: "Путь в GitLab не задан, поэтому проверка не выполнена.",
   group_missing: "Группы по указанному пути пока нет, портал создаст её при первом заказе.",
   repo_missing: "Репозитория по указанному пути пока нет, портал создаст его при первом заказе.",
   repo_found: "Репозиторий найден и доступен токену портала.",

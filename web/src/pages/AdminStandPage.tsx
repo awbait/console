@@ -104,7 +104,7 @@ export function AdminStandPage() {
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
             <Field label={t.clusterAria} value={stand.default_cluster} mono />
             <Field label={t.layoutLabel} value={layoutLabel} />
-            <Field label={t.pathLabel} value={stand.git_path} mono />
+            <Field label={t.pathLabel} value={stand.git_path || t.pathMissing} mono={stand.git_path !== ""} warn={stand.git_path === ""} />
             {stand.locked && <Field label="" value={t.lockedHint} muted />}
           </dl>
         </section>
@@ -137,6 +137,9 @@ export function AdminStandPage() {
           )}
         </section>
 
+        {/* No path, no manifests: there is nothing to point Argo CD at yet, and
+            the path field above already says what to do. */}
+        {stand.git_path !== "" && (
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -162,6 +165,7 @@ export function AdminStandPage() {
             </pre>
           )}
         </section>
+        )}
 
         <p className="text-sm">
           <Link to="/admin/stands" className="text-brand-600 hover:underline">
@@ -173,13 +177,24 @@ export function AdminStandPage() {
   );
 }
 
-function Field({ label, value, mono, muted }: { label: string; value: string; mono?: boolean; muted?: boolean }) {
+function Field({
+  label,
+  value,
+  mono,
+  muted,
+  warn,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  muted?: boolean;
+  warn?: boolean;
+}) {
+  const tone = warn ? "text-amber-700" : muted ? "text-slate-500" : "text-slate-800";
   return (
     <div className={label ? "" : "sm:col-span-2"}>
       {label && <dt className="text-xs uppercase tracking-wide text-slate-400">{label}</dt>}
-      <dd className={`${label ? "mt-0.5" : ""} ${mono ? "font-mono text-[13px]" : ""} ${muted ? "text-slate-500" : "text-slate-800"}`}>
-        {value}
-      </dd>
+      <dd className={`${label ? "mt-0.5" : ""} ${mono ? "font-mono text-[13px]" : ""} ${tone}`}>{value}</dd>
     </div>
   );
 }
