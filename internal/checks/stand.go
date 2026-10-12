@@ -33,6 +33,8 @@ const (
 	reasonAppsMissing = "apps_missing" // none of the stand's applications is in Argo CD
 	reasonAppsPartial = "apps_partial" // some are, some are not
 	reasonAppsFound   = "apps_found"   // every one looked at is there
+	reasonModeGit     = "mode_git"     // the stand only keeps files in Git: no Argo CD to check
+	reasonModeConsole = "mode_console" // the stand keeps its orders in the portal: nothing to check
 )
 
 // StandArgoAPI is what the Argo CD checks of a stand read through.
@@ -52,6 +54,24 @@ func Stand(ctx context.Context, gl GitLabAPI, argo StandArgoAPI, st *models.Stan
 	for _, r := range orders {
 		if r.DeletedAt == nil && r.Status != models.StatusDraft && r.Status != models.StatusDeleted {
 			live = append(live, r)
+		}
+	}
+	// What the stand's mode leaves to check: a console-only stand touches
+	// neither GitLab nor Argo CD, a Git-only stand touches GitLab alone.
+	switch {
+	case !st.WritesGit():
+		skip := verdict(VerdictSkip, reasonModeConsole, nil)
+		return []CheckResult{
+			result(IDStandGit, ComponentGitLab, skip),
+			result(IDStandCluster, ComponentArgoCD, skip),
+			result(IDStandArgo, ComponentArgoCD, skip),
+		}
+	case !st.Deploys():
+		skip := verdict(VerdictSkip, reasonModeGit, nil)
+		return []CheckResult{
+			result(IDStandGit, ComponentGitLab, standGit(ctx, gl, st)),
+			result(IDStandCluster, ComponentArgoCD, skip),
+			result(IDStandArgo, ComponentArgoCD, skip),
 		}
 	}
 	return []CheckResult{

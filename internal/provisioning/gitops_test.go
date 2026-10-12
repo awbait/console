@@ -121,7 +121,7 @@ func TestRenderApplicationNamespace(t *testing.T) {
 	// Unset: the upstream default, which is what every install had before the
 	// namespace was configurable.
 	g := newGitOps(t)
-	out, err := g.RenderApplication(r, "https://gitlab/x.git")
+	out, err := g.RenderApplication(r, "https://gitlab/x.git", "")
 	if err != nil {
 		t.Fatalf("RenderApplication: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRenderApplicationNamespace(t *testing.T) {
 	}
 
 	g.AppNamespace = "tech-argocd"
-	out, err = g.RenderApplication(r, "https://gitlab/x.git")
+	out, err = g.RenderApplication(r, "https://gitlab/x.git", "")
 	if err != nil {
 		t.Fatalf("RenderApplication: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestRenderApplicationCascadesOnDelete(t *testing.T) {
 		Cluster: "in-cluster", Namespace: "apps", ArgoCDAppName: "core-postgres-pg1",
 	}
 	g := newGitOps(t)
-	out, err := g.RenderApplication(r, "https://gitlab/x.git")
+	out, err := g.RenderApplication(r, "https://gitlab/x.git", "")
 	if err != nil {
 		t.Fatalf("RenderApplication: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestRenderApplicationEscapesScalars(t *testing.T) {
 		Team: "core", ChartName: "postgres", ServiceName: "pg1", ChartVersion: "1.0\ninjected: true",
 		Cluster: "in-cluster", Namespace: "apps", ArgoCDAppName: "core-postgres-pg1",
 	}
-	out, err := g.RenderApplication(r, "https://gitlab/managed-services/team-core/postgres")
+	out, err := g.RenderApplication(r, "https://gitlab/managed-services/team-core/postgres", "")
 	if err != nil {
 		t.Fatalf("RenderApplication: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestRenderApplicationEscapesScalars(t *testing.T) {
 
 	// A normal version is emitted bare (no churn / unnecessary quoting).
 	r.ChartVersion = "3.1.0"
-	out, _ = g.RenderApplication(r, "https://gitlab/x.git")
+	out, _ = g.RenderApplication(r, "https://gitlab/x.git", "")
 	if !strings.Contains(out, "targetRevision: 3.1.0") {
 		t.Fatalf("normal version should be bare:\n%s", out)
 	}

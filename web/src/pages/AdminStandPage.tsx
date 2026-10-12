@@ -12,7 +12,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
-import type { StandCheck } from "../api/types";
+import { deploys, type StandCheck } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { NotFound } from "../components/NotFound";
@@ -80,6 +80,7 @@ export function AdminStandPage() {
   if (loading || !stand) return <SkeletonRows rows={4} />;
 
   const layoutLabel = stand.layout === "repository" ? t.layoutRepository : t.layoutGroup;
+  const modeLabel = stand.mode === "git" ? t.modeGit : stand.mode === "console" ? t.modeConsole : t.modeDeploy;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
@@ -103,8 +104,10 @@ export function AdminStandPage() {
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
             <Field label={t.clusterAria} value={stand.default_cluster} mono />
+            <Field label={t.modeLabel} value={modeLabel} />
             <Field label={t.layoutLabel} value={layoutLabel} />
             <Field label={t.pathLabel} value={stand.git_path || t.pathMissing} mono={stand.git_path !== ""} warn={stand.git_path === ""} />
+            {stand.chart_registry && <Field label={t.registryLabel} value={stand.chart_registry} mono />}
             {stand.locked && <Field label="" value={t.lockedHint} muted />}
           </dl>
         </section>
@@ -138,8 +141,9 @@ export function AdminStandPage() {
         </section>
 
         {/* No path, no manifests: there is nothing to point Argo CD at yet, and
-            the path field above already says what to do. */}
-        {stand.git_path !== "" && (
+            the path field above already says what to do. A stand that does
+            not deploy has no Argo CD to wire at all. */}
+        {stand.git_path !== "" && deploys(stand) && (
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

@@ -43,13 +43,14 @@ import {
 } from "react-aria-components";
 import { api } from "@/api/client";
 import { qk } from "@/api/queryKeys";
-import type {
-  OrderRequest,
-  RequestDetail,
-  RequestEvent,
-  RequestMR,
-  RequestStatus,
-  ViewDocument,
+import {
+  deploys,
+  type OrderRequest,
+  type RequestDetail,
+  type RequestEvent,
+  type RequestMR,
+  type RequestStatus,
+  type ViewDocument,
 } from "@/api/types";
 import { chartLabel } from "@/app/CatalogContext";
 import { useTheme } from "@/app/ThemeContext";
@@ -380,6 +381,8 @@ const EVENT_META: Record<string, { label: string; Icon: TablerIcon; tint: string
   draft_created: { label: "Черновик создан", Icon: IconPencil, tint: "slate" },
   created: { label: "Заказ создан", Icon: IconSparkles, tint: "indigo" },
   draft_updated: { label: "Черновик изменён", Icon: IconPencil, tint: "slate" },
+  // An order kept in the portal changes in place: no merge request to name.
+  updated: { label: "Заказ изменён", Icon: IconPencil, tint: "slate" },
   renamed: { label: "Заказ переименован", Icon: IconForms, tint: "slate" },
   draft_discarded: { label: "Черновик удалён", Icon: IconTrash, tint: "slate" },
   sync_forced: { label: "Запрошена синхронизация", Icon: IconRefresh, tint: "blue" },
@@ -430,6 +433,8 @@ const STATUS_EVENT: Record<string, string> = {
   HEALTHY: "Заказ развёрнут",
   DEGRADED: "Заказ работает с ошибками",
   ARGO_MISSING: "Заказ не найден в кластере",
+  GIT_SAVED: "Заказ сохранён в Git",
+  CONSOLE_SAVED: "Заказ сохранён в консоли",
   DELETE_REQUESTED: "Запрошено удаление заказа",
   DELETE_MR_MERGED: "Удаление применено",
   DELETED: "Заказ удалён",
@@ -458,6 +463,7 @@ const NOTABLE_EVENTS = new Set([
   "copied",
   "draft_discarded",
   "renamed",
+  "updated",
   "deleted",
   "drift_detected",
   "merge_blocked",
@@ -472,6 +478,8 @@ const NOTABLE_STATUSES = new Set([
   "HEALTHY",
   "DEGRADED",
   "ARGO_MISSING",
+  "GIT_SAVED",
+  "CONSOLE_SAVED",
   "DELETED",
 ]);
 
@@ -656,9 +664,11 @@ function InfoTab({
   // change the service, and the graph is the fastest answer to "what talks to
   // what" for everyone else - auditors and security included.
   const graph = graphFor(doc);
-  // The stand's name: the order carries only its id.
+  // The stand's name: the order carries only its id. Its mode says whether
+  // there is an Argo CD application to point at.
   const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
-  const standName = stands?.find((s) => s.id === r.stand_id)?.name;
+  const stand = stands?.find((s) => s.id === r.stand_id);
+  const standName = stand?.name;
   return (
     <Card className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -704,7 +714,7 @@ function InfoTab({
         <div className="flex flex-col items-start gap-3 pt-2">
           <Fields>
             <Field label="Чарт" value={`${r.chart_project}/${r.chart_name}`} />
-            <Field label="Приложение в ArgoCD" value={r.argocd_app_name} href={argocdUrl} />
+            {deploys(stand) && <Field label="Приложение в ArgoCD" value={r.argocd_app_name} href={argocdUrl} />}
           </Fields>
           <ValuesModalButton request={r} />
         </div>

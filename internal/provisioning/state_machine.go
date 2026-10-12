@@ -5,7 +5,8 @@ import "console/pkg/models"
 // transitions is the allowed FSM edges (see spec lifecycle diagram).
 var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 	models.StatusDraft: {
-		models.StatusMRCreated: true,
+		models.StatusMRCreated:    true,
+		models.StatusConsoleSaved: true, // placed on a stand that keeps orders in the portal
 	},
 	// A change closed instead of merged lands the order in one of these two, and
 	// which one depends on what the change was for - see closedChangeTarget.
@@ -21,8 +22,22 @@ var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 	models.StatusMRMerged: {
 		models.StatusDeploying:       true,
 		models.StatusArgoMissing:     true,
+		models.StatusGitSaved:        true, // the stand only keeps files in Git: nothing deploys them
 		models.StatusMRCreated:       true, // update opens a new MR
 		models.StatusDeleteRequested: true,
+	},
+	// The two resting states of a stand that does not deploy. An order is
+	// edited and deleted from them the way it is from HEALTHY; a Git-only order
+	// goes through merge requests for that, a console-only one changes in
+	// place and leaves without one. MR_MERGED is the way back for a stand
+	// switched to deploying (a later stage), so the edge is here already.
+	models.StatusGitSaved: {
+		models.StatusMRCreated:       true,
+		models.StatusDeleteRequested: true,
+		models.StatusMRMerged:        true,
+	},
+	models.StatusConsoleSaved: {
+		models.StatusDeleted: true,
 	},
 	models.StatusDeploying: {
 		models.StatusHealthy:         true,

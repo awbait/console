@@ -87,7 +87,18 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 		}
 	}
 
-	// 2) reconcile against ArgoCD
+	// 2) reconcile against ArgoCD. Not on a stand nothing deploys from: there
+	// a merged change is the end of the road, and a merged deletion is the
+	// deletion.
+	if !s.standOf(ctx, r).Deploys() {
+		switch r.Status {
+		case models.StatusMRMerged:
+			s.tryTransition(ctx, r, models.StatusGitSaved)
+		case models.StatusDeleteMRMerged:
+			s.markDeleted(ctx, r)
+		}
+		return
+	}
 	switch r.Status {
 	case models.StatusMRMerged:
 		if app, err := s.argo.GetApplication(ctx, r.ArgoCDAppName); err == nil {

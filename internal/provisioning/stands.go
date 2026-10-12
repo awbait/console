@@ -28,6 +28,12 @@ const (
 	MsgStandGitLocked = "Нельзя изменить раскладку или путь: на стенде есть заказы, кроме черновиков и удалённых."
 	MsgStandPathClear = "Путь в GitLab нельзя оставить пустым."
 	MsgStandNoPath    = "У стенда «%s» не задан путь в GitLab, поэтому заказ не отправлен. Попросите администратора указать путь на странице стенда."
+	MsgStandMode      = "Выберите режим из списка."
+	MsgStandRegistry  = "Укажите адрес реестра без схемы, например harbor.example.com. Допустимы латинские буквы, цифры, точка, дефис, двоеточие для порта и «/» для пути."
+	MsgStandModeLock  = "Нельзя изменить режим: на стенде есть заказы, кроме черновиков и удалённых."
+	MsgSyncMode       = "Нельзя запустить синхронизацию с кластером: стенд не разворачивает сервисы. Синхронизация доступна только в режиме «Разворачивать»."
+	MsgPullMode       = "Нельзя загрузить значения из Git: в режиме «Только консоль» файлы заказа в Git не создаются."
+	MsgManifestsMode  = "Манифесты Argo CD доступны только для стендов в режиме «Разворачивать»."
 )
 
 // standOf is the stand an order is on, for the paths its files take. An order
@@ -47,6 +53,12 @@ func (s *Service) standOf(ctx context.Context, r *models.Request) *models.Stand 
 // configured cluster and group, laid out the way every order always was.
 func (s *Service) fallbackStand() *models.Stand {
 	return &models.Stand{DefaultCluster: s.defaultCluster, Layout: models.LayoutGroup, GitPath: s.gitops.TopGroup}
+}
+
+// chartRegistryOf is the registry an order's application takes its chart
+// from: the stand's own, or the platform's when the stand names none.
+func (s *Service) chartRegistryOf(ctx context.Context, r *models.Request) string {
+	return s.standOf(ctx, r).ChartRegistry
 }
 
 // repoPathOf is the full path of the repository an order's files are in.
@@ -178,6 +190,17 @@ func checkStand(st *models.Stand, requirePath bool) error {
 	if !models.ValidLayout(st.Layout) {
 		return &ValidationError{Message: MsgStandLayout}
 	}
+	st.Mode = strings.TrimSpace(st.Mode)
+	if st.Mode == "" {
+		st.Mode = models.ModeDeploy
+	}
+	if !models.ValidMode(st.Mode) {
+		return &ValidationError{Message: MsgStandMode}
+	}
+	st.ChartRegistry = strings.Trim(strings.TrimSpace(st.ChartRegistry), "/")
+	if st.ChartRegistry != "" && !models.ValidChartRegistry(st.ChartRegistry) {
+		return &ValidationError{Message: MsgStandRegistry}
+	}
 	if st.GitPath == "" {
 		if requirePath {
 			return &ValidationError{Message: MsgStandPathEmpty}
@@ -239,10 +262,16 @@ func (s *Service) UpdateStand(ctx context.Context, u *models.User, st *models.St
 	if st.GitPath == "" && cur.GitPath != "" {
 		return &ValidationError{Message: MsgStandPathClear}
 	}
-	if cur.Layout != st.Layout || cur.GitPath != st.GitPath {
+	// The mode is locked for the same reason as the layout: the orders on the
+	// stand went as far as the mode said, and a new mode would leave them
+	// somewhere the next order is not. Moving them is a later stage's job.
+	if cur.Layout != st.Layout || cur.GitPath != st.GitPath || cur.Mode != st.Mode {
 		locked, err := s.standLocked(ctx, st.ID)
 		if err != nil {
 			return err
+		}
+		if locked && cur.Mode != st.Mode {
+			return &ValidationError{Message: MsgStandModeLock}
 		}
 		if locked {
 			return &ValidationError{Message: MsgStandGitLocked}

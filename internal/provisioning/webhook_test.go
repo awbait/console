@@ -69,7 +69,7 @@ func TestImportedRepoGetsWebhook(t *testing.T) {
 		ServiceName: "pg9", Cluster: "in-cluster", Namespace: "pg9-ns",
 		ArgoCDAppName: "core-postgres-pg9",
 	}
-	appYAML, err := s.gitops.RenderApplication(want, webURLFor("managed-services/team-core/postgres"))
+	appYAML, err := s.gitops.RenderApplication(want, webURLFor("managed-services/team-core/postgres"), "")
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}

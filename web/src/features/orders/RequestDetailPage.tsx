@@ -20,9 +20,10 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
-import { isLive } from "@/api/orderStatus";
 import { changeInFlightText } from "@/api/errorText";
-import type { ViewDocument } from "@/api/types";
+import { isLive } from "@/api/orderStatus";
+import { qk } from "@/api/queryKeys";
+import { deploys, type ViewDocument } from "@/api/types";
 import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
@@ -40,8 +41,8 @@ import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
 import { dateInWords, fmtDateTime } from "@/lib/time";
 import { ConflictDialog } from "./ConflictDialog";
-import { copyText } from "./copyText";
 import { CopyToStandDialog } from "./CopyToStandDialog";
+import { copyText } from "./copyText";
 import { pendingChangeNotice } from "./pendingChange";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
@@ -119,6 +120,11 @@ export function RequestDetailPage() {
       navigate("/requests", { replace: true });
     }
   }, [team, data, user, navigate]);
+  // The order's stand, for what its mode allows: a stand that does not deploy
+  // has no cluster to sync with, and one that keeps orders in the portal has
+  // no Git to pull from.
+  const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
+  const stand = stands?.find((s) => s.id === data?.request.stand_id);
 
   if (loading) return <SkeletonRows rows={5} />;
   if (error instanceof HttpError && error.status === 404)
@@ -350,7 +356,8 @@ export function RequestDetailPage() {
                 Удалить из портала
               </button>
             )
-            : editable && (
+            : editable &&
+              stand?.mode !== "console" && (
               <button
                 onClick={onPull}
                 disabled={pulling}
@@ -489,7 +496,7 @@ export function RequestDetailPage() {
           onContinue={isDraft && modifiable ? () => navigate(`/requests/${r.id}/edit`) : undefined}
           onSubmit={isDraft && modifiable ? onSubmit : undefined}
           onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
-          onSync={!isDraft && user?.role === "admin" ? onSync : undefined}
+          onSync={!isDraft && user?.role === "admin" && deploys(stand) ? onSync : undefined}
           onCopy={modifiable ? () => setCopying(true) : undefined}
           onDelete={modifiable && !openMR ? () => setConfirmDelete(true) : undefined}
           notify={canUpgrade}

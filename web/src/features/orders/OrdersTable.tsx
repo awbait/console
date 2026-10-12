@@ -18,9 +18,9 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
-import { qk } from "@/api/queryKeys";
 import { isLive } from "@/api/orderStatus";
-import type { OrderRequest } from "@/api/types";
+import { qk } from "@/api/queryKeys";
+import { deploys, type OrderRequest } from "@/api/types";
 import { useCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
@@ -38,11 +38,11 @@ import { ErrorBox, LinkButton, SkeletonRows } from "@/components/ui";
 import { orderNamespace } from "@/form/namespace";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer } from "@/lib/semver";
-import { fmtDateTime } from "@/lib/time";
 import { subscribe } from "@/lib/sse";
+import { fmtDateTime } from "@/lib/time";
 import { standText } from "../stands/text";
-import { copyText } from "./copyText";
 import { CopyToStandDialog } from "./CopyToStandDialog";
+import { copyText } from "./copyText";
 
 interface Props {
   title: string;
@@ -100,7 +100,8 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   );
   // Stands, to name the one each order is on: the row carries only the id.
   const { data: stands } = useAsync((signal) => api.listStands(signal), [], qk.stands());
-  const standName = (r: OrderRequest) => stands?.find((s) => s.id === r.stand_id)?.name ?? "";
+  const standOf = (r: OrderRequest) => stands?.find((s) => s.id === r.stand_id);
+  const standName = (r: OrderRequest) => standOf(r)?.name ?? "";
 
   // Live updates: a global SSE stream pushes a "status_changed" signal on any
   // request status change; we re-fetch the (team-scoped) list. Browser handles
@@ -507,7 +508,9 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       isDraft={isDraft}
                       onOpen={() => navigate(`/requests/${r.id}`)}
                       onContinue={() => navigate(`/requests/${r.id}/edit`)}
-                      onSync={!isDraft && user?.role === "admin" ? () => onSync(r) : undefined}
+                      onSync={
+                        !isDraft && user?.role === "admin" && deploys(standOf(r)) ? () => onSync(r) : undefined
+                      }
                       onCopy={modifiable ? () => setCopying(r) : undefined}
                       onDelete={modifiable ? () => setDeleting(r) : undefined}
                     />

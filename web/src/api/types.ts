@@ -59,6 +59,8 @@ export type RequestStatus =
   | "HEALTHY"
   | "DEGRADED"
   | "ARGO_MISSING"
+  | "GIT_SAVED"
+  | "CONSOLE_SAVED"
   | "DELETE_REQUESTED"
   | "DELETE_MR_MERGED"
   | "DELETED";
@@ -399,13 +401,27 @@ export interface Stand {
   // subgroups live under, or the one repository every order is a folder in.
   layout: StandLayout;
   git_path: string;
-  // The stand has orders in Git, so its layout and path are read-only.
+  // How far an order on the stand goes: deployed by Argo CD, left in Git, or
+  // kept in the portal only.
+  mode: StandMode;
+  // The registry Argo CD takes the stand's charts from; "" is the platform's.
+  chart_registry: string;
+  // The stand has orders in Git, so its layout, path and mode are read-only.
   locked: boolean;
   created_at?: string;
   updated_at?: string;
 }
 
 export type StandLayout = "group" | "repository";
+export type StandMode = "deploy" | "git" | "console";
+
+// deploys reports whether Argo CD deploys the stand's orders, which is what
+// the Argo CD actions and fields of an order are about. A stand this build
+// does not know, or none at all, reads as deploying: the behaviour every
+// order always had.
+export function deploys(stand: Stand | undefined | null): boolean {
+  return !stand?.mode || stand.mode === "deploy";
+}
 
 // One check of a stand, run when its page opens (see GET /stands/{id}/checks).
 export interface StandCheck {

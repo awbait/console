@@ -41,6 +41,11 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 	var discovered []discoveredOn
 	claimed := map[string]bool{}
 	for _, st := range stands {
+		// A stand that keeps its orders in the portal has nothing in Git to
+		// adopt, and whatever is under its path is not its orders.
+		if !st.WritesGit() {
+			continue
+		}
 		apps, err := s.discoverStand(ctx, st)
 		if err != nil {
 			return err
@@ -93,7 +98,11 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if verr != nil {
 			continue // no values.yaml (or unreadable) - incomplete instance
 		}
-		expected, rerr := s.gitops.RenderApplication(r, d.ProjectWebURL)
+		var registry string
+		if dd.stand != nil {
+			registry = dd.stand.ChartRegistry
+		}
+		expected, rerr := s.gitops.RenderApplication(r, d.ProjectWebURL, registry)
 		if rerr != nil || !yamlEqual([]byte(expected), d.Content) {
 			continue // application.yaml is not identical to ours - skip
 		}
@@ -118,8 +127,11 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		}
 		// Seed the status from current ArgoCD health so the lifecycle reconciler
 		// takes over normally; default to DEPLOYING when the app isn't visible yet.
+		// On a stand nothing deploys from, the files in Git are the whole story.
 		r.Status = models.StatusDeploying
-		if app, aerr := s.argo.GetApplication(ctx, r.ArgoCDAppName); aerr == nil {
+		if !dd.stand.Deploys() {
+			r.Status = models.StatusGitSaved
+		} else if app, aerr := s.argo.GetApplication(ctx, r.ArgoCDAppName); aerr == nil {
 			if st := mapHealth(app.Health); st != "" {
 				r.Status = st
 			}

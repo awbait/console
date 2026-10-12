@@ -23,6 +23,9 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 	if r.DeletedAt != nil {
 		return nil, models.ErrNotFound
 	}
+	if !s.standOf(ctx, r).WritesGit() {
+		return nil, &ValidationError{Message: MsgPullMode}
+	}
 
 	proj, err := s.gl.GetProject(ctx, s.repoPathOf(ctx, r))
 	if err != nil {

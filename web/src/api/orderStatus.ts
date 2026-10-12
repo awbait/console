@@ -21,6 +21,11 @@ export const LIVE_STATUSES: RequestStatus[] = [
   "HEALTHY",
   "DEGRADED",
   "ARGO_MISSING",
+  // Where an order rests on a stand that does not deploy: its files are in
+  // Git, or it is kept in the portal. Edited and deleted from there like any
+  // live order.
+  "GIT_SAVED",
+  "CONSOLE_SAVED",
 ];
 
 // isLive reports whether the order stands for a service that exists. Takes a

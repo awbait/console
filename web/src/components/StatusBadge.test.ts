@@ -14,10 +14,18 @@ const ALL_STATUSES: RequestStatus[] = [
   "HEALTHY",
   "DEGRADED",
   "ARGO_MISSING",
+  "GIT_SAVED",
+  "CONSOLE_SAVED",
   "DELETE_REQUESTED",
   "DELETE_MR_MERGED",
   "DELETED",
 ];
+
+// Where an order rests on a stand that does not deploy. The person chose a
+// stand called "Только Git" or "Только консоль", so these two badges name the
+// place the order went, Git included, and the rules below exempt them.
+const RESTING: RequestStatus[] = ["GIT_SAVED", "CONSOLE_SAVED"];
+const DEPLOYED_STATUSES = ALL_STATUSES.filter((s) => !RESTING.includes(s));
 
 describe("statusGroup", () => {
   test("every state of the order has a group to be shown in", () => {
@@ -50,7 +58,7 @@ describe("STATUS_GROUPS", () => {
 
 describe("labels", () => {
   test("say what happened to the service, not how the portal recorded it", () => {
-    for (const s of ALL_STATUSES) {
+    for (const s of DEPLOYED_STATUSES) {
       // Merge requests, branches and Git are the portal's own bookkeeping, and
       // Argo CD is the name of a system nobody ordered. None of them belong in
       // a badge the person who ordered the service reads.
@@ -59,9 +67,15 @@ describe("labels", () => {
   });
 
   test("are written in Russian, in full words", () => {
-    for (const s of ALL_STATUSES) {
+    for (const s of DEPLOYED_STATUSES) {
       expect(statusMeta(s).label).toMatch(/^[А-ЯЁ][а-яё ]+$/);
     }
+  });
+
+  test("a resting order names where it went", () => {
+    expect(statusMeta("GIT_SAVED").label).toBe("Сохранён в Git");
+    expect(statusMeta("CONSOLE_SAVED").label).toBe("Сохранён в консоли");
+    for (const s of RESTING) expect(statusNextStep(s)?.hint).toMatch(/не разворачивает|только в портале/i);
   });
 
   test("name the service or the order, not what the portal is doing about it", () => {

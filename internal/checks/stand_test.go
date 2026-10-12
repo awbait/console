@@ -81,6 +81,34 @@ func TestStandGitGroupLayout(t *testing.T) {
 	}
 }
 
+// What the stand's mode leaves to check: a Git-only stand is checked in
+// GitLab and skipped in Argo CD, a console-only stand is skipped everywhere,
+// each with a reason naming the mode rather than a missing upstream.
+func TestStandChecksByMode(t *testing.T) {
+	ctx := context.Background()
+	gl := &fakeGitLab{account: &gitlab.Account{ID: 1}, access: gitlab.AccessOwner}
+	orders := []*models.Request{standOrder("stage", "a")}
+
+	git := &models.Stand{Name: "archive", DefaultCluster: "stage", Layout: models.LayoutGroup, GitPath: "managed-services/archive", Mode: models.ModeGit}
+	got := byID(Stand(ctx, gl, &fakeArgo{}, git, orders))
+	if r := got[IDStandGit]; r.Verdict != VerdictOK || r.Reason != reasonRoleEnough {
+		t.Fatalf("git-only stand is still checked in GitLab: %+v", r)
+	}
+	for _, id := range []string{IDStandCluster, IDStandArgo} {
+		if r := got[id]; r.Verdict != VerdictSkip || r.Reason != reasonModeGit {
+			t.Fatalf("%s on a git-only stand: %+v", id, r)
+		}
+	}
+
+	console := &models.Stand{Name: "sandbox", DefaultCluster: "stage", Layout: models.LayoutGroup, GitPath: "managed-services/sandbox", Mode: models.ModeConsole}
+	got = byID(Stand(ctx, gl, &fakeArgo{}, console, orders))
+	for _, id := range []string{IDStandGit, IDStandCluster, IDStandArgo} {
+		if r := got[id]; r.Verdict != VerdictSkip || r.Reason != reasonModeConsole {
+			t.Fatalf("%s on a console-only stand: %+v", id, r)
+		}
+	}
+}
+
 // Every cluster the stand's orders go to, and its default, has to be
 // registered; the missing ones are named.
 func TestStandClusters(t *testing.T) {
