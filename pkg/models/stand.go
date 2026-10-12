@@ -33,8 +33,17 @@ type Stand struct {
 	// them would mean moving folders in Git.
 	Layout  string `json:"layout"`
 	GitPath string `json:"git_path"`
+	// Mode is how far an order on the stand goes: written to Git and deployed
+	// by Argo CD (ModeDeploy), written to Git and left there (ModeGit), or kept
+	// in the portal only (ModeConsole). Fixed while the stand has orders, like
+	// the layout: the orders already placed went as far as the mode said.
+	Mode string `json:"mode"`
+	// ChartRegistry is the registry the stand's application manifests take
+	// their chart from, "{ChartRegistry}/{chart_project}". Empty means the
+	// platform's configured registry (CHART_REGISTRY).
+	ChartRegistry string `json:"chart_registry"`
 	// Locked reports that the stand has orders beyond drafts and deleted ones,
-	// so its layout and path are read-only. Computed on read, never stored.
+	// so its layout, path and mode are read-only. Computed on read, never stored.
 	Locked    bool      `json:"locked"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -55,6 +64,40 @@ const (
 
 // ValidLayout reports whether s names a layout.
 func ValidLayout(s string) bool { return s == LayoutGroup || s == LayoutRepository }
+
+// The three modes of a stand.
+const (
+	// ModeDeploy: files in Git, a merge request, and Argo CD deploying what
+	// was merged while the portal follows its status. How every order worked
+	// before stands existed.
+	ModeDeploy = "deploy"
+	// ModeGit: the same files and merge request, and nothing after the merge:
+	// the order ends in StatusGitSaved, and whatever applies the files is not
+	// the portal's business.
+	ModeGit = "git"
+	// ModeConsole: nothing in Git at all. The order is kept in the portal and
+	// ends in StatusConsoleSaved as soon as it is placed.
+	ModeConsole = "console"
+)
+
+// ValidMode reports whether s names a mode.
+func ValidMode(s string) bool { return s == ModeDeploy || s == ModeGit || s == ModeConsole }
+
+// WritesGit reports whether orders of the stand are written to Git. A nil
+// stand and a stand written before modes existed answer as ModeDeploy, the
+// behaviour every order had.
+func (s *Stand) WritesGit() bool { return s == nil || s.Mode != ModeConsole }
+
+// Deploys reports whether Argo CD deploys the stand's orders and the portal
+// follows them there.
+func (s *Stand) Deploys() bool { return s == nil || s.Mode == "" || s.Mode == ModeDeploy }
+
+// chartRegistryRe is a registry host with an optional port and path, the way
+// CHART_REGISTRY is written: no scheme, because it lands in an OCI repoURL.
+var chartRegistryRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$`)
+
+// ValidChartRegistry reports whether r may be a stand's chart registry.
+func ValidChartRegistry(r string) bool { return len(r) <= MaxGitPath && chartRegistryRe.MatchString(r) }
 
 // gitPathRe is what GitLab accepts as a full path: segments of letters,
 // digits, dots, dashes and underscores, separated by slashes. Checked here

@@ -10,14 +10,20 @@ import (
 type RequestStatus string
 
 const (
-	StatusDraft           RequestStatus = "DRAFT"
-	StatusMRCreated       RequestStatus = "MR_CREATED"
-	StatusMRClosed        RequestStatus = "MR_CLOSED"
-	StatusMRMerged        RequestStatus = "MR_MERGED"
-	StatusDeploying       RequestStatus = "DEPLOYING"
-	StatusHealthy         RequestStatus = "HEALTHY"
-	StatusDegraded        RequestStatus = "DEGRADED"
-	StatusArgoMissing     RequestStatus = "ARGO_MISSING"
+	StatusDraft       RequestStatus = "DRAFT"
+	StatusMRCreated   RequestStatus = "MR_CREATED"
+	StatusMRClosed    RequestStatus = "MR_CLOSED"
+	StatusMRMerged    RequestStatus = "MR_MERGED"
+	StatusDeploying   RequestStatus = "DEPLOYING"
+	StatusHealthy     RequestStatus = "HEALTHY"
+	StatusDegraded    RequestStatus = "DEGRADED"
+	StatusArgoMissing RequestStatus = "ARGO_MISSING"
+	// Where an order ends on a stand that does not deploy: its files are in
+	// Git and nothing follows (ModeGit), or it is kept in the portal and
+	// nothing was written anywhere (ModeConsole). Both are live: the order
+	// can be edited and deleted from them.
+	StatusGitSaved        RequestStatus = "GIT_SAVED"
+	StatusConsoleSaved    RequestStatus = "CONSOLE_SAVED"
 	StatusDeleteRequested RequestStatus = "DELETE_REQUESTED"
 	StatusDeleteMRMerged  RequestStatus = "DELETE_MR_MERGED"
 	StatusDeleted         RequestStatus = "DELETED"
@@ -132,11 +138,11 @@ type Request struct {
 	// from, and delete a folder that is not the one holding its files.
 	// Empty on rows written before this was stored; callers fall back to the
 	// layout those rows were created with ({cluster}/{service}).
-	InstancePath string `json:"instance_path,omitempty"`
-	Version       int             `json:"version"` // optimistic lock
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-	DeletedAt     *time.Time      `json:"deleted_at,omitempty"`
+	InstancePath string     `json:"instance_path,omitempty"`
+	Version      int        `json:"version"` // optimistic lock
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 	// Drifted is set by the drift reconciler when the order's committed Git state
 	// (values.yaml / chart version) was changed outside the portal. DriftDetail
 	// holds a human-readable summary of what diverged. Read-only signal - the
@@ -163,13 +169,13 @@ func (r *Request) DestNamespace() string {
 
 // RequestMR links an order to a GitLab merge request.
 type RequestMR struct {
-	ID              string    `json:"id"`
-	RequestID       string    `json:"request_id"`
-	GitLabProjectID int       `json:"gitlab_project_id"`
-	MRIID           int       `json:"mr_iid"`
-	MRURL           string    `json:"mr_url"`
-	Status          MRStatus  `json:"mr_status"`
-	Action          MRAction  `json:"action"`
+	ID              string   `json:"id"`
+	RequestID       string   `json:"request_id"`
+	GitLabProjectID int      `json:"gitlab_project_id"`
+	MRIID           int      `json:"mr_iid"`
+	MRURL           string   `json:"mr_url"`
+	Status          MRStatus `json:"mr_status"`
+	Action          MRAction `json:"action"`
 	// BlockedReason is why GitLab last refused to merge this change, in GitLab's
 	// own vocabulary (detailed_merge_status). Empty while nothing is refusing.
 	// Stored rather than only reported: the portal says this once, and a reason

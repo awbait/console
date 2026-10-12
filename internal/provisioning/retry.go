@@ -136,7 +136,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 
 	prevValues, prevVersion := r.ValuesYAML, r.ChartVersion
 	r.ValuesYAML, r.ChartVersion = valuesYAML, version
-	appYAML, err := s.gitops.RenderApplication(r, proj.WebURL)
+	appYAML, err := s.gitops.RenderApplication(r, proj.WebURL, s.chartRegistryOf(ctx, r))
 	if err != nil {
 		r.ValuesYAML, r.ChartVersion = prevValues, prevVersion
 		s.logger().Warn("merge retry refused: application.yaml did not render",

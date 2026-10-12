@@ -23,7 +23,8 @@ func (s *Service) CheckDrift(ctx context.Context) error {
 		return err
 	}
 	for _, r := range active {
-		if !driftCheckable(r.Status) {
+		// An order kept in the portal only has nothing in Git to drift from.
+		if !driftCheckable(r.Status) || !s.standOf(ctx, r).WritesGit() {
 			continue
 		}
 		s.checkDriftOne(ctx, r)
@@ -36,7 +37,7 @@ func (s *Service) CheckDrift(ctx context.Context) error {
 // meaningful. Drafts and not-yet-merged orders are skipped.
 func driftCheckable(st models.RequestStatus) bool {
 	switch st {
-	case models.StatusMRMerged, models.StatusDeploying, models.StatusHealthy, models.StatusDegraded:
+	case models.StatusMRMerged, models.StatusDeploying, models.StatusHealthy, models.StatusDegraded, models.StatusGitSaved:
 		return true
 	default:
 		return false

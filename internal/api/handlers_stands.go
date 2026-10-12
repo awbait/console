@@ -20,10 +20,15 @@ type standBody struct {
 	DefaultCluster string `json:"default_cluster"`
 	Layout         string `json:"layout"`
 	GitPath        string `json:"git_path"`
+	Mode           string `json:"mode"`
+	ChartRegistry  string `json:"chart_registry"`
 }
 
 func (b standBody) stand(id string) *models.Stand {
-	return &models.Stand{ID: id, Name: b.Name, DefaultCluster: b.DefaultCluster, Layout: b.Layout, GitPath: b.GitPath}
+	return &models.Stand{
+		ID: id, Name: b.Name, DefaultCluster: b.DefaultCluster,
+		Layout: b.Layout, GitPath: b.GitPath, Mode: b.Mode, ChartRegistry: b.ChartRegistry,
+	}
 }
 
 func (s *Server) handleListStands(w http.ResponseWriter, r *http.Request) {

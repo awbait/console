@@ -76,6 +76,9 @@ export function OrderMetaCard({
   showErrors?: boolean;
 }) {
   const showVersionSelect = !!onVersion && !!versions && versions.length > 1;
+  const standMode = stands.find((s) => s.id === standId)?.mode;
+  const standNote =
+    standMode === "git" ? standText.orderNoteGit : standMode === "console" ? standText.orderNoteConsole : null;
   return (
     <Card className="flex flex-col gap-3">
       <TextField
@@ -97,14 +100,19 @@ export function OrderMetaCard({
         />
       )}
       {stands.length > 0 ? (
-        <Select
-          label={standText.orderStandLabel}
-          description={standText.orderStandDescription}
-          isRequired
-          selectedKey={standId || null}
-          onSelectionChange={onStand}
-          options={stands.map((s) => ({ id: s.id, label: s.name }))}
-        />
+        <>
+          <Select
+            label={standText.orderStandLabel}
+            description={standText.orderStandDescription}
+            isRequired
+            selectedKey={standId || null}
+            onSelectionChange={onStand}
+            options={stands.map((s) => ({ id: s.id, label: s.name }))}
+          />
+          {/* A stand that will not deploy the service says so before the order
+              is placed, not after, in the status nobody expected. */}
+          {standNote && <p className="-mt-1 text-sm text-amber-700">{standNote}</p>}
+        </>
       ) : (
         // No stand to choose from yet: the order still goes to the one the
         // platform falls back to, so the form is not blocked, only told.

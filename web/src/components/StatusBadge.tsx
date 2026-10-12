@@ -4,6 +4,8 @@ import {
   IconCircleCheck,
   IconCircleX,
   IconClock,
+  IconDeviceDesktop,
+  IconGitBranch,
   IconLoader2,
   IconPencil,
   IconRocket,
@@ -32,6 +34,8 @@ export type StatusGroupKey =
   | "accepted"
   | "deploying"
   | "healthy"
+  | "savedGit"
+  | "savedConsole"
   | "broken"
   | "rejected"
   | "deleting"
@@ -102,6 +106,20 @@ const GROUP_META: Record<StatusGroupKey, StatusMeta> = {
     fg: "text-slate-400",
     badge: "bg-gray-200 text-gray-600",
   },
+  // Where an order rests on a stand nothing deploys from. Calm colours, no
+  // spinner: nothing is coming, and that is by design, not a wait.
+  savedGit: {
+    label: "Сохранён в Git",
+    Icon: IconGitBranch,
+    fg: "text-teal-600",
+    badge: "bg-teal-100 text-teal-800",
+  },
+  savedConsole: {
+    label: "Сохранён в консоли",
+    Icon: IconDeviceDesktop,
+    fg: "text-slate-600",
+    badge: "bg-slate-200 text-slate-700",
+  },
 };
 
 // Which group each state falls into. The pairs that share one group are the ones
@@ -115,6 +133,8 @@ const GROUP_OF: Record<string, StatusGroupKey> = {
   MR_MERGED: "deploying",
   DEPLOYING: "deploying",
   HEALTHY: "healthy",
+  GIT_SAVED: "savedGit",
+  CONSOLE_SAVED: "savedConsole",
   DEGRADED: "broken",
   ARGO_MISSING: "broken",
   MR_CLOSED: "rejected",
@@ -126,7 +146,18 @@ const GROUP_OF: Record<string, StatusGroupKey> = {
 // The groups in lifecycle order, each with the states it covers: what a status
 // filter offers, so a filter can never drift from what the badges say.
 export const STATUS_GROUPS: { key: StatusGroupKey; statuses: RequestStatus[] }[] = (
-  ["draft", "accepted", "deploying", "healthy", "broken", "rejected", "deleting", "deleted"] as StatusGroupKey[]
+  [
+    "draft",
+    "accepted",
+    "deploying",
+    "healthy",
+    "savedGit",
+    "savedConsole",
+    "broken",
+    "rejected",
+    "deleting",
+    "deleted",
+  ] as StatusGroupKey[]
 ).map((key) => ({
   key,
   statuses: (Object.keys(GROUP_OF) as RequestStatus[]).filter((s) => GROUP_OF[s] === key),
@@ -183,6 +214,16 @@ const NEXT_STEP: Record<string, NextStep> = {
   MR_CLOSED: {
     title: "Заказ отклонён",
     hint: "Заказ не применили, сервис не создан. Отправьте заказ заново или напишите в поддержку платформы.",
+  },
+  // Not dead ends, but resting states a person may read as "stuck": the
+  // stand was never going to deploy this, and the page says so.
+  GIT_SAVED: {
+    title: "Файлы заказа сохранены в Git",
+    hint: "Стенд не разворачивает сервисы, файлы заказа находятся в Git и применяются вне портала. Портал не отслеживает их применение и состояние сервиса.",
+  },
+  CONSOLE_SAVED: {
+    title: "Заказ сохранён только в консоли",
+    hint: "Заказ хранится только в портале. В Git и кластер ничего не отправляется.",
   },
 };
 

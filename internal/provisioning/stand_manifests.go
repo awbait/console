@@ -29,7 +29,32 @@ type standManifestData struct {
 	Project     string // the Argo CD project the applications belong to
 	Namespace   string // where Argo CD reads Applications from
 	TokenSecret string // the secret the SCM generator reads GitLab with
+	// Registry is the stand's own chart registry, or "" for the platform's,
+	// which Argo CD was given credentials for at installation.
+	Registry string
 }
+
+// standRegistryManifest is the credential Argo CD pulls charts from a
+// stand's own registry with: a repo-creds secret over the registry host, so
+// every chart project under it is covered. Appended when the stand names a
+// registry of its own.
+var standRegistryManifest = template.Must(template.New("registry").Parse(`---
+# Argo CD reads the charts of stand "{{.Stand}}" from {{.Registry}}, not from
+# the platform registry: this gives it the credentials for that registry.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-{{.Name}}
+  namespace: {{.Namespace}}
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+stringData:
+  type: helm
+  enableOCI: "true"
+  url: {{.Registry}}
+  username: "<registry user>"
+  password: "<registry password>"
+`))
 
 // standGroupManifests is the app-of-apps of a stand laid out as a group: the
 // SCM generator finds every repository under it, subgroups included, and
@@ -154,8 +179,12 @@ spec:
 const standSCMTokenSecret = "gitlab-scm-token"
 
 // StandManifests renders the Argo CD manifests for a stand. A stand without a
-// path has nothing to wire.
+// path has nothing to wire, and a stand nothing deploys from has no Argo CD
+// to wire to.
 func (s *Service) StandManifests(st *models.Stand) (string, error) {
+	if !st.Deploys() {
+		return "", &ValidationError{Message: MsgManifestsMode}
+	}
 	if st.GitPath == "" {
 		return "", &ValidationError{Message: MsgStandPathEmpty}
 	}
@@ -175,6 +204,7 @@ func (s *Service) StandManifests(st *models.Stand) (string, error) {
 		Project:     s.gitops.ArgoProject,
 		Namespace:   ns,
 		TokenSecret: standSCMTokenSecret,
+		Registry:    st.ChartRegistry,
 	}
 	tmpl := standGroupManifests
 	if st.Layout == models.LayoutRepository {
@@ -183,6 +213,11 @@ func (s *Service) StandManifests(st *models.Stand) (string, error) {
 	var b bytes.Buffer
 	if err := tmpl.Execute(&b, d); err != nil {
 		return "", fmt.Errorf("stand manifests: %w", err)
+	}
+	if d.Registry != "" {
+		if err := standRegistryManifest.Execute(&b, d); err != nil {
+			return "", fmt.Errorf("stand manifests: %w", err)
+		}
 	}
 	return b.String(), nil
 }

@@ -322,9 +322,13 @@ spec:
 // RenderApplication produces the application.yaml content for a request: a
 // multi-source Application referencing the chart in the OCI registry plus the
 // adjacent values.yaml in this Git repo. repoURL is the Git repo (the chart
-// repo's web URL); the chart source is "{ChartRegistry}/{chart_project}".
-func (g *GitOps) RenderApplication(r *models.Request, repoURL string) (string, error) {
-	chartRepo := strings.TrimRight(g.ChartRegistry, "/") + "/" + r.ChartProject
+// repo's web URL); the chart source is "{registry}/{chart_project}", where
+// registry is the stand's own or, when empty, the configured ChartRegistry.
+func (g *GitOps) RenderApplication(r *models.Request, repoURL, registry string) (string, error) {
+	if registry == "" {
+		registry = g.ChartRegistry
+	}
+	chartRepo := strings.TrimRight(registry, "/") + "/" + r.ChartProject
 	// Use the canonical clone URL (".git"): GitLab 301-redirects the web URL
 	// (.../repo) to .../repo.git on /info/refs, and ArgoCD's git client does not
 	// follow that redirect ("failed to get git client ... status code: 301").

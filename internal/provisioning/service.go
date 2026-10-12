@@ -635,11 +635,19 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	}
 	s.event(ctx, r, byUser(u), "created", "", "")
 
+	// A stand that keeps its orders in the portal: placed is saved, and that
+	// is the whole lifecycle.
+	if !stand.WritesGit() {
+		if err := s.transition(ctx, r, models.StatusConsoleSaved, byUser(u)); err != nil {
+			return r, err
+		}
+		return r, nil
+	}
 	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {
 		return r, err // DRAFT persists; caller sees upstream error
 	}
-	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
+	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL, stand.ChartRegistry)
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -684,11 +692,18 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	}
 	r.ValuesYAML = valuesYAML
 
-	proj, err := s.ensureRepo(ctx, s.standOf(ctx, r), r.Team, r.ChartName)
+	stand := s.standOf(ctx, r)
+	if !stand.WritesGit() {
+		if err := s.transition(ctx, r, models.StatusConsoleSaved, byUser(u)); err != nil {
+			return r, err
+		}
+		return r, nil
+	}
+	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {
 		return r, err
 	}
-	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
+	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL, stand.ChartRegistry)
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -723,6 +738,9 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	}
 	if r.Status == models.StatusDraft {
 		return s.updateDraft(ctx, u, r, in)
+	}
+	if r.Status == models.StatusConsoleSaved {
+		return s.updateInPortal(ctx, u, r, in)
 	}
 	// Guard the FSM edge BEFORE touching Git: a live order can be edited only from
 	// a state that may advance to MR_CREATED (i.e. once the create MR is merged).
@@ -786,14 +804,15 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		}
 	}
 
-	proj, err := s.ensureRepo(ctx, s.standOf(ctx, r), r.Team, r.ChartName)
+	stand := s.standOf(ctx, r)
+	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {
 		return nil, err
 	}
 	r.ChartVersion = version
 	r.ValuesYAML = valuesYAML
 	r.EditorState = in.EditorState // nil keeps what the store already holds
-	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL)
+	appYAML, _ := s.gitops.RenderApplication(r, proj.WebURL, stand.ChartRegistry)
 	actions := []gitlab.FileAction{
 		{Action: "update", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "update", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -803,6 +822,44 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	}
 	if err := s.transitionAfterChange(ctx, r, models.StatusMRCreated, byUser(u)); err != nil {
 		return nil, err
+	}
+	return r, nil
+}
+
+// updateInPortal is the edit of an order on a stand that keeps its orders in
+// the portal: the values are checked the way a live edit checks them, and
+// then written in place, with a row in the history, because there is no Git
+// for a merge request to go to.
+func (s *Service) updateInPortal(ctx context.Context, u *models.User, r *models.Request, in UpdateInput) (*models.Request, error) {
+	version := r.ChartVersion
+	if in.Version != "" {
+		version = in.Version
+	}
+	if version != r.ChartVersion {
+		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+			return nil, err
+		}
+	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+		return nil, err
+	}
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	if err != nil {
+		return nil, err
+	}
+	changed := valuesYAML != r.ValuesYAML || version != r.ChartVersion
+	if !changed && (len(in.EditorState) == 0 || bytes.Equal(in.EditorState, r.EditorState)) {
+		return r, nil
+	}
+	r.ChartVersion = version
+	r.ValuesYAML = valuesYAML
+	if len(in.EditorState) > 0 {
+		r.EditorState = in.EditorState
+	}
+	if err := s.store.UpdateRequest(ctx, r); err != nil {
+		return nil, err
+	}
+	if changed {
+		s.event(ctx, r, byUser(u), "updated", "", "")
 	}
 	return r, nil
 }
@@ -939,6 +996,19 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		s.event(ctx, r, byUser(u), "draft_discarded", "", "")
 		return r, nil
 	}
+	// An order kept in the portal leaves the same way: nothing in Git, nothing
+	// in a cluster, so there is nothing to wait for.
+	if r.Status == models.StatusConsoleSaved {
+		now := time.Now()
+		r.DeletedAt = &now
+		r.Status = models.StatusDeleted
+		if err := s.store.UpdateRequest(ctx, r); err != nil {
+			return nil, err
+		}
+		s.event(ctx, r, byUser(u), "deleted", models.StatusConsoleSaved, models.StatusDeleted)
+		s.publishStatus(r.ID, string(models.StatusDeleted))
+		return r, nil
+	}
 	// Guard the FSM edge BEFORE touching Git: delete is only valid once the create
 	// MR is merged (MR_MERGED/DEPLOYING/HEALTHY/DEGRADED/ARGO_MISSING), never while
 	// the create MR is still open (MR_CREATED). Checking first avoids opening a
@@ -950,7 +1020,8 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	if err := s.guardOpenMR(ctx, id); err != nil {
 		return nil, err
 	}
-	proj, err := s.ensureRepo(ctx, s.standOf(ctx, r), r.Team, r.ChartName)
+	stand := s.standOf(ctx, r)
+	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {
 		return nil, err
 	}
@@ -984,9 +1055,12 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 	// manifest. Best effort - a service the portal cannot reach in Argo CD is not
 	// a reason to refuse to delete it from Git, and the delete then reports itself
 	// as unfinished (see tendDelete).
-	if err := s.argo.EnsureCascadingDelete(ctx, r.ArgoCDAppName); err != nil {
-		s.logger().Warn("delete may leave resources behind: application not prepared",
-			"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", err)
+	// Not on a stand nothing deploys from: there is no application to prepare.
+	if stand.Deploys() {
+		if err := s.argo.EnsureCascadingDelete(ctx, r.ArgoCDAppName); err != nil {
+			s.logger().Warn("delete may leave resources behind: application not prepared",
+				"order_id", r.ID, "argocd_app_name", r.ArgoCDAppName, "err", err)
+		}
 	}
 	actions := make([]gitlab.FileAction, 0, len(files))
 	for _, f := range files {
@@ -1011,6 +1085,9 @@ func (s *Service) ForceSync(ctx context.Context, u *models.User, id string) erro
 	}
 	if !u.IsAdmin() {
 		return ErrForbidden
+	}
+	if !s.standOf(ctx, r).Deploys() {
+		return &ValidationError{Message: MsgSyncMode}
 	}
 	start := time.Now()
 	err = s.argo.Sync(ctx, r.ArgoCDAppName)

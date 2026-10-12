@@ -44,7 +44,7 @@ func TestImportFromGit(t *testing.T) {
 		ServiceName: "pg9", Cluster: "in-cluster", Namespace: "pg9-ns",
 		ArgoCDAppName: "core-postgres-pg9",
 	}
-	appYAML, err := s.gitops.RenderApplication(want, webURL)
+	appYAML, err := s.gitops.RenderApplication(want, webURL, "")
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -110,7 +110,7 @@ func webURLFor(fullPath string) string { return "https://gitlab.local/" + fullPa
 
 func mustRender(t *testing.T, s *stack, repoFullPath string, r *models.Request) string {
 	t.Helper()
-	out, err := s.gitops.RenderApplication(r, webURLFor(repoFullPath))
+	out, err := s.gitops.RenderApplication(r, webURLFor(repoFullPath), "")
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
