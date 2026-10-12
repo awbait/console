@@ -148,6 +148,10 @@ type Config struct {
 	StatusUpdateMode   string        `env:"STATUS_UPDATE_MODE" envDefault:"hybrid" desc:"How the portal learns about changes: by polling with notifications on top, or by notifications alone."`
 	StatusPollInterval time.Duration `env:"STATUS_POLL_INTERVAL" envDefault:"15s" desc:"How often the portal reconciles orders against GitLab and Argo CD. Raise it once notifications are wired."`
 	DriftDetection     bool          `env:"DRIFT_DETECTION_ENABLED" envDefault:"true" desc:"Flag orders whose committed files were changed in Git outside the portal. Reads Git, never writes it."`
+	// The stand checks run on request from a stand page too; this is the
+	// background round that keeps the status page and the Argo CD wiring
+	// flag of every stand current.
+	StandChecksInterval time.Duration `env:"STAND_CHECKS_INTERVAL" envDefault:"5m" desc:"How often the stands are checked against GitLab and Argo CD in the background. Zero turns the round off; a stand page still runs its checks on request."`
 	// Off by default: it creates order rows.
 	ImportDiscovery bool `env:"IMPORT_DISCOVERY_ENABLED" envDefault:"false" desc:"Adopt manifests created directly in Git, bypassing the portal, as imported orders."`
 	// Off by default: it creates a publication row for every chart in the

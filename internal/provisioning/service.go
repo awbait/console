@@ -19,6 +19,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"console/internal/argocd"
 	"console/internal/catalog"
+	"console/internal/checks"
 	"console/internal/events"
 	"console/internal/gitlab"
 	"console/internal/observability"
@@ -80,6 +81,15 @@ type Service struct {
 	resyncMu   sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
+	// StandGitLab and StandArgo are what the checks of a stand read through
+	// (see stand_checks.go). Wired by main; nil leaves those checks unanswered,
+	// which is what tests and a portal without that upstream want.
+	StandGitLab checks.GitLabAPI
+	StandArgo   checks.StandArgoAPI
+	// StandChecksInterval is how often the background round checks every
+	// stand; zero turns the round off. The stand page runs them on request.
+	StandChecksInterval time.Duration
+	standChecks         standChecksState
 	// Hooks keeps the portal's merge-request webhook registered in GitLab. Wired
 	// by main only when the webhook is configured; nil (and nil-safe) otherwise,
 	// which is the local/fakes case.

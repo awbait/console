@@ -148,6 +148,7 @@ export const CONFIG_TEXT: Record<string, string> = {
     "Как портал узнаёт об изменениях: опросом с уведомлениями (hybrid) или только по уведомлениям (webhook).",
   STATUS_POLL_INTERVAL: "Как часто портал сверяется с внешними системами.",
   DRIFT_DETECTION_ENABLED: "Отмечать заказы, чьи файлы изменили в Git мимо портала.",
+  STAND_CHECKS_INTERVAL: "Как часто портал проверяет стенды.",
   IMPORT_DISCOVERY_ENABLED: "Добавлять в список заказов сервисы, заведённые в Git напрямую.",
   CATALOG_AUTODISCOVER: "Заводить черновики публикаций для чартов, найденных в реестре.",
 

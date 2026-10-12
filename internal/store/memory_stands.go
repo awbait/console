@@ -54,6 +54,8 @@ func (m *Memory) CreateStand(ctx context.Context, s *models.Stand) error {
 		}
 	}
 	standDefaults(s)
+	// Wired until a check says otherwise, the way the column defaults.
+	s.ArgoConnected, s.CheckedAt = true, nil
 	now := m.stamp()
 	s.CreatedAt, s.UpdatedAt = now, now
 	m.stands[s.ID] = clone(s)

@@ -34,6 +34,7 @@ import { ProductIcon } from "@/components/icons";
 import { NotFound } from "@/components/NotFound";
 import { StatusBadge, statusGroup, statusNextStep } from "@/components/StatusBadge";
 import { Button, Card, Select, SkeletonRows } from "@/components/ui";
+import { standText } from "@/features/stands/text";
 import { ruPlural } from "@/form/fieldErrors";
 import { useAsync } from "@/hooks/useAsync";
 import { safeHref } from "@/lib/href";
@@ -293,6 +294,23 @@ export function RequestDetailPage() {
           <div>
             <p className="font-medium">{nextStep.title}</p>
             <p className="mt-0.5">{nextStep.hint}</p>
+          </div>
+        </div>
+      )}
+      {/* A merged change nothing deploys: the stand's Argo CD wiring is not
+          there yet. Said here, because the badge alone reads as a wait with
+          no end, and the admin gets the way to the manifests. */}
+      {r.status === "MR_MERGED" && stand && deploys(stand) && !stand.argo_connected && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <IconAlertTriangle size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">{standText.waitingTitle}</p>
+            <p className="mt-0.5">{standText.waitingHint}</p>
+            {user?.role === "admin" && (
+              <Link to={`/admin/stands/${stand.id}`} className="mt-1 inline-block font-medium underline">
+                {standText.waitingAdminLink}
+              </Link>
+            )}
           </div>
         </div>
       )}

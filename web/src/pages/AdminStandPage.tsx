@@ -28,6 +28,7 @@ const CHECK_LABEL: Record<string, string> = {
   stand_git: t.checkGit,
   stand_cluster: t.checkCluster,
   stand_argo_app: t.checkArgo,
+  stand_nesting: t.checkNesting,
 };
 
 // One row per verdict: the colour says it, the icon repeats it for anybody

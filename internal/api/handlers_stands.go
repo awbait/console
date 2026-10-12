@@ -5,8 +5,6 @@ import (
 	"net/http"
 
 	"console/internal/auth"
-	"console/internal/checks"
-	"console/internal/store"
 	"console/pkg/models"
 	"github.com/go-chi/chi/v5"
 )
@@ -107,7 +105,8 @@ func (s *Server) handleStandManifests(w http.ResponseWriter, r *http.Request) {
 
 // handleStandChecks runs the stand's checks now and answers with them: they
 // are read on the stand page, which is opened by the person about to wire
-// the stand, so they are run on demand rather than in the background round.
+// the stand, who does not wait for the background round. What they found is
+// stored, the way the round stores it.
 func (s *Server) handleStandChecks(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	if !u.IsAdmin() {
@@ -119,14 +118,31 @@ func (s *Server) handleStandChecks(w http.ResponseWriter, r *http.Request) {
 		s.writeDomainErr(w, r, err)
 		return
 	}
-	orders, err := s.Prov.List(r.Context(), u, store.RequestFilter{Stand: st.ID})
+	results, err := s.Prov.CheckStand(r.Context(), st)
 	if err != nil {
 		s.writeDomainErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"results": checks.Stand(r.Context(), s.StandGitLab, s.StandArgo, st, orders),
+		"results":        results,
+		"checked_at":     st.CheckedAt,
+		"argo_connected": st.ArgoConnected,
 	})
+}
+
+// handleStandsChecksSummary answers with every stand's stored checks, as the
+// status page reads them. Nothing runs here: the background round and the
+// stand pages do the running.
+func (s *Server) handleStandsChecksSummary(w http.ResponseWriter, r *http.Request) {
+	if !s.adminOnly(w, r, "stand checks") {
+		return
+	}
+	stands, err := s.Prov.StandChecksSummary(r.Context())
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stands": stands})
 }
 
 func (s *Server) handleSetDefaultStand(w http.ResponseWriter, r *http.Request) {

@@ -12,11 +12,11 @@ import (
 // by hand, read whole by every reader (the order form, the list filter, the
 // admin page), the way the variables are.
 
-const standCols = `id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, created_at, updated_at`
+const standCols = `id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, argo_connected, checked_at, created_at, updated_at`
 
 func scanStand(row pgx.Row) (*models.Stand, error) {
 	var s models.Stand
-	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.Mode, &s.ChartRegistry, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.Mode, &s.ChartRegistry, &s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}
@@ -70,8 +70,8 @@ func (p *Postgres) CreateStand(ctx context.Context, s *models.Stand) error {
 	err := p.db.QueryRow(ctx, `
 		INSERT INTO stands (id, name, default_cluster, is_default, layout, git_path, mode, chart_registry)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		RETURNING created_at, updated_at`,
-		s.ID, s.Name, s.DefaultCluster, s.Default, s.Layout, s.GitPath, s.Mode, s.ChartRegistry).Scan(&s.CreatedAt, &s.UpdatedAt)
+		RETURNING argo_connected, checked_at, created_at, updated_at`,
+		s.ID, s.Name, s.DefaultCluster, s.Default, s.Layout, s.GitPath, s.Mode, s.ChartRegistry).Scan(&s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -83,8 +83,8 @@ func (p *Postgres) UpdateStand(ctx context.Context, s *models.Stand) error {
 	err := p.db.QueryRow(ctx, `
 		UPDATE stands SET name=$2, default_cluster=$3, layout=$4, git_path=$5, mode=$6, chart_registry=$7, updated_at=NOW()
 		WHERE id=$1
-		RETURNING is_default, created_at, updated_at`,
-		s.ID, s.Name, s.DefaultCluster, s.Layout, s.GitPath, s.Mode, s.ChartRegistry).Scan(&s.Default, &s.CreatedAt, &s.UpdatedAt)
+		RETURNING is_default, argo_connected, checked_at, created_at, updated_at`,
+		s.ID, s.Name, s.DefaultCluster, s.Layout, s.GitPath, s.Mode, s.ChartRegistry).Scan(&s.Default, &s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
