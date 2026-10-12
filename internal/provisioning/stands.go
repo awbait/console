@@ -31,6 +31,8 @@ const (
 	MsgStandNoPath    = "У стенда «%s» не задан путь в GitLab, поэтому заказ не отправлен. Попросите администратора указать путь на странице стенда."
 	MsgStandMode      = "Выберите режим из списка."
 	MsgStandRegistry  = "Укажите адрес реестра без схемы, например harbor.example.com. Допустимы латинские буквы, цифры, точка, дефис, двоеточие для порта и «/» для пути."
+	MsgStandGitURL    = "Укажите адрес со схемой http или https, например https://gitlab.edp.example.com. Путь после хоста допустим. Символы «?» и «#» недопустимы."
+	MsgStandArgoNs    = "Укажите namespace, например ecpk-argocd. Допустимы строчные латинские буквы, цифры и дефис."
 	MsgSyncMode       = "Нельзя запустить синхронизацию с кластером: стенд не разворачивает сервисы. Синхронизация доступна только в режиме «Разворачивать»."
 	MsgPullMode       = "Нельзя загрузить значения из Git: в режиме «Только консоль» файлы заказа в Git не создаются."
 	MsgManifestsMode  = "Манифесты Argo CD доступны только для стендов в режиме «Разворачивать»."
@@ -55,10 +57,25 @@ func (s *Service) fallbackStand() *models.Stand {
 	return &models.Stand{DefaultCluster: s.defaultCluster, Layout: models.LayoutGroup, GitPath: s.gitops.TopGroup}
 }
 
-// chartRegistryOf is the registry an order's application takes its chart
-// from: the stand's own, or the platform's when the stand names none.
-func (s *Service) chartRegistryOf(ctx context.Context, r *models.Request) string {
-	return s.standOf(ctx, r).ChartRegistry
+// appTarget is where the application of an order on this stand points: the
+// repository at projectPath as the stand's Argo CD reaches it, the stand's
+// registry and its Argo CD namespace. webURL is the repository's address in
+// the portal's own GitLab, used when the stand names no Git address.
+func appTarget(st *models.Stand, projectPath, webURL string) AppTarget {
+	t := AppTarget{RepoURL: webURL}
+	if st == nil {
+		return t
+	}
+	t.Registry, t.AppNamespace = st.ChartRegistry, st.ArgoNamespace
+	if st.GitURL != "" && projectPath != "" {
+		t.RepoURL = strings.TrimRight(st.GitURL, "/") + "/" + projectPath
+	}
+	return t
+}
+
+// renderApp renders the application of an order on its stand.
+func (s *Service) renderApp(r *models.Request, st *models.Stand, projectPath, webURL string) (string, error) {
+	return s.gitops.RenderApplicationFor(r, appTarget(st, projectPath, webURL))
 }
 
 // repoPathOf is the full path of the repository an order's files are in.
@@ -223,6 +240,14 @@ func checkStand(st *models.Stand, requirePath bool) error {
 	st.ChartRegistry = strings.Trim(strings.TrimSpace(st.ChartRegistry), "/")
 	if st.ChartRegistry != "" && !models.ValidChartRegistry(st.ChartRegistry) {
 		return &ValidationError{Message: MsgStandRegistry}
+	}
+	st.GitURL = strings.TrimRight(strings.TrimSpace(st.GitURL), "/")
+	if st.GitURL != "" && !models.ValidGitURL(st.GitURL) {
+		return &ValidationError{Message: MsgStandGitURL}
+	}
+	st.ArgoNamespace = strings.TrimSpace(st.ArgoNamespace)
+	if st.ArgoNamespace != "" && !validCluster(st.ArgoNamespace) {
+		return &ValidationError{Message: MsgStandArgoNs}
 	}
 	if st.GitPath == "" {
 		if requirePath {

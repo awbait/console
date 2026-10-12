@@ -54,7 +54,24 @@ function registryError(registry: string): string | null {
   return REGISTRY_RE.test(registry) && registry.length <= 255 ? null : t.errRegistry;
 }
 
-type StandPatch = Partial<Pick<Stand, "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry">>;
+// The stand's Git address for its Argo CD mirrors the portal's rule: http or
+// https, a host, an optional port and path, nothing after it.
+const GIT_URL_RE = /^https?:\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(\/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$/;
+
+function gitUrlError(url: string): string | null {
+  if (!url) return null;
+  return GIT_URL_RE.test(url) && url.length <= 255 ? null : t.errGitUrl;
+}
+
+// The Argo CD namespace is a Kubernetes name, the rule of a cluster name.
+function argoNsError(ns: string): string | null {
+  if (!ns) return null;
+  return dnsLabelError(ns) ? t.errArgoNs : null;
+}
+
+type StandPatch = Partial<
+  Pick<Stand, "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry" | "git_url" | "argocd_namespace">
+>;
 
 export function AdminStandsPage() {
   // Under the shared cache key: the order form and the orders list read the
@@ -356,6 +373,31 @@ function StandRow({
         )}
       </div>
 
+      {/* How the stand's Argo CD sees the platform. Like the registry, never
+          locked: both only shape what is rendered next. */}
+      <CellField
+        value={stand.git_url ?? ""}
+        busy={busy}
+        normalize={(v) => v.trim().replace(/\/+$/g, "")}
+        error={gitUrlError}
+        onSave={(v) => onSave({ git_url: v })}
+        label={t.gitUrlLabel}
+        placeholder={t.gitUrlPlaceholder}
+        hint={t.gitUrlHint}
+        width="w-56"
+      />
+      <CellField
+        value={stand.argocd_namespace ?? ""}
+        busy={busy}
+        normalize={(v) => v.trim()}
+        error={argoNsError}
+        onSave={(v) => onSave({ argocd_namespace: v })}
+        label={t.argoNsLabel}
+        placeholder={t.argoNsPlaceholder}
+        hint={t.argoNsHint}
+        width="w-36"
+      />
+
       {stand.default ? (
         <span
           title={t.defaultHint}
@@ -416,6 +458,62 @@ function StandRow({
   );
 }
 
+// CellField is one optional text setting of a stand row, saved on blur: an
+// empty value means the platform's own, a value in the wrong shape is
+// reported under the field and not sent.
+function CellField({
+  value,
+  busy,
+  normalize,
+  error,
+  onSave,
+  label,
+  placeholder,
+  hint,
+  width,
+}: {
+  value: string;
+  busy: boolean;
+  normalize: (v: string) => string;
+  error: (v: string) => string | null;
+  onSave: (v: string) => void;
+  label: string;
+  placeholder: string;
+  hint: string;
+  width: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const err = error(normalize(draft));
+  return (
+    <div className="flex min-w-0 flex-col">
+      <input
+        value={draft}
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const v = normalize(draft);
+          if (!error(v) && v !== value) onSave(v);
+          else if (error(v)) setDraft(value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        placeholder={placeholder}
+        aria-label={label}
+        aria-invalid={!!err}
+        title={hint}
+        className={`${cellInput} ${width} font-mono text-[13px] ${err ? "border-red-400" : ""}`}
+      />
+      {err && (
+        <p role="alert" className="px-2 text-[11px] text-red-600">
+          {err}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AddStand({
   busy,
   run,
@@ -450,6 +548,10 @@ function AddStand({
           git_path: path.trim().replace(/^\/+|\/+$/g, ""),
           mode,
           chart_registry: registry.trim().replace(/\/+$/g, ""),
+          // Set in the stand's row once it exists: most stands keep the
+          // platform's own, and the add row has no room for two more fields.
+          git_url: "",
+          argocd_namespace: "",
         }),
       t.toastCreated(n),
     ).then(() => {

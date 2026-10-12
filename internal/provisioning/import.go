@@ -98,11 +98,7 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if verr != nil {
 			continue // no values.yaml (or unreadable) - incomplete instance
 		}
-		var registry string
-		if dd.stand != nil {
-			registry = dd.stand.ChartRegistry
-		}
-		expected, rerr := s.gitops.RenderApplication(r, d.ProjectWebURL, registry)
+		expected, rerr := s.renderApp(r, dd.stand, d.ProjectPath, d.ProjectWebURL)
 		if rerr != nil || !yamlEqual([]byte(expected), d.Content) {
 			continue // application.yaml is not identical to ours - skip
 		}

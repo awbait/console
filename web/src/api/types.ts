@@ -406,6 +406,10 @@ export interface Stand {
   mode: StandMode;
   // The registry Argo CD takes the stand's charts from; "" is the platform's.
   chart_registry: string;
+  // How the stand's Argo CD sees the platform: the GitLab address it reads
+  // values from and the namespace it runs in. "" is the platform's own.
+  git_url: string;
+  argocd_namespace: string;
   // Argo CD sees the stand's applications, as its last check found. False
   // means the stand's orders wait after their merge: nothing deploys them.
   argo_connected: boolean;

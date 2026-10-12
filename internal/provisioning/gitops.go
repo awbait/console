@@ -325,6 +325,24 @@ spec:
 // repo's web URL); the chart source is "{registry}/{chart_project}", where
 // registry is the stand's own or, when empty, the configured ChartRegistry.
 func (g *GitOps) RenderApplication(r *models.Request, repoURL, registry string) (string, error) {
+	return g.RenderApplicationFor(r, AppTarget{RepoURL: repoURL, Registry: registry})
+}
+
+// AppTarget is where an order's application points, as its stand's Argo CD
+// sees things: the Git repository its values are read from, the registry its
+// chart is pulled from, and the namespace the Application lives in. Empty
+// fields fall back to the platform's own: the GitLab the portal writes to,
+// CHART_REGISTRY and ARGOCD_NAMESPACE.
+type AppTarget struct {
+	RepoURL      string
+	Registry     string
+	AppNamespace string
+}
+
+// RenderApplicationFor is RenderApplication for a stand that sees the
+// platform differently from the portal.
+func (g *GitOps) RenderApplicationFor(r *models.Request, t AppTarget) (string, error) {
+	repoURL, registry := t.RepoURL, t.Registry
 	if registry == "" {
 		registry = g.ChartRegistry
 	}
@@ -340,7 +358,10 @@ func (g *GitOps) RenderApplication(r *models.Request, repoURL, registry string) 
 	if namespace == "" {
 		namespace = r.ServiceName // back-compat: pre-namespace records
 	}
-	appNamespace := g.AppNamespace
+	appNamespace := t.AppNamespace
+	if appNamespace == "" {
+		appNamespace = g.AppNamespace
+	}
 	if appNamespace == "" {
 		appNamespace = defaultAppNamespace
 	}

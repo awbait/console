@@ -250,7 +250,7 @@ export const api = {
   // filters by them), written by admins.
   listStands: (signal?: AbortSignal) => req<Stand[]>("GET", "/stands", undefined, signal),
   getStand: (id: string, signal?: AbortSignal) => req<Stand>("GET", `/stands/${enc(id)}`, undefined, signal),
-  createStand: (s: Pick<Stand, "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry">) =>
+  createStand: (s: Pick<Stand, "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry" | "git_url" | "argocd_namespace">) =>
     req<Stand>("POST", "/stands", {
       name: s.name,
       default_cluster: s.default_cluster,
@@ -258,8 +258,10 @@ export const api = {
       git_path: s.git_path,
       mode: s.mode,
       chart_registry: s.chart_registry,
+      git_url: s.git_url,
+      argocd_namespace: s.argocd_namespace,
     }),
-  updateStand: (s: Pick<Stand, "id" | "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry">) =>
+  updateStand: (s: Pick<Stand, "id" | "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry" | "git_url" | "argocd_namespace">) =>
     req<Stand>("PATCH", `/stands/${enc(s.id)}`, {
       name: s.name,
       default_cluster: s.default_cluster,
@@ -267,6 +269,8 @@ export const api = {
       git_path: s.git_path,
       mode: s.mode,
       chart_registry: s.chart_registry,
+      git_url: s.git_url,
+      argocd_namespace: s.argocd_namespace,
     }),
   setDefaultStand: (id: string) => req<void>("POST", `/stands/${enc(id)}/default`),
   // The Argo CD wiring of a stand, as YAML text ops applies by hand, and the

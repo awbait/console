@@ -42,6 +42,14 @@ type Stand struct {
 	// their chart from, "{ChartRegistry}/{chart_project}". Empty means the
 	// platform's configured registry (CHART_REGISTRY).
 	ChartRegistry string `json:"chart_registry"`
+	// GitURL is the GitLab the stand's Argo CD reads values from, as it sees
+	// it: another address of the portal's GitLab, or a mirror keeping the
+	// same paths. Only the scheme and host part change in the application's
+	// repoURL. Empty means the address the portal itself uses.
+	GitURL string `json:"git_url"`
+	// ArgoNamespace is the namespace the stand's Argo CD runs in, where its
+	// Applications live. Empty means ARGOCD_NAMESPACE.
+	ArgoNamespace string `json:"argocd_namespace"`
 	// ArgoConnected reports that Argo CD sees the stand's applications, as the
 	// stand's last application check found. Set by the checks, never by hand:
 	// true until a check with live orders finds none of them, so a stand nobody
@@ -127,6 +135,13 @@ var chartRegistryRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5}
 
 // ValidChartRegistry reports whether r may be a stand's chart registry.
 func ValidChartRegistry(r string) bool { return len(r) <= MaxGitPath && chartRegistryRe.MatchString(r) }
+
+// gitURLRe is a GitLab base address: http or https, a host, an optional port
+// and path (a GitLab under a relative URL), nothing after it.
+var gitURLRe = regexp.MustCompile(`^https?://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$`)
+
+// ValidGitURL reports whether u may be a stand's Git address for Argo CD.
+func ValidGitURL(u string) bool { return len(u) <= MaxGitPath && gitURLRe.MatchString(u) }
 
 // gitPathRe is what GitLab accepts as a full path: segments of letters,
 // digits, dots, dashes and underscores, separated by slashes. Checked here

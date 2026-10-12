@@ -289,3 +289,66 @@ func TestStandModeIsChecked(t *testing.T) {
 		t.Fatalf("leaving deploy with an order: %v", err)
 	}
 }
+
+// A stand whose Argo CD sees GitLab under another address and runs in another
+// namespace: the order's application points there, at the same repository
+// path, and so do the stand's manifests. A stand naming neither keeps the
+// portal's own.
+func TestStandGitURLAndArgoNamespace(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	s.prov.GitLabURL = "https://gitlab.idp.example.com"
+	st := standInMode("edp", models.ModeDeploy)
+	st.GitPath = "managed-services"
+	st.GitURL = " https://gitlab.edp.example.com/ "
+	st.ArgoNamespace = "ecpk-argocd"
+	if err := s.prov.CreateStand(ctx, admin(), st); err != nil {
+		t.Fatalf("create stand: %v", err)
+	}
+	if st.GitURL != "https://gitlab.edp.example.com" {
+		t.Fatalf("the address is trimmed: %q", st.GitURL)
+	}
+	r, err := s.prov.Create(ctx, member("core"), newOrder("pg1", placed("pg1", st.ID)))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	mrs, _ := s.st.ListMRs(ctx, r.ID)
+	proj, err := s.gl.GetProject(ctx, "managed-services/team-core/postgres")
+	if err != nil || len(mrs) != 1 {
+		t.Fatalf("repo and change: %v %d", err, len(mrs))
+	}
+	s.mergeLatestMR(ctx, t, r.ID)
+	app, err := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r), "main")
+	if err != nil {
+		t.Fatalf("application.yaml: %v", err)
+	}
+	for _, want := range []string{
+		"repoURL: https://gitlab.edp.example.com/managed-services/team-core/postgres.git",
+		"namespace: ecpk-argocd",
+	} {
+		if !strings.Contains(string(app), want) {
+			t.Fatalf("application lacks %q:\n%s", want, app)
+		}
+	}
+	out, err := s.prov.StandManifests(st)
+	if err != nil {
+		t.Fatalf("manifests: %v", err)
+	}
+	for _, want := range []string{"api: https://gitlab.edp.example.com", "url: https://gitlab.edp.example.com/managed-services", "namespace: ecpk-argocd"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("manifests lack %q:\n%s", want, out)
+		}
+	}
+
+	var verr *provisioning.ValidationError
+	bad := standInMode("bad1", models.ModeDeploy)
+	bad.GitURL = "gitlab.edp.example.com"
+	if err := s.prov.CreateStand(ctx, admin(), bad); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandGitURL {
+		t.Fatalf("an address without a scheme: %v", err)
+	}
+	bad = standInMode("bad2", models.ModeDeploy)
+	bad.ArgoNamespace = "Ecpk_ArgoCD"
+	if err := s.prov.CreateStand(ctx, admin(), bad); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandArgoNs {
+		t.Fatalf("a namespace in the wrong shape: %v", err)
+	}
+}
