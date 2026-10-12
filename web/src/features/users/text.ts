@@ -11,6 +11,7 @@ import type { ActivityEvent } from "@/api/types";
 const ORDER_ACTIONS: Record<string, string> = {
   created: "заказал сервис",
   draft_created: "создал черновик",
+  copied: "скопировал заказ для другого стенда",
   draft_updated: "изменил черновик",
   draft_discarded: "удалил черновик",
   renamed: "переименовал сервис",

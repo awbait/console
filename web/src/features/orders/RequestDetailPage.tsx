@@ -40,6 +40,8 @@ import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
 import { dateInWords, fmtDateTime } from "@/lib/time";
 import { ConflictDialog } from "./ConflictDialog";
+import { copyText } from "./copyText";
+import { CopyToStandDialog } from "./CopyToStandDialog";
 import { pendingChangeNotice } from "./pendingChange";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
@@ -66,6 +68,7 @@ export function RequestDetailPage() {
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -487,10 +490,21 @@ export function RequestDetailPage() {
           onSubmit={isDraft && modifiable ? onSubmit : undefined}
           onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
           onSync={!isDraft && user?.role === "admin" ? onSync : undefined}
+          onCopy={modifiable ? () => setCopying(true) : undefined}
           onDelete={modifiable && !openMR ? () => setConfirmDelete(true) : undefined}
           notify={canUpgrade}
         />
       </div>
+
+      <CopyToStandDialog
+        order={copying ? r : null}
+        onClose={() => setCopying(false)}
+        onCopied={(draft, stand) => {
+          setCopying(false);
+          toast.success(copyText.toast(stand?.name ?? ""));
+          navigate(`/requests/${draft.id}/edit`);
+        }}
+      />
 
       <ConfirmDialog
         isOpen={confirmDelete}

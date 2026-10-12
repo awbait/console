@@ -282,6 +282,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/requests/{id}/submit", s.handleSubmitRequest)
 			r.Post("/requests/{id}/sync", s.handleSyncRequest)
 			r.Post("/requests/{id}/pull", s.handlePullRequest) // adopt Git state into the portal
+			r.Post("/requests/{id}/copy", s.handleCopyRequest) // a draft of this order on another stand
 			r.Get("/requests/{id}/events", s.handleRequestEvents)
 
 			// notifications: the reader's own feed (audience comes from the session)
