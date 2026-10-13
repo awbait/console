@@ -1,12 +1,15 @@
 import {
   IconActivity,
   IconAdjustments,
+  IconAlertTriangle,
   IconBox,
   IconCheck,
   IconChecklist,
   IconChevronDown,
   IconChevronRight,
+  IconDeviceDesktopAnalytics,
   IconHash,
+  IconHistory,
   IconLayoutDashboard,
   IconLayoutGrid,
   IconLifebuoy,
@@ -38,6 +41,7 @@ import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
 import { ROLE_LABELS } from "../auth/roles";
 import { useUser } from "../auth/UserContext";
+import { conceptNav } from "../features/adminConcept/text";
 import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { standText } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
@@ -94,6 +98,10 @@ const supportSectionNav: SectionNavItem[] = [
 // Lower-nav items of the platform-admin section.
 const adminSectionNav: SectionNavItem[] = [
   { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
+  // Redesign concept pages (demo data).
+  { to: "/admin/board", label: conceptNav.board, Icon: IconDeviceDesktopAnalytics },
+  { to: "/admin/incidents", label: conceptNav.incidents, Icon: IconAlertTriangle },
+  { to: "/admin/audit", label: conceptNav.audit, Icon: IconHistory },
   { to: "/admin/requests", label: "Заказы всех команд", Icon: IconBox },
   { to: "/admin/approvals", label: "Согласование публикаций", Icon: IconChecklist },
   { to: "/admin/users", label: "Пользователи", Icon: IconUsers },

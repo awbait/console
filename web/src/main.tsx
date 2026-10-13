@@ -54,6 +54,9 @@ const ChartVersionEditPage = page(
   "ChartVersionEditPage",
 );
 const ConfigPage = page(() => import("./pages/ConfigPage"), "ConfigPage");
+const ConceptAuditPage = page(() => import("./features/adminConcept/AuditPage"), "AuditPage");
+const ConceptBoardPage = page(() => import("./features/adminConcept/BoardPage"), "BoardPage");
+const ConceptIncidentsPage = page(() => import("./features/adminConcept/IncidentsPage"), "IncidentsPage");
 const DocsPage = page(() => import("./pages/DocsPage"), "DocsPage");
 const KyvernoPage = page(() => import("./pages/SecuritySection"), "KyvernoPage");
 const PolicyApprovalPage = page(() => import("./pages/SecuritySection"), "PolicyApprovalPage");
@@ -123,6 +126,10 @@ const router = createBrowserRouter([
           { path: "approvals/:project/:name", element: <AdminApprovalDetailPage /> },
           { path: "approvals/:project/:name/:version", element: <VersionApprovalPage /> },
           { path: "requests", element: <SupportRequestsPage /> },
+          // Redesign concept: demo pages, no backend behind them.
+          { path: "board", element: <ConceptBoardPage /> },
+          { path: "incidents", element: <ConceptIncidentsPage /> },
+          { path: "audit", element: <ConceptAuditPage /> },
           { path: "categories", element: <AdminCategoriesPage /> },
           { path: "stands", element: <AdminStandsPage /> },
           { path: "stands/:id", element: <AdminStandPage /> },
