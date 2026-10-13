@@ -122,6 +122,7 @@ const router = createBrowserRouter([
           { path: "approvals", element: <AdminApprovalsPage /> },
           { path: "approvals/:project/:name", element: <AdminApprovalDetailPage /> },
           { path: "approvals/:project/:name/:version", element: <VersionApprovalPage /> },
+          { path: "requests", element: <SupportRequestsPage /> },
           { path: "categories", element: <AdminCategoriesPage /> },
           { path: "stands", element: <AdminStandsPage /> },
           { path: "stands/:id", element: <AdminStandPage /> },

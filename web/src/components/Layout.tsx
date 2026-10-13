@@ -94,6 +94,7 @@ const supportSectionNav: SectionNavItem[] = [
 // Lower-nav items of the platform-admin section.
 const adminSectionNav: SectionNavItem[] = [
   { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
+  { to: "/admin/requests", label: "Заказы всех команд", Icon: IconBox },
   { to: "/admin/approvals", label: "Согласование публикаций", Icon: IconChecklist },
   { to: "/admin/users", label: "Пользователи", Icon: IconUsers },
   { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
@@ -314,6 +315,25 @@ export function Layout() {
   );
   const navReq = reqForNav?.request;
 
+  // An order page (/requests/:id and its edit/upgrade forms) belongs to no
+  // section by URL: support and admin open it from their cross-team lists, a
+  // team member from the platform. It stays in the section it was opened from,
+  // so the sidebar doesn't jump to the platform nav mid-task. In memory only: a
+  // reload or a link from outside starts in the platform section.
+  const urlSection: SectionId | null = pathname.startsWith("/security")
+    ? "security"
+    : pathname.startsWith("/admin")
+      ? "admin"
+      : pathname.startsWith("/support")
+        ? "support"
+        : /^\/requests\/[^/]+/.test(pathname)
+          ? null
+          : "platform";
+  const [lastSection, setLastSection] = useState<SectionId>("platform");
+  useEffect(() => {
+    if (urlSection) setLastSection(urlSection);
+  }, [urlSection]);
+
   // Sidebar product taxonomy is dynamic: catalog categories (admin-managed) ->
   // published charts whose approved view declares an order form. Categories
   // without a single such chart are hidden.
@@ -399,13 +419,7 @@ export function Layout() {
     if (s.id === "support") return user.role === "support" || user.role === "admin";
     return true; // platform
   });
-  const pathSection: SectionId = pathname.startsWith("/security")
-    ? "security"
-    : pathname.startsWith("/admin")
-      ? "admin"
-      : pathname.startsWith("/support")
-        ? "support"
-        : "platform";
+  const pathSection: SectionId = urlSection ?? lastSection;
   const activeSection: SectionId = availableSections.some((s) => s.id === pathSection)
     ? pathSection
     : (availableSections[0]?.id ?? "platform");
@@ -584,7 +598,11 @@ export function Layout() {
                   <ul className="flex flex-col gap-1.5">
                     {sectionNav.map((n) => {
                       const Icon = n.Icon;
-                      const active = n.exact ? pathname === n.to : navActive(n.to);
+                      // An order page kept in this section lights up the
+                      // section's own orders list.
+                      const active =
+                        (n.exact ? pathname === n.to : navActive(n.to)) ||
+                        (urlSection === null && n.to.endsWith("/requests"));
                       return (
                         <li key={n.to}>
                           <SideTip label={n.label} enabled={collapsed}>
