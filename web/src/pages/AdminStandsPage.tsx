@@ -1,6 +1,8 @@
 import {
   IconDatabase,
   IconDots,
+  IconFolder,
+  IconFolders,
   IconGitBranch,
   IconLoader2,
   IconPlus,
@@ -71,9 +73,11 @@ function argoNsError(ns: string): string | null {
   return dnsLabelError(ns) ? t.errArgoNs : null;
 }
 
-const LAYOUTS: { id: StandLayout; label: string; hint: string }[] = [
-  { id: "group", label: t.layoutGroup, hint: t.layoutGroupHint },
-  { id: "repository", label: t.layoutRepository, hint: t.layoutRepositoryHint },
+// The layout rides in the path column as an icon: many folders for a
+// repository per service, one folder for the stand's shared repository.
+const LAYOUTS: { id: StandLayout; label: string; hint: string; Icon: typeof IconFolder }[] = [
+  { id: "group", label: t.layoutGroup, hint: t.layoutGroupHint, Icon: IconFolders },
+  { id: "repository", label: t.layoutRepository, hint: t.layoutRepositoryHint, Icon: IconFolder },
 ];
 
 // Each mode keeps its own icon next to its name, so the column reads at a
@@ -233,6 +237,8 @@ function StandRow({
   const [deleting, setDeleting] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const mode = modeOf(stand.mode);
+  const layout = layoutOf(stand.layout);
+  const layoutName = `${t.layoutLabel}: ${layout.label}`;
   // Why the stand cannot be deleted right now, or null when it can.
   const deleteBlocked = stand.default
     ? t.deleteDisabledDefault
@@ -269,14 +275,20 @@ function StandRow({
       </td>
       <td className={`${td} whitespace-nowrap text-slate-600`}>{stand.default_cluster}</td>
       <td className={`${td} max-w-[20rem] text-slate-600`}>
-        {stand.git_path ? (
-          <span className="block truncate" title={stand.git_path}>
-            {stand.git_path}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span title={layoutName} className="shrink-0">
+            <layout.Icon size={15} stroke={1.8} aria-hidden className="text-slate-400" />
+            <span className="sr-only">{layoutName}</span>
           </span>
-        ) : (
-          // The state column already says the path is missing.
-          <span className="text-slate-300">-</span>
-        )}
+          {stand.git_path ? (
+            <span className="truncate" title={stand.git_path}>
+              {stand.git_path}
+            </span>
+          ) : (
+            // The state column already says the path is missing.
+            <span className="text-slate-300">-</span>
+          )}
+        </span>
       </td>
       <td className={td}>
         <StandState stand={stand} />
