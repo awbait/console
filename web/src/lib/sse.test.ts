@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { subscribe } from "./sse";
+import { onStreamReopened, subscribe } from "./sse";
 
 // A stand-in for the browser's EventSource: it records what was subscribed to
 // and lets a test play the two things that matter - the stream opening, and the
@@ -102,6 +102,26 @@ describe("subscribe", () => {
     FakeEventSource.instances[0].drop();
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.instances[0].closed).toBe(false);
+    stop();
+  });
+
+  test("tells the reopen listeners about a stream coming back, not about the first open", () => {
+    install();
+    let reopened = 0;
+    const off = onStreamReopened(() => reopened++);
+    const stop = subscribe("/api/v1/x/events", {}, "x");
+    FakeEventSource.instances[0].onopen?.();
+    expect(reopened).toBe(0);
+    // The browser's own reconnect lands on the same instance.
+    FakeEventSource.instances[0].onopen?.();
+    expect(reopened).toBe(1);
+    // A stream we had to reopen ourselves counts too.
+    FakeEventSource.instances[0].fail();
+    FakeEventSource.instances[1].onopen?.();
+    expect(reopened).toBe(2);
+    off();
+    FakeEventSource.instances[1].onopen?.();
+    expect(reopened).toBe(2);
     stop();
   });
 
