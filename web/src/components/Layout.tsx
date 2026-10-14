@@ -50,6 +50,7 @@ import { CatalogIcon } from "./CatalogIcon";
 import { DocumentationIcon } from "./DocumentationIcon";
 import { LoginScreen } from "./LoginScreen";
 import { NavbarInfoIcon, NavbarUserIcon } from "./NavbarIcons";
+import { NewVersionBanner } from "./NewVersionBanner";
 import { OrdersIcon } from "./OrdersIcon";
 import { PlatformHealthBanner } from "./PlatformHealthBanner";
 import { PlatformHealthIndicator } from "./PlatformHealthIndicator";
@@ -773,6 +774,9 @@ export function Layout() {
             {/* Outside the page, above every route: an outage belongs to the
                 portal, not to whichever screen happens to be open. */}
             <PlatformHealthBanner />
+            {/* Same place for the same reason: a newer portal is news on every
+                screen, not on the one that happened to notice it. */}
+            <NewVersionBanner />
             {/* Screens opened by few people are fetched when they are opened
                 (see main.tsx), and the fetch takes a moment on a slow link. The
                 wait is held here, around the page alone: the menu and the bar

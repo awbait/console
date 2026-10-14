@@ -16,6 +16,7 @@ import { NotFound } from "./components/NotFound";
 import { OrderPage } from "./features/orders/OrderPage";
 import { RequestDetailPage } from "./features/orders/RequestDetailPage";
 import { RequestsPage } from "./features/orders/RequestsPage";
+import { reloadOnStaleChunk } from "./lib/portalVersion";
 import { CatalogPage } from "./pages/CatalogPage";
 import { ChartDetailPage } from "./pages/ChartDetailPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -186,6 +187,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Before anything can be lazily loaded: see portalVersion.ts.
+reloadOnStaleChunk();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

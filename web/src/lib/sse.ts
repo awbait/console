@@ -14,6 +14,21 @@
 const FIRST_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
 
+// A stream that comes back after a break is the moment the portal is most
+// likely to have been redeployed under the page: the connection dropped because
+// the server went away, and what answers now may be a newer build. Whoever cares
+// about that (the new-version notice) listens here rather than polling blind.
+const reopenListeners = new Set<() => void>();
+
+// onStreamReopened calls fn every time any stream opens again after a break.
+// The returned function unsubscribes.
+export function onStreamReopened(fn: () => void): () => void {
+  reopenListeners.add(fn);
+  return () => {
+    reopenListeners.delete(fn);
+  };
+}
+
 // subscribe opens an event stream and keeps it open. `handlers` maps event names
 // to what to do; the returned function closes the stream and stops retrying, and
 // is what an effect returns for cleanup.
@@ -22,6 +37,7 @@ export function subscribe(url: string, handlers: Record<string, () => void>, lab
   let timer: ReturnType<typeof setTimeout> | null = null;
   let retry = FIRST_RETRY_MS;
   let stopped = false;
+  let opened = false;
 
   const open = () => {
     if (stopped) return;
@@ -32,8 +48,12 @@ export function subscribe(url: string, handlers: Record<string, () => void>, lab
     // A stream that opened is a stream that works: the next break starts its
     // waiting over rather than inheriting an hour-long pause from an outage
     // that has since ended.
+    // The first open is the page starting up, every later one (ours or the
+    // browser's own reconnect) is a stream coming back.
     es.onopen = () => {
       retry = FIRST_RETRY_MS;
+      if (opened) for (const fn of reopenListeners) fn();
+      opened = true;
     };
     es.onerror = () => {
       const closed = es?.readyState === EventSource.CLOSED;
