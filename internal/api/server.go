@@ -17,6 +17,7 @@ import (
 	"console/internal/events"
 	"console/internal/gitlab"
 	"console/internal/harbor"
+	"console/internal/maintenance"
 	"console/internal/provisioning"
 	"console/internal/publications"
 	"console/internal/spa"
@@ -112,6 +113,12 @@ type Server struct {
 	// entirely (e.g. tests).
 	Webhooks *webhooks.Handler
 
+	// Maintenance is the planned maintenance window: the admin endpoints that
+	// set it, the gate that locks everybody else out while it is on, and the
+	// field the public health answer carries. Optional: nil never blocks and
+	// leaves the admin endpoints answering 503.
+	Maintenance *maintenance.Service
+
 	// sseStreams counts live SSE streams to enforce maxSSEStreams (zero value is
 	// ready to use; no constructor needed).
 	sseStreams atomic.Int64
@@ -172,6 +179,10 @@ func (s *Server) Router() http.Handler {
 			if s.Activity != nil {
 				r.Use(s.Activity.Middleware)
 			}
+			// During maintenance only platform admins get past here. After the
+			// two above: the gate needs the role, and a person locked out was
+			// still around.
+			r.Use(s.maintenanceGate)
 
 			r.Get("/auth/me", s.handleMe)
 
@@ -188,6 +199,12 @@ func (s *Server) Router() http.Handler {
 			r.Post("/status/checks/webhook-delivery", s.handleTestWebhookDelivery)
 			// runtime configuration, read-only (admin)
 			r.Get("/config", s.handleConfig)
+			// planned maintenance (admin): announce, extend, end
+			if s.Maintenance != nil {
+				r.Get("/admin/maintenance", s.handleGetMaintenance)
+				r.Put("/admin/maintenance", s.handleSetMaintenance)
+				r.Delete("/admin/maintenance", s.handleEndMaintenance)
+			}
 			// who uses the portal (admin): the sign-in directory, the teams it
 			// adds up to, and what people have been doing. The trends themselves
 			// are in Grafana - see internal/api/handlers_users.go.

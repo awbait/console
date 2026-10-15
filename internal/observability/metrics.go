@@ -202,7 +202,30 @@ var (
 		Name: "console_leader",
 		Help: "1 if this replica currently runs the background loops, 0 otherwise.",
 	})
+
+	// maintenanceActive is 1 while maintenance is on (only admins get in), and
+	// maintenanceBlocked counts the API requests turned away because of it.
+	maintenanceActive = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "console_maintenance_active",
+		Help: "1 while maintenance is on and only platform admins get in, 0 otherwise.",
+	})
+	maintenanceBlocked = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "console_maintenance_blocked_requests_total",
+		Help: "API requests answered 503 because maintenance is on.",
+	})
 )
+
+// SetMaintenanceActive records whether maintenance is on.
+func SetMaintenanceActive(on bool) {
+	v := 0.0
+	if on {
+		v = 1
+	}
+	maintenanceActive.Set(v)
+}
+
+// ObserveMaintenanceBlocked counts one request turned away by maintenance.
+func ObserveMaintenanceBlocked() { maintenanceBlocked.Inc() }
 
 // ObserveBusEvent records one event on the shared bus: which way it went and
 // what became of it.

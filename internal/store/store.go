@@ -208,6 +208,20 @@ type Store interface {
 	// ListRunningStandJobs returns every running job, of every stand.
 	ListRunningStandJobs(ctx context.Context) ([]*models.StandJob, error)
 
+	// Maintenance: the one planned maintenance window and the history of
+	// windows. GetMaintenance is ErrNotFound while there is no window.
+	GetMaintenance(ctx context.Context) (*models.MaintenanceWindow, error)
+	// SaveMaintenance writes the window, replacing whichever was there, and
+	// stamps UpdatedAt.
+	SaveMaintenance(ctx context.Context, w *models.MaintenanceWindow) error
+	// ClearMaintenance removes the window with this id. ErrNotFound when the
+	// window stored is another one or there is none: an end that raced a new
+	// window must not take the new one with it.
+	ClearMaintenance(ctx context.Context, id string) error
+	AddMaintenanceEvent(ctx context.Context, e *models.MaintenanceEvent) error
+	// ListMaintenanceEvents returns the newest events first, at most limit.
+	ListMaintenanceEvents(ctx context.Context, limit int) ([]*models.MaintenanceEvent, error)
+
 	// Catalog categories
 	CreateCategory(ctx context.Context, c *models.Category) error // ErrConflict on dup id
 	UpdateCategory(ctx context.Context, c *models.Category) error

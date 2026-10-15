@@ -770,6 +770,78 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Maintenance",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 89 },
+      "id": 31
+    },
+    {
+      "type": "stat",
+      "title": "Maintenance on",
+      "description": "1 while maintenance is on: only platform admins get in, and the loops that write to GitLab, Argo CD and the registry may be paused.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 90 },
+      "id": 32,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "max(console_maintenance_active)",
+          "legendFormat": "maintenance",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests turned away by maintenance",
+      "description": "API requests answered 503 because maintenance is on. Requests while it is off mean a page kept asking after it ended.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 90 },
+      "id": 33,
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" },
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(console_maintenance_blocked_requests_total[5m]))",
+          "legendFormat": "turned away",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

@@ -33,6 +33,10 @@ type Memory struct {
 	// notifSince is the floor under each reader's feed: when the portal first
 	// saw them in an audience (see RecordAudiences).
 	notifSince map[string]map[audienceRef]time.Time
+	// maintenance is the one window, nil while there is none, and maintEvents
+	// its history, oldest first.
+	maintenance *models.MaintenanceWindow
+	maintEvents []*models.MaintenanceEvent
 	now        func() time.Time
 	lastStamp  time.Time
 }
@@ -68,6 +72,14 @@ func listed(r *models.Request) *models.Request {
 	cp := clone(r)
 	cp.EditorState = nil
 	return cp
+}
+
+// SetClock replaces the clock the store stamps rows with, for tests in other
+// packages that move time and compare it with what the store recorded.
+func (m *Memory) SetClock(now func() time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.now = now
 }
 
 // stamp returns a strictly increasing timestamp so insertion order is

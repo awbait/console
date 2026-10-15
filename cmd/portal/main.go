@@ -30,6 +30,7 @@ import (
 	"console/internal/gitlab"
 	"console/internal/harbor"
 	"console/internal/leader"
+	"console/internal/maintenance"
 	"console/internal/notify"
 	"console/internal/observability"
 	"console/internal/provisioning"
@@ -250,10 +251,25 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	// --- maintenance ---
+	// The planned maintenance window. A window that holds the background loops
+	// asks for a sweep when it lets them go, through the same bus a webhook does.
+	maint := maintenance.New(st, notifySvc, reconcileRequest{bus}.Trigger, cfg.MaintenanceForce,
+		observability.Component(log, "maintenance"))
+	if cfg.MaintenanceForce {
+		log.Warn("maintenance forced by MAINTENANCE_FORCE: only platform admins get in, background loops paused")
+	}
+	// Its own clock, on the leading replica: in webhook-only mode the poller
+	// does not tick, and a window still has to end on time.
+	go maint.Run(ctx, elector.IsLeader)
+
 	// --- poller (one replica at a time; see internal/leader) ---
-	reconcilers := []status.Reconciler{status.Named("provisioning", provSvc)} // advance order states
+	// Pausable marks the loops that write to GitLab, Argo CD or the registry (or
+	// read them to change orders): maintenance that holds the loops stops these.
+	// The checks, the health of the stands and the notification sweep go on.
+	reconcilers := []status.Reconciler{status.Pausable(status.Named("provisioning", provSvc))} // advance order states
 	if cfg.DriftDetection {
-		reconcilers = append(reconcilers, status.Named("drift", driftReconciler{provSvc})) // flag Git-side drift
+		reconcilers = append(reconcilers, status.Pausable(status.Named("drift", driftReconciler{provSvc}))) // flag Git-side drift
 	}
 	// The stands' own checks, on their own slower clock inside the poller's:
 	// what the status page summarises, and what says whether Argo CD is wired
@@ -264,22 +280,22 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		reconcilers = append(reconcilers, status.Named("stand-checks", standChecksReconciler{provSvc}))
 	}
 	// Moving a stand's orders to the mode it was switched to, a batch a tick.
-	reconcilers = append(reconcilers, status.Named("stand-jobs", standJobsReconciler{provSvc}))
+	reconcilers = append(reconcilers, status.Pausable(status.Named("stand-jobs", standJobsReconciler{provSvc})))
 	if cfg.ImportDiscovery {
-		reconcilers = append(reconcilers, status.Named("import", importReconciler{provSvc})) // adopt Git-created apps
+		reconcilers = append(reconcilers, status.Pausable(status.Named("import", importReconciler{provSvc}))) // adopt Git-created apps
 	}
 	if cfg.CatalogAutodiscover {
-		reconcilers = append(reconcilers, status.Named("catalog-discovery", discoveryReconciler{
+		reconcilers = append(reconcilers, status.Pausable(status.Named("catalog-discovery", discoveryReconciler{
 			pubs: pubsSvc, cat: catalogSvc, ownerTeam: discoveryOwner,
 			categoryID: publications.DefaultDiscoveryCategory,
-		}))
+		})))
 	}
 	// Owners hear about a release of their service they have not published yet.
 	// Not tied to auto-discovery: that one registers charts nobody has claimed,
 	// this one watches the ones that already have an owner.
-	reconcilers = append(reconcilers, status.Named("chart-versions", chartVersionsReconciler{
+	reconcilers = append(reconcilers, status.Pausable(status.Named("chart-versions", chartVersionsReconciler{
 		pubs: pubsSvc, cat: catalogSvc,
-	}))
+	})))
 	// Notifications keep for 90 days once read; unread ones stay, however old.
 	reconcilers = append(reconcilers, status.Named("notification-sweep", notifySweeper{notifySvc}))
 	// In webhook-only mode the poller does not tick on its own (interval <= 0):
@@ -293,6 +309,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// Only the replica holding the lease reconciles. The others still tick: they
 	// are one lost lease away from being the one that does.
 	poller.SetLeader(elector.IsLeader)
+	poller.SetPaused(func() bool { return maint.PausesBackground(ctx) })
 	pollerDone := make(chan struct{})
 	go func() {
 		defer close(pollerDone)
@@ -375,7 +392,7 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		Auth: authn, Catalog: catalogSvc, Prov: provSvc, Pubs: pubsSvc,
 		Store: st, Cache: c, Bus: bus, Log: observability.Component(log, "api"), ArgoCDURL: cfg.ArgoCDURL,
 		Harbor: hb, GitLab: gl, ArgoCD: argo, Reconcilers: poller, Webhooks: webhookHandler,
-		Activity: activityRec, Leader: elector.IsLeader,
+		Activity: activityRec, Leader: elector.IsLeader, Maintenance: maint,
 		// Which groups grant a role rather than being a team. The interface
 		// names such an owner by its role instead of printing the group path.
 		RoleGroups:     roleGroups(cfg),

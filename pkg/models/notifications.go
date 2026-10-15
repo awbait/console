@@ -68,6 +68,15 @@ const (
 	// configuration page shows all of it, but only to whoever opens it.
 	NotifyConfigCheckFailed    = "config_check_failed"
 	NotifyConfigCheckRecovered = "config_check_recovered"
+	// Planned maintenance, to everyone: announced, switched on at once, about to
+	// start, moved, over. Overdue goes to the admins only: they are the ones who
+	// end or extend it.
+	NotifyMaintenanceScheduled = "maintenance_scheduled"
+	NotifyMaintenanceStarted   = "maintenance_started"
+	NotifyMaintenanceSoon      = "maintenance_soon"
+	NotifyMaintenanceChanged   = "maintenance_changed"
+	NotifyMaintenanceEnded     = "maintenance_ended"
+	NotifyMaintenanceOverdue   = "maintenance_overdue"
 )
 
 // Notification is one thing worth telling somebody about. One row per event,

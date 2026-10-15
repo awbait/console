@@ -10,7 +10,9 @@ import (
 
 	"console/internal/auth"
 	"console/internal/config"
+	"console/internal/maintenance"
 	"console/internal/status"
+	"console/pkg/models"
 )
 
 // SystemInfo carries the configured backend modes + external UI URLs for the
@@ -40,7 +42,7 @@ type ComponentStatus struct {
 // (durations, history) live in Grafana; this is just a liveness traffic light.
 type ReconcilerStatus struct {
 	Name        string `json:"name"`                   // provisioning|drift|import|...
-	Status      string `json:"status"`                 // "ok" | "failing"
+	Status      string `json:"status"`                 // "ok" | "failing" | "paused" (maintenance)
 	LastSuccess string `json:"last_success,omitempty"` // RFC3339; empty if never succeeded
 	LastError   string `json:"last_error,omitempty"`   // last error message when failing
 	LastRunMs   int64  `json:"last_run_ms,omitempty"`  // duration of the last run
@@ -82,6 +84,10 @@ type SystemStatus struct {
 type PlatformHealth struct {
 	Healthy      bool                     `json:"healthy"`
 	Capabilities []status.CapabilityState `json:"capabilities"`
+	// Maintenance is the planned maintenance, announced or on; absent while
+	// there is none. Here because this is what every page and the sign-in
+	// screen already poll, signed in or not.
+	Maintenance *maintenance.Public `json:"maintenance,omitempty"`
 }
 
 // probes builds the check set for every integration (Harbor/GitLab/ArgoCD via
@@ -146,9 +152,15 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 // and cheap: it reads the monitor's in-memory snapshot, so hammering it costs
 // the upstreams nothing. Always 200 - "the platform is degraded" is an answer,
 // not a failure.
-func (s *Server) handlePlatformHealth(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handlePlatformHealth(w http.ResponseWriter, r *http.Request) {
 	caps := status.Evaluate(s.componentStates())
-	writeJSON(w, http.StatusOK, PlatformHealth{Healthy: status.AllOK(caps), Capabilities: caps})
+	out := PlatformHealth{Healthy: status.AllOK(caps), Capabilities: caps}
+	if s.Maintenance != nil {
+		if pub := s.Maintenance.Status(r.Context()).Public(); pub.State != models.MaintenanceOff {
+			out.Maintenance = &pub
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleSystemStatus reports the health of every integration and storage backend
@@ -211,10 +223,13 @@ func (s *Server) reconcilerStatuses() []ReconcilerStatus {
 	out := make([]ReconcilerStatus, 0, len(states))
 	for _, st := range states {
 		rs := ReconcilerStatus{Name: st.Name, LastRunMs: st.LastRunMs}
-		if st.Failing {
+		switch {
+		case st.Paused:
+			rs.Status = "paused"
+		case st.Failing:
 			rs.Status = "failing"
 			rs.LastError = st.LastErr
-		} else {
+		default:
 			rs.Status = "ok"
 		}
 		if !st.LastSuccess.IsZero() {
