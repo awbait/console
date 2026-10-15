@@ -2,6 +2,48 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.21.0] - 2026-10-15
+
+### Added
+- Added “All teams’ orders” to the administrator menu, with the same order list
+  and filters as in the support section. Administrators can now view orders
+  across all teams without switching to the support section.
+- Added a banner at the top of every open page when a new portal version is
+  available. It reminds you to finish and save your work in forms before
+  reloading, provides a reload button and a “What’s new” link to the release
+  notes on the “About” page. You can dismiss the banner. If a screen cannot open
+  because the page is still using an older portal version, the page
+  automatically reloads once and opens that screen.
+
+### Changed
+- Extended the "Order form constructor" documentation with an explanation of why
+  hiding a field filled through `initial` does not replace `defaults`. The new
+  section explains how hidden fields can still be changed, why changes to
+  `initial` do not update existing field values in orders, and when to use
+  `defaults` to enforce a value on every save.
+- Reworked the administrator “Stands” page. The table shows each stand’s order
+  processing mode, default cluster, GitLab path and a new “State” column:
+  connected, not connected, not checked, ready for orders or no path. Adding and
+  editing a stand now use the same side panel with “Basic settings”, “Order
+  storage” and “Argo CD settings” sections and a save button. Editing values
+  directly in table rows is no longer available. “Make default” and “Delete”
+  moved to the row’s “...” menu. Simplified the page text and added guidance for
+  each field on what to enter and what happens when it is empty. Throughout the
+  portal and its documentation, “Mode” is now “Order processing”, with
+  “Deployment” (formerly “Deploy”), “GitLab only” (formerly “Git only”) and
+  “Portal only” (formerly “Console only”). “Git layout” is now “GitLab storage”,
+  with “Separate repositories” (formerly “Group”) and “Shared repository”
+  (formerly “Repository”). These name changes do not affect order processing or
+  storage behavior.
+
+### Fixed
+- Opening an order from the all-team orders list or a stand page in the
+  administrator or support section no longer switches the sidebar to “Platform”.
+  The sidebar stays in the original section and highlights the orders list item.
+- The order form builder now reports an error when validating a view document if
+  a tab points to a list of strings, numbers, or booleans. Display these lists
+  as regular list fields in a form, since tabs require lists of objects.
+
 ## [0.20.1] - 2026-10-12
 
 ### Fixed
