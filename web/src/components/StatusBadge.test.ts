@@ -22,7 +22,7 @@ const ALL_STATUSES: RequestStatus[] = [
 ];
 
 // Where an order rests on a stand that does not deploy. The person chose a
-// stand called "Только Git" or "Только консоль", so these two badges name the
+// stand in the git-only or the portal-only mode, so these two badges name the
 // place the order went, Git included, and the rules below exempt them.
 const RESTING: RequestStatus[] = ["GIT_SAVED", "CONSOLE_SAVED"];
 const DEPLOYED_STATUSES = ALL_STATUSES.filter((s) => !RESTING.includes(s));

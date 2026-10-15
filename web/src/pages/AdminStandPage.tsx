@@ -9,7 +9,7 @@ import {
   IconStar,
 } from "@tabler/icons-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
 import { deploys, type StandCheck } from "../api/types";
@@ -176,12 +176,6 @@ export function AdminStandPage() {
           )}
         </section>
         )}
-
-        <p className="text-sm">
-          <Link to="/admin/stands" className="text-brand-600 hover:underline">
-            {t.navLabel}
-          </Link>
-        </p>
       </div>
     </div>
   );
