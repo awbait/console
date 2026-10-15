@@ -30,10 +30,26 @@ func Named(name string, r Reconciler) Reconciler { return named{Reconciler: r, n
 
 // nameOf returns the metrics label for a reconciler.
 func nameOf(r Reconciler) string {
-	if n, ok := r.(named); ok {
+	switch n := r.(type) {
+	case named:
 		return n.name
+	case pausable:
+		return nameOf(n.Reconciler)
 	}
 	return "unknown"
+}
+
+// pausable marks a reconciler that stands still while maintenance holds the
+// background loops (see SetPaused): one that writes to GitLab, Argo CD or the
+// registry, where the maintenance usually is.
+type pausable struct{ Reconciler }
+
+// Pausable marks a reconciler as one maintenance may pause. Wrap the Named one.
+func Pausable(r Reconciler) Reconciler { return pausable{Reconciler: r} }
+
+func isPausable(r Reconciler) bool {
+	_, ok := r.(pausable)
+	return ok
 }
 
 // reconcileTimeout is a per-reconciler safety net so a wedged DB query or
@@ -73,6 +89,9 @@ type Poller struct {
 	// may, which is what a single-replica portal and every test want. Wired
 	// once at startup, before Run.
 	leads func() bool
+	// paused reports whether maintenance holds the pausable reconcilers. Nil
+	// means never. Wired once at startup, before Run.
+	paused func() bool
 	// mu guards the per-reconciler state maps below: tick() writes them from the
 	// Run goroutine, Snapshot() reads them from an HTTP handler goroutine.
 	mu sync.Mutex
@@ -88,6 +107,9 @@ type Poller struct {
 	lastSuccess  map[string]time.Time
 	lastErr      map[string]string
 	lastDuration map[string]time.Duration
+	// held marks the reconcilers that maintenance skipped on the last tick, for
+	// the status page.
+	held map[string]bool
 	// trigger requests an out-of-band sweep now (e.g. an inbound webhook) instead
 	// of waiting for the next tick. Buffered to 1: concurrent triggers coalesce
 	// into a single pending sweep, so a burst of webhooks cannot stampede the
@@ -103,6 +125,7 @@ func NewPoller(interval time.Duration, log *slog.Logger, reconcilers ...Reconcil
 		interval: interval, reconcilers: reconcilers, log: log,
 		failing: map[string]bool{}, fails: map[string]int{}, nextAttempt: map[string]time.Time{},
 		lastSuccess: map[string]time.Time{}, lastErr: map[string]string{}, lastDuration: map[string]time.Duration{},
+		held:    map[string]bool{},
 		trigger: make(chan string, 1),
 		now:     time.Now,
 	}
@@ -115,6 +138,10 @@ func (p *Poller) SetLeader(leads func() bool) { p.leads = leads }
 // leading reports whether this replica may reconcile right now.
 func (p *Poller) leading() bool { return p.leads == nil || p.leads() }
 
+// SetPaused wires the question "does maintenance hold the loops now". Call it
+// before Run; leaving it unset means no, never.
+func (p *Poller) SetPaused(paused func() bool) { p.paused = paused }
+
 // ReconcilerState is a point-in-time view of one reconciler's health, for the
 // status page. LastSuccess is zero if it has never succeeded.
 type ReconcilerState struct {
@@ -124,6 +151,8 @@ type ReconcilerState struct {
 	LastSuccess time.Time
 	LastErr     string
 	LastRunMs   int64
+	// Paused: maintenance skipped it on the last tick.
+	Paused bool
 }
 
 // Snapshot returns the current health of every reconciler, in run order. Safe to
@@ -148,6 +177,7 @@ func (p *Poller) Snapshot() []ReconcilerState {
 			LastSuccess: p.lastSuccess[name],
 			LastErr:     p.lastErr[name],
 			LastRunMs:   p.lastDuration[name].Milliseconds(),
+			Paused:      p.held[name],
 		})
 	}
 	return out
@@ -203,8 +233,21 @@ func (p *Poller) tick(ctx context.Context) {
 		// truth about it (see Snapshot).
 		return
 	}
+	// Asked once per tick, so every reconciler of one sweep sees the same answer.
+	paused := p.paused != nil && p.paused()
 	for _, r := range p.reconcilers {
 		name := nameOf(r)
+		held := paused && isPausable(r)
+		p.mu.Lock()
+		was := p.held[name]
+		p.held[name] = held
+		p.mu.Unlock()
+		if held != was {
+			p.log.Info("reconciler pause changed", "reconciler", name, "paused", held)
+		}
+		if held {
+			continue
+		}
 		// Skip reconcilers in backoff after consecutive failures, so a broken
 		// upstream is retried with exponential delay instead of every tick.
 		p.mu.Lock()

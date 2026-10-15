@@ -218,6 +218,32 @@ func TestPollerWithoutAnElectorAlwaysRuns(t *testing.T) {
 	}
 }
 
+// TestMaintenanceHoldsPausableOnly: while maintenance holds the loops, the
+// pausable ones stand still and say so on the status page, the others go on;
+// once it lets go, the held ones run on the next tick.
+func TestMaintenanceHoldsPausableOnly(t *testing.T) {
+	writer, checker := &countingReconciler{}, &countingReconciler{}
+	p := NewPoller(time.Hour, slog.Default(),
+		Pausable(Named("provisioning", writer)), Named("stand-checks", checker))
+	held := true
+	p.SetPaused(func() bool { return held })
+
+	p.tick(context.Background())
+	if writer.calls != 0 || checker.calls != 1 {
+		t.Fatalf("held: writer %d, checker %d", writer.calls, checker.calls)
+	}
+	snap := p.Snapshot()
+	if snap[0].Name != "provisioning" || !snap[0].Paused || snap[1].Paused {
+		t.Fatalf("snapshot: %+v", snap)
+	}
+
+	held = false
+	p.tick(context.Background())
+	if writer.calls != 1 || p.Snapshot()[0].Paused {
+		t.Fatalf("released: writer %d, %+v", writer.calls, p.Snapshot())
+	}
+}
+
 // waitFor polls cond up to ~2s, failing the test if it never holds.
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
