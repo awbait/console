@@ -249,6 +249,8 @@ func checkTabs(arr []any, viewsMap, schema map[string]any) ([]Issue, map[string]
 		items, _ := m["items"].(string)
 		if strings.HasPrefix(items, "/") && schema != nil && !pointerResolves(items, schema, schema) {
 			issues = append(issues, Issue{p + "/items", fmt.Sprintf("Путь %q не находит массив в values.schema.json", items)})
+		} else if strings.HasPrefix(items, "/") && schema != nil && scalarItems(resolvePointerNode(items, schema, schema), schema) {
+			issues = append(issues, Issue{p + "/items", fmt.Sprintf(scalarItemsMsg, items)})
 		}
 		switch form, _ := m["form"].(string); form {
 		case "":
@@ -277,6 +279,33 @@ func checkTabs(arr []any, viewsMap, schema map[string]any) ([]Issue, map[string]
 		}
 	}
 	return issues, ids
+}
+
+// scalarItemsMsg rejects a tab over a list of plain values.
+const scalarItemsMsg = "Путь %q ведёт на список простых значений, а вкладке нужен список объектов"
+
+// scalarItems reports whether an array node lists plain values (strings,
+// numbers, booleans) rather than objects. A tab edits one element through a
+// form of fields and reads table columns from those fields; a plain value has
+// neither, so the element dialog cannot render. Only a described scalar type
+// counts: an undescribed or variant element is not blamed.
+func scalarItems(arr, root map[string]any) bool {
+	if arr == nil {
+		return false
+	}
+	arr = deref(arr, root)
+	if t, _ := arr["type"].(string); t != "array" {
+		return false
+	}
+	items, _ := arr["items"].(map[string]any)
+	if items == nil {
+		return false
+	}
+	switch t, _ := deref(items, root)["type"].(string); t {
+	case "string", "number", "integer", "boolean":
+		return true
+	}
+	return false
 }
 
 // checkEnums cross-checks the source array of every dynamic enum rule.

@@ -290,6 +290,23 @@ func TestTabsIssues(t *testing.T) {
 	}
 }
 
+// A tab edits one element through a form of fields, so a list of plain values
+// (hostnames is a list of strings) is refused, while a list of objects is not.
+func TestTabsScalarItems(t *testing.T) {
+	tab := func(items string) string {
+		return `{"views":{"order":{"identity":"/gateways/0/name"},"el":{}},"tabs":[{"id":"a","items":"` + items + `","form":"el"}]}`
+	}
+	issues := views.Validate([]byte(tab("/xroutes/0/hostnames")), []byte(schema))
+	if !hasIssue(issues, "/tabs/0/items", "/xroutes/0/hostnames") {
+		t.Fatalf("want scalar list issue at /tabs/0/items, got %+v", issues)
+	}
+	for _, ok := range []string{"/xroutes/0/parentRefs", "/gateways/0/listeners"} {
+		if issues := views.Validate([]byte(tab(ok)), []byte(schema)); hasIssue(issues, "/tabs/0/items", "") {
+			t.Fatalf("%s: list of objects must pass, got %+v", ok, issues)
+		}
+	}
+}
+
 // enums (dynamic enums) + lookup columns: a valid document against the schema.
 func TestTabsEnumsLookupValid(t *testing.T) {
 	doc := `{"views":{"order":{"identity":"/gateways/0/name"},"route":{}},"tabs":[
