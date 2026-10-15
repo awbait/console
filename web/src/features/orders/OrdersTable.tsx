@@ -194,7 +194,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       if (ad !== bd) return ad - bd;
       return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
-  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter]);
+  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, stands]);
 
   // Is anything still hidden to the right of the pinned pair? That is the only
   // moment their edge means something, so it is drawn only then.
