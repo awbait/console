@@ -11,11 +11,16 @@
 // user. The technical detail is not lost: HttpError keeps `code` and `status`
 // for logs and for screens that show a debug line.
 
+import { maintenanceText } from "../features/maintenance/text";
+
 // Codes whose server message is meant for the user and is more specific than
 // anything written here: field-level validation and a name already taken.
 const KEEP_SERVER_MESSAGE = new Set(["validation_failed", "conflict"]);
 
 const BY_CODE: Record<string, string> = {
+  // The portal is closed for maintenance (503). The lock screen takes over a
+  // moment later; this is what a request caught in between says.
+  maintenance: maintenanceText.apiError,
   // Any upstream: the registry, the git server, the delivery system. Which one
   // it was does not change what the user can do, so the text does not name it.
   // What that outage costs is told by the platform banner and the topbar

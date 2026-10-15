@@ -1,7 +1,7 @@
 import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TabList, TabPanel, Tabs } from "react-aria-components";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { qk } from "@/api/queryKeys";
@@ -28,11 +28,31 @@ import { reseed } from "@/form/valuesMerge";
 import { useAsync } from "@/hooks/useAsync";
 import { isNewer, upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { countGraphRules } from "../graph/mapping";
+import { RestoreNotice } from "../maintenance/RestoreNotice";
+import { useFormStash } from "../maintenance/useFormStash";
 import { OrderMetaCard, OrderPageSkeleton, OrderValuesCard } from "./OrderFormParts";
 import { DetailTab } from "./requestDetailParts";
 import { valuesEditorFor } from "./valuesEditors";
 
 type Values = Record<string, unknown>;
+
+// What the form holds, as maintenance puts it in the browser (see
+// features/maintenance/formStash.ts) and the form takes it back.
+interface FormSnapshot {
+  serviceName: string;
+  displayName: string;
+  standId: string;
+  cluster: string;
+  namespace: string;
+  selectedVersion: string;
+  mode: string;
+  values: Values;
+  raw: string;
+  editorState: unknown;
+}
+
+const snapshotWorth = (s: FormSnapshot) =>
+  !!s.serviceName || !!s.raw.trim() || Object.keys(s.values).length > 0;
 
 // Shown when a view sources the deploy identity from the values but the field
 // is still empty - e.g. the policies graph has no links yet, so there is no
@@ -399,6 +419,44 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setMode("form");
   }, [editor, mode]);
 
+  // Maintenance can lock the portal with this form half filled in: the shell
+  // asks it to put itself in the browser first, and it is offered back here.
+  const { pathname, search } = useLocation();
+  const { stash, drop: dropStash } = useFormStash<FormSnapshot>(
+    user ? `order:${user.sub}:${pathname}${search}` : "",
+    {
+      serviceName,
+      displayName,
+      standId,
+      cluster,
+      namespace,
+      selectedVersion,
+      mode,
+      values,
+      raw,
+      editorState: pluginStateRef.current,
+    },
+    snapshotWorth,
+  );
+  function restoreStash() {
+    if (!stash) return;
+    const s = stash.data;
+    // The values already carry the seed of their stand: a stand set here must
+    // not seed them again on top.
+    seededFor.current = s.standId;
+    setServiceName(s.serviceName);
+    setDisplayName(s.displayName);
+    if (s.standId) setStandId(s.standId);
+    setCluster(s.cluster);
+    setNamespace(s.namespace);
+    if (!editing && !upgrade && s.selectedVersion) setSelectedVersion(s.selectedVersion);
+    pluginStateRef.current = s.editorState ?? pluginStateRef.current;
+    setValues(s.values ?? {});
+    setRaw(s.raw ?? "");
+    setMode(s.mode || "form");
+    dropStash();
+  }
+
   if (editing && existingLoading) return <OrderPageSkeleton />;
   if (editing && existingErr) return <ErrorBox error={existingErr} />;
   if (editing && !upgrade && draft && draft.status !== "DRAFT") {
@@ -547,6 +605,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           draft: true,
         });
       }
+      // The form is on the server now: a copy in the browser would only offer
+      // an older version of it back.
+      dropStash();
       // Back to the product page (its orders list), where the new draft shows on top.
       navigate(project && name ? `/products/${project}/${name}` : "/requests");
     } catch (e) {
@@ -626,6 +687,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           editor_state: editorState(),
         });
       }
+      dropStash();
       navigate(`/requests/${req.id}`);
     } catch (e) {
       fail(e);
@@ -650,6 +712,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setBusy("submit");
     try {
       await api.updateRequest(id!, { version: targetVersion, values: c.values });
+      dropStash();
       navigate(`/requests/${id}`);
     } catch (e) {
       fail(e);
@@ -676,6 +739,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
             : [{ label: "Новый заказ" }]),
         ]}
       />
+      {stash && <RestoreNotice savedAt={stash.saved_at} onRestore={restoreStash} onDiscard={dropStash} />}
       <h1 className="text-xl font-semibold">
         {upgrade ? "Обновление: " : editing ? "Черновик: " : "Заказ "}
         {label || `${chart.project}/${chart.name}`}

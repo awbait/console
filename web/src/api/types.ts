@@ -190,7 +190,8 @@ export interface ComponentStatus {
 export interface ReconcilerStatus {
   // provisioning|drift|import|catalog-discovery|chart-versions|notification-sweep
   name: string;
-  status: "ok" | "failing";
+  // "paused": held by maintenance that pauses the background loops.
+  status: "ok" | "failing" | "paused";
   last_success?: string; // RFC3339; absent if never succeeded
   last_error?: string;
   last_run_ms?: number;
@@ -341,6 +342,69 @@ export interface ConfigResponse {
 export interface PlatformHealth {
   healthy: boolean;
   capabilities: CapabilityStatus[];
+  // Planned maintenance, announced or on; absent while there is none.
+  maintenance?: MaintenancePublic;
+}
+
+// Maintenance (internal/maintenance). The state follows from the window's times
+// on the server: announced before the start, on after it.
+export type MaintenanceState = "off" | "scheduled" | "active";
+
+// What anybody may read about it, signed in or not.
+export interface MaintenancePublic {
+  state: MaintenanceState;
+  starts_at?: string;
+  ends_at?: string;
+  message?: string;
+  // On and past the planned end.
+  overdue?: boolean;
+}
+
+export interface MaintenanceWindow {
+  id: string;
+  starts_at: string;
+  ends_at?: string;
+  message: string;
+  pause_background: boolean;
+  auto_end: boolean;
+  updated_by_name?: string;
+  updated_at: string;
+}
+
+export interface MaintenanceStatus {
+  state: MaintenanceState;
+  window?: MaintenanceWindow;
+  overdue?: boolean;
+  // Switched on by the server configuration; the admin page cannot end it.
+  forced?: boolean;
+}
+
+export type MaintenanceAction = "scheduled" | "started" | "changed" | "ended" | "cancelled" | "auto_ended";
+
+export interface MaintenanceEvent {
+  id: number;
+  window_id: string;
+  action: MaintenanceAction;
+  actor_name?: string;
+  starts_at?: string;
+  ends_at?: string;
+  message?: string;
+  created_at: string;
+}
+
+// GET/PUT/DELETE /api/v1/admin/maintenance.
+export interface MaintenanceView {
+  status: MaintenanceStatus;
+  history: MaintenanceEvent[];
+}
+
+// PUT /api/v1/admin/maintenance. No start is now.
+export interface MaintenanceInput {
+  starts_at?: string;
+  ends_at?: string;
+  message: string;
+  pause_background: boolean;
+  auto_end: boolean;
 }
 
 // About page (GET /api/v1/info): portal build metadata.
