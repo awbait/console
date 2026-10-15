@@ -17,6 +17,7 @@ import type { CapabilityStatus, ComponentStatus, ReconcilerStatus, StandChecksSu
 import { capabilityText } from "../app/capabilities";
 import { useUser } from "../auth/UserContext";
 import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
+import { maintenanceText } from "../features/maintenance/text";
 import { standText } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
 import { safeHref } from "../lib/href";
@@ -445,15 +446,23 @@ function ComponentCard({ c }: { c: ComponentStatus }) {
 
 function ReconcilerCard({ r }: { r: ReconcilerStatus }) {
   const ok = r.status === "ok";
+  // Held by maintenance: not broken, but not working either, so it keeps the
+  // attention colour and says why in its own words.
+  const paused = r.status === "paused";
   const meta = RECONCILERS[r.name];
   return (
-    <Card ok={ok} title={meta?.label ?? r.name} verdict={ok ? "В норме" : "Сбой"}>
+    <Card
+      ok={ok}
+      title={meta?.label ?? r.name}
+      verdict={ok ? "В норме" : paused ? maintenanceText.reconcilerPaused : "Сбой"}
+    >
       {meta && <p className="mt-1 text-xs leading-relaxed text-slate-500">{meta.what}</p>}
+      {paused && <p className="mt-1 text-xs font-medium text-amber-700">{maintenanceText.reconcilerPausedNote}</p>}
       <p className="mt-1.5 text-xs text-slate-400">
         последний успешный запуск: {ago(r.last_success)}
         {r.last_run_ms ? ` · ${r.last_run_ms} мс` : ""}
       </p>
-      {!ok && r.last_error && <Detail text={r.last_error} />}
+      {!ok && !paused && r.last_error && <Detail text={r.last_error} />}
     </Card>
   );
 }

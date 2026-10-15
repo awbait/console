@@ -5,6 +5,7 @@ import {
   IconCheck,
   IconCircleCheck,
   IconClipboardCheck,
+  IconClock,
   IconInfoCircle,
   IconPackageImport,
   IconPackageOff,
@@ -13,6 +14,7 @@ import {
   IconSettingsCheck,
   IconSettingsExclamation,
   IconSparkles,
+  IconTool,
   IconTrashOff,
   IconUser,
 } from "@tabler/icons-react";
@@ -42,6 +44,12 @@ const ICONS: Record<string, IconType> = {
   portal_updated: IconSparkles,
   config_check_failed: IconSettingsExclamation,
   config_check_recovered: IconSettingsCheck,
+  maintenance_scheduled: IconClock,
+  maintenance_started: IconTool,
+  maintenance_soon: IconClock,
+  maintenance_changed: IconClock,
+  maintenance_ended: IconCircleCheck,
+  maintenance_overdue: IconTool,
 };
 
 function iconFor(n: AppNotification): IconType {

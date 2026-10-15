@@ -18,6 +18,8 @@ import type {
   DeliveryTest,
   FieldError,
   JSONSchema,
+  MaintenanceInput,
+  MaintenanceView,
   OrderRequest,
   PendingVersion,
   PlatformHealth,
@@ -115,6 +117,15 @@ export function setUpstreamFailureHandler(h: (() => void) | null) {
   upstreamFailureHandler = h;
 }
 
+// Central "maintenance turned me away" handler, registered by the
+// platform-health layer. A 503 "maintenance" can arrive before the next poll
+// says the portal is locked; it is the cue to ask now, so the lock screen
+// replaces a page full of failed requests within a moment.
+let maintenanceHandler: (() => void) | null = null;
+export function setMaintenanceHandler(h: (() => void) | null) {
+  maintenanceHandler = h;
+}
+
 async function req<T>(
   method: string,
   path: string,
@@ -155,6 +166,7 @@ async function req<T>(
     }
     if (res.status === 401) handleUnauthorized();
     if (parsed?.error === "upstream_unavailable") upstreamFailureHandler?.();
+    if (parsed?.error === "maintenance") maintenanceHandler?.();
     throw new HttpError(res.status, parsed);
   }
   if (res.status === 204) return undefined as T;
@@ -476,6 +488,12 @@ export const api = {
   // screen can ask it too.
   getPlatformHealth: (signal?: AbortSignal) =>
     req<PlatformHealth>("GET", "/platform/health", undefined, signal),
+
+  // maintenance (admin): announce, change, end
+  getMaintenance: (signal?: AbortSignal) =>
+    req<MaintenanceView>("GET", "/admin/maintenance", undefined, signal),
+  setMaintenance: (body: MaintenanceInput) => req<MaintenanceView>("PUT", "/admin/maintenance", body),
+  endMaintenance: () => req<MaintenanceView>("DELETE", "/admin/maintenance"),
 
   // about: portal version + changelog
   getAbout: () => req<AboutInfo>("GET", "/info"),

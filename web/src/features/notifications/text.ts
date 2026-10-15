@@ -10,6 +10,8 @@
 // on the page it links to.
 
 import type { AppNotification } from "@/api/types";
+import { maintenanceText as mt } from "@/features/maintenance/text";
+import { when, whenOrNull } from "@/features/maintenance/when";
 import { mergeBlockReason } from "@/features/orders/mergeBlock";
 import { ruPlural } from "@/form/fieldErrors";
 import { releaseAnchor } from "@/lib/release";
@@ -107,6 +109,19 @@ export function notificationText(n: AppNotification): string {
       const subject = CONFIG_SUBJECT[str(n, "check")];
       return subject ? `${subject} снова в порядке` : "Настройка портала снова в порядке";
     }
+    // Maintenance: the times travel in the payload, worded in the reader's zone.
+    case "maintenance_scheduled":
+      return mt.notifyScheduled(when(str(n, "starts_at")), whenOrNull(str(n, "ends_at") || undefined));
+    case "maintenance_started":
+      return mt.notifyStarted(whenOrNull(str(n, "ends_at") || undefined));
+    case "maintenance_soon":
+      return mt.notifySoon(when(str(n, "starts_at")));
+    case "maintenance_changed":
+      return mt.notifyChanged(when(str(n, "starts_at")), whenOrNull(str(n, "ends_at") || undefined));
+    case "maintenance_ended":
+      return bool(n, "cancelled") ? mt.notifyCancelled : mt.notifyEnded;
+    case "maintenance_overdue":
+      return mt.notifyOverdue;
     default:
       // A kind this build does not know: the portal is newer on the server than
       // in this browser. Saying so is better than an empty row.
@@ -145,6 +160,12 @@ export function notificationLink(n: AppNotification): string | null {
   // увидел, и что с этим делать.
   if (n.kind === "config_check_failed" || n.kind === "config_check_recovered") {
     return "/admin/config";
+  }
+  // Running late is the admins' news, and the page where they end or extend
+  // it is where it leads. The rest about maintenance is said in full in the
+  // line itself: there is no page for the people it is addressed to.
+  if (n.kind === "maintenance_overdue") {
+    return "/admin/maintenance";
   }
   // A version taken out of support leads to the service in the catalog, not to
   // the version's own page: this one is addressed to the teams running it, who

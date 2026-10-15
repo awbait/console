@@ -17,6 +17,7 @@ import {
   IconShieldCheck,
   IconShieldLock,
   IconTags,
+  IconTool,
   IconUsers,
   IconVariable,
 } from "@tabler/icons-react";
@@ -38,6 +39,10 @@ import { chartLabel, inMenu, useCatalog } from "../app/CatalogContext";
 import { useTeam } from "../app/TeamContext";
 import { ROLE_LABELS } from "../auth/roles";
 import { useUser } from "../auth/UserContext";
+import { MaintenanceBanner } from "../features/maintenance/MaintenanceBanner";
+import { MaintenanceLock } from "../features/maintenance/MaintenanceLock";
+import { maintenanceText } from "../features/maintenance/text";
+import { useMaintenanceLock } from "../features/maintenance/useMaintenanceLock";
 import { NotificationsBell } from "../features/notifications/NotificationsBell";
 import { standText } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
@@ -103,6 +108,7 @@ const adminSectionNav: SectionNavItem[] = [
   { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
   { to: "/admin/stands", label: standText.navLabel, Icon: IconServer },
   { to: "/admin/variables", label: "Переменные", Icon: IconVariable },
+  { to: "/admin/maintenance", label: maintenanceText.navLabel, Icon: IconTool },
 ];
 
 // SideTip labels a sidebar item while the menu is collapsed, where only the
@@ -305,6 +311,9 @@ export function Layout() {
   const [collapsed, setCollapsed] = useSidebarState();
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  // Maintenance closes the portal to everybody but admins (see
+  // features/maintenance): the lock screen replaces the whole shell.
+  const lock = useMaintenanceLock(user);
 
   // On a request detail/edit route the URL doesn't say which product it is, so
   // fetch the order and map its chart - that chart's sidebar item then lights
@@ -410,6 +419,15 @@ export function Layout() {
 
   if (loading) return <ShellSkeleton width={shellWidth} collapsed={collapsed} />;
   if (unauthenticated || !user) return <LoginScreen />;
+  if (lock.locked) {
+    return (
+      <MaintenanceLock
+        maintenance={lock.maintenance}
+        formSaved={lock.formSaved}
+        supportChatUrl={user.support_chat_url}
+      />
+    );
+  }
 
   // Sections by role: everyone sees the platform, and a privileged role adds its
   // own section on top (admin sees all of them). The active section follows the
@@ -771,6 +789,9 @@ export function Layout() {
             key={isWide ? "wide" : "standard"}
             className="flex min-h-0 w-full flex-1 flex-col animate-in fade-in duration-300 motion-reduce:animate-none"
           >
+            {/* Planned maintenance first: it is announced in advance and decides
+                whether the rest of the page will be there at all. */}
+            <MaintenanceBanner />
             {/* Outside the page, above every route: an outage belongs to the
                 portal, not to whichever screen happens to be open. */}
             <PlatformHealthBanner />

@@ -1,7 +1,8 @@
-import { IconAlertTriangle, IconLogin } from "@tabler/icons-react";
+import { IconAlertTriangle, IconLogin, IconTool } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
+import { maintenanceText } from "../features/maintenance/text";
 import { LoginScene } from "./LoginScene";
 
 // A login that did not go through sends the browser back here with a reason.
@@ -87,7 +88,10 @@ export function LoginScreen() {
   // says so on the spot; here the press leaves the interface for an address that
   // answers nothing, and the person is left on the browser's error page with no
   // way back in.
-  const { ok, reachable } = usePlatformHealth();
+  const { ok, reachable, maintenance } = usePlatformHealth();
+  // Maintenance does not close the button: an admin signs in to run it. It is
+  // said beside it, so everybody else knows what waits behind the sign-in.
+  const underMaintenance = maintenance?.state === "active";
   const blocked = !reachable ? OFFLINE : ok("sign_in") ? undefined : DEGRADED;
   const canSignIn = !blocked;
   // The explanation folds away rather than disappearing, so it needs something
@@ -149,6 +153,19 @@ export function LoginScreen() {
             <IconLogin size={20} stroke={1.7} />
             Войти через Keycloak
           </a>
+
+          {underMaintenance && (
+            <div
+              role="status"
+              className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+            >
+              <IconTool size={18} stroke={1.8} className="mt-0.5 shrink-0 text-amber-600" />
+              <span>
+                <span className="block font-medium">{maintenanceText.loginTitle}</span>
+                <span className="mt-0.5 block">{maintenanceText.loginText}</span>
+              </span>
+            </div>
+          )}
 
           {/* The explanation opens and closes with the outage (grid 0fr -> 1fr),
               so the panel never jumps when a poll lands. */}

@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
-import { api, setUpstreamFailureHandler } from "../api/client";
+import { api, setMaintenanceHandler, setUpstreamFailureHandler } from "../api/client";
 import { qk } from "../api/queryKeys";
-import type { CapabilityStatus } from "../api/types";
+import type { CapabilityStatus, MaintenancePublic } from "../api/types";
 import { useAsync } from "../hooks/useAsync";
 import { type CapabilityText, capabilityText } from "./capabilities";
 
@@ -42,6 +42,9 @@ interface PlatformHealthState {
   // Why an action is blocked right now, or undefined when it is not. Meant to be
   // passed straight into a disabled control's tooltip.
   blockedReason: (id: string) => string | undefined;
+  // Planned maintenance, announced or on; null while there is none or while the
+  // answer is unknown. An unknown answer never locks anybody out.
+  maintenance: MaintenancePublic | null;
 }
 
 const HEALTHY: PlatformHealthState = {
@@ -52,6 +55,7 @@ const HEALTHY: PlatformHealthState = {
   reachable: true,
   ok: () => true,
   blockedReason: () => undefined,
+  maintenance: null,
 };
 
 const Ctx = createContext<PlatformHealthState>(HEALTHY);
@@ -79,8 +83,12 @@ export function PlatformHealthProvider({ children }: { children: ReactNode }) {
       if (timer) clearTimeout(timer);
       timer = setTimeout(reload, RECHECK_AFTER_FAILURE_MS);
     });
+    // A request turned away by maintenance is the same kind of news: the lock
+    // started before the poll noticed.
+    setMaintenanceHandler(reload);
     return () => {
       setUpstreamFailureHandler(null);
+      setMaintenanceHandler(null);
       if (timer) clearTimeout(timer);
     };
     // reload is stable for this query key; re-registering on every render would
@@ -115,6 +123,7 @@ export function PlatformHealthProvider({ children }: { children: ReactNode }) {
       reachable: !error,
       ok: (id) => !broken.has(id),
       blockedReason: (id) => (broken.has(id) ? capabilityText(id).impact : undefined),
+      maintenance: data.maintenance && data.maintenance.state !== "off" ? data.maintenance : null,
     };
   }, [data, error]);
 
