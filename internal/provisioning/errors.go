@@ -72,6 +72,9 @@ const (
 	// the detail: the owner reads it in a screenshot and knows what to correct.
 	MsgViewDefaults      = "Портал не смог заполнить значения, которые проставляет сам: "
 	MsgViewDefaultsOwner = "Так описан сервис: сообщите об этом его владельцу."
+	// Another stand's order already deploys under the same name through the
+	// same Argo CD. Arguments: the other order's display name, its stand.
+	MsgAppNameTaken = "Под этим именем уже развёрнут заказ «%s» на стенде «%s». Выберите другое имя сервиса, а если ошибка повторяется, обратитесь к администратору портала."
 )
 
 // ValidationError is a 422 with a human-readable reason and, when it comes from

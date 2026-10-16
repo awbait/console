@@ -47,6 +47,7 @@ const (
 	reasonNSCollision     = "namespace_collision" // the template gives two namespaces the same application name
 	reasonTeamCollision   = "team_collision"      // the template gives two teams the same application name
 	reasonChartCollision  = "chart_collision"     // the template gives two charts the same application name
+	reasonStandCollision  = "stand_collision"     // the template gives two stands the same application name
 	reasonBadTemplate     = "bad_template"        // the template does not parse
 	reasonUnique          = "unique"              // it does tell services apart, which is not news
 )
@@ -111,18 +112,22 @@ func instanceDirTemplate(tmpl string) Result {
 // namespaces must separate them (a failure each: one team may order one chart
 // under one name into two namespaces, and those are two services); team and
 // chart should too, because a name that repeats across teams turns one team's
-// order into another team's outage.
+// order into another team's outage. So should stands: an order is unique only
+// within its stand, and stands sharing an Argo CD namespace would share the
+// application. A warning, not a failure: the portal refuses such an order
+// itself, and a portal with one stand never meets it.
 func appNameTemplate(tmpl string) Result {
 	t, err := template.New("appname").Parse(tmpl)
 	if err != nil {
 		return verdict(VerdictFail, reasonBadTemplate, nil)
 	}
-	base := tmplSample{Team: "core", Chart: "postgres", ServiceName: "one", Namespace: "apps"}
-	byService, byNamespace, byTeam, byChart := base, base, base, base
+	base := tmplSample{Team: "core", Chart: "postgres", ServiceName: "one", Namespace: "apps", Stand: "dev"}
+	byService, byNamespace, byTeam, byChart, byStand := base, base, base, base, base
 	byService.ServiceName = "two"
 	byNamespace.Namespace = "other"
 	byTeam.Team = "billing"
 	byChart.Chart = "redis"
+	byStand.Stand = "prod"
 	name := renderTmpl(t, base)
 	switch {
 	case renderTmpl(t, byService) == name:
@@ -133,6 +138,8 @@ func appNameTemplate(tmpl string) Result {
 		return verdict(VerdictWarn, reasonTeamCollision, nil)
 	case renderTmpl(t, byChart) == name:
 		return verdict(VerdictWarn, reasonChartCollision, nil)
+	case renderTmpl(t, byStand) == name:
+		return verdict(VerdictWarn, reasonStandCollision, nil)
 	}
 	return silent(reasonUnique)
 }
@@ -146,6 +153,7 @@ type tmplSample struct {
 	Chart       string
 	Namespace   string
 	Cluster     string
+	Stand       string
 }
 
 // renderTmpl renders a template against sample data. A template that fails

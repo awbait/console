@@ -87,11 +87,13 @@ type tmplData struct {
 	Team        string
 	ServiceName string
 	Chart       string
-	// Namespace and Cluster are the order's destination. They are only ever
-	// asked for by the instance-folder template, so the subgroup and app-name
-	// templates simply never reference them.
+	// Namespace and Cluster are the order's destination. The app-name template
+	// knows the namespace, the instance-folder template both.
 	Namespace string
 	Cluster   string
+	// Stand is the stand's name as a Kubernetes name allows it, empty on the
+	// default stand (see StandKey). Only the app-name template knows it.
+	Stand string
 }
 
 // NewGitOps compiles the subgroup and app-name templates.
@@ -162,10 +164,37 @@ func (g *GitOps) RepoPath(st *models.Stand, team, chart string) string {
 // define the same-named Application CR (which would make their app-of-apps repos
 // fight over a single object). The namespace is part of it for the same reason,
 // from the other side: one team may order one chart under one name into two
-// namespaces, and those are two applications. Mirrors the active-service key
-// (team, chart, service, cluster, namespace).
-func (g *GitOps) AppName(team, chart, namespace, service string) string {
-	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service})
+// namespaces, and those are two applications. The stand is part of it because
+// an order is unique only within its stand: two stands whose Argo CD reads
+// Applications from one namespace would otherwise get one Application from two
+// app-of-apps repos, each undoing the other. Mirrors the active-service key
+// (stand, team, chart, service, cluster, namespace).
+func (g *GitOps) AppName(team, chart, namespace, service, stand string) string {
+	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service, Stand: stand})
+}
+
+// AppNamespaceOf is the namespace the stand's Argo CD reads Applications from:
+// the stand's own, else the configured one, else Argo CD's default. Two orders
+// collide on an application name only within one such namespace.
+func (g *GitOps) AppNamespaceOf(st *models.Stand) string {
+	if st != nil && st.ArgoNamespace != "" {
+		return st.ArgoNamespace
+	}
+	if g.AppNamespace != "" {
+		return g.AppNamespace
+	}
+	return defaultAppNamespace
+}
+
+// StandKey is what the app-name template is given for a stand: its name as a
+// Kubernetes name allows it, and nothing for the default stand, so the orders
+// there keep the names they always had. A stand's name may change, but an
+// order keeps the application name it was created with.
+func StandKey(st *models.Stand) string {
+	if st == nil || st.Default || strings.TrimSpace(st.Name) == "" {
+		return ""
+	}
+	return dnsName(st.Name)
 }
 
 // TeamFromSubgroup reverses SubgroupTmpl to recover the team from a subgroup

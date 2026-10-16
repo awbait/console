@@ -32,7 +32,7 @@ func newServer(t *testing.T) (*api.Server, *argocd.Fake, *provisioning.Service) 
 	gl := gitlab.NewFake("managed-services", []string{"team-core"}, true) // auto-merge
 	argo := argocd.NewFake(gl)
 	cat := catalog.New(hb, c)
-	gitops, _ := provisioning.NewGitOps("managed-services", "team-{{.Team}}", "{{.Team}}-{{.ServiceName}}", "portal-managed", "main")
+	gitops, _ := provisioning.NewGitOps("managed-services", "team-{{.Team}}", "{{.Team}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}", "portal-managed", "main")
 	prov := provisioning.New(st, gl, argo, cat, gitops, events.New(), "in-cluster", "main", false)
 	srv := &api.Server{
 		Auth: auth.NewDev(), Catalog: cat, Prov: prov, Pubs: publications.New(st, cat),
