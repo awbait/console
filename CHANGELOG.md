@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.22.0] - 2026-10-16
+
+### Added
+- Added the “Maintenance” admin page. Platform admins can start maintenance now
+  or schedule it, set an optional end time and user message, pause the portal’s
+  background operations in GitLab, Argo CD and the chart registry, and enable
+  automatic finishing at the planned end. They can also extend or finish
+  maintenance and view its history. Before maintenance, everyone sees a banner
+  with the schedule and receives a notification and a reminder 15 minutes before
+  the start. During maintenance, only platform admins retain access and see a
+  banner linking to the admin page. Other users see the admin’s message and
+  planned end time, then automatically return to the same page when maintenance
+  ends. Unfinished order forms are saved in the browser when access is blocked
+  and offer to restore the saved data afterward. Admins are notified if
+  maintenance runs past its planned end without automatic finishing. Server
+  administrators can also enable maintenance with `MAINTENANCE_FORCE`.
+
+### Fixed
+- Order lists on the “Order list” page, the “All teams’ orders” page in the
+  support section, and product pages now update immediately when a stand is
+  selected in the filter.
+
 ## [0.21.0] - 2026-10-15
 
 ### Added
