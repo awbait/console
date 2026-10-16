@@ -277,12 +277,20 @@ func TestHTTPChartDependencies(t *testing.T) {
 	var out struct {
 		Dependencies []models.ChartDependency `json:"dependencies"`
 		Effective    map[string]any           `json:"effective_schema"`
+		Defaults     map[string]any           `json:"defaults"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(out.Dependencies) != 1 || out.Dependencies[0].Key != "pooler" || out.Dependencies[0].Name != "pgbouncer" {
 		t.Fatalf("dependencies = %+v", out.Dependencies)
+	}
+	// The defaults are what Helm lays under an order: the chart's own values.yaml
+	// and the dependency's, under its key. The form reads required fields off them.
+	auth, _ := out.Defaults["auth"].(map[string]any)
+	pool, _ := out.Defaults["pooler"].(map[string]any)
+	if auth["database"] != "app" || pool["poolMode"] != "transaction" {
+		t.Errorf("defaults = %v", out.Defaults)
 	}
 	if len(out.Dependencies[0].Schema) == 0 {
 		t.Error("the dependency's own schema is missing, the constructor has no tab to show")

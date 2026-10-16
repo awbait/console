@@ -256,7 +256,8 @@ func TestCreateValidationFails(t *testing.T) {
 	u := member("core")
 	_, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
-		Team: "core", ServiceName: "pg1", Values: map[string]any{"auth": map[string]any{}}, // missing required database
+		// values.yaml answers auth.database; a null drops that answer, as in Helm.
+		Team: "core", ServiceName: "pg1", Values: map[string]any{"auth": map[string]any{"database": nil}},
 	})
 	var ve *provisioning.ValidationError
 	if !errors.As(err, &ve) {
@@ -295,12 +296,12 @@ func TestDraftLifecycle(t *testing.T) {
 	s := newStack(t)
 	u := member("core")
 
-	// A draft persists even with incomplete values (no required auth.database)
-	// and does not open an MR.
+	// A draft persists even with incomplete values (required auth.database
+	// nulled out, so values.yaml does not answer it) and does not open an MR.
 	req, err := s.prov.Create(ctx, u, provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
 		Team: "core", ServiceName: "pg1", DisplayName: "Payments DB",
-		Values: map[string]any{"auth": map[string]any{}}, Draft: true,
+		Values: map[string]any{"auth": map[string]any{"database": nil}}, Draft: true,
 	})
 	if err != nil {
 		t.Fatalf("create draft: %v", err)

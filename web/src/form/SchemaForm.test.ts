@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { collectErrors, enumLabel, enumOptions, newArrayItem, setAt } from "./SchemaForm";
+import { collectErrors, defaultAt, enumLabel, enumOptions, newArrayItem, setAt } from "./SchemaForm";
 
 // A chart may hide a field for part of the values: the ingress-gateway schema
 // hides a listener's domain once the protocol is TCP or UDP. What the form does
@@ -38,6 +38,54 @@ describe("collectErrors with conditional fields", () => {
   it("ignores the domain once the protocol hides it", () => {
     const errors = collectErrors(listener, { protocol: "TCP", hostname: "ab" });
     expect(errors.size).toBe(0);
+  });
+});
+
+// Helm lays the chart's values.yaml under the order before checking it, and so
+// does the server. A required field the chart answers there is not missing.
+describe("collectErrors with the chart's defaults", () => {
+  const subnet = {
+    type: "object",
+    properties: {
+      subnet: {
+        type: "object",
+        required: ["cidrBlock", "gatewayType"],
+        properties: {
+          cidrBlock: { type: "string" },
+          gatewayType: { type: "string", enum: ["distributed", "centralized"] },
+        },
+      },
+    },
+  };
+  const defaults = { subnet: { gatewayType: "distributed" } };
+
+  it("does not flag a required field the chart answers", () => {
+    const errors = collectErrors(subnet, { subnet: { cidrBlock: "10.0.0.0/24" } }, undefined, defaults);
+    expect(errors.size).toBe(0);
+  });
+
+  it("still flags a required field the chart leaves open", () => {
+    const errors = collectErrors(subnet, { subnet: {} }, undefined, defaults);
+    expect(errors.get("/subnet/cidrBlock")).toBeString();
+    expect(errors.has("/subnet/gatewayType")).toBe(false);
+  });
+
+  it("checks without defaults as before", () => {
+    const errors = collectErrors(subnet, { subnet: { cidrBlock: "10.0.0.0/24" } });
+    expect(errors.get("/subnet/gatewayType")).toBeString();
+  });
+});
+
+describe("defaultAt", () => {
+  const defaults = { a: { b: "x" }, list: [{ name: "row" }] };
+
+  it("reads a value by its pointer", () => {
+    expect(defaultAt(defaults, "/a/b")).toBe("x");
+    expect(defaultAt(defaults, "/a/missing")).toBeUndefined();
+  });
+
+  it("does not look into a list: Helm takes it whole", () => {
+    expect(defaultAt(defaults, "/list/0/name")).toBeUndefined();
   });
 });
 

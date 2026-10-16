@@ -47,6 +47,27 @@ const LockedCtx = createContext<boolean>(false);
 // deploy identity field on edit/upgrade, since it must never change once set.
 const LockedPathsCtx = createContext<Set<string>>(new Set());
 const isReadOnly = (s: Schema) => s["ui:readOnly"] === true;
+// What the chart answers in its values.yaml (and its dependencies in theirs),
+// which Helm lays under the order. A field shows that answer as its default.
+const ChartDefaultsCtx = createContext<Values | undefined>(undefined);
+
+// defaultAt reads the chart's answer for a field by its JSON pointer. Helm takes
+// a list whole and never merges it row by row, so nothing inside a list counts.
+export function defaultAt(defaults: Values | undefined, path: string): unknown {
+  let cur: unknown = defaults;
+  for (const seg of path.split("/").slice(1)) {
+    if (cur === null || typeof cur !== "object" || Array.isArray(cur)) return undefined;
+    cur = (cur as Values)[seg];
+  }
+  return cur;
+}
+
+// The default a field shows: the schema's own, else the chart's answer when it
+// is a single value a field can show.
+function shownDefault(s: Schema, answer: unknown): unknown {
+  if (s.default != null) return s.default;
+  return answer !== null && typeof answer !== "object" ? answer : undefined;
+}
 
 function emptyVal(v: unknown): boolean {
   return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
@@ -106,12 +127,13 @@ function walkErrors(
   view: View | undefined,
   base: string,
   out: Map<string, string>,
+  defaults?: Values,
 ) {
   const s = deref(node, root);
   if (isHidden(s)) return;
   if (Array.isArray(s.oneOf)) {
     const opts = s.oneOf.map((o: Schema) => deref(o, root));
-    walkErrors(opts[matchVariant(value, opts, root)], value, root, undefined, base, out);
+    walkErrors(opts[matchVariant(value, opts, root)], value, root, undefined, base, out, defaults);
     return;
   }
   if (s.type === "object" && s.properties) {
@@ -134,7 +156,9 @@ function walkErrors(
       const cpath = `${base}/${k}`;
       // A required field with a schema default/const isn't "missing input" - the
       // form shows the default selected and it's applied on submit, so don't flag.
-      const hasDefault = "default" in child || "const" in child;
+      // Nor is one the chart answers in its values.yaml: Helm fills it in before
+      // checking, and so does the server.
+      const hasDefault = "default" in child || "const" in child || !emptyVal(defaultAt(defaults, cpath));
       if ((required.has(field.label) || viewRequired.has(k)) && emptyVal(cv) && !hasDefault) {
         // A required empty array needs an element added, not a value typed in.
         out.set(cpath, child.type === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
@@ -150,7 +174,7 @@ function walkErrors(
         continue;
       }
       if (cv === undefined) continue;
-      walkErrors(childNode, cv, root, child["ui:view"] as View | undefined, cpath, out);
+      walkErrors(childNode, cv, root, child["ui:view"] as View | undefined, cpath, out, defaults);
     }
     return;
   }
@@ -181,7 +205,7 @@ function walkErrors(
       // say it needs filling instead of letting the row quietly disappear. A row
       // of fields answers for its own required keys one level down.
       if (!card && emptyVal(it)) out.set(ipath, fieldMsg.required);
-      else walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, ipath, out);
+      else walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, ipath, out, defaults);
     });
     return;
   }
@@ -189,10 +213,11 @@ function walkErrors(
 }
 
 // collectErrors returns invalid field paths (JSON pointer) -> message for the
-// given values, honoring the view. Empty map = valid.
-export function collectErrors(schema: Schema, value: Values, view?: View): Map<string, string> {
+// given values, honoring the view. Empty map = valid. defaults are the chart's
+// answers (values.yaml) under the values, as Helm lays them.
+export function collectErrors(schema: Schema, value: Values, view?: View, defaults?: Values): Map<string, string> {
   const out = new Map<string, string>();
-  walkErrors(schema, value, schema, view, "", out);
+  walkErrors(schema, value, schema, view, "", out, defaults);
   return out;
 }
 
@@ -438,6 +463,7 @@ export function SchemaForm({
   showErrors,
   lockReadOnly = false,
   lockedPaths,
+  chartDefaults,
 }: {
   schema: Schema;
   value: Values;
@@ -450,6 +476,9 @@ export function SchemaForm({
   lockReadOnly?: boolean;
   // Always-locked field paths (JSON pointers), e.g. the deploy identity on upgrade.
   lockedPaths?: string[];
+  // The chart's values.yaml answers, shown as each field's default. Never
+  // written into the values: Helm lays them under the order itself.
+  chartDefaults?: Values;
 }) {
   const lockedSet = useMemo(() => new Set(lockedPaths ?? []), [lockedPaths]);
   const [touched, setTouched] = useState<Set<string>>(new Set());
@@ -476,17 +505,19 @@ export function SchemaForm({
     <ValidationCtx.Provider value={validation}>
       <LockActiveCtx.Provider value={lockReadOnly}>
         <LockedPathsCtx.Provider value={lockedSet}>
-          {isVariant ? (
-            <VariantBody
-              schema={s}
-              root={root}
-              value={value}
-              onChange={(v) => onChange((v ?? {}) as Values)}
-              path=""
-            />
-          ) : (
-            <ObjectFields schema={s} root={root} value={value} onChange={onChange} view={view} path="" />
-          )}
+          <ChartDefaultsCtx.Provider value={chartDefaults}>
+            {isVariant ? (
+              <VariantBody
+                schema={s}
+                root={root}
+                value={value}
+                onChange={(v) => onChange((v ?? {}) as Values)}
+                path=""
+              />
+            ) : (
+              <ObjectFields schema={s} root={root} value={value} onChange={onChange} view={view} path="" />
+            )}
+          </ChartDefaultsCtx.Provider>
         </LockedPathsCtx.Provider>
       </LockActiveCtx.Provider>
     </ValidationCtx.Provider>
@@ -579,8 +610,10 @@ function Field({
   const lockActive = useContext(LockActiveCtx);
   const ancestorLocked = useContext(LockedCtx);
   const lockedPaths = useContext(LockedPathsCtx);
+  const chartDefaults = useContext(ChartDefaultsCtx);
   const s = deref(schema, root);
   if (isHidden(s)) return null;
+  const fallback = shownDefault(s, defaultAt(chartDefaults, path));
   // Locked = inside a locked subtree, an always-locked path (e.g. identity), or a
   // ui:readOnly field on a form that honors it (edit/upgrade). Locked
   // objects/arrays lock their whole subtree.
@@ -613,7 +646,7 @@ function Field({
         isDisabled={locked}
         errorText={err}
         hideLabel={hideLabel}
-        selectedKey={value != null ? String(value) : (s.default != null ? String(s.default) : null)}
+        selectedKey={value != null ? String(value) : (fallback != null ? String(fallback) : null)}
         onSelectionChange={(k) => change(coerceEnum(s.enum, k))}
         options={enumOptions(s)}
       />
@@ -623,7 +656,7 @@ function Field({
   switch (s.type) {
     case "boolean":
       return (
-        <Checkbox label={label} isRequired={required} isDisabled={locked} isSelected={Boolean(value ?? s.default ?? false)} onChange={(v) => change(v)} />
+        <Checkbox label={label} isRequired={required} isDisabled={locked} isSelected={Boolean(value ?? fallback ?? false)} onChange={(v) => change(v)} />
       );
     case "number":
     case "integer":
@@ -670,7 +703,7 @@ function Field({
           isDisabled={locked}
           errorText={err}
           hideLabel={hideLabel}
-          placeholder={s.default != null ? defaultPlaceholder(String(s.default)) : undefined}
+          placeholder={fallback != null ? defaultPlaceholder(String(fallback)) : undefined}
           value={value != null ? String(value) : ""}
           onChange={(v) => change(v === "" ? undefined : v)}
         />

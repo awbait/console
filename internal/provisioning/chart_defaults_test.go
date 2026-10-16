@@ -59,19 +59,21 @@ func TestOrderStillFailsOnADependencyValueNobodyAnswers(t *testing.T) {
 	}
 }
 
-// The chart's own fields keep their guard. "An incomplete draft cannot be
-// submitted" is a rule somebody put there on purpose, and a dependency's
-// defaults have nothing to say about it.
-func TestTheChartsOwnFieldsAreStillRequired(t *testing.T) {
+// The chart's own values.yaml counts the same way. postgres requires
+// auth.database and answers it there, so an order that leaves it out is an
+// order Helm takes - and still keeps only what it was given.
+func TestOrderPassesOnAFieldTheChartsOwnValuesAnswer(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)
 
-	_, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
+	req, err := s.prov.Create(ctx, member("core"), provisioning.CreateInput{
 		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
 		Team: "core", ServiceName: "pg3", Values: map[string]any{"auth": map[string]any{}},
 	})
-	var ve *provisioning.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("an order missing a field of the chart itself went through: %v", err)
+	if err != nil {
+		t.Fatalf("an order Helm would accept was refused: %v", err)
+	}
+	if strings.Contains(req.ValuesYAML, "database") {
+		t.Errorf("the chart's defaults were written into the order:\n%s", req.ValuesYAML)
 	}
 }

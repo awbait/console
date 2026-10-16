@@ -104,9 +104,16 @@ func (s *Server) handleGetSchema(w http.ResponseWriter, r *http.Request) {
 // The effective schema is absent when the chart describes nothing at all: no
 // values.schema.json of its own and no dependency carrying one. That is not an
 // error, it is a chart ordered as raw YAML.
+//
+// Defaults are what Helm lays under an order of this version: the chart's own
+// values.yaml and those of its dependencies, merged the way the server merges
+// them before checking an order. The form reads them to know which required
+// fields the chart already answers, so it does not hold back an order the
+// server would take. Nothing of it is written into the order.
 type chartDependencies struct {
 	Dependencies    []models.ChartDependency `json:"dependencies"`
 	EffectiveSchema json.RawMessage          `json:"effective_schema,omitempty"`
+	Defaults        map[string]any           `json:"defaults,omitempty"`
 }
 
 func (s *Server) handleGetDependencies(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +137,11 @@ func (s *Server) handleGetDependencies(w http.ResponseWriter, r *http.Request) {
 	if deps == nil {
 		deps = []models.ChartDependency{}
 	}
-	writeJSON(w, http.StatusOK, chartDependencies{Dependencies: deps, EffectiveSchema: schema})
+	writeJSON(w, http.StatusOK, chartDependencies{
+		Dependencies:    deps,
+		EffectiveSchema: schema,
+		Defaults:        s.Catalog.ValuesForValidation(r.Context(), project, name, version, map[string]any{}),
+	})
 }
 
 func (s *Server) handleGetChangelog(w http.ResponseWriter, r *http.Request) {
