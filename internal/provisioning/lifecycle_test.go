@@ -39,8 +39,10 @@ func newStackOn(t *testing.T, st store.Store) *stack {
 	gl := gitlab.NewFake("managed-services", []string{"team-core"}, false) // manual merge
 	argo := argocd.NewFake(gl)
 	cat := catalog.New(hb, c)
+	// The stand is in the name, as in the shipped default: copies to another
+	// stand would otherwise share the application and be refused.
 	gitops, err := provisioning.NewGitOps("managed-services", "team-{{.Team}}",
-		"{{.Team}}-{{.Chart}}-{{.ServiceName}}", "portal-managed", "main")
+		"{{.Team}}-{{.Chart}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}", "portal-managed", "main")
 	if err != nil {
 		t.Fatal(err)
 	}

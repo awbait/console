@@ -48,6 +48,8 @@ const REASONS: Record<string, string> = {
     "Шаблон не различает команды. Заказы разных команд могут дать одно имя приложения.",
   "app_name_template.chart_collision":
     "Шаблон не различает чарты. Заказы разных чартов могут дать одно имя приложения.",
+  "app_name_template.stand_collision":
+    "Шаблон не различает стенды. Один сервис, заказанный на двух стендах, получит одно имя приложения, и если стенды обслуживает один Argo CD, портал откажет во втором заказе.",
   "app_name_template.bad_template": "Шаблон не разбирается.",
 
   // GitLab
@@ -128,6 +130,7 @@ const ACTIONS: Record<string, string> = {
   "app_name_template.namespace_collision": "Добавьте в шаблон {{.Namespace}}.",
   "app_name_template.team_collision": "Добавьте в шаблон {{.Team}}.",
   "app_name_template.chart_collision": "Добавьте в шаблон {{.Chart}}.",
+  "app_name_template.stand_collision": "Добавьте в шаблон {{if .Stand}}-{{.Stand}}{{end}}.",
   "app_name_template.bad_template":
     "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}.",
 

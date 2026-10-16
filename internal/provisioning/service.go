@@ -443,6 +443,34 @@ func (s *Service) templateVars(ctx context.Context, view []byte, standID string)
 	return models.VariableValuesOn(list, stand.ID), stand.Name, nil
 }
 
+// checkAppName refuses an order whose Argo CD application name a live order of
+// another stand already carries, when both stands' Argo CD reads Applications
+// from one namespace. The two app-of-apps repos would then define one
+// Application, each undoing what the other applied. The default app-name
+// template keeps stands apart, but a configured one may not, and a stand's
+// name may reduce to what another one's does. Orders of a stand that keeps
+// them in the portal write no Application and never collide.
+func (s *Service) checkAppName(ctx context.Context, r *models.Request, st *models.Stand) error {
+	if r.ArgoCDAppName == "" || !st.WritesGit() {
+		return nil
+	}
+	list, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true})
+	if err != nil {
+		return nil // best-effort, like the checks below
+	}
+	ns := s.gitops.AppNamespaceOf(st)
+	for _, ex := range list {
+		if ex.ID == r.ID || ex.DeletedAt != nil || ex.ArgoCDAppName != r.ArgoCDAppName || ex.StandID == r.StandID {
+			continue
+		}
+		other := s.standOf(ctx, ex)
+		if other.WritesGit() && s.gitops.AppNamespaceOf(other) == ns {
+			return conflict(MsgAppNameTaken, ex.DisplayName, other.Name)
+		}
+	}
+	return nil
+}
+
 // checkServiceName mirrors the uniq_active_service index (stand, team,
 // chart_name, service_name, cluster, effective namespace among active orders).
 // The stand is in the key because cluster names are only unique within one
@@ -620,7 +648,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		EditorState:   in.EditorState,
 		Status:        models.StatusDraft,
 	}
-	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName) // computed once
+	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, StandKey(stand)) // computed once
 	// Same idea as the application name: rendered from a template once, at
 	// creation, and carried on the row. Re-rendering it later would follow a
 	// changed GITLAB_INSTANCE_DIR_TEMPLATE and point the portal at a folder its
@@ -631,6 +659,9 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		return nil, err
 	}
 	if err := s.checkNamespaceIdentity(ctx, r); err != nil {
+		return nil, err
+	}
+	if err := s.checkAppName(ctx, r, stand); err != nil {
 		return nil, err
 	}
 
@@ -940,8 +971,9 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	// namespace and the cluster, and a draft may still change all three. They are
 	// re-rendered here and nowhere else: a draft has nothing in Git yet, while an
 	// order that does keeps what it was created with - see NewInstancePath.
-	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName)
-	r.InstancePath = s.gitops.NewInstancePath(s.standOf(ctx, r), r)
+	stand := s.standOf(ctx, r)
+	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, StandKey(stand))
+	r.InstancePath = s.gitops.NewInstancePath(stand, r)
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false, stampOf(r))
 	if err != nil {
 		return nil, err
@@ -953,6 +985,9 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 		return nil, err
 	}
 	if err := s.checkNamespaceIdentity(ctx, r); err != nil {
+		return nil, err
+	}
+	if err := s.checkAppName(ctx, r, stand); err != nil {
 		return nil, err
 	}
 	if err := s.store.UpdateRequest(ctx, r); err != nil {

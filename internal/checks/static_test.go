@@ -54,7 +54,10 @@ func TestAppNameTemplate(t *testing.T) {
 		want   Verdict
 		reason string
 	}{
-		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}", VerdictSilent, reasonUnique},
+		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictSilent, reasonUnique},
+		// An order is unique within its stand, and two stands may share one
+		// Argo CD namespace. The portal refuses such an order, so a warning.
+		{"no stand", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}", VerdictWarn, reasonStandCollision},
 		{"no service name", "{{.Team}}-{{.Chart}}-{{.Namespace}}", VerdictFail, reasonNotUnique},
 		// One team may run one chart under one name in two namespaces. A template
 		// that leaves the namespace out names both of them the same.
