@@ -840,9 +840,12 @@ export interface ChartDependency {
 // `effective_schema` is the chart's own schema with every dependency mounted
 // under its key, which is what an order is drawn from and checked against; a
 // chart with no dependencies gets its own schema back unchanged.
+// `defaults` is what Helm lays under an order: the chart's own values.yaml and
+// those of its dependencies. A required field answered there is not missing.
 export interface ChartDependencies {
   dependencies: ChartDependency[];
   effective_schema?: JSONSchema;
+  defaults?: Record<string, unknown>;
 }
 
 export interface CreateOrderBody {

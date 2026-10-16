@@ -5,9 +5,10 @@ package catalog
 // Helm checks a chart's values.schema.json against the values it has AFTER
 // coalescing: the chart's own values.yaml underneath, each dependency's
 // values.yaml underneath its key, and whatever was passed in on top. The portal
-// used to check only what the order form sent, which is a stricter standard than
-// the one the order will actually be held to - so it refused fields the chart
-// already answers, and the person filling in the form had to repeat them.
+// checks the same. Checking only what the order form sent is a stricter
+// standard than the one the order will actually be held to: it refused fields
+// the chart already answers, and the person filling in the form had to repeat
+// them.
 //
 // Nothing here is written anywhere. The order keeps its own values, and Helm
 // does this same coalescing again at install time: persisting the merged result
@@ -22,41 +23,40 @@ import (
 	"console/pkg/models"
 )
 
-// ValuesForValidation returns the order's values with the defaults of the
-// chart's dependencies underneath them, the way Helm will see them.
+// ValuesForValidation returns the order's values with the chart's defaults
+// underneath them, the way Helm will see them: the chart's own values.yaml and
+// the values.yaml of each of its dependencies.
 //
-// Only the dependencies, deliberately, though Helm coalesces the chart's own
-// values.yaml the same way. A field of the chart itself is a field of the order
-// form: the person fills it in, and the portal refusing an order that skips one
-// is a guard somebody put there on purpose - "an incomplete draft cannot be
-// submitted" is a rule, not an accident of the checking. Relaxing it is a
-// product decision and does not belong in a fix about being wrong.
+// The chart's own values.yaml counts too. A field the chart answers there is a
+// field Helm never finds empty, so a required on it holds nobody to anything at
+// install time - yet the portal refused orders that left it out, most visibly
+// on fields the form does not even show. What nobody answers stays required:
+// the chart left it to the person ordering.
 //
 // A field under a dependency's key is nobody's to fill in. The form does not
 // show it - charts keep those blocks hidden - the chart author answers it in the
 // dependency's own values.yaml, and Helm hands that answer over before checking
-// anything. Holding the order to a standard Helm does not apply there only made
-// people copy the chart's own values into their order.
+// anything.
 //
-// Best effort by design: a dependency whose values cannot be read is checked as
-// before. Refusing an order because a file the person never asked about is
-// missing would be a worse answer than a check that is merely too strict.
+// Best effort by design: a file that cannot be read is left out and the order
+// is checked without it. Refusing an order because a file the person never
+// asked about is missing would be a worse answer than a check that is merely
+// too strict.
 func (s *Service) ValuesForValidation(ctx context.Context, project, name, version string,
 	values map[string]any) map[string]any {
 
-	deps, err := s.Dependencies(ctx, project, name, version)
-	if err != nil || len(deps) == 0 {
-		return values
-	}
-	// What the parent says about its dependencies sits over what each dependency
-	// says about itself, and both sit under the order.
 	own := map[string]any{}
-	if b, verr := s.GetValues(ctx, project, name, version); verr == nil {
+	if b, err := s.GetValues(ctx, project, name, version); err == nil {
 		if decoded := decodeValues(b); decoded != nil {
 			own = decoded
 		}
 	}
-	defaults := dependencyDefaults(deps, own)
+	defaults := own
+	// What the parent says about its dependencies sits over what each dependency
+	// says about itself, and both sit under the order.
+	if deps, err := s.Dependencies(ctx, project, name, version); err == nil && len(deps) > 0 {
+		defaults = Coalesce(dependencyDefaults(deps, own), own)
+	}
 	if len(defaults) == 0 {
 		return values
 	}

@@ -259,7 +259,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const { data: form, loading: formLoading } = useAsync(
     async (signal) => {
       if (!project || !name || !effectiveVersion) return null;
-      const { effective_schema: schema } = await api.getDependencies(
+      const { effective_schema: schema, defaults } = await api.getDependencies(
         project,
         name,
         effectiveVersion,
@@ -269,11 +269,14 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       // version; otherwise (legacy charts) fall back to the default active view.
       const viewVersion = orderableVersions.includes(effectiveVersion) ? effectiveVersion : undefined;
       const ui = await api.getChartView(project, name, viewVersion, signal).catch(() => null);
-      return { schema, doc: ui, view: ui?.views?.order };
+      return { schema, defaults, doc: ui, view: ui?.views?.order };
     },
     [project, name, effectiveVersion, orderableVersions.join(",")],
   );
   const schema = form?.schema ?? null;
+  // What Helm lays under the order (values.yaml of the chart and its
+  // dependencies): a required field answered there is not missing.
+  const chartDefaults = form?.defaults;
   const orderView = form?.view;
   const viewDoc = form?.doc ?? null;
   // The form is loading until a version has been asked for and has answered.
@@ -305,8 +308,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // pattern / minLength / minItems), honoring the order view. Recomputed live so
   // red highlights clear as the user fixes fields. Empty in raw mode.
   const clientErrors = useMemo(
-    () => (mode === "form" && schema ? collectErrors(schema, effectiveValues, orderView) : new Map<string, string>()),
-    [mode, schema, effectiveValues, orderView],
+    () =>
+      mode === "form" && schema
+        ? collectErrors(schema, effectiveValues, orderView, chartDefaults)
+        : new Map<string, string>(),
+    [mode, schema, effectiveValues, orderView, chartDefaults],
   );
 
   // A save error describes the order as it was sent, so any later edit makes it
@@ -843,6 +849,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         showErrors={showErrors}
         lockReadOnly={upgrade}
         lockedPaths={upgrade && identity ? [identity] : undefined}
+        chartDefaults={chartDefaults}
         editor={editor}
         pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
         pluginChartVersion={effectiveVersion ?? ""}

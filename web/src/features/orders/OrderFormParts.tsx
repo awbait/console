@@ -238,6 +238,7 @@ export function OrderValuesCard({
   showErrors = false,
   lockReadOnly = false,
   lockedPaths,
+  chartDefaults,
   editor = null,
   pluginNamespace = "",
   pluginChartVersion = "",
@@ -263,6 +264,8 @@ export function OrderValuesCard({
   lockReadOnly?: boolean;
   // Always-locked field paths (e.g. the deploy identity on upgrade).
   lockedPaths?: string[];
+  // The chart's values.yaml answers, shown as field defaults.
+  chartDefaults?: Values;
   // The extra values editor this chart version turns on (e.g. the policies
   // graph); adds one toggle button after Form/Raw YAML.
   editor?: ActiveValuesEditor | null;
@@ -346,6 +349,7 @@ export function OrderValuesCard({
             showErrors={showErrors}
             lockReadOnly={lockReadOnly}
             lockedPaths={lockedPaths}
+            chartDefaults={chartDefaults}
           />
         ) : (
           <p className="text-sm text-gray-500">No schema for this version - switch to Raw YAML.</p>

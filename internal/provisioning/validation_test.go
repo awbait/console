@@ -29,8 +29,10 @@ func TestSchemaValidationNamesTheBrokenRule(t *testing.T) {
 		return ve.Fields
 	}
 
+	// The chart's values.yaml answers auth.database, so a null is what leaves it
+	// missing: Helm drops a default the values set to null.
 	t.Run("a missing property is pinned to the field, not to the object above it", func(t *testing.T) {
-		fields := order(map[string]any{"auth": map[string]any{}})
+		fields := order(map[string]any{"auth": map[string]any{"database": nil}})
 		if len(fields) != 1 {
 			t.Fatalf("want one field error, got %+v", fields)
 		}
@@ -40,7 +42,7 @@ func TestSchemaValidationNamesTheBrokenRule(t *testing.T) {
 	})
 
 	t.Run("a missing top-level property is pinned to itself as well", func(t *testing.T) {
-		fields := order(map[string]any{})
+		fields := order(map[string]any{"auth": nil})
 		if len(fields) != 1 || fields[0].Path != "/auth" || fields[0].Keyword != "required" {
 			t.Fatalf("got %+v", fields)
 		}
