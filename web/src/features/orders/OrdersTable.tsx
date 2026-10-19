@@ -41,7 +41,7 @@ import { isNewer } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
 import { fmtDateTime } from "@/lib/time";
 import { standText } from "../stands/text";
-import { CopyToStandDialog } from "./CopyToStandDialog";
+import { CopyOrderDialog } from "./CopyOrderDialog";
 import { copyText } from "./copyText";
 
 interface Props {
@@ -418,7 +418,8 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           >
             {rows.map((r) => {
               const isDraft = r.status === "DRAFT";
-              const modifiable = canModify(user, r.team) && r.status !== "DELETED";
+              const deleted = r.status === "DELETED";
+              const modifiable = canModify(user, r.team) && !deleted;
               return (
                 <Row
                   key={r.id}
@@ -511,7 +512,8 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       onSync={
                         !isDraft && user?.role === "admin" && deploys(standOf(r)) ? () => onSync(r) : undefined
                       }
-                      onCopy={modifiable ? () => setCopying(r) : undefined}
+                      onCopy={canModify(user, r.team) ? () => setCopying(r) : undefined}
+                      restore={deleted}
                       onDelete={modifiable ? () => setDeleting(r) : undefined}
                     />
                   </Cell>
@@ -543,7 +545,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         }
         onConfirm={onConfirmDelete}
       />
-      <CopyToStandDialog
+      <CopyOrderDialog
         order={copying}
         onClose={() => setCopying(null)}
         onCopied={(draft, stand) => {
@@ -726,6 +728,7 @@ function RowActions({
   onContinue,
   onSync,
   onCopy,
+  restore = false,
   onDelete,
 }: {
   isDraft: boolean;
@@ -733,6 +736,8 @@ function RowActions({
   onContinue: () => void;
   onSync?: () => void;
   onCopy?: () => void;
+  // The order is deleted: copying it is restoring it, and says so.
+  restore?: boolean;
   onDelete?: () => void;
 }) {
   return (
@@ -770,7 +775,7 @@ function RowActions({
           )}
           {onCopy && (
             <MenuItem id="copy" className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none focus:bg-slate-50">
-              {copyText.menuItem}
+              {restore ? copyText.restoreMenuItem : copyText.menuItem}
             </MenuItem>
           )}
           {onDelete && (

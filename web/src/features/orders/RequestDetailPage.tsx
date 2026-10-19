@@ -42,7 +42,7 @@ import { upgradeTargets, upgradeTargetsFromAllowlist } from "@/lib/semver";
 import { subscribe } from "@/lib/sse";
 import { dateInWords, fmtDateTime } from "@/lib/time";
 import { ConflictDialog } from "./ConflictDialog";
-import { CopyToStandDialog } from "./CopyToStandDialog";
+import { CopyOrderDialog } from "./CopyOrderDialog";
 import { copyText } from "./copyText";
 import { pendingChangeNotice } from "./pendingChange";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
@@ -515,13 +515,14 @@ export function RequestDetailPage() {
           onSubmit={isDraft && modifiable ? onSubmit : undefined}
           onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
           onSync={!isDraft && user?.role === "admin" && deploys(stand) ? onSync : undefined}
-          onCopy={modifiable ? () => setCopying(true) : undefined}
+          onCopy={canModify(user, r.team) ? () => setCopying(true) : undefined}
+          restore={r.status === "DELETED"}
           onDelete={modifiable && !openMR ? () => setConfirmDelete(true) : undefined}
           notify={canUpgrade}
         />
       </div>
 
-      <CopyToStandDialog
+      <CopyOrderDialog
         order={copying ? r : null}
         onClose={() => setCopying(false)}
         onCopied={(draft, stand) => {

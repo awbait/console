@@ -84,23 +84,24 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, req)
 }
 
-// handleCopyRequest makes a draft of the order on another stand: same
-// service, team and values, with what the portal fills in from variables
-// rendered for that stand. Answers with the draft, which the page then opens
-// for editing.
+// handleCopyRequest makes a draft of the order on a stand, its own or another:
+// same service, team and values, with what the portal fills in rendered for
+// the copy (see provisioning.Copy). Answers with the draft, which the page
+// then opens for editing.
 func (s *Server) handleCopyRequest(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFrom(r.Context())
 	var body struct {
 		StandID     string `json:"stand_id"`
 		Cluster     string `json:"cluster"`
 		ServiceName string `json:"service_name"`
+		Namespace   string `json:"namespace"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
 		return
 	}
 	req, err := s.Prov.Copy(r.Context(), u, chi.URLParam(r, "id"), provisioning.CopyInput{
-		StandID: body.StandID, Cluster: body.Cluster, ServiceName: body.ServiceName,
+		StandID: body.StandID, Cluster: body.Cluster, ServiceName: body.ServiceName, Namespace: body.Namespace,
 	})
 	if err != nil {
 		s.writeDomainErr(w, r, err)

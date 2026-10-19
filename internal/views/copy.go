@@ -1,17 +1,25 @@
 package views
 
-import "sort"
+import (
+	"reflect"
+	"sort"
+)
 
-// Copying an order to another stand keeps its values and renders again only
-// what the portal filled in from the platform's variables: those are the
-// values that differ between stands by design (a domain, a prefix), while
-// everything else in the order is what the person decided.
+// Copying an order keeps its values and renders again only what the portal
+// filled in itself and what has a different answer for the copy: a value
+// seeded from the service name follows the new name, one seeded from a
+// variable follows the new stand. Everything else in the order is what the
+// person decided.
 
-// RenderInitialVariables renders the entries of the "initial" block whose
-// template names a platform variable, as pointer -> value. Entries without a
-// variable are left out: what they seeded the first time is already in the
-// order, edited or not, and a copy is not a fresh form.
-func RenderInitialVariables(viewJSON []byte, data TemplateData, schemaJSON []byte) (map[string]any, error) {
+// RenderInitialChanged renders the entries of the "initial" block for the
+// copy (now) and for the original (was), and returns, as pointer -> value,
+// those whose answer differs. An entry that renders the same for both is left
+// out: what it seeded the first time is already in the order, edited or not,
+// and a copy is not a fresh form. An entry that does not render for the
+// original (a variable since removed, a stand that is gone) counts as changed.
+// Only a failure for the copy is an error, because that is the value the copy
+// would carry.
+func RenderInitialChanged(viewJSON []byte, was, now TemplateData, schemaJSON []byte) (map[string]any, error) {
 	initial := Initial(viewJSON)
 	out := map[string]any{}
 	if len(initial) == 0 {
@@ -20,15 +28,18 @@ func RenderInitialVariables(viewJSON []byte, data TemplateData, schemaJSON []byt
 	schema := parseSchema(schemaJSON)
 	ptrs := make([]string, 0, len(initial))
 	for ptr, val := range initial {
-		if s, ok := val.(string); ok && usesVariable(s) {
+		if _, ok := val.(string); ok {
 			ptrs = append(ptrs, ptr)
 		}
 	}
 	sort.Strings(ptrs)
 	for _, ptr := range ptrs {
-		val, err := renderValue(initial[ptr], ptr, data, schema)
+		val, err := renderValue(initial[ptr], ptr, now, schema)
 		if err != nil {
 			return out, err
+		}
+		if before, err := renderValue(initial[ptr], ptr, was, schema); err == nil && reflect.DeepEqual(before, val) {
+			continue
 		}
 		out[ptr] = val
 	}
@@ -51,16 +62,4 @@ func Overlay(values map[string]any, rendered map[string]any) []string {
 		}
 	}
 	return skipped
-}
-
-// usesVariable reports whether a template references a platform variable.
-func usesVariable(s string) bool {
-	uses := false
-	_, _ = walkTemplate(s, func(ref string) (string, error) {
-		if _, ok := varName(ref); ok {
-			uses = true
-		}
-		return "", nil
-	})
-	return uses
 }

@@ -190,6 +190,7 @@ export function DetailActions({
   onSync,
   onUpgrade,
   onCopy,
+  restore = false,
   onDelete,
   notify = false,
 }: {
@@ -199,6 +200,8 @@ export function DetailActions({
   onSync?: () => void;
   onUpgrade?: () => void;
   onCopy?: () => void;
+  // The order is deleted: copying it is restoring it, and says so.
+  restore?: boolean;
   onDelete?: () => void;
   // Show a notification dot on the trigger (e.g. an upgrade is available).
   notify?: boolean;
@@ -248,7 +251,7 @@ export function DetailActions({
           )}
           {onCopy && (
             <MenuItem id="copy" className={item}>
-              {copyText.menuItem}
+              {restore ? copyText.restoreMenuItem : copyText.menuItem}
             </MenuItem>
           )}
           {onDelete && (
@@ -524,7 +527,8 @@ function eventLabel(e: TimelineEvent): string {
   // the original is where the values came from.
   if (e.event_type === "copied") {
     const source = String(e.payload?.source_name ?? "").trim();
-    return source ? `${label}. ${copyText.eventDetail(source)}` : label;
+    const what = e.payload?.source_deleted === true ? copyText.restoreEventLabel : label;
+    return source ? `${what}. ${copyText.eventDetail(source)}` : what;
   }
   return label;
 }
