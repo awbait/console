@@ -73,6 +73,12 @@ function argoNsError(ns: string): string | null {
   return dnsLabelError(ns) ? t.errArgoNs : null;
 }
 
+// The Argo CD project is a Kubernetes name too, checked the way the portal does.
+function argoProjectError(project: string): string | null {
+  if (!project) return null;
+  return dnsLabelError(project) ? t.errArgoProject : null;
+}
+
 // The layout rides in the path column as an icon: many folders for a
 // repository per service, one folder for the stand's shared repository.
 const LAYOUTS: { id: StandLayout; label: string; hint: string; Icon: typeof IconFolder }[] = [
@@ -418,6 +424,7 @@ interface Draft {
   path: string;
   gitUrl: string;
   argoNs: string;
+  argoProject: string;
   registry: string;
 }
 
@@ -429,6 +436,7 @@ const EMPTY: Draft = {
   path: "",
   gitUrl: "",
   argoNs: "",
+  argoProject: "",
   registry: "",
 };
 
@@ -441,6 +449,7 @@ function draftOf(s: Stand): Draft {
     path: s.git_path,
     gitUrl: s.git_url ?? "",
     argoNs: s.argocd_namespace ?? "",
+    argoProject: s.argocd_project ?? "",
     registry: s.chart_registry ?? "",
   };
 }
@@ -456,6 +465,7 @@ function normalized(d: Draft) {
     git_path: d.path.trim().replace(/^\/+|\/+$/g, ""),
     git_url: d.gitUrl.trim().replace(/\/+$/g, ""),
     argocd_namespace: d.argoNs.trim(),
+    argocd_project: d.argoProject.trim(),
     chart_registry: d.registry.trim().replace(/\/+$/g, ""),
   };
 }
@@ -496,6 +506,7 @@ function StandPanel({
     path: pathError(n.git_path) ?? (!n.git_path && !stand?.locked ? t.errPathEmpty : null),
     gitUrl: gitUrlError(n.git_url),
     argoNs: argoNsError(n.argocd_namespace),
+    argoProject: argoProjectError(n.argocd_project),
     registry: registryError(n.chart_registry),
   };
   // Required fields complain only after a save was tried; a value already
@@ -519,11 +530,18 @@ function StandPanel({
   const pathNote = gitFrozen ? undefined : t.pathHint;
   // A new mode on a stand with orders moves them in a job, asked for first.
   const startsJob = !!stand && locked && d.mode !== stand.mode;
+  // A new project on a stand with orders is allowed, but the orders do not
+  // follow at once: each moves when its application is written next. Said
+  // before saving, in the same dialog a mode change asks in.
+  const movesProject = !!stand && locked && n.argocd_project !== (stand.argocd_project ?? "");
+  const confirmText = [startsJob && t.modeChangeConfirm(modeOf(d.mode).label), movesProject && t.argoProjectChangeConfirm]
+    .filter(Boolean)
+    .join(" ");
 
   async function save() {
     setTried(true);
     if (!valid) return;
-    if (startsJob && !confirmMode) {
+    if ((startsJob || movesProject) && !confirmMode) {
       setConfirmMode(true);
       return;
     }
@@ -662,6 +680,15 @@ function StandPanel({
               description={t.argoNsHint}
               errorText={shown("argoNs", n.argocd_namespace)}
             />
+            <TextField
+              label={t.argoProjectLabel}
+              isDisabled={busy}
+              value={d.argoProject}
+              onChange={set("argoProject")}
+              placeholder={t.argoProjectPlaceholder}
+              description={t.argoProjectHint}
+              errorText={shown("argoProject", n.argocd_project)}
+            />
           </Group>
 
           {/* Enter in any field saves, the way a form does. */}
@@ -672,8 +699,8 @@ function StandPanel({
       <ConfirmDialog
         isOpen={confirmMode}
         onOpenChange={setConfirmMode}
-        title={t.modeLabel}
-        message={t.modeChangeConfirm(modeOf(d.mode).label)}
+        title={startsJob ? t.modeLabel : t.argoProjectLabel}
+        message={confirmText}
         onConfirm={submit}
       />
     </>

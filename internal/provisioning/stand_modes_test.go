@@ -352,3 +352,58 @@ func TestStandGitURLAndArgoNamespace(t *testing.T) {
 		t.Fatalf("a namespace in the wrong shape: %v", err)
 	}
 }
+
+// A stand in an Argo CD project of its own: the order's application and the
+// stand's manifests name it, a stand naming none keeps ARGOCD_PROJECT, and the
+// project may change while the stand has orders.
+func TestStandArgoProject(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	st := standInMode("edp", models.ModeDeploy)
+	st.GitPath = "managed-services"
+	st.ArgoProject = " edp-apps "
+	if err := s.prov.CreateStand(ctx, admin(), st); err != nil {
+		t.Fatalf("create stand: %v", err)
+	}
+	if st.ArgoProject != "edp-apps" {
+		t.Fatalf("the project is trimmed: %q", st.ArgoProject)
+	}
+	r, err := s.prov.Create(ctx, member("core"), newOrder("pg1", placed("pg1", st.ID)))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	s.mergeLatestMR(ctx, t, r.ID)
+	proj, err := s.gl.GetProject(ctx, "managed-services/team-core/postgres")
+	if err != nil {
+		t.Fatalf("repo: %v", err)
+	}
+	app, err := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r), "main")
+	if err != nil || !strings.Contains(string(app), "project: edp-apps") {
+		t.Fatalf("application names the stand's project: %v\n%s", err, app)
+	}
+	out, err := s.prov.StandManifests(st)
+	if err != nil || !strings.Contains(out, "project: edp-apps") {
+		t.Fatalf("manifests name the stand's project: %v\n%s", err, out)
+	}
+
+	// Orders on the stand do not hold the project: the change is warned
+	// about in the form, not refused.
+	st.ArgoProject = "edp-next"
+	if err := s.prov.UpdateStand(ctx, admin(), st); err != nil {
+		t.Fatalf("change the project with orders on the stand: %v", err)
+	}
+	st.ArgoProject = ""
+	if err := s.prov.UpdateStand(ctx, admin(), st); err != nil {
+		t.Fatalf("clear the project: %v", err)
+	}
+	if out, _ := s.prov.StandManifests(st); !strings.Contains(out, "project: "+s.gitops.ArgoProject) {
+		t.Fatalf("an empty project is the platform's:\n%s", out)
+	}
+
+	var verr *provisioning.ValidationError
+	bad := standInMode("bad2", models.ModeDeploy)
+	bad.ArgoProject = "Edp_Apps"
+	if err := s.prov.CreateStand(ctx, admin(), bad); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandArgoProj {
+		t.Fatalf("a project that is not a Kubernetes name: %v", err)
+	}
+}

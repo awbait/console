@@ -42,7 +42,7 @@ func (s *Service) CheckStand(ctx context.Context, st *models.Stand) ([]*models.S
 	if err != nil {
 		return nil, err
 	}
-	results := checks.Stand(ctx, s.StandGitLab, s.StandArgo, st, orders)
+	results := checks.Stand(ctx, s.StandGitLab, s.StandArgo, st, orders, s.gitops.ArgoProjectOf(st))
 	if nest := checks.StandNesting(st, all); nest.Verdict != checks.VerdictSilent {
 		results = append(results, nest)
 	}

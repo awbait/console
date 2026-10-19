@@ -35,6 +35,13 @@ func (f *standArgoFake) GetApplication(_ context.Context, name string) (*argocd.
 	return nil, models.ErrNotFound
 }
 
+// The project the stand's applications go to exists, and the token may do
+// everything with it: these tests are about the clusters and applications.
+func (f *standArgoFake) ProjectExists(context.Context, string) (bool, error) { return true, nil }
+func (f *standArgoFake) CanI(context.Context, string, string, string) (bool, error) {
+	return true, nil
+}
+
 // The checks of a stand are stored when run, and the application check sets
 // whether Argo CD is wired to the stand: a live order Argo CD does not know
 // means not wired, an order it knows means wired, no order leaves it alone.
@@ -54,11 +61,11 @@ func TestCheckStandStoresAndFlagsArgo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
-	if len(results) != 3 || !st.ArgoConnected || st.CheckedAt == nil {
+	if len(results) != 4 || !st.ArgoConnected || st.CheckedAt == nil {
 		t.Fatalf("first check: %d results, connected=%v, checked=%v", len(results), st.ArgoConnected, st.CheckedAt)
 	}
 	stored, err := s.st.ListStandChecks(ctx, st.ID)
-	if err != nil || len(stored) != 3 {
+	if err != nil || len(stored) != 4 {
 		t.Fatalf("stored checks: %d %v", len(stored), err)
 	}
 
@@ -112,7 +119,7 @@ func TestRunStandChecksKeepsItsInterval(t *testing.T) {
 	}
 	s.prov.StandChecksInterval = 0
 	all, _ := s.st.ListAllStandChecks(ctx)
-	if len(all) != 6 {
+	if len(all) != 8 {
 		t.Fatalf("stored checks of two stands: %d", len(all))
 	}
 }
@@ -143,7 +150,7 @@ func TestStandChecksSummary(t *testing.T) {
 	}
 	// No GitLab to read through: that check is unknown, which outranks the
 	// clusters' ok.
-	if by["checked"].Worst != "unknown" || len(by["checked"].Results) != 3 {
+	if by["checked"].Worst != "unknown" || len(by["checked"].Results) != 4 {
 		t.Fatalf("checked stand: %+v", by["checked"])
 	}
 	if by["fresh"].Worst != "unknown" || len(by["fresh"].Results) != 0 {

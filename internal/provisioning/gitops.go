@@ -359,13 +359,23 @@ func (g *GitOps) RenderApplication(r *models.Request, repoURL, registry string) 
 
 // AppTarget is where an order's application points, as its stand's Argo CD
 // sees things: the Git repository its values are read from, the registry its
-// chart is pulled from, and the namespace the Application lives in. Empty
-// fields fall back to the platform's own: the GitLab the portal writes to,
-// CHART_REGISTRY and ARGOCD_NAMESPACE.
+// chart is pulled from, the namespace the Application lives in and the project
+// it belongs to. Empty fields fall back to the platform's own: the GitLab the
+// portal writes to, CHART_REGISTRY, ARGOCD_NAMESPACE and ARGOCD_PROJECT.
 type AppTarget struct {
 	RepoURL      string
 	Registry     string
 	AppNamespace string
+	Project      string
+}
+
+// ArgoProjectOf is the Argo CD project the stand's applications belong to:
+// the stand's own, else the configured one.
+func (g *GitOps) ArgoProjectOf(st *models.Stand) string {
+	if st != nil && st.ArgoProject != "" {
+		return st.ArgoProject
+	}
+	return g.ArgoProject
 }
 
 // RenderApplicationFor is RenderApplication for a stand that sees the
@@ -394,6 +404,10 @@ func (g *GitOps) RenderApplicationFor(r *models.Request, t AppTarget) (string, e
 	if appNamespace == "" {
 		appNamespace = defaultAppNamespace
 	}
+	project := t.Project
+	if project == "" {
+		project = g.ArgoProject
+	}
 	var b bytes.Buffer
 	// Quote every standalone scalar (yamlScalar) so a field with YAML-significant
 	// characters cannot break or inject structure. Path is exempt: it is embedded
@@ -406,7 +420,7 @@ func (g *GitOps) RenderApplicationFor(r *models.Request, t AppTarget) (string, e
 		"Chart":        yamlScalar(r.ChartName),
 		"Service":      yamlScalar(r.ServiceName),
 		"Namespace":    yamlScalar(namespace),
-		"Project":      yamlScalar(g.ArgoProject),
+		"Project":      yamlScalar(project),
 		"Cluster":      yamlScalar(r.Cluster),
 		"RepoURL":      yamlScalar(gitRepo),
 		"Path":         g.InstanceDir(r),
