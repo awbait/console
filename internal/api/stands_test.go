@@ -109,7 +109,7 @@ func TestHTTPStands(t *testing.T) {
 		} `json:"results"`
 	}
 	decode(t, rec, &checksBody)
-	if len(checksBody.Results) != 3 || checksBody.Results[0].Verdict != "unknown" {
+	if len(checksBody.Results) != 4 || checksBody.Results[0].Verdict != "unknown" {
 		t.Fatalf("stand checks: %+v", checksBody.Results)
 	}
 	if rec := do(adminReq("PATCH", "/api/v1/stands/missing", map[string]any{"name": "x", "default_cluster": "x", "git_path": "x"})); rec.Code != http.StatusNotFound {

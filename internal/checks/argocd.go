@@ -73,10 +73,17 @@ func ArgoCDChecks(cfg *config.Config, api ArgoCDAPI) []Check {
 	}
 }
 
+// projectAPI is what the project checks read through: the platform's set and a
+// stand's set ask the same two questions, each about its own project.
+type projectAPI interface {
+	ProjectExists(ctx context.Context, name string) (bool, error)
+	CanI(ctx context.Context, resource, action, subresource string) (bool, error)
+}
+
 // argoProject checks that the project every generated application.yaml names
 // exists. Argo CD refuses an Application whose project it does not know, and it
 // refuses it long after the portal has reported the order as merged.
-func argoProject(ctx context.Context, api ArgoCDAPI, project string) Result {
+func argoProject(ctx context.Context, api projectAPI, project string) Result {
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}
@@ -96,7 +103,7 @@ func argoProject(ctx context.Context, api ArgoCDAPI, project string) Result {
 // argoPermissions asks Argo CD what this token may do, which is the one question
 // it answers without changing anything. Reading applications is what the order
 // status is built from; syncing is the admin action on an order page.
-func argoPermissions(ctx context.Context, api ArgoCDAPI, project string) Result {
+func argoPermissions(ctx context.Context, api projectAPI, project string) Result {
 	if api == nil {
 		return verdict(VerdictUnknown, ReasonUnavailable, nil)
 	}

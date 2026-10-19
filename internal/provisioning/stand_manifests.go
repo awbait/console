@@ -209,7 +209,7 @@ func (s *Service) StandManifests(st *models.Stand) (string, error) {
 		GitPath:     st.GitPath,
 		RepoURL:     base + "/" + st.GitPath + ".git",
 		Branch:      s.defaultBranch,
-		Project:     s.gitops.ArgoProject,
+		Project:     s.gitops.ArgoProjectOf(st),
 		Namespace:   ns,
 		TokenSecret: standSCMTokenSecret,
 		Registry:    st.ChartRegistry,

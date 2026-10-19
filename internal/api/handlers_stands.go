@@ -22,13 +22,14 @@ type standBody struct {
 	ChartRegistry  string `json:"chart_registry"`
 	GitURL         string `json:"git_url"`
 	ArgoNamespace  string `json:"argocd_namespace"`
+	ArgoProject    string `json:"argocd_project"`
 }
 
 func (b standBody) stand(id string) *models.Stand {
 	return &models.Stand{
 		ID: id, Name: b.Name, DefaultCluster: b.DefaultCluster,
 		Layout: b.Layout, GitPath: b.GitPath, Mode: b.Mode, ChartRegistry: b.ChartRegistry,
-		GitURL: b.GitURL, ArgoNamespace: b.ArgoNamespace,
+		GitURL: b.GitURL, ArgoNamespace: b.ArgoNamespace, ArgoProject: b.ArgoProject,
 	}
 }
 

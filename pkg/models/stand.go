@@ -50,6 +50,11 @@ type Stand struct {
 	// ArgoNamespace is the namespace the stand's Argo CD runs in, where its
 	// Applications live. Empty means ARGOCD_NAMESPACE.
 	ArgoNamespace string `json:"argocd_namespace"`
+	// ArgoProject is the Argo CD project the stand's applications belong to,
+	// their spec.project. Empty means ARGOCD_PROJECT. Changing it does not
+	// move the orders already placed: each one takes it when its application
+	// is rendered next.
+	ArgoProject string `json:"argocd_project"`
 	// ArgoConnected reports that Argo CD sees the stand's applications, as the
 	// stand's last application check found. Set by the checks, never by hand:
 	// true until a check with live orders finds none of them, so a stand nobody

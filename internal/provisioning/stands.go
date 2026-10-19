@@ -33,6 +33,7 @@ const (
 	MsgStandRegistry  = "Укажите адрес реестра в формате harbor.example.com."
 	MsgStandGitURL    = "Укажите адрес GitLab с http:// или https://, например https://gitlab.edp.example.com."
 	MsgStandArgoNs    = "Укажите namespace, например ecpk-argocd. Используйте строчные латинские буквы, цифры и дефис."
+	MsgStandArgoProj  = "Укажите имя проекта не длиннее 63 символов, например managed-services. Используйте строчные латинские буквы, цифры и дефис."
 	MsgSyncMode       = "Нельзя запустить синхронизацию с кластером: стенд не разворачивает сервисы. Синхронизация доступна только в режиме «Развёртывание»."
 	MsgSyncDeleted    = "Нельзя запустить синхронизацию с кластером: заказ удалён."
 	MsgSyncDraft      = "Нельзя запустить синхронизацию с кластером: заказ ещё не отправлен. Сначала отправьте заказ."
@@ -61,14 +62,14 @@ func (s *Service) fallbackStand() *models.Stand {
 
 // appTarget is where the application of an order on this stand points: the
 // repository at projectPath as the stand's Argo CD reaches it, the stand's
-// registry and its Argo CD namespace. webURL is the repository's address in
-// the portal's own GitLab, used when the stand names no Git address.
+// registry, its Argo CD namespace and project. webURL is the repository's
+// address in the portal's own GitLab, used when the stand names no Git address.
 func appTarget(st *models.Stand, projectPath, webURL string) AppTarget {
 	t := AppTarget{RepoURL: webURL}
 	if st == nil {
 		return t
 	}
-	t.Registry, t.AppNamespace = st.ChartRegistry, st.ArgoNamespace
+	t.Registry, t.AppNamespace, t.Project = st.ChartRegistry, st.ArgoNamespace, st.ArgoProject
 	if st.GitURL != "" && projectPath != "" {
 		t.RepoURL = strings.TrimRight(st.GitURL, "/") + "/" + projectPath
 	}
@@ -250,6 +251,12 @@ func checkStand(st *models.Stand, requirePath bool) error {
 	st.ArgoNamespace = strings.TrimSpace(st.ArgoNamespace)
 	if st.ArgoNamespace != "" && !validCluster(st.ArgoNamespace) {
 		return &ValidationError{Message: MsgStandArgoNs}
+	}
+	// An Argo CD project is a Kubernetes object name; the label rule is the one
+	// project names follow in practice, and the one the form checks.
+	st.ArgoProject = strings.TrimSpace(st.ArgoProject)
+	if st.ArgoProject != "" && !validCluster(st.ArgoProject) {
+		return &ValidationError{Message: MsgStandArgoProj}
 	}
 	if st.GitPath == "" {
 		if requirePath {

@@ -22,6 +22,7 @@ const (
 	IDStandGit     = "stand_git"      // the token reaches the stand's group or repository
 	IDStandCluster = "stand_cluster"  // the clusters its orders go to are registered
 	IDStandArgo    = "stand_argo_app" // Argo CD sees the stand's applications
+	IDStandProject = "stand_argo_project" // the stand's Argo CD project exists and the token may use it
 )
 
 // Reasons the stand checks return, beside the shared ones.
@@ -39,6 +40,7 @@ const (
 
 // StandArgoAPI is what the Argo CD checks of a stand read through.
 type StandArgoAPI interface {
+	projectAPI
 	ListClusters(ctx context.Context) ([]argocd.Cluster, error)
 	GetApplication(ctx context.Context, name string) (*argocd.Application, error)
 }
@@ -48,8 +50,10 @@ type StandArgoAPI interface {
 const standAppsLimit = 10
 
 // Stand runs the checks of one stand against its live orders. Either API may
-// be nil (a test, a portal without that upstream): its checks say so.
-func Stand(ctx context.Context, gl GitLabAPI, argo StandArgoAPI, st *models.Stand, orders []*models.Request) []CheckResult {
+// be nil (a test, a portal without that upstream): its checks say so. project
+// is the Argo CD project the stand's applications go to: its own, or the
+// platform's when it names none.
+func Stand(ctx context.Context, gl GitLabAPI, argo StandArgoAPI, st *models.Stand, orders []*models.Request, project string) []CheckResult {
 	live := make([]*models.Request, 0, len(orders))
 	for _, r := range orders {
 		if r.DeletedAt == nil && r.Status != models.StatusDraft && r.Status != models.StatusDeleted {
@@ -63,6 +67,7 @@ func Stand(ctx context.Context, gl GitLabAPI, argo StandArgoAPI, st *models.Stan
 		skip := verdict(VerdictSkip, reasonModeConsole, nil)
 		return []CheckResult{
 			result(IDStandGit, ComponentGitLab, skip),
+			result(IDStandProject, ComponentArgoCD, skip),
 			result(IDStandCluster, ComponentArgoCD, skip),
 			result(IDStandArgo, ComponentArgoCD, skip),
 		}
@@ -70,15 +75,37 @@ func Stand(ctx context.Context, gl GitLabAPI, argo StandArgoAPI, st *models.Stan
 		skip := verdict(VerdictSkip, reasonModeGit, nil)
 		return []CheckResult{
 			result(IDStandGit, ComponentGitLab, standGit(ctx, gl, st)),
+			result(IDStandProject, ComponentArgoCD, skip),
 			result(IDStandCluster, ComponentArgoCD, skip),
 			result(IDStandArgo, ComponentArgoCD, skip),
 		}
 	}
 	return []CheckResult{
 		result(IDStandGit, ComponentGitLab, standGit(ctx, gl, st)),
+		result(IDStandProject, ComponentArgoCD, standProject(ctx, argo, project)),
 		result(IDStandCluster, ComponentArgoCD, standClusters(ctx, argo, st, live)),
 		result(IDStandArgo, ComponentArgoCD, standApps(ctx, argo, live)),
 	}
+}
+
+// standProject checks the project the stand's applications go to the way the
+// platform's own is checked: Argo CD knows it, and the portal's token may read
+// and sync applications in it. A stand in a project of its own is the case
+// this exists for: a project nobody added to the token's role leaves the
+// orders looking deleted, because a refused read is read as "no application".
+func standProject(ctx context.Context, api StandArgoAPI, project string) Result {
+	if api == nil {
+		return verdict(VerdictUnknown, ReasonUnavailable, nil)
+	}
+	r := argoProject(ctx, api, project)
+	if r.Verdict == VerdictOK {
+		r = argoPermissions(ctx, api, project)
+	}
+	if r.Facts == nil {
+		r.Facts = map[string]string{}
+	}
+	r.Facts["project"] = project
+	return r
 }
 
 func result(id, component string, r Result) CheckResult {

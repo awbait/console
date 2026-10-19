@@ -184,6 +184,18 @@ function chartDependencies(project: string, name: string, version: string, signa
   );
 }
 
+// What an admin sets on a stand: everything else on it the portal computes.
+type StandFields =
+  | "name"
+  | "default_cluster"
+  | "layout"
+  | "git_path"
+  | "mode"
+  | "chart_registry"
+  | "git_url"
+  | "argocd_namespace"
+  | "argocd_project";
+
 export const api = {
   // auth
   me: () => req<User>("GET", "/auth/me"),
@@ -262,7 +274,7 @@ export const api = {
   // filters by them), written by admins.
   listStands: (signal?: AbortSignal) => req<Stand[]>("GET", "/stands", undefined, signal),
   getStand: (id: string, signal?: AbortSignal) => req<Stand>("GET", `/stands/${enc(id)}`, undefined, signal),
-  createStand: (s: Pick<Stand, "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry" | "git_url" | "argocd_namespace">) =>
+  createStand: (s: Pick<Stand, StandFields>) =>
     req<Stand>("POST", "/stands", {
       name: s.name,
       default_cluster: s.default_cluster,
@@ -272,8 +284,9 @@ export const api = {
       chart_registry: s.chart_registry,
       git_url: s.git_url,
       argocd_namespace: s.argocd_namespace,
+      argocd_project: s.argocd_project,
     }),
-  updateStand: (s: Pick<Stand, "id" | "name" | "default_cluster" | "layout" | "git_path" | "mode" | "chart_registry" | "git_url" | "argocd_namespace">) =>
+  updateStand: (s: Pick<Stand, "id" | StandFields>) =>
     req<Stand>("PATCH", `/stands/${enc(s.id)}`, {
       name: s.name,
       default_cluster: s.default_cluster,
@@ -283,6 +296,7 @@ export const api = {
       chart_registry: s.chart_registry,
       git_url: s.git_url,
       argocd_namespace: s.argocd_namespace,
+      argocd_project: s.argocd_project,
     }),
   setDefaultStand: (id: string) => req<void>("POST", `/stands/${enc(id)}/default`),
   // The Argo CD wiring of a stand, as YAML text ops applies by hand, and the

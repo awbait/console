@@ -27,10 +27,14 @@ import { useAsync } from "../hooks/useAsync";
 
 const CHECK_LABEL: Record<string, string> = {
   stand_git: t.checkGit,
+  stand_argo_project: t.checkProject,
   stand_cluster: t.checkCluster,
   stand_argo_app: t.checkArgo,
   stand_nesting: t.checkNesting,
 };
+
+// The facts a check row shows beside its reason: what was looked at, by name.
+const SHOWN_FACTS = new Set(["clusters", "missing", "path", "project"]);
 
 // One row per verdict: the colour says it, the icon repeats it for anybody
 // who cannot see the colour.
@@ -112,6 +116,7 @@ export function AdminStandPage() {
             {stand.chart_registry && <Field label={t.registryLabel} value={stand.chart_registry} mono />}
             {stand.git_url && <Field label={t.gitUrlLabel} value={stand.git_url} mono />}
             {stand.argocd_namespace && <Field label={t.argoNsLabel} value={stand.argocd_namespace} mono />}
+            {stand.argocd_project && <Field label={t.argoProjectLabel} value={stand.argocd_project} mono />}
             {stand.locked && <Field label="" value={t.lockedHint} muted />}
           </dl>
         </section>
@@ -205,7 +210,7 @@ function Field({
 
 function CheckRow({ check }: { check: StandCheck }) {
   const v = VERDICT[check.verdict] ?? VERDICT.unknown;
-  const facts = Object.entries(check.facts ?? {}).filter(([k]) => k === "clusters" || k === "missing" || k === "path");
+  const facts = Object.entries(check.facts ?? {}).filter(([k]) => SHOWN_FACTS.has(k));
   return (
     <li className="flex items-start gap-3 rounded-md border border-slate-100 px-3 py-2">
       <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${v.tone}`}>

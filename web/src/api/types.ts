@@ -479,6 +479,9 @@ export interface Stand {
   // values from and the namespace it runs in. "" is the platform's own.
   git_url: string;
   argocd_namespace: string;
+  // The Argo CD project the stand's applications belong to; "" is the
+  // platform's (ARGOCD_PROJECT).
+  argocd_project: string;
   // Argo CD sees the stand's applications, as its last check found. False
   // means the stand's orders wait after their merge: nothing deploys them.
   argo_connected: boolean;
