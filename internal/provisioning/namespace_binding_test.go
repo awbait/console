@@ -2,6 +2,7 @@ package provisioning_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"console/internal/provisioning"
@@ -145,5 +146,41 @@ func TestNamespaceSourceFixed(t *testing.T) {
 	}
 	if r.Namespace != "platform-system" {
 		t.Fatalf("destination namespace = %q, want platform-system (fixed)", r.Namespace)
+	}
+}
+
+// TestNamespaceSourceTemplate: a chart that names its own namespace from several
+// fields lands the order in the namespace it really creates, built from the
+// values the form sent and the order itself; a field left empty refuses the
+// order instead of naming it after half a formula.
+func TestNamespaceSourceTemplate(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+	seedNSView(ctx, t, s, "postgres",
+		`{"namespace":{"source":"template","hideOrderField":true,`+
+			`"template":"{{.Team}}-{{.Values.global.cluster}}-ns-{{.Values.global.namespacePurpose}}"}}`)
+
+	values := func(purpose string) map[string]any {
+		return map[string]any{"global": map[string]any{"cluster": "dev", "namespacePurpose": purpose}}
+	}
+	r, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "app", Values: values("app"), Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if r.Namespace != "core-dev-ns-app" {
+		t.Fatalf("destination namespace = %q, want core-dev-ns-app", r.Namespace)
+	}
+
+	_, err = s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "other", Values: values(""), Draft: true,
+	})
+	var ve *provisioning.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("empty field: want a ValidationError, got %v", err)
 	}
 }

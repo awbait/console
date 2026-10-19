@@ -1136,8 +1136,14 @@ function FormatHelp() {
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"values"</code> (из поля values
                       по <b>pointer</b> - для чартов, что сами создают namespace),{" "}
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"fixed"</code> (константа{" "}
-                      <b>value</b> - для операторов и cluster-scoped). <b>hideOrderField: true</b> прячет поле
-                      «Namespace» (для values/fixed). Строка{" "}
+                      <b>value</b> - для операторов и cluster-scoped).{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"template"</code> собирает имя
+                      неймспейса по шаблону <b>template</b> из ссылок на значения заказа, как его собирает чарт,
+                      например{" "}
+                      <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">
+                        {"{{.Values.global.namespacePurpose}}-ns"}
+                      </code>
+                      . <b>hideOrderField: true</b> прячет поле «Namespace» (для values/fixed/template). Строка{" "}
                       <code className="rounded bg-slate-50 px-1 ring-1 ring-slate-200">"/namespace/namespaceName"</code>{" "}
                       - устаревшая форма-зеркало: ввод «Namespace» копируется в это поле.
                     </li>

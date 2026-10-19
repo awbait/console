@@ -104,10 +104,10 @@ func checkValueType(val any, kind string, known KnownVars) error {
 		if kind == typeString {
 			return nil // text is what a reference gives
 		}
-		name, isVar := varName(refs[0])
+		name, isVar := varName(refs[0].dotted())
 		if !isVar {
 			return fmt.Errorf("ссылка «%s%s%s» даёт текст, а здесь ждут %s",
-				tmplOpen, refs[0], tmplClose, kindWord(kind))
+				tmplOpen, refs[0].text, tmplClose, kindWord(kind))
 		}
 		value, ok := known[name]
 		if !ok {
@@ -139,10 +139,10 @@ func kindWord(kind string) string {
 }
 
 // referencesIn lists the references a value uses, in the order they appear.
-func referencesIn(s string) []string {
-	var refs []string
-	_, _ = walkTemplate(s, func(ref string) (string, error) {
-		refs = append(refs, ref)
+func referencesIn(s string) []tmplRef {
+	var refs []tmplRef
+	_, _ = walkTemplate(s, func(r tmplRef) (string, error) {
+		refs = append(refs, r)
 		return "", nil
 	})
 	return refs
@@ -150,8 +150,8 @@ func referencesIn(s string) []string {
 
 // isWholeReference reports whether the value is nothing but this one reference,
 // so what it renders to is what the reference holds.
-func isWholeReference(s, ref string) bool {
+func isWholeReference(s string, ref tmplRef) bool {
 	inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(s), tmplOpen), tmplClose))
 	return strings.HasPrefix(strings.TrimSpace(s), tmplOpen) &&
-		strings.HasSuffix(strings.TrimSpace(s), tmplClose) && inner == ref
+		strings.HasSuffix(strings.TrimSpace(s), tmplClose) && inner == ref.text
 }

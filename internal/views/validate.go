@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -128,8 +129,15 @@ func Validate(viewJSON, schemaJSON []byte, options ...Option) []Issue {
 	// Checked even without the chart schema: the templates inside are the
 	// document's own business, and a broken one has to be caught here rather
 	// than by the first person who orders the service.
-	if defaults, ok := doc["defaults"].(map[string]any); ok {
+	defaults, _ := doc["defaults"].(map[string]any)
+	if defaults != nil {
 		issues = append(issues, checkDefaults(defaults, schema, o.vars)...)
+	}
+
+	// The namespace template of the order form: the grammar and the references
+	// here, the fields it reads against the chart, and against "defaults".
+	if order, ok := viewsMap["order"].(map[string]any); ok {
+		issues = append(issues, checkNamespaceTemplate(order, defaults, schema, o.vars)...)
 	}
 
 	// initial: values the order form opens with, filled in but editable.
@@ -201,6 +209,51 @@ func checkInitial(m map[string]any, schema map[string]any, vars KnownVars) []Iss
 	}
 	return issues
 }
+
+// checkNamespaceTemplate checks views.order.namespace when it is built from a
+// template. Three things a static schema cannot say: that the template stays in
+// the dialect and its scope, that each values field it reads exists in this
+// chart, and that none of them is one the "defaults" block writes. The last is
+// about order: the namespace is resolved from the values the form sent, before
+// "defaults" is stamped, so such a field would be read empty, or as the person
+// left it, while the chart sees the stamped value and builds another name.
+func checkNamespaceTemplate(order, defaults, schema map[string]any, vars KnownVars) []Issue {
+	nv, _ := order["namespace"].(map[string]any)
+	if src, _ := nv["source"].(string); src != NamespaceSourceTemplate {
+		return nil
+	}
+	tmpl, ok := nv["template"].(string)
+	if !ok || tmpl == "" {
+		return nil // the format schema already asked for it
+	}
+	const at = "/views/order/namespace/template"
+	if err := CheckNamespaceTemplate(tmpl, vars); err != nil {
+		return []Issue{{at, upperFirst(err.Error())}}
+	}
+	var issues []Issue
+	for _, path := range NamespaceTemplateFields(tmpl) {
+		ptr := "/" + strings.Join(path, "/")
+		if schema != nil && !slices.ContainsFunc(path, func(k string) bool { return strings.Contains(k, "/") }) &&
+			!pointerResolves(ptr, schema, schema) {
+			issues = append(issues, Issue{at, fmt.Sprintf(msgNsFieldMissing, ptr)})
+			continue
+		}
+		for _, d := range sortedKeys(defaults) {
+			if d == ptr || strings.HasPrefix(d, ptr+"/") || strings.HasPrefix(ptr, d+"/") {
+				issues = append(issues, Issue{at, fmt.Sprintf(msgNsFieldStamped, ptr, defaults[d])})
+				break
+			}
+		}
+	}
+	return issues
+}
+
+// What the namespace template check says about one values field. Arguments: the
+// field as a pointer; for the second, also what "defaults" writes there.
+const (
+	msgNsFieldMissing = "По пути «%s» нет поля в values.schema.json. Проверьте путь"
+	msgNsFieldStamped = "Поле «%s» заполняет блок defaults, а имя неймспейса собирается раньше. Впишите в шаблон «%v» вместо ссылки на это поле"
+)
 
 // sortedKeys keeps the order of complaints stable: two runs over the same
 // document have to name the same problem first.

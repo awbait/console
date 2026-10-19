@@ -75,21 +75,27 @@ type TemplateRef struct {
 	// namespace, the cluster and the service name are still being typed when the
 	// form opens, so a value seeded from them would be seeded from nothing.
 	AtOrderForm bool `json:"at_order_form"`
+	// InNamespace marks a reference the namespace template (views.order.namespace
+	// with source "template") may use. The namespace is what that template
+	// computes, so it cannot read itself; the chart version and the author are
+	// left out because a namespace that moves on an upgrade, or on whoever saved
+	// the order last, is a namespace nobody can find again.
+	InNamespace bool `json:"in_namespace"`
 }
 
 // TemplateRefs is the whole catalogue, in the order it is offered. It is the one
-// list: the resolver, the validator and (later) the editor's completions all
-// read it, so a reference cannot exist in one of them and not the others.
+// list: the resolver, the validator and the editor's completions all read it, so
+// a reference cannot exist in one of them and not the others.
 func TemplateRefs() []TemplateRef {
 	return []TemplateRef{
-		{".Team", "Команда, от имени которой сделан заказ", true},
-		{".ServiceName", "Имя сервиса в заказе", false},
-		{".Namespace", "Неймспейс, в который уезжает заказ", false},
-		{".Cluster", "Кластер, в который уезжает заказ", false},
-		{".Chart", "Имя чарта", true},
-		{".ChartVersion", "Версия чарта", true},
-		{".User.Name", "ФИО автора заказа", true},
-		{".User.Subject", "Идентификатор автора заказа в OIDC", true},
+		{".Team", "Команда, от имени которой сделан заказ", true, true},
+		{".ServiceName", "Имя сервиса в заказе", false, true},
+		{".Namespace", "Неймспейс, в который уезжает заказ", false, false},
+		{".Cluster", "Кластер, в который уезжает заказ", false, true},
+		{".Chart", "Имя чарта", true, true},
+		{".ChartVersion", "Версия чарта", true, false},
+		{".User.Name", "ФИО автора заказа", true, false},
+		{".User.Subject", "Идентификатор автора заказа в OIDC", true, false},
 	}
 }
 
@@ -161,9 +167,52 @@ func (d TemplateData) lookup(ref string) (string, bool) {
 
 const tmplOpen, tmplClose = "{{", "}}"
 
-// refPattern is the whole grammar: a dotted path of identifiers. Underscores
-// are in because a platform variable is named with them ("{{.Vars.OPS_DOMAIN}}").
+// MsgTemplateSyntax is what a reference outside the dialect says. Arguments:
+// the opening braces, the expression as written, the closing braces.
+const MsgTemplateSyntax = "«%s%s%s»: в шаблоне допустима только ссылка вида «{{.Team}}» или «{{index .Values \"ключ\"}}», без условий, циклов и функций"
+
+// refPattern is the dotted half of the grammar: a path of identifiers.
+// Underscores are in because a platform variable is named with them
+// ("{{.Vars.OPS_DOMAIN}}").
 var refPattern = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$`)
+
+// indexPattern is the other half: "index" over a dotted path, then one or more
+// quoted keys. It exists for a values key that is not an identifier
+// ({{index .Values "my-key" "x"}}), and it is as far as the dialect goes: the
+// keys are plain text in double quotes, without escapes, so the TypeScript
+// mirror reads them the same way.
+var (
+	indexPattern = regexp.MustCompile(`^index\s+(\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*)((?:\s+"[^"\\]+")+)$`)
+	indexKey     = regexp.MustCompile(`"([^"\\]+)"`)
+)
+
+// tmplRef is one reference as the walk found it: the text as written, for the
+// messages, and the path it names, segment by segment.
+type tmplRef struct {
+	text string
+	path []string
+}
+
+// dotted is the reference in its dotted form (".User.Name"), which is how the
+// catalogue and the variables are looked up. An index form reads the same
+// there: {{index .User "Name"}} is {{.User.Name}}.
+func (r tmplRef) dotted() string { return "." + strings.Join(r.path, ".") }
+
+// parseRef reads the expression between the braces, or says it is not one.
+func parseRef(expr string) (tmplRef, bool) {
+	if refPattern.MatchString(expr) {
+		return tmplRef{text: expr, path: strings.Split(expr[1:], ".")}, true
+	}
+	m := indexPattern.FindStringSubmatch(expr)
+	if m == nil {
+		return tmplRef{}, false
+	}
+	path := strings.Split(m[1][1:], ".")
+	for _, k := range indexKey.FindAllStringSubmatch(m[2], -1) {
+		path = append(path, k[1])
+	}
+	return tmplRef{text: expr, path: path}, true
+}
 
 // RenderTemplate expands every reference in s against d.
 //
@@ -171,7 +220,7 @@ var refPattern = regexp.MustCompile(`^\.[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0
 // committed to Git and deployed, so a value that quietly went missing would be
 // found much later, by someone looking at a resource named after nothing.
 func RenderTemplate(s string, d TemplateData) (string, error) {
-	return walkTemplate(s, d.resolve)
+	return walkTemplate(s, func(r tmplRef) (string, error) { return d.resolve(r.dotted()) })
 }
 
 // KnownVars is the platform variables a document may reference, by name, with
@@ -185,22 +234,26 @@ type KnownVars map[string]string
 // written, which is the moment a typo costs nothing to fix; the same mistake
 // found at order time costs a person their order.
 func CheckTemplate(s string, known KnownVars) error {
-	_, err := walkTemplate(s, func(ref string) (string, error) {
-		if name, ok := varName(ref); ok {
-			if known == nil {
-				return "", nil
-			}
-			if _, exists := known[name]; exists {
-				return "", nil
-			}
-			return "", varNotSet(name)
-		}
-		if _, ok := (TemplateData{}).lookup(ref); !ok {
-			return "", unknownRef(ref)
-		}
-		return "", nil
-	})
+	_, err := walkTemplate(s, func(r tmplRef) (string, error) { return "", checkRef(r.dotted(), known) })
 	return err
+}
+
+// checkRef is the check of one reference without an order: a variable has to
+// exist when the list is at hand, anything else has to be in the catalogue.
+func checkRef(ref string, known KnownVars) error {
+	if name, ok := varName(ref); ok {
+		if known == nil {
+			return nil
+		}
+		if _, exists := known[name]; exists {
+			return nil
+		}
+		return varNotSet(name)
+	}
+	if _, ok := (TemplateData{}).lookup(ref); !ok {
+		return unknownRef(ref)
+	}
+	return nil
 }
 
 // VariablesUsed returns the platform variables a view document references, by
@@ -210,22 +263,27 @@ func CheckTemplate(s string, known KnownVars) error {
 // document still names it.
 func VariablesUsed(viewJSON []byte) []string {
 	seen := map[string]bool{}
-	collect := func(ref string) (string, error) {
-		if name, ok := varName(ref); ok {
+	collect := func(r tmplRef) (string, error) {
+		if name, ok := varName(r.dotted()); ok {
 			seen[name] = true
 		}
 		return "", nil
 	}
+	var texts []string
 	for _, block := range []map[string]any{Defaults(viewJSON), Initial(viewJSON)} {
 		for _, val := range block {
-			s, ok := val.(string)
-			if !ok {
-				continue
+			if s, ok := val.(string); ok {
+				texts = append(texts, s)
 			}
-			// A document that does not parse still names what it names up to the
-			// point it breaks: this is a scan, not a check.
-			_, _ = walkTemplate(s, collect)
 		}
+	}
+	if rule := OrderNamespaceRule(viewJSON); rule.Source == NamespaceSourceTemplate {
+		texts = append(texts, rule.Template)
+	}
+	for _, s := range texts {
+		// A document that does not parse still names what it names up to the
+		// point it breaks: this is a scan, not a check.
+		_, _ = walkTemplate(s, collect)
 	}
 	out := make([]string, 0, len(seen))
 	for name := range seen {
@@ -256,10 +314,10 @@ func CheckFormTimeTemplate(s string, known KnownVars) error {
 	if err := CheckTemplate(s, known); err != nil {
 		return err
 	}
-	_, err := walkTemplate(s, func(ref string) (string, error) {
-		if !atOrderForm(ref) {
+	_, err := walkTemplate(s, func(r tmplRef) (string, error) {
+		if !atOrderForm(r.dotted()) {
 			return "", fmt.Errorf("ссылка «%s%s%s» в форме заказа ещё не известна: её значение выбирают в самой форме",
-				tmplOpen, ref, tmplClose)
+				tmplOpen, r.text, tmplClose)
 		}
 		return "", nil
 	})
@@ -268,7 +326,7 @@ func CheckFormTimeTemplate(s string, known KnownVars) error {
 
 // walkTemplate is the single pass both rendering and checking go through, so
 // what the constructor accepts and what an order expands can never drift apart.
-func walkTemplate(s string, resolve func(ref string) (string, error)) (string, error) {
+func walkTemplate(s string, resolve func(r tmplRef) (string, error)) (string, error) {
 	var b strings.Builder
 	for {
 		i := strings.Index(s, tmplOpen)
@@ -277,7 +335,7 @@ func walkTemplate(s string, resolve func(ref string) (string, error)) (string, e
 			return b.String(), nil
 		}
 		rest := s[i+len(tmplOpen):]
-		if !startsWithDot(rest) {
+		if !isOurs(rest) {
 			// Somebody else's template ("{{ $labels.x }}", "{{- toYaml . }}").
 			// Copy it out and keep looking past it.
 			b.WriteString(s[:i+len(tmplOpen)])
@@ -290,11 +348,11 @@ func walkTemplate(s string, resolve func(ref string) (string, error)) (string, e
 				tmplOpen, strings.TrimSpace(rest), tmplClose)
 		}
 		expr := strings.TrimSpace(inner)
-		if !refPattern.MatchString(expr) {
-			return "", fmt.Errorf("«%s%s%s»: в шаблоне бывает только ссылка вида «%s.Team%s», без условий и функций",
-				tmplOpen, expr, tmplClose, tmplOpen, tmplClose)
+		ref, ok := parseRef(expr)
+		if !ok {
+			return "", fmt.Errorf(MsgTemplateSyntax, tmplOpen, expr, tmplClose)
 		}
-		v, err := resolve(expr)
+		v, err := resolve(ref)
 		if err != nil {
 			return "", err
 		}
@@ -304,11 +362,12 @@ func walkTemplate(s string, resolve func(ref string) (string, error)) (string, e
 	}
 }
 
-// startsWithDot reports whether what follows "{{" is one of ours: a reference
-// starts with a dot, optionally after whitespace.
-func startsWithDot(s string) bool {
-	return strings.HasPrefix(strings.TrimLeft(s, " \t"), ".")
-}
+// oursPattern is what follows "{{" in one of ours: a reference starts with a
+// dot, or with "index" and then a dot, optionally after whitespace.
+var oursPattern = regexp.MustCompile(`^[ \t]*(\.|index[ \t]+\.)`)
+
+// isOurs reports whether what follows "{{" is one of ours.
+func isOurs(s string) bool { return oursPattern.MatchString(s) }
 
 func unknownRef(ref string) error {
 	names := make([]string, 0, len(TemplateRefs()))

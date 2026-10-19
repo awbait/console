@@ -154,9 +154,9 @@
           "errorMessage": "Поле \"identity\" должно быть JSON pointer'ом, строкой вида \"/gateways/0/name\""
         },
         "namespace": {
-          "description": "Откуда берётся namespace заказа: из поля формы, из значения в values или из константы",
+          "description": "Откуда берётся namespace заказа: из поля формы, из значения в values, из константы или по шаблону",
           "type": ["string", "object"],
-          "errorMessage": "Поле \"namespace\" должно быть JSON pointer'ом или объектом {\"source\": \"field|values|fixed\", ...}",
+          "errorMessage": "Поле \"namespace\" должно быть JSON pointer'ом или объектом {\"source\": \"field|values|fixed|template\", ...}",
           "if": { "type": "string" },
           "then": {
             "pattern": "^/",
@@ -267,17 +267,17 @@
     "namespaceRule": {
       "description": "Откуда берётся namespace заказа",
       "type": "object",
-      "errorMessage": "Поле \"namespace\" должно быть JSON pointer'ом или объектом {\"source\": \"field|values|fixed\", ...}",
+      "errorMessage": "Поле \"namespace\" должно быть JSON pointer'ом или объектом {\"source\": \"field|values|fixed|template\", ...}",
       "propertyNames": {
-        "enum": ["source", "pointer", "value", "hideOrderField"],
-        "errorMessage": "В \"namespace\" допустимы \"source\", \"pointer\", \"value\" и \"hideOrderField\"",
-        "x-extraMessage": "Лишнее поле {key}: в \"namespace\" допустимы \"source\", \"pointer\", \"value\" и \"hideOrderField\""
+        "enum": ["source", "pointer", "value", "template", "hideOrderField"],
+        "errorMessage": "В \"namespace\" допустимы \"source\", \"pointer\", \"value\", \"template\" и \"hideOrderField\"",
+        "x-extraMessage": "Лишнее поле {key}: в \"namespace\" допустимы \"source\", \"pointer\", \"value\", \"template\" и \"hideOrderField\""
       },
       "properties": {
         "source": {
-          "description": "\"field\" - человек вводит namespace в форме, \"values\" - его берут из поля values, \"fixed\" - он всегда один и тот же",
-          "enum": ["field", "values", "fixed"],
-          "errorMessage": "\"source\" должен быть \"field\", \"values\" или \"fixed\""
+          "description": "\"field\" - человек вводит namespace в форме, \"values\" - его берут из поля values, \"fixed\" - он всегда один и тот же, \"template\" - имя собирается по шаблону из поля \"template\"",
+          "enum": ["field", "values", "fixed", "template"],
+          "errorMessage": "\"source\" должен быть \"field\", \"values\", \"fixed\" или \"template\""
         },
         "pointer": {
           "description": "Поле values, из которого берут namespace. Нужно при source \"values\"",
@@ -293,8 +293,15 @@
           "errorMessage": "Значение не является валидным именем namespace (a-z, 0-9, дефис)",
           "x-missingMessage": "Для source \"fixed\" нужен непустой \"value\" - имя namespace"
         },
+        "template": {
+          "description": "Шаблон имени namespace, например \"{{.Values.global.namespacePurpose}}-ns\". Нужен при source \"template\"",
+          "type": "string",
+          "minLength": 1,
+          "errorMessage": "Поле \"template\" должно быть непустой строкой с шаблоном имени namespace",
+          "x-missingMessage": "Для source \"template\" нужен непустой \"template\" - шаблон имени namespace"
+        },
         "hideOrderField": {
-          "description": "Убрать поле namespace из формы заказа. При source \"values\" и \"fixed\" портал прячет его сам",
+          "description": "При true прячет поле Namespace в форме заказа для source \"values\", \"fixed\" и \"template\". Без \"hideOrderField\": true поле остаётся видимым",
           "type": "boolean",
           "errorMessage": "\"hideOrderField\" должно быть булевым (true/false)"
         }
@@ -307,6 +314,10 @@
         {
           "if": { "properties": { "source": { "const": "fixed" } }, "required": ["source"] },
           "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "source": { "const": "template" } }, "required": ["source"] },
+          "then": { "required": ["template"] }
         }
       ]
     },

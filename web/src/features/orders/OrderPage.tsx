@@ -23,6 +23,7 @@ import { actionViews, productTabs } from "@/components/products/genericView";
 import { Button, Card, ErrorBox } from "@/components/ui";
 import { namespaceError, parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { collectErrors, pruneEmpty } from "@/form/SchemaForm";
+import { useNamespaceVars } from "@/form/useNamespaceVars";
 import { adaptToSchema } from "@/form/valuesAdapt";
 import { reseed } from "@/form/valuesMerge";
 import { useAsync } from "@/hooks/useAsync";
@@ -303,6 +304,20 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     [values, ns.mirrorPointer, namespace],
   );
   const identityName = identity ? readPointer(effectiveValues, identity) : "";
+  // What a namespace template reads besides the values: the same order context
+  // the server renders it with on save.
+  const nsVars = useNamespaceVars(ns, draft?.stand_id || standId);
+  const nsContext = useMemo(
+    () => ({
+      team: (editing ? draft?.team : activeTeam) ?? undefined,
+      serviceName: identity ? identityName : serviceName,
+      cluster,
+      chart: name,
+      vars: nsVars,
+    }),
+    [editing, draft?.team, activeTeam, identity, identityName, serviceName, cluster, name, nsVars],
+  );
+  const liveNamespace = resolveDestNamespace(ns, namespace, effectiveValues, nsContext);
 
   // Client-side validation of the form values against the schema (required /
   // pattern / minLength / minItems), honoring the order view. Recomputed live so
@@ -540,7 +555,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     const svcName = identity ? readPointer(finalValues, identity) : serviceName;
     // Destination namespace: the form input (source=field), a values field
     // (source=values), or a fixed constant. The backend recomputes the same way.
-    const destNamespace = resolveDestNamespace(ns, namespace, finalValues);
+    const destNamespace = resolveDestNamespace(ns, namespace, finalValues, nsContext);
     return { values: finalValues, svcName, destNamespace };
   }
 
@@ -823,7 +838,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           namespace={namespace}
           onNamespace={setNamespace}
           hideNamespace={ns.hideField}
-          namespaceHint={ns.hideField ? resolveDestNamespace(ns, namespace, effectiveValues) : undefined}
+          namespaceHint={ns.hideField ? liveNamespace : undefined}
           team={editing ? draft?.team : activeTeam ?? undefined}
           version={effectiveVersion ?? undefined}
           latest={!editing && orderableVersions.length === 0}
@@ -851,7 +866,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
         lockedPaths={upgrade && identity ? [identity] : undefined}
         chartDefaults={chartDefaults}
         editor={editor}
-        pluginNamespace={resolveDestNamespace(ns, namespace, effectiveValues)}
+        pluginNamespace={liveNamespace}
         pluginChartVersion={effectiveVersion ?? ""}
         pluginInputError={pluginInputError}
         pluginState={pluginStateRef.current}
