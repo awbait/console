@@ -48,6 +48,11 @@ const (
 	// the check that reads it (internal/checks.KeycloakChecks) goes blind on
 	// every replica but one.
 	TopicSignIns = "sign-ins"
+	// TopicChecks asks every replica to run its configuration checks now.
+	// Each replica keeps the answer it found, and the page that asked reads
+	// whichever replica the ingress picks next, so a round run on one of them
+	// only would leave the others showing the previous answer.
+	TopicChecks = "checks"
 )
 
 // Bus is what a publisher and a subscriber see. Memory and Redis implement it;

@@ -383,6 +383,17 @@ func SetUserActionCounts(window string, counts []ActionCount) {
 	userActionSet.replace(round, labels)
 }
 
+// ForgetStoredCounts drops every gauge counted from the shared database: the
+// orders by status, the people and the actions. Only the leading replica
+// publishes them, so one that has stopped leading must stop reporting its last
+// reading too, or adding the replicas up counts the platform twice.
+func ForgetStoredCounts() {
+	orders.Reset()
+	users.Reset()
+	teamUserSet.replace(nil, nil)
+	userActionSet.replace(nil, nil)
+}
+
 // gaugeSet is a GaugeVec whose label sets are not known in advance and change
 // between rounds. It writes the round it is given and deletes whatever it wrote
 // last time and has not written now, so a series that stopped existing stops

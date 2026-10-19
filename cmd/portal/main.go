@@ -99,7 +99,22 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		redisBus := events.NewRedis(rcli, events.DefaultChannel, instance, observability.Component(log, "events"))
 		redisLeader := leader.NewRedis(rcli, leader.DefaultKey, instance, observability.Component(log, "leader"))
 		go redisBus.Run(ctx)
-		go redisLeader.Run(ctx)
+		// The lease outlives the stop signal: it is handed back only once the
+		// poller has finished the sweep it was in, or a new leader would start
+		// its own sweep over the same orders while this one still writes.
+		leaseCtx, releaseLease := context.WithCancel(context.WithoutCancel(ctx))
+		leaseDone := make(chan struct{})
+		go func() {
+			defer close(leaseDone)
+			redisLeader.Run(leaseCtx)
+		}()
+		defer func() {
+			releaseLease()
+			select {
+			case <-leaseDone:
+			case <-time.After(5 * time.Second):
+			}
+		}()
 		bus, elector = redisBus, redisLeader
 		log.Info("replicas coordinate through redis", "instance", instance)
 	} else {
@@ -424,7 +439,10 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	// behind the admin's button and never on this loop.
 	configChecks := buildChecks(cfg, hb, gl, argo, hooks, webhookHandler, signIns, health,
 		observability.Component(log, "checks"))
-	srv.Checks = configChecks
+	// The admin's "check again" reaches every replica, not only the one that got
+	// the click: each keeps its own answer, and the page reads any of them.
+	srv.Checks = checksOnEveryReplica{configChecks, bus}
+	go forwardChecksRequests(ctx, bus, configChecks)
 	srv.TestWebhookDelivery = webhookDeliveryTest(cfg, gl, hooks, webhookHandler)
 	// Part of what these checks catch breaks with nobody touching the portal: a
 	// token reaches its expiry, a webhook is switched off after failed
@@ -469,6 +487,14 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 
 	go func() {
 		<-ctx.Done()
+		// Not ready first, then keep serving for the drain: the load balancer
+		// learns from /ready, and a listener closed before it has would refuse
+		// requests it is still routing here.
+		srv.Draining.Store(true)
+		if cfg.ShutdownDrain > 0 {
+			log.Info("draining before shutdown", "for", cfg.ShutdownDrain.String())
+			time.Sleep(cfg.ShutdownDrain)
+		}
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shutCtx)
@@ -552,6 +578,38 @@ func forwardWebhookDeliveries(ctx context.Context, bus events.Bus, h *webhooks.H
 			source, _ := e.Data["source"].(string)
 			outcome, _ := e.Data["outcome"].(string)
 			h.RecordElsewhere(source, outcome)
+		}
+	}
+}
+
+// checksOnEveryReplica is the configuration-check runner as the API sees it:
+// reading is local, asking for a round goes out on the bus, to this replica
+// too, so every replica's answer is fresh.
+type checksOnEveryReplica struct {
+	*checks.Runner
+	bus events.Bus
+}
+
+func (c checksOnEveryReplica) Trigger(reason string) {
+	c.bus.Publish(events.Event{
+		Topic: events.TopicChecks,
+		Type:  "checks_requested",
+		Data:  map[string]any{"reason": reason},
+	})
+}
+
+// forwardChecksRequests hands a request for a round, from any replica, to the
+// local runner. Blocks until ctx is cancelled.
+func forwardChecksRequests(ctx context.Context, bus events.Bus, r *checks.Runner) {
+	ch, unsub := bus.Subscribe(events.TopicChecks)
+	defer unsub()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-ch:
+			reason, _ := e.Data["reason"].(string)
+			r.Trigger(reason)
 		}
 	}
 }

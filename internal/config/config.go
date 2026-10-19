@@ -80,6 +80,11 @@ type Config struct {
 	// Defaults to true: production runs over HTTPS, and localhost is a secure
 	// context even on plain http.
 	CookieSecure bool `env:"COOKIE_SECURE" envDefault:"true" desc:"Send the session cookie over HTTPS only. Turn it off only for a plain-HTTP stand that is not localhost."`
+	// Kubernetes takes a stopping pod out of the Service while it already sends
+	// it SIGTERM, and the two race: a portal that closed its listener at once
+	// would refuse the requests still routed to it. Zero, the default, is for a
+	// portal nothing balances in front of.
+	ShutdownDrain time.Duration `env:"SHUTDOWN_DRAIN" envDefault:"0s" desc:"How long a stopping portal keeps serving after reporting itself not ready, so the load balancer stops sending it requests first. Set it when running behind Kubernetes."`
 
 	Store string `env:"STORE" envDefault:"memory" desc:"Where orders, publications and categories are kept."`
 	// Redis is also what more than one replica of the portal needs: the sessions,

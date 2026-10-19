@@ -28,23 +28,34 @@ var orderStatuses = []models.RequestStatus{
 // (see Server.Leader), and for the same reason: these gauges count the same rows
 // of the same database on every replica. A standby publishes no order series at
 // all, so adding the replicas up in a query counts every order once rather than
-// once per replica.
+// once per replica. A replica that loses the lease drops what it published, or
+// its last reading would stand next to the new leader's.
 func (s *Server) RunMetricsRefresher(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	if s.leading() {
-		s.RefreshMetrics(ctx)
-	}
+	led := s.MetricsStep(ctx, false)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if s.leading() {
-				s.RefreshMetrics(ctx)
-			}
+			led = s.MetricsStep(ctx, led)
 		}
 	}
+}
+
+// MetricsStep is one tick of the refresher: refresh while leading, forget the
+// stored counts on the tick the lease is found gone. led is what the previous
+// tick returned. Exported for the test that moves the lease between ticks.
+func (s *Server) MetricsStep(ctx context.Context, led bool) bool {
+	if s.leading() {
+		s.RefreshMetrics(ctx)
+		return true
+	}
+	if led {
+		observability.ForgetStoredCounts()
+	}
+	return false
 }
 
 // RefreshMetrics recomputes every gauge the portal derives from stored state,

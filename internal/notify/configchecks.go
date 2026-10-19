@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strconv"
-	"sync"
 
 	"console/internal/checks"
 	"console/pkg/models"
@@ -27,21 +26,20 @@ func configSubject(check string) string { return "config:" + check }
 
 // ConfigWatch turns rounds of configuration checks into notifications. It is
 // the checks.Announcer the runner calls after every round.
+//
+// What the platform team was last told about a check is read from the
+// notifications on every round, not kept in memory. Rounds are announced by
+// the replica that leads, and the lease moves: a replica that remembered what
+// it said itself would repeat a problem another replica has already reported,
+// or stay silent about one that came back after another replica's all-clear.
+// A round comes every ten minutes, so the reads cost nothing worth saving.
 type ConfigWatch struct {
 	s *Service
-
-	mu sync.Mutex
-	// announced is what the platform team was last told about each check: the
-	// key of a problem still standing, or "" for a check with nothing
-	// outstanding. A check that is not in the map is one this process has not
-	// asked about yet - the answer is in the notifications themselves, and is
-	// read once, on the first round after a start.
-	announced map[string]string
 }
 
 // ConfigWatch builds the watcher over this service.
 func (s *Service) ConfigWatch() *ConfigWatch {
-	return &ConfigWatch{s: s, announced: make(map[string]string)}
+	return &ConfigWatch{s: s}
 }
 
 // Round compares what every check now says with what was last said about it and
@@ -61,14 +59,12 @@ func (w *ConfigWatch) Round(ctx context.Context, results []checks.CheckResult) {
 				continue
 			}
 			w.s.configCheckFailed(ctx, ev)
-			w.remember(res.ID, ev.Key)
 		case recovered(res):
 			last, ok := w.outstanding(ctx, res.ID)
 			if !ok || last == "" {
 				continue
 			}
 			w.s.configCheckRecovered(ctx, res.ID)
-			w.remember(res.ID, "")
 		}
 	}
 }
@@ -88,24 +84,17 @@ func recovered(res checks.CheckResult) bool {
 // answer: then the round leaves this check alone rather than guessing, and asks
 // again in ten minutes.
 func (w *ConfigWatch) outstanding(ctx context.Context, check string) (string, bool) {
-	w.mu.Lock()
-	key, known := w.announced[check]
-	w.mu.Unlock()
-	if known {
-		return key, true
-	}
 	key, err := w.lastAnnounced(ctx, check)
 	if err != nil {
 		w.s.logger().Warn("configuration check history not read", "check", check, "err", err)
 		return "", false
 	}
-	w.remember(check, key)
 	return key, true
 }
 
 // lastAnnounced reads what was last said about a check out of the notifications
-// themselves, so a restart does not repeat a problem already reported and does
-// not swallow the all-clear for one reported before it.
+// themselves, so a restart or a new leader does not repeat a problem already
+// reported and does not swallow the all-clear for one reported before it.
 func (w *ConfigWatch) lastAnnounced(ctx context.Context, check string) (string, error) {
 	n, err := w.s.store.LatestNotification(ctx, models.SubjectPlatform, configSubject(check))
 	switch {
@@ -118,12 +107,6 @@ func (w *ConfigWatch) lastAnnounced(ctx context.Context, check string) (string, 
 	}
 	key, _ := n.Payload["event"].(string)
 	return key, nil
-}
-
-func (w *ConfigWatch) remember(check, key string) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.announced[check] = key
 }
 
 // configCheckFailed: something the portal is wired to has broken without anyone
@@ -152,8 +135,8 @@ func (s *Service) configCheckFailed(ctx context.Context, ev checks.Event) {
 		// No deduplication key: the same problem is news again once it has been
 		// fixed and has come back, so there is no key that both stops the
 		// repeats and lets the second time through. What stops the repeats is
-		// the state - the last notification about this check - which is read
-		// back at startup and kept in memory after that.
+		// the state - the last notification about this check - which every
+		// round reads back.
 		DedupKey: "",
 	})
 }

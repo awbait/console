@@ -145,6 +145,34 @@ func TestRestartNeitherRepeatsNorForgets(t *testing.T) {
 	}
 }
 
+// The lease that decides who announces moves between replicas. A replica that
+// leads again must not trust what it saw while it led before: the other one may
+// have reported the fault, called it off, or reported it again in between.
+func TestLeadershipMovingNeitherRepeatsNorSwallows(t *testing.T) {
+	st := store.NewMemory()
+	broken := result(checks.IDHarborProjects, checks.ComponentHarbor, checks.VerdictFail, "projects_missing", nil)
+	fine := result(checks.IDHarborProjects, checks.ComponentHarbor, checks.VerdictOK, "charts_readable", nil)
+	a := notify.New(st, nil, nil).ConfigWatch()
+	b := notify.New(st, nil, nil).ConfigWatch()
+
+	round(b, fine)   // b leads: nothing to say
+	round(a, broken) // a leads: the fault is announced
+	round(b, broken) // b leads again: already said, by a
+	if got := kinds(t, st); len(got) != 1 {
+		t.Fatalf("b repeated what a had announced: %v", got)
+	}
+	round(a, fine)   // a calls it off
+	round(b, broken) // back on b, and broken again: news
+	want := []string{
+		models.NotifyConfigCheckFailed,
+		models.NotifyConfigCheckRecovered,
+		models.NotifyConfigCheckFailed,
+	}
+	if got := kinds(t, st); !equal(got, want) {
+		t.Fatalf("feed = %v, want %v", got, want)
+	}
+}
+
 // A token expiry is the one fault said twice: a month ahead, when a new token
 // can be got through whatever process issues them, and a week ahead, when it
 // stops being a plan.
