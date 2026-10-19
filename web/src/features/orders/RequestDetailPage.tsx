@@ -8,6 +8,7 @@ import {
   IconArchive,
   IconArrowUpCircle,
   IconCheck,
+  IconClockHour4,
   IconExternalLink,
   IconGitCompare,
   IconGitFork,
@@ -294,6 +295,17 @@ export function RequestDetailPage() {
           <div>
             <p className="font-medium">{nextStep.title}</p>
             <p className="mt-0.5">{nextStep.hint}</p>
+          </div>
+        </div>
+      )}
+      {/* A deleted order can be restored only until the retention removes it,
+          so the page says how long that is. */}
+      {r.status === "DELETED" && data.purge_at && (
+        <div className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <IconClockHour4 size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">{copyText.purgeTitle(daysUntil(data.purge_at))}</p>
+            <p className="mt-0.5">{copyText.purgeHint(dateInWords(data.purge_at))}</p>
           </div>
         </div>
       )}
@@ -603,6 +615,12 @@ export function RequestDetailPage() {
       />
     </div>
   );
+}
+
+// daysUntil is how many whole days are left before a moment, rounded up so the
+// last day still counts as one, and never below zero.
+function daysUntil(iso: string, now: number = Date.now()): number {
+  return Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 86_400_000));
 }
 
 // LoadError is the friendly fallback for an unexpected load failure that is not a

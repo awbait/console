@@ -160,6 +160,9 @@ type Config struct {
 	// background round that keeps the status page and the Argo CD wiring
 	// flag of every stand current.
 	StandChecksInterval time.Duration `env:"STAND_CHECKS_INTERVAL" envDefault:"5m" desc:"How often the stands are checked against GitLab and Argo CD in the background. Zero turns the round off; a stand page still runs its checks on request."`
+	// Zero by default: a deleted order is what restoring it reads from, and its
+	// history is the audit trail, so nothing is dropped unless asked for.
+	DeletedOrdersRetention time.Duration `env:"DELETED_ORDERS_RETENTION" envDefault:"0s" desc:"How long a deleted order, discarded drafts included, is kept with its history. Past it the order is removed for good and can no longer be restored. Zero keeps them forever."`
 	// Off by default: it creates order rows.
 	ImportDiscovery bool `env:"IMPORT_DISCOVERY_ENABLED" envDefault:"false" desc:"Adopt manifests created directly in Git, bypassing the portal, as imported orders."`
 	// Off by default: it creates a publication row for every chart in the

@@ -239,6 +239,39 @@ func (m *Memory) SetDrift(ctx context.Context, id string, drifted bool, detail s
 	return nil
 }
 
+func (m *Memory) PurgeDeletedRequests(ctx context.Context, cutoff time.Time, limit int) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var due []*models.Request
+	for _, r := range m.requests {
+		if r.Status == models.StatusDeleted && r.DeletedAt != nil && r.DeletedAt.Before(cutoff) {
+			due = append(due, r)
+		}
+	}
+	sort.Slice(due, func(i, j int) bool { return due[i].DeletedAt.Before(*due[j].DeletedAt) })
+	if len(due) > limit {
+		due = due[:limit]
+	}
+	gone := make(map[string]bool, len(due))
+	for _, r := range due {
+		gone[r.ID] = true
+		delete(m.requests, r.ID)
+	}
+	for id, mr := range m.mrs {
+		if gone[mr.RequestID] {
+			delete(m.mrs, id)
+		}
+	}
+	kept := m.events[:0]
+	for _, e := range m.events {
+		if !gone[e.RequestID] {
+			kept = append(kept, e)
+		}
+	}
+	m.events = kept
+	return len(due), nil
+}
+
 func (m *Memory) ListActive(ctx context.Context) ([]*models.Request, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

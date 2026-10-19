@@ -153,6 +153,8 @@ export const CONFIG_TEXT: Record<string, string> = {
   STATUS_POLL_INTERVAL: "Как часто портал сверяется с внешними системами.",
   DRIFT_DETECTION_ENABLED: "Отмечать заказы, чьи файлы изменили в Git мимо портала.",
   STAND_CHECKS_INTERVAL: "Как часто портал проверяет стенды.",
+  DELETED_ORDERS_RETENTION:
+    "Сколько хранить удалённые заказы и выброшенные черновики. При значении 0 хранить бессрочно.",
   IMPORT_DISCOVERY_ENABLED: "Добавлять в список заказов сервисы, заведённые в Git напрямую.",
   CATALOG_AUTODISCOVER: "Заводить черновики публикаций для чартов, найденных в реестре.",
 

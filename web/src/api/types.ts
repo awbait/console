@@ -176,6 +176,9 @@ export interface RequestDetail {
   // Deep link to the order's ArgoCD Application; empty/absent when ArgoCD is not
   // configured or the app doesn't exist yet (draft).
   argocd_url?: string;
+  // When a deleted order is removed for good (DELETED_ORDERS_RETENTION) and can
+  // no longer be restored. Null for a live order or when nothing is removed.
+  purge_at?: string | null;
 }
 
 // System status page (GET /api/v1/status).

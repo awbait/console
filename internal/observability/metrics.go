@@ -149,6 +149,14 @@ var (
 		Help: "Total orders put into DEGRADED because ArgoCD reported an error condition on their application.",
 	})
 
+	// ordersPurged counts deleted orders removed for good once their retention
+	// (DELETED_ORDERS_RETENTION) ran out, history included. Zero while the
+	// retention is off.
+	ordersPurged = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "console_orders_purged_total",
+		Help: "Total deleted orders removed for good, with their history, after the retention period.",
+	})
+
 	// ordersRecovered counts orders reconcile found holding an open merge request
 	// while sitting in a status that does not admit one, and brought back to the
 	// status that request implies. It means an order opened a change in GitLab and
@@ -266,6 +274,11 @@ func ObserveMRMergeBlocked(reason string) {
 // error condition on its application. Call it once per occurrence, not per tick.
 func ObserveAppError() {
 	appErrors.Inc()
+}
+
+// ObserveOrdersPurged records n deleted orders removed for good.
+func ObserveOrdersPurged(n int) {
+	ordersPurged.Add(float64(n))
 }
 
 // ObserveOrderRecovered records one order reconcile found with an open merge

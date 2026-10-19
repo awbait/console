@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"console/internal/auth"
 	"console/internal/provisioning"
@@ -125,6 +126,9 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		"merge_requests": mrs,
 		"events":         evs,
 		"argocd_url":     s.argocdAppURL(req),
+		// When a deleted order goes for good (DELETED_ORDERS_RETENTION), so its
+		// page can say how long it can still be restored. Null otherwise.
+		"purge_at": provisioning.PurgeAt(req, s.deletedRetention()),
 		// Whether a change of this order waits for a person. The page cannot work
 		// it out on its own: the version's document travels to the SPA, but the
 		// installation's half of the rule never leaves the portal.
@@ -165,6 +169,15 @@ func (s *Server) handleGetRequestView(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(view)
+}
+
+// deletedRetention is DELETED_ORDERS_RETENTION, zero (keep forever) when the
+// server was built without a configuration, as in tests.
+func (s *Server) deletedRetention() time.Duration {
+	if s.Config == nil {
+		return 0
+	}
+	return s.Config.DeletedOrdersRetention
 }
 
 // argocdAppURL builds a deep link to the order's ArgoCD Application, or "" when

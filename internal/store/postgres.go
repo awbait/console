@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -228,6 +229,29 @@ func (p *Postgres) SetDrift(ctx context.Context, id string, drifted bool, detail
 		return models.ErrNotFound
 	}
 	return nil
+}
+
+func (p *Postgres) PurgeDeletedRequests(ctx context.Context, cutoff time.Time, limit int) (int, error) {
+	// One statement: the merge requests and the history go in sibling CTEs, and
+	// the foreign keys (NO ACTION) are checked at its end, when they are gone.
+	// SKIP LOCKED leaves a row another transaction holds for the next round.
+	tag, err := p.db.Exec(ctx, `
+		WITH gone AS (
+			SELECT id FROM requests
+			WHERE status = 'DELETED' AND deleted_at IS NOT NULL AND deleted_at < $1
+			ORDER BY deleted_at
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		), mrs AS (
+			DELETE FROM request_mrs WHERE request_id IN (SELECT id FROM gone)
+		), evs AS (
+			DELETE FROM request_events WHERE request_id IN (SELECT id FROM gone)
+		)
+		DELETE FROM requests WHERE id IN (SELECT id FROM gone)`, cutoff, limit)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 func (p *Postgres) ListActive(ctx context.Context) ([]*models.Request, error) {
