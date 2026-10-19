@@ -510,7 +510,9 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
                       onOpen={() => navigate(`/requests/${r.id}`)}
                       onContinue={() => navigate(`/requests/${r.id}/edit`)}
                       onSync={
-                        !isDraft && user?.role === "admin" && deploys(standOf(r)) ? () => onSync(r) : undefined
+                        !isDraft && !deleted && user?.role === "admin" && deploys(standOf(r))
+                          ? () => onSync(r)
+                          : undefined
                       }
                       onCopy={canModify(user, r.team) ? () => setCopying(r) : undefined}
                       restore={deleted}

@@ -514,7 +514,9 @@ export function RequestDetailPage() {
           onContinue={isDraft && modifiable ? () => navigate(`/requests/${r.id}/edit`) : undefined}
           onSubmit={isDraft && modifiable ? onSubmit : undefined}
           onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
-          onSync={!isDraft && user?.role === "admin" && deploys(stand) ? onSync : undefined}
+          onSync={
+            !isDraft && r.status !== "DELETED" && user?.role === "admin" && deploys(stand) ? onSync : undefined
+          }
           onCopy={canModify(user, r.team) ? () => setCopying(true) : undefined}
           restore={r.status === "DELETED"}
           onDelete={modifiable && !openMR ? () => setConfirmDelete(true) : undefined}
