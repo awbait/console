@@ -7,15 +7,15 @@ import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication } from "../api/types";
 import { isUnclaimed, publisherLabel } from "../api/types";
-import { findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { noTeamNotice } from "../auth/access";
 import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Changelog, withContent } from "../components/Changelog";
 import { ProductIcon } from "../components/icons";
 import { Markdown } from "../components/Markdown";
+import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, LinkButton, OutageState, Skeleton, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isNewer } from "../lib/semver";
@@ -155,38 +155,60 @@ export function ChartDetailPage() {
     // height of the window, the head keeps its size, and the open document
     // takes every pixel left - which is what the gaps here are kept short for.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex shrink-0 items-start justify-between gap-6">
-        <div className="min-w-0">
-          <Breadcrumbs
-            items={[
-              { label: "Каталог", to: "/catalog" },
-              { label: `${chart.project}/${chart.name}` },
-            ]}
-          />
-          <h1 className="mt-2 flex items-center gap-2 text-xl font-semibold">
-            <ProductIcon project={chart.project} name={chart.name} size={24} />
-            {chart.project}/{chart.name}
-          </h1>
-          {/* Keep the summary at a readable measure instead of letting it run
-              the full width of a wide screen. */}
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600">{description}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+      <PageHeader
+        breadcrumbs={[{ label: "Каталог", to: "/catalog" }, { label: chartLabel(chart.name) }]}
+        icon={<ProductIcon project={chart.project} name={chart.name} size={22} />}
+        title={chartLabel(chart.name)}
+        subtitle={`${chart.project}/${chart.name}`}
+        status={
+          retiredNewest && (
+            <span
+              title={`Последняя версия ${retiredNewest.version} снята с поддержки${
+                retiredNewest.at ? ` ${dateInWords(retiredNewest.at)}` : ""
+              }.${retiredNewest.note ? ` ${retiredNewest.note}` : ""}`}
+            >
+              <Chip className="bg-amber-50 text-amber-700">
+                <IconArchive size={13} stroke={1.8} />
+                Снят с поддержки
+              </Chip>
+            </span>
+          )
+        }
+        description={description}
+        actions={
+          <>
+            {manageable && (
+              <LinkButton to={`/catalog/${project}/${name}/manage`} className="relative">
+                {pub ? "Управление" : "Опубликовать"}
+                {pub && viewOutdated && (
+                  <span
+                    title="В Harbor есть новая версия чарта - актуализируйте данные"
+                    className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-surface"
+                  />
+                )}
+              </LinkButton>
+            )}
+            {orderable ? (
+              <LinkButton variant="primary" to={`/products/${project}/${name}`}>
+                Заказать
+              </LinkButton>
+            ) : (
+              <span
+                title={noTeam?.short ?? orderOutage ?? "Форма заказа не согласована для этого чарта"}
+              >
+                <Button variant="primary" isDisabled>
+                  Заказать
+                </Button>
+              </span>
+            )}
+          </>
+        }
+        meta={
+          <>
             <Chip className="bg-slate-100 text-slate-600">
               <IconTag size={13} stroke={1.8} className="text-slate-400" />
               <span className="text-slate-400">Версия:</span>v{version}
             </Chip>
-            {retiredNewest && (
-              <span
-                title={`Последняя версия ${retiredNewest.version} снята с поддержки${
-                  retiredNewest.at ? ` ${dateInWords(retiredNewest.at)}` : ""
-                }.${retiredNewest.note ? ` ${retiredNewest.note}` : ""}`}
-              >
-                <Chip className="bg-amber-50 text-amber-700">
-                  <IconArchive size={13} stroke={1.8} />
-                  Снят с поддержки
-                </Chip>
-              </span>
-            )}
             {categoryLabel && (
               <Chip className="bg-slate-100 text-slate-600">
                 <IconCategory size={13} stroke={1.8} className="text-slate-400" />
@@ -208,35 +230,9 @@ export function ChartDetailPage() {
                 {pub.created_by_name}
               </Chip>
             )}
-          </div>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {manageable && (
-            <LinkButton to={`/catalog/${project}/${name}/manage`} className="relative">
-              {pub ? "Управление" : "Опубликовать"}
-              {pub && viewOutdated && (
-                <span
-                  title="В Harbor есть новая версия чарта - актуализируйте данные"
-                  className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-surface"
-                />
-              )}
-            </LinkButton>
-          )}
-          {orderable ? (
-            <LinkButton variant="primary" to={`/products/${project}/${name}`}>
-              Заказать
-            </LinkButton>
-          ) : (
-            <span
-              title={noTeam?.short ?? orderOutage ?? "Форма заказа не согласована для этого чарта"}
-            >
-              <Button variant="primary" isDisabled>
-                Заказать
-              </Button>
-            </span>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* The tabs are the head of the document, not a strip floating above a
           box of its own: one panel with its name on top, the way the document

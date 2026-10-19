@@ -36,9 +36,10 @@ import { isUnclaimed, publisherLabel } from "../api/types";
 import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
+import type { Crumb } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
 import { ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
@@ -126,19 +127,21 @@ export function ChartManagePage() {
   if (pubLoading && !pub) return <Loading label="Загружаем публикацию" />;
   if (pubError && !pub) return <ErrorBox error={pubError} />;
 
+  const crumbs = [
+    { label: "Каталог", to: "/catalog" },
+    { label: chartLabel(name), to: `/catalog/${project}/${name}` },
+    { label: "Управление" },
+  ];
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Breadcrumbs
-        items={[
-          { label: "Чарты", to: "/catalog" },
-          { label: `${project}/${name}`, to: `/catalog/${project}/${name}` },
-          { label: "Управление" },
-        ]}
-      />
       {pub ? (
-        <PublicationOverview pub={pub} reload={reloadPub} />
+        <PublicationOverview pub={pub} reload={reloadPub} breadcrumbs={crumbs} />
       ) : (
-        <RegisterCard project={project} name={name} onCreated={reloadPub} />
+        <>
+          <PageHeader breadcrumbs={crumbs} title={`Публикация чарта ${chartLabel(name)}`} />
+          <RegisterCard project={project} name={name} onCreated={reloadPub} />
+        </>
       )}
       {!pub && user?.role !== "admin" && (user?.teams?.length ?? 0) === 0 && (
         <p className="text-sm text-gray-500">Публиковать чарты могут участники команд.</p>
@@ -192,13 +195,10 @@ function RegisterCard({
 
   return (
     <Card className="flex max-w-lg flex-col gap-3">
-      <div>
-        <h1 className="text-lg font-semibold">Публикация чарта {chartLabel(name)}</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Зарегистрируйте чарт в каталоге: выберите категорию и группу, которая будет управлять
-          публикацией. Ваше имя будет показано в карточке чарта.
-        </p>
-      </div>
+      <p className="text-sm text-gray-600">
+        Зарегистрируйте чарт в каталоге: выберите категорию и группу, которая будет управлять
+        публикацией. Ваше имя будет показано в карточке чарта.
+      </p>
       <Select
         label="Категория"
         isRequired
@@ -231,7 +231,15 @@ function RegisterCard({
   );
 }
 
-function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: () => void }) {
+function PublicationOverview({
+  pub,
+  reload,
+  breadcrumbs,
+}: {
+  pub: ChartPublication;
+  reload: () => void;
+  breadcrumbs: Crumb[];
+}) {
   const { user } = useUser();
   const { categories, reload: reloadCatalog } = useCatalog();
   const { success, error } = useToast();
@@ -452,9 +460,11 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Управление: {chartLabel(name)}</h1>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <PageHeader
+        breadcrumbs={breadcrumbs}
+        title={`Управление: ${chartLabel(name)}`}
+        meta={
+          <>
           {metaEditable ? (
             <ChipSelect
               label="Категория"
@@ -511,8 +521,9 @@ function PublicationOverview({ pub, reload }: { pub: ChartPublication; reload: (
               {pub.created_by_name}
             </Chip>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {canAdopt && <AdoptCard pub={pub} teams={adoptTargets} onAdopted={reload} />}
 

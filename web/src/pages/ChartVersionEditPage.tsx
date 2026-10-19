@@ -48,9 +48,10 @@ import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
 import { canModify, useUser } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
+import type { Crumb } from "../components/Breadcrumbs";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FormErrors } from "../components/FormErrors";
+import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
 import {
   chartModelPath,
@@ -105,20 +106,22 @@ export function ChartVersionEditPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Breadcrumbs
-        items={[
-          { label: "Чарты", to: "/catalog" },
-          { label: `${project}/${name}`, to: `/catalog/${project}/${name}` },
-          { label: "Управление", to: `/catalog/${project}/${name}/manage` },
-          { label: version },
-        ]}
-      />
       {/* Keyed by the publication and the version: both halves matter, because
           this route renders the editor for every chart. Two charts open at the
           same version number would otherwise be the same element to React, the
           editor would keep the text of the one just left, and the draft it saves
           on the way out would land on the other one. */}
-      <VersionEditor key={`${pub.id}:${version}`} pub={pub} version={version} />
+      <VersionEditor
+        key={`${pub.id}:${version}`}
+        pub={pub}
+        version={version}
+        breadcrumbs={[
+          { label: "Каталог", to: "/catalog" },
+          { label: chartLabel(name), to: `/catalog/${project}/${name}` },
+          { label: "Управление", to: `/catalog/${project}/${name}/manage` },
+          { label: version },
+        ]}
+      />
     </div>
   );
 }
@@ -245,7 +248,15 @@ function DependencyPanel({
   );
 }
 
-function VersionEditor({ pub, version }: { pub: ChartPublication; version: string }) {
+function VersionEditor({
+  pub,
+  version,
+  breadcrumbs,
+}: {
+  pub: ChartPublication;
+  version: string;
+  breadcrumbs: Crumb[];
+}) {
   const { user } = useUser();
   const { reload: reloadCatalog } = useCatalog();
   const { theme } = useTheme();
@@ -546,12 +557,11 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">
-            {chartLabel(name)}: версия {version}
-          </h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <PageHeader
+        breadcrumbs={breadcrumbs}
+        title={`${chartLabel(name)}: версия ${version}`}
+        meta={
+          <>
             {switcherVersions.length > 1 && (
               <VersionSwitcher
                 current={version}
@@ -606,38 +616,40 @@ function VersionEditor({ pub, version }: { pub: ChartPublication; version: strin
                 Рекомендуемая
               </Chip>
             )}
-          </div>
-        </div>
-        {editable && (
-          <div className="flex shrink-0 items-center gap-2">
-            {/* What happened to the work, in one line. It sits next to the
-                button rather than over the editor: the page already says
-                whether the document is valid, and two floating notices about
-                the same text would compete. */}
-            <SaveState
-              saving={busy === "save"}
-              dirty={dirty}
-              blocked={!!syntaxErr || refused === text}
-              stored={stored}
-            />
-            <Button isDisabled={busy !== null} onPress={() => onSave(true)}>
-              Сохранить черновик
-            </Button>
-            {/* Sending a version for approval reads the chart back from the
-                registry, so an outage there blocks it; the draft above only
-                touches the portal's own storage and stays available. */}
-            <span title={publishOutage}>
-              <Button
-                variant="primary"
-                isDisabled={busy !== null || !!syntaxErr || issues.length > 0 || !!publishOutage}
-                onPress={onSubmit}
-              >
-                Отправить на согласование
+          </>
+        }
+        actions={
+          editable && (
+            <>
+              {/* What happened to the work, in one line. It sits next to the
+                  button rather than over the editor: the page already says
+                  whether the document is valid, and two floating notices about
+                  the same text would compete. */}
+              <SaveState
+                saving={busy === "save"}
+                dirty={dirty}
+                blocked={!!syntaxErr || refused === text}
+                stored={stored}
+              />
+              <Button isDisabled={busy !== null} onPress={() => onSave(true)}>
+                Сохранить черновик
               </Button>
-            </span>
-          </div>
-        )}
-      </div>
+              {/* Sending a version for approval reads the chart back from the
+                  registry, so an outage there blocks it; the draft above only
+                  touches the portal's own storage and stays available. */}
+              <span title={publishOutage}>
+                <Button
+                  variant="primary"
+                  isDisabled={busy !== null || !!syntaxErr || issues.length > 0 || !!publishOutage}
+                  onPress={onSubmit}
+                >
+                  Отправить на согласование
+                </Button>
+              </span>
+            </>
+          )
+        }
+      />
 
       {/* Why the editor is read-only, said above it rather than left for the
           reader to work out from a disabled button. */}

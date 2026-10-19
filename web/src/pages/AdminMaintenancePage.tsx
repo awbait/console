@@ -1,4 +1,4 @@
-import { IconHistory, IconTool } from "@tabler/icons-react";
+import { IconHistory } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useId, useState } from "react";
 import { Label, Radio, RadioGroup } from "react-aria-components";
@@ -7,7 +7,8 @@ import { qk } from "../api/queryKeys";
 import type { MaintenanceEvent, MaintenanceStatus, MaintenanceWindow } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Button, Card, Checkbox, ErrorBox, SkeletonRows, TextField } from "../components/ui";
+import { PageHeader } from "../components/PageHeader";
+import { Button, Card, Checkbox, Chip, ErrorBox, SkeletonRows, TextField } from "../components/ui";
 import { maintenanceText as t } from "../features/maintenance/text";
 import { fromLocalInput, toLocalInput, when } from "../features/maintenance/when";
 import { useAsync } from "../hooks/useAsync";
@@ -52,10 +53,11 @@ export function AdminMaintenancePage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="shrink-0">
-        <h1 className="text-xl font-semibold">{t.navLabel}</h1>
-        <p className="mt-1 max-w-3xl text-sm text-slate-500">{t.pageIntro}</p>
-      </div>
+      <PageHeader
+        title={t.navLabel}
+        status={status && <Chip className={STATE_TONE[status.state]}>{stateLabel(status)}</Chip>}
+        description={t.pageIntro}
+      />
 
       {error && <ErrorBox error={error} onRetry={reload} />}
 
@@ -102,25 +104,22 @@ const STATE_TONE = {
   active: "bg-amber-50 text-amber-700",
 } as const;
 
+function stateLabel(status: MaintenanceStatus): string {
+  if (status.forced) return t.stateForced;
+  if (status.state === "active") return status.overdue ? t.stateOverdue : t.stateActive;
+  return status.state === "scheduled" ? t.stateScheduled : t.stateOff;
+}
+
+// StatusCard details the current window. The state itself is a chip in the page
+// header, so with no window and nothing forced there is nothing left to show.
 function StatusCard({ status, onEnd }: { status: MaintenanceStatus; onEnd?: () => void }) {
   const w = status.window;
-  const label = status.forced
-    ? t.stateForced
-    : status.state === "active"
-      ? status.overdue
-        ? t.stateOverdue
-        : t.stateActive
-      : status.state === "scheduled"
-        ? t.stateScheduled
-        : t.stateOff;
+  if (!w && !status.forced) return null;
   return (
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${STATE_TONE[status.state]}`}>
-            <IconTool size={20} stroke={1.8} />
-          </span>
-          <span className={`rounded-md px-2 py-0.5 text-sm font-medium ${STATE_TONE[status.state]}`}>{label}</span>
+        <div className="min-w-0 flex-1">
+          {status.forced && <p className="max-w-3xl text-sm text-amber-700">{t.forcedNote}</p>}
         </div>
         {onEnd && (
           <Button variant="secondary" onPress={onEnd}>
@@ -128,7 +127,6 @@ function StatusCard({ status, onEnd }: { status: MaintenanceStatus; onEnd?: () =
           </Button>
         )}
       </div>
-      {status.forced && <p className="mt-3 max-w-3xl text-sm text-amber-700">{t.forcedNote}</p>}
       {w && (
         <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-[max-content_1fr]">
           <Row term={t.statusStart}>{when(w.starts_at)}</Row>

@@ -11,9 +11,9 @@ import { usePlatformHealth } from "@/app/PlatformHealthContext";
 import { useTeam } from "@/app/TeamContext";
 import { noTeamNotice } from "@/auth/access";
 import { useUser } from "@/auth/UserContext";
-import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { FormErrors } from "@/components/FormErrors";
 import { NotFound } from "@/components/NotFound";
+import { PageHeader } from "@/components/PageHeader";
 import {
   GenericInfoActions,
   GenericListTab,
@@ -746,8 +746,8 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
 
   return (
     <div className="flex flex-col gap-4 pb-8">
-      <Breadcrumbs
-        items={[
+      <PageHeader
+        breadcrumbs={[
           {
             label: label || `${chart.project}/${chart.name}`,
             to: `/products/${project}/${name}`,
@@ -759,18 +759,20 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
               ]
             : [{ label: "Новый заказ" }]),
         ]}
+        title={
+          <>
+            {upgrade ? "Обновление: " : editing ? "Черновик: " : "Заказ "}
+            {label || `${chart.project}/${chart.name}`}
+            {upgrade && (
+              <span className="text-gray-400">
+                {" "}
+                {draft?.chart_version} → {targetVersion}
+              </span>
+            )}
+          </>
+        }
       />
       {stash && <RestoreNotice savedAt={stash.saved_at} onRestore={restoreStash} onDiscard={dropStash} />}
-      <h1 className="text-xl font-semibold">
-        {upgrade ? "Обновление: " : editing ? "Черновик: " : "Заказ "}
-        {label || `${chart.project}/${chart.name}`}
-        {upgrade && (
-          <span className="text-gray-400">
-            {" "}
-            {draft?.chart_version} → {targetVersion}
-          </span>
-        )}
-      </h1>
 
       {upgrade ? (
         <Card className="flex flex-col gap-3">

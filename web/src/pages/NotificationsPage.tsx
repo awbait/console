@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/api/client";
 import type { AppNotification } from "@/api/types";
 import { useNotifications } from "@/app/NotificationsContext";
+import { PageHeader } from "@/components/PageHeader";
 import { Card, ErrorBox, SkeletonRows } from "@/components/ui";
 import { NotificationRow } from "@/features/notifications/NotificationRow";
 import { dayLabel } from "@/lib/time";
@@ -88,19 +89,21 @@ export function NotificationsPage() {
     // their place, and only the feed below them scrolls. A history is read by
     // scrolling, and the way to mark it all read should not scroll away with it.
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Уведомления</h1>
-        {unread > 0 && (
-          <button
-            type="button"
-            onClick={readAll}
-            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
-          >
-            <IconCheck size={16} stroke={2} />
-            Прочитать все
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Уведомления"
+        actions={
+          unread > 0 && (
+            <button
+              type="button"
+              onClick={readAll}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <IconCheck size={16} stroke={2} />
+              Прочитать все
+            </button>
+          )
+        }
+      />
 
       {/* Two chips rather than a dropdown: there are two answers, and the one in
           force has to be readable without opening anything. Same shape as the

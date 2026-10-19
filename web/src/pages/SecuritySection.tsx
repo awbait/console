@@ -9,9 +9,9 @@ import {
   IconExternalLink,
   IconScan,
   IconShieldCheck,
-  IconShieldLock,
 } from "@tabler/icons-react";
 import { useUser } from "../auth/UserContext";
+import { PageHeader } from "../components/PageHeader";
 
 // NOTE: the security section is a visual mock for now - all data below is
 // hardcoded and no requests are made. It exists to show how the screens could
@@ -106,12 +106,7 @@ export function SecurityOverviewPage() {
   const total = pass + warn + fail;
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Обзор ИБ</h1>
-        <Badge tone="brand">
-          <IconShieldLock size={13} stroke={1.8} /> InfoSec
-        </Badge>
-      </div>
+      <PageHeader title="Обзор ИБ" />
       <MockNote />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -239,10 +234,7 @@ export function PolicyApprovalPage() {
   ];
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Согласование политик</h1>
-        <Badge tone="amber">{pending} в очереди</Badge>
-      </div>
+      <PageHeader title="Согласование политик" status={<Badge tone="amber">{pending} в очереди</Badge>} />
       <MockNote />
 
       <div className="flex flex-wrap gap-2">
@@ -357,18 +349,18 @@ export function KyvernoPage() {
   const namespaces = ["все namespaces", "payments", "core", "dbaas", "platform"];
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Kyverno UI</h1>
-          <Badge tone="brand">Policy Reporter</Badge>
-        </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface px-3 py-1.5 text-sm text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-        >
-          <IconExternalLink size={16} stroke={1.8} /> Открыть в отдельном окне
-        </button>
-      </div>
+      <PageHeader
+        title="Kyverno UI"
+        status={<Badge tone="brand">Policy Reporter</Badge>}
+        actions={
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-surface px-3 py-1.5 text-sm text-slate-600 outline-none hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            <IconExternalLink size={16} stroke={1.8} /> Открыть в отдельном окне
+          </button>
+        }
+      />
       <MockNote />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

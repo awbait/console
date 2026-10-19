@@ -1,10 +1,11 @@
-import { IconChevronDown, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { Stand, Variable } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PageHeader } from "../components/PageHeader";
 import { Button, ErrorBox, SkeletonRows } from "../components/ui";
 import { variableText as vt } from "../features/variables/text";
 import { fieldMsg } from "../form/fieldErrors";
@@ -53,17 +54,25 @@ export function AdminVariablesPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="shrink-0">
-        <h1 className="text-xl font-semibold">Переменные</h1>
-        <p className="mt-1 max-w-3xl text-sm text-slate-500">
-          Значения, на которые ссылается документ версии сервиса:{" "}
-          <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[12px] text-slate-700">
-            {"{{.Vars.ИМЯ}}"}
-          </code>
-          . Портал подставляет их, когда сохраняет заказ. Меняйте значение здесь, и новые заказы
-          получат его сразу, а существующие - при следующем изменении. {vt.pageIntroStands}
-        </p>
-        <p className="mt-1 max-w-3xl text-sm text-amber-700">
+      <PageHeader
+        title="Переменные"
+        description={
+          <>
+            Значения, на которые ссылается документ версии сервиса:{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[12px] text-slate-700">
+              {"{{.Vars.ИМЯ}}"}
+            </code>
+            . Портал подставляет их, когда сохраняет заказ. Меняйте значение здесь, и новые заказы
+            получат его сразу, а существующие - при следующем изменении. {vt.pageIntroStands}
+          </>
+        }
+      />
+
+      {/* A warning, not part of the page's description: it is the one sentence
+          here that changes what the reader may put into the form. */}
+      <div className="flex shrink-0 items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <IconAlertTriangle size={18} stroke={1.8} className="mt-0.5 shrink-0" />
+        <p>
           Это не хранилище секретов: значение уезжает в values.yaml в Git и видно всем, у кого есть
           доступ к репозиторию заказов.
         </p>

@@ -8,7 +8,6 @@
 
 import { DiffEditor, default as Editor } from "@monaco-editor/react";
 import {
-  IconArrowLeft,
   IconCircleCheck,
   IconCircleX,
   IconClock,
@@ -16,7 +15,7 @@ import {
 } from "@tabler/icons-react";
 import { useState } from "react";
 import { TabList, TabPanel, Tabs } from "react-aria-components";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, HttpError } from "../api/client";
 import { qk } from "../api/queryKeys";
 import type { ChartPublication, ViewDocument } from "../api/types";
@@ -24,9 +23,10 @@ import { chartLabel, useCatalog } from "../app/CatalogContext";
 import { useTheme } from "../app/ThemeContext";
 import { useToast } from "../app/ToastContext";
 import { useTeamLabel } from "../auth/UserContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Breadcrumbs, type Crumb } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
 import { ProductIcon } from "../components/icons";
+import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading, TextField } from "../components/ui";
 import {
   EditorTab,
@@ -49,21 +49,14 @@ export function VersionApprovalPage() {
     qk.publication(project, name),
   );
 
-  const back = (
-    <Link
-      to="/admin/approvals"
-      className="inline-flex w-fit items-center gap-1 text-sm text-slate-500 outline-none hover:text-slate-700 focus-visible:text-brand-600"
-    >
-      <IconArrowLeft size={16} stroke={1.8} /> Согласование публикаций
-    </Link>
-  );
+  const parent = { label: "Согласование публикаций", to: "/admin/approvals" };
 
   if (loading && !pub) return <Loading label="Загружаем версию" />;
   if (error && !pub) return <ErrorBox error={error} />;
   if (!pub) {
     return (
       <div className="flex flex-col gap-5">
-        {back}
+        <Breadcrumbs items={[parent, { label: `${project}/${name}` }]} />
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           Публикация {project}/{name} не найдена.
         </div>
@@ -73,19 +66,29 @@ export function VersionApprovalPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <Breadcrumbs
-        items={[
-          { label: "Согласование публикаций", to: "/admin/approvals" },
-          { label: `${project}/${name}`, to: `/admin/approvals/${project}/${name}` },
+      <VersionApproval
+        key={version}
+        pub={pub}
+        version={version}
+        breadcrumbs={[
+          parent,
+          { label: chartLabel(name), to: `/admin/approvals/${project}/${name}` },
           { label: version },
         ]}
       />
-      <VersionApproval key={version} pub={pub} version={version} />
     </div>
   );
 }
 
-function VersionApproval({ pub, version }: { pub: ChartPublication; version: string }) {
+function VersionApproval({
+  pub,
+  version,
+  breadcrumbs,
+}: {
+  pub: ChartPublication;
+  version: string;
+  breadcrumbs: Crumb[];
+}) {
   const { theme } = useTheme();
   const monacoTheme = theme === "light" ? "light" : "vs-dark";
   const { success } = useToast();
@@ -159,29 +162,30 @@ function VersionApproval({ pub, version }: { pub: ChartPublication; version: str
     // free height, so the document and the preview fill it and scroll inside
     // themselves instead of growing the page.
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-          <ProductIcon project={project} name={name} size={22} />
-        </span>
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold text-slate-900">
+      <PageHeader
+        breadcrumbs={breadcrumbs}
+        icon={<ProductIcon project={project} name={name} size={22} />}
+        title={
+          <>
             {chartLabel(name)} <span className="text-slate-400">v{version}</span>
-          </h1>
-          <p className="truncate text-xs text-slate-400">
-            {project}/{name}
-          </p>
-        </div>
-        {pending ? (
-          <Chip className="bg-amber-50 text-amber-700">
-            <IconClock size={13} stroke={1.8} className="text-amber-500" /> На согласовании
-          </Chip>
-        ) : (
-          <Chip className="bg-slate-100 text-slate-600">
-            <IconPackage size={13} stroke={1.8} className="text-slate-400" /> {cur.status}
-          </Chip>
-        )}
-        <Chip className="bg-brand-50 text-brand-700">{teamLabel(pub.owner_team)}</Chip>
-      </div>
+          </>
+        }
+        subtitle={`${project}/${name}`}
+        status={
+          <>
+            {pending ? (
+              <Chip className="bg-amber-50 text-amber-700">
+                <IconClock size={13} stroke={1.8} className="text-amber-500" /> На согласовании
+              </Chip>
+            ) : (
+              <Chip className="bg-slate-100 text-slate-600">
+                <IconPackage size={13} stroke={1.8} className="text-slate-400" /> {cur.status}
+              </Chip>
+            )}
+            <Chip className="bg-brand-50 text-brand-700">{teamLabel(pub.owner_team)}</Chip>
+          </>
+        }
+      />
 
       {!pending && (
         <div className="rounded-md border border-slate-200 bg-surface p-4 text-sm text-slate-600">

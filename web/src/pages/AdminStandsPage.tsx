@@ -21,6 +21,7 @@ import type { Stand, StandLayout, StandMode } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FormDialogShell } from "../components/FormDialogShell";
+import { PageHeader } from "../components/PageHeader";
 import { Button, ErrorBox, Hint, Select, SkeletonRows, TextField } from "../components/ui";
 import { standText as t } from "../features/stands/text";
 import { dnsLabelError, fieldMsg } from "../form/fieldErrors";
@@ -127,16 +128,16 @@ export function AdminStandsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold">{t.navLabel}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-500">{t.pageIntro}</p>
-        </div>
-        <Button variant="primary" onPress={() => setPanel("new")} isDisabled={loading} className="shrink-0">
-          <IconPlus size={16} stroke={2} />
-          {t.addButton}
-        </Button>
-      </div>
+      <PageHeader
+        title={t.navLabel}
+        description={t.pageIntro}
+        actions={
+          <Button variant="primary" onPress={() => setPanel("new")} isDisabled={loading}>
+            <IconPlus size={16} stroke={2} />
+            {t.addButton}
+          </Button>
+        }
+      />
 
       {error && <ErrorBox error={error} />}
       {err && <ErrorBox error={new Error(err)} />}
