@@ -1137,6 +1137,15 @@ func (s *Service) ForceSync(ctx context.Context, u *models.User, id string) erro
 	if !u.IsAdmin() {
 		return ErrForbidden
 	}
+	// A deleted order has no application left, and since orders can be
+	// restored under the same name, the application its name points at may
+	// now be another order's. A draft has none yet.
+	if r.DeletedAt != nil || r.Status == models.StatusDeleted {
+		return &ValidationError{Message: MsgSyncDeleted}
+	}
+	if r.Status == models.StatusDraft {
+		return &ValidationError{Message: MsgSyncDraft}
+	}
 	if !s.standOf(ctx, r).Deploys() {
 		return &ValidationError{Message: MsgSyncMode}
 	}
