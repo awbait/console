@@ -1,7 +1,0 @@
-### Fixed
-
-#### en
-Fixed several issues affecting portals running with multiple instances. “Check again” on the “Configuration” page now runs checks on every instance so the page no longer shows stale results from another instance. After a leader switch, administrators no longer receive duplicate configuration alerts, such as warnings about an expiring token or a disabled webhook, and receive alerts again if a resolved problem returns. Order and user counts in monitoring are no longer inflated when summed across instances after a leader switch. During shutdown, the leader now finishes its current background order processing before handing the role to another instance.
-
-#### ru
-Исправили несколько ошибок при работе портала в нескольких экземплярах. Кнопка «Проверить снова» на странице «Конфигурация» теперь запускает проверки во всех экземплярах, поэтому страница больше не показывает старые результаты другого экземпляра. После смены ведущего экземпляра администраторы больше не получают повторные уведомления о проблемах конфигурации, например об истекающем токене или отключённом вебхуке, а уведомления о вернувшихся проблемах не пропускаются. Суммарные показатели числа заказов и пользователей в мониторинге больше не завышаются после смены ведущего экземпляра. При остановке ведущий экземпляр теперь завершает текущую фоновую обработку заказов и только после этого передаёт роль другому экземпляру.
