@@ -331,15 +331,43 @@ func (s *Service) resourceIdentity(ctx context.Context, chartProject, chartName,
 // resolveNamespace computes an order's ArgoCD destination namespace from the
 // order version's approved view: the "namespace" directive decides the source
 // (the form field, a values field the chart names itself by, or a fixed
-// constant). ArgoCD always requires a destination namespace, so an empty result
-// falls back to serviceName - it is never blank. The result is validated as a
-// Kubernetes name. orderNamespace is the form input (source=field); values are
-// the order's values (source=values).
-func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName, version, orderNamespace, serviceName string, values map[string]any) (string, error) {
-	rule := views.OrderNamespaceRule(s.orderView(ctx, chartProject, chartName, version))
-	ns := views.ResolveDestinationNamespace(rule, orderNamespace, values)
+// constant, or a template over the values and the order). ArgoCD always
+// requires a destination namespace, so an empty result falls back to the
+// service name - it is never blank. The result is validated as a Kubernetes
+// name. orderNamespace is the form input (source=field); values are the order's
+// values as the form sent them (source=values, source=template); sc is the
+// order a template reads its team, cluster, service name and the stand's
+// variables from.
+func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName, version, orderNamespace string, values map[string]any, sc stampContext) (string, error) {
+	view := s.orderView(ctx, chartProject, chartName, version)
+	rule := views.OrderNamespaceRule(view)
+	data := views.TemplateData{Team: sc.Team, ServiceName: sc.ServiceName, Cluster: sc.Cluster, Chart: chartName}
+	if rule.Source == views.NamespaceSourceTemplate {
+		vars, standName, err := s.templateVars(ctx, view, sc.StandID)
+		if err != nil {
+			return "", err
+		}
+		data.Vars, data.Stand = vars, standName
+	}
+	ns, err := views.ResolveDestinationNamespace(rule, orderNamespace, values, data)
+	if err != nil {
+		// A field left empty is the person's to fill in and a variable with no
+		// value the platform admin's; both messages say so on their own.
+		// Anything else is a mistake in the document, like a broken "defaults".
+		var empty *views.VarEmptyError
+		var field *views.NamespaceValueError
+		if errors.As(err, &empty) || errors.As(err, &field) {
+			return "", &ValidationError{Message: err.Error()}
+		}
+		s.logger().Warn("view namespace template render failed",
+			"chart", chartName, "chart_project", chartProject, "chart_version", version, "err", err)
+		return "", &ValidationError{Message: MsgViewNamespace + err.Error() + " " + MsgViewDefaultsOwner}
+	}
 	if ns == "" {
-		ns = serviceName
+		ns = sc.ServiceName
+	}
+	if rule.Source == views.NamespaceSourceTemplate && !validNamespace(ns) {
+		return "", &ValidationError{Message: fmt.Sprintf(MsgViewNamespaceInvalid, ns)}
 	}
 	if !validNamespace(ns) {
 		return "", &ValidationError{Message: "namespace должен быть валидным именем Kubernetes и не может быть числом"}
@@ -602,17 +630,9 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err := s.ensureOrderable(ctx, in.ChartProject, in.ChartName, in.Version); err != nil {
 		return nil, err
 	}
-	// Destination namespace: the view's "namespace" directive picks the source
-	// (form field / values field / fixed). Falls back to service_name so it is
-	// never empty. Charts that self-provision or are cluster-scoped hide the form
-	// field and source it from values or a constant instead.
-	namespace, err := s.resolveNamespace(ctx, in.ChartProject, in.ChartName, in.Version, in.Namespace, in.ServiceName, in.Values)
-	if err != nil {
-		return nil, err
-	}
 	// The stand, then the cluster: the one named or the stand's default. Both
-	// resolved before the values are marshalled, because a view template may
-	// stamp the cluster into them.
+	// resolved before the namespace and the values, because a view template may
+	// build either from the cluster and the stand's variables.
 	stand, err := s.resolveStand(ctx, in.StandID)
 	if err != nil {
 		return nil, err
@@ -621,12 +641,20 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err != nil {
 		return nil, err
 	}
-	// A draft may hold incomplete values; defer schema validation to Submit.
-	// namespace is passed so a view "namespace" mirror can stamp it into values.
 	// The order does not exist yet, so the author of a template's "{{.User.Name}}"
 	// is the person creating it - the one time the session IS the order's author.
-	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft,
-		stampContext{Team: in.Team, ServiceName: in.ServiceName, StandID: stand.ID, Cluster: cluster, UserName: u.Name, UserSubject: u.Subject})
+	sc := stampContext{Team: in.Team, ServiceName: in.ServiceName, StandID: stand.ID, Cluster: cluster, UserName: u.Name, UserSubject: u.Subject}
+	// Destination namespace: the view's "namespace" directive picks the source
+	// (form field / values field / fixed / template). Falls back to service_name
+	// so it is never empty. Charts that self-provision or are cluster-scoped hide
+	// the form field and source it from the values or a constant instead.
+	namespace, err := s.resolveNamespace(ctx, in.ChartProject, in.ChartName, in.Version, in.Namespace, in.Values, sc)
+	if err != nil {
+		return nil, err
+	}
+	// A draft may hold incomplete values; defer schema validation to Submit.
+	// namespace is passed so a view "namespace" mirror can stamp it into values.
+	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -966,7 +994,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	if orderNS == "" {
 		orderNS = r.Namespace
 	}
-	ns, err := s.resolveNamespace(ctx, r.ChartProject, r.ChartName, r.ChartVersion, orderNS, r.ServiceName, in.Values)
+	ns, err := s.resolveNamespace(ctx, r.ChartProject, r.ChartName, r.ChartVersion, orderNS, in.Values, stampOf(r))
 	if err != nil {
 		return nil, err
 	}

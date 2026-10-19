@@ -85,9 +85,9 @@ func (s *Server) handleDeleteVariableOverride(w http.ResponseWriter, r *http.Req
 }
 
 // handleViewRefs answers with what a version document may reference in its
-// "defaults" and "initial" blocks: the fixed catalogue plus the variables that
-// exist right now. The constructor completes from it, so the list it offers is
-// the same list the portal resolves against.
+// "defaults" and "initial" blocks and in its namespace template: the fixed
+// catalogue plus the variables that exist right now. The constructor completes
+// from it, so the list it offers is the same list the portal resolves against.
 func (s *Server) handleViewRefs(w http.ResponseWriter, r *http.Request) {
 	refs := views.TemplateRefs()
 	vars, err := s.Pubs.ListVariables(r.Context())
@@ -97,7 +97,7 @@ func (s *Server) handleViewRefs(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, v := range vars {
 		refs = append(refs, views.TemplateRef{
-			Ref: ".Vars." + v.Name, Desc: v.Description, AtOrderForm: true,
+			Ref: ".Vars." + v.Name, Desc: v.Description, AtOrderForm: true, InNamespace: true,
 		})
 	}
 	writeJSON(w, http.StatusOK, refs)

@@ -8,6 +8,7 @@
 // approval screen (/admin/approvals/:project/:name/:version). Values are local:
 // filling the preview in writes to component state, never to the API.
 
+import { IconInfoCircle } from "@tabler/icons-react";
 import yaml from "js-yaml";
 import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -19,7 +20,6 @@ import {
   Tooltip,
   TooltipTrigger,
 } from "react-aria-components";
-import { IconInfoCircle } from "@tabler/icons-react";
 import { api } from "@/api/client";
 import { qk } from "@/api/queryKeys";
 import type { OrderRequest, ViewDocument } from "@/api/types";
@@ -30,6 +30,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui";
 import { parseNamespaceDirective, resolveDestNamespace } from "@/form/namespace";
 import { pruneEmpty, type View } from "@/form/SchemaForm";
+import { useNamespaceVars } from "@/form/useNamespaceVars";
 import { useAsync } from "@/hooks/useAsync";
 import { OrderMetaCard, OrderValuesCard } from "../orders/OrderFormParts";
 import { Meta, ProductView } from "../orders/requestDetailParts";
@@ -261,6 +262,14 @@ export function PreviewPane({
 
   const team = user?.teams?.[0] ?? "team";
   const svcName = (identity ? readPointer(values, identity) : serviceName) || "demo-service";
+  const nsVars = useNamespaceVars(ns, standId);
+  const liveNamespace = resolveDestNamespace(ns, namespace, values, {
+    team,
+    serviceName: svcName,
+    cluster,
+    chart: name,
+    vars: nsVars,
+  });
 
   // Synthetic order: lets the preview render with the real product components
   // without a saved order. The id is fake, writes go through persist.
@@ -323,7 +332,7 @@ export function PreviewPane({
               namespace={namespace}
               onNamespace={setNamespace}
               hideNamespace={ns.hideField}
-              namespaceHint={ns.hideField ? resolveDestNamespace(ns, namespace, values) : undefined}
+              namespaceHint={ns.hideField ? liveNamespace : undefined}
               team={team}
               version={version}
               latest
@@ -339,7 +348,7 @@ export function PreviewPane({
               raw={raw}
               onRaw={setRaw}
               editor={editor}
-              pluginNamespace={resolveDestNamespace(ns, namespace, values)}
+              pluginNamespace={liveNamespace}
               pluginChartVersion={version}
               pluginState={editorStateRef.current}
               onPluginState={(st) => {

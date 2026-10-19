@@ -56,6 +56,9 @@ export function hintsAt(
   // Inside a string the value replaces what is between the quotes; anywhere else
   // it is inserted whole, quotes included.
   const inside = stringAt(text, offset);
+  // A namespace template is a name put together from several references, so a
+  // suggestion replaces only the reference being typed, not the whole string.
+  if (inside && isNamespaceTemplate(loc.path)) return { items, ...refAt(text, offset, inside), quote: false };
   if (inside) return { items, ...inside, quote: false };
   return { items, from: offset, to: offset, quote: true };
 }
@@ -77,6 +80,24 @@ function stringAt(text: string, offset: number): { from: number; to: number } | 
     if (offset <= end) return { from: start + 1, to: end };
   }
   return null;
+}
+
+function isNamespaceTemplate(path: (string | number)[]): boolean {
+  return path.length === 4 && path[0] === "views" && path[1] === "order" && path[2] === "namespace" && path[3] === "template";
+}
+
+// refAt narrows the replaced text to the reference the cursor is in: from its
+// "{{" up to and including its "}}" when it is already closed. Outside any
+// reference the suggestion is inserted at the cursor.
+function refAt(text: string, offset: number, str: { from: number; to: number }): { from: number; to: number } {
+  const before = text.slice(str.from, offset);
+  const open = before.lastIndexOf("{{");
+  if (open < 0 || before.indexOf("}}", open) >= 0) return { from: offset, to: offset };
+  const after = text.slice(offset, str.to);
+  const close = after.indexOf("}}");
+  const next = after.indexOf("{{");
+  const to = close >= 0 && (next < 0 || close < next) ? offset + close + 2 : offset;
+  return { from: str.from + open, to };
 }
 
 function suggest(
@@ -107,6 +128,9 @@ function suggest(
   if ((head === "defaults" || head === "initial") && path.length === 2) {
     return references(refs, head === "initial");
   }
+  if (isNamespaceTemplate(path)) {
+    return [...valueReferences(chart), ...(refs ?? []).filter((r) => r.in_namespace).map(asSuggestion)];
+  }
   if (head === "views" && typeof index === "string") {
     return viewSuggestions(path, doc, chart);
   }
@@ -129,9 +153,32 @@ function suggest(
 // editor cannot offer a reference the order would then refuse.
 function references(refs: TemplateRef[] | null, formTimeOnly: boolean): Suggestion[] {
   if (!refs) return [];
-  return refs
-    .filter((r) => !formTimeOnly || r.at_order_form)
-    .map((r) => ({ value: `{{${r.ref}}}`, detail: r.desc }));
+  return refs.filter((r) => !formTimeOnly || r.at_order_form).map(asSuggestion);
+}
+
+function asSuggestion(r: TemplateRef): Suggestion {
+  return { value: `{{${r.ref}}}`, detail: r.desc };
+}
+
+const IDENT = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+// valueReferences offers the chart's own fields the way a namespace template
+// reads them: "{{.Values.a.b}}", or the index form when a key is not an
+// identifier. Fields inside a list are left out: the dialect has no way to name
+// a row.
+function valueReferences(chart: Schema | null): Suggestion[] {
+  if (!chart) return [];
+  const out: Suggestion[] = [];
+  for (const f of chartFields(chart, chart, { arrays: "index", absolute: true })) {
+    if (f.kind !== "scalar") continue;
+    const keys = f.path.split("/").slice(1);
+    if (keys.some((k) => /^\d+$/.test(k) || /["\\]/.test(k))) continue;
+    const value = keys.every((k) => IDENT.test(k))
+      ? `{{.Values.${keys.join(".")}}}`
+      : `{{index .Values ${keys.map((k) => JSON.stringify(k)).join(" ")}}}`;
+    out.push({ value, detail: f.title ?? KIND_LABEL[f.kind], doc: f.description });
+  }
+  return out;
 }
 
 // A view names fields of the schema node it projects: the root of the chart, or

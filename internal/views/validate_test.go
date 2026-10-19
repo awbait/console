@@ -465,3 +465,47 @@ func TestDependencyPointersResolve(t *testing.T) {
 		t.Fatalf("issues = %+v, want none", issues)
 	}
 }
+
+// The namespace template is checked where the document is written: the grammar
+// and the references, each values field against the chart, and every field
+// against "defaults", which is stamped after the namespace is resolved.
+func TestNamespaceTemplate(t *testing.T) {
+	doc := func(tmpl, defaults string) string {
+		return `{"views":{"order":{"namespace":{"source":"template","hideOrderField":true,"template":` +
+			tmpl + `}}}` + defaults + `}`
+	}
+	if issues := views.Validate([]byte(doc(`"{{.Team}}-{{.Values.naming.env}}"`, "")), []byte(schema)); len(issues) != 0 {
+		t.Fatalf("valid template: %+v", issues)
+	}
+	cases := []struct {
+		name, doc string
+	}{
+		{"no template", `{"views":{"order":{"namespace":{"source":"template"}}}}`},
+		{"empty template", doc(`""`, "")},
+		{"field the chart lacks", doc(`"{{.Values.naming.absent}}"`, "")},
+		{"field defaults stamps", doc(`"{{.Values.naming.env}}"`, `,"defaults":{"/naming/env":"{{.Team}}"}`)},
+		{"field under a stamped object", doc(`"{{.Values.naming.env}}"`, `,"defaults":{"/naming":"x"}`)},
+		{"namespace reads itself", doc(`"{{.Namespace}}"`, "")},
+		{"author", doc(`"{{.User.Name}}"`, "")},
+		{"condition", doc(`"{{if .Team}}x{{end}}"`, "")},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			issues := views.Validate([]byte(c.doc), []byte(schema))
+			if len(issues) == 0 {
+				t.Fatal("want an issue")
+			}
+			if !strings.HasPrefix(issues[0].Path, "/views/order/namespace") {
+				t.Fatalf("issue at %q: %+v", issues[0].Path, issues)
+			}
+		})
+	}
+	// An unknown variable is only named when the list is at hand.
+	vars := doc(`"{{.Vars.NOPE}}-x"`, "")
+	if issues := views.Validate([]byte(vars), []byte(schema)); len(issues) != 0 {
+		t.Fatalf("without the list: %+v", issues)
+	}
+	if issues := views.Validate([]byte(vars), []byte(schema), views.WithVariables(map[string]string{"OPS": "x"})); len(issues) == 0 {
+		t.Fatal("with the list: want an issue")
+	}
+}

@@ -193,9 +193,9 @@ describe("where the text is replaced", () => {
 // order would then refuse.
 describe("references in defaults and initial", () => {
   const refs = [
-    { ref: ".Team", desc: "Команда заказа", at_order_form: true },
-    { ref: ".Namespace", desc: "Неймспейс заказа", at_order_form: false },
-    { ref: ".Vars.OPS_DOMAIN", desc: "Домен стенда", at_order_form: true },
+    { ref: ".Team", desc: "Команда заказа", at_order_form: true, in_namespace: true },
+    { ref: ".Namespace", desc: "Неймспейс заказа", at_order_form: false, in_namespace: false },
+    { ref: ".Vars.OPS_DOMAIN", desc: "Домен стенда", at_order_form: true, in_namespace: true },
   ];
   const atRef = (withCursor: string) => {
     const offset = withCursor.indexOf("|");
@@ -225,5 +225,38 @@ describe("references in defaults and initial", () => {
   test("without the list the editor stays as it was", () => {
     const offset = '{"defaults":{"/naming/env":"'.length;
     expect(hintsAt('{"defaults":{"/naming/env":""}}', offset, chart)).toBeNull();
+  });
+
+  // The namespace template reads the chart's fields and the order, never the
+  // namespace itself, and a name is several references put together.
+  describe("in the namespace template", () => {
+    const doc = (tmpl: string) => `{"views":{"order":{"namespace":{"source":"template","template":"${tmpl}"}}}}`;
+    const prefix = doc("").indexOf('"template":"') + '"template":"'.length;
+
+    test("offers the chart's fields and the references open to it", () => {
+      const got = values(atRef(doc("|")));
+      expect(got).toContain("{{.Values.naming.env}}");
+      expect(got).toContain("{{.Team}}");
+      expect(got).toContain("{{.Vars.OPS_DOMAIN}}");
+      expect(got).not.toContain("{{.Namespace}}");
+      // Rows of a list have no name in the dialect.
+      expect(got.some((v) => v.includes("gateways"))).toBe(false);
+    });
+
+    test("replaces only the reference being typed", () => {
+      const text = doc("a-{{.Va|}}-b");
+      const hints = atRef(text);
+      const plain = text.replace("|", "");
+      const from = plain.indexOf("{{.Va");
+      expect(hints?.from).toBe(from);
+      expect(hints?.to).toBe(from + "{{.Va}}".length);
+      expect(hints?.quote).toBe(false);
+    });
+
+    test("outside a reference the suggestion goes in at the cursor", () => {
+      const hints = atRef(doc("ns-|"));
+      expect(hints?.from).toBe(prefix + 3);
+      expect(hints?.to).toBe(prefix + 3);
+    });
   });
 });

@@ -131,9 +131,9 @@ export function useViewDocumentHints(
     const isView = (model: Monaco.editor.ITextModel) => model.uri.path.endsWith(VIEW_MODEL_SUFFIX);
 
     // The list: everything that fits, with what the chart calls it. Opens on
-    // Ctrl+Space and on the characters a pointer is written with.
+    // Ctrl+Space and on the characters a pointer or a reference is written with.
     const list = monaco.languages.registerCompletionItemProvider("json", {
-      triggerCharacters: ['"', "/"],
+      triggerCharacters: ['"', "/", "{"],
       provideCompletionItems(model, position) {
         if (!isView(model)) return { suggestions: [] };
         const hints = hintsAt(

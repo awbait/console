@@ -427,11 +427,13 @@ export type PublicationStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
 // What a version document may reference inside its "defaults" and "initial"
 // blocks: the fixed catalogue plus one entry per platform variable. at_order_form
 // marks a reference the order form can already answer, which is what "initial"
-// is allowed to use.
+// is allowed to use. in_namespace marks one the namespace template
+// (views.order.namespace, source "template") may use.
 export interface TemplateRef {
   ref: string;
   desc: string;
   at_order_form: boolean;
+  in_namespace: boolean;
 }
 
 // A platform variable: a named value an admin keeps in the portal for version

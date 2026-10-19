@@ -9,6 +9,7 @@ import {
   type FieldKind,
   type FieldRequirement,
 } from "./fieldErrors";
+import { type NamespaceContext, renderNamespaceTemplate } from "./tmpl";
 
 type Values = Record<string, unknown>;
 
@@ -44,7 +45,9 @@ export const namespaceKind: FieldKind = {
   error: namespaceError,
 };
 
-export type NamespaceSource = "field" | "values" | "fixed";
+export type NamespaceSource = "field" | "values" | "fixed" | "template";
+
+const SOURCES: NamespaceSource[] = ["values", "fixed", "template"];
 
 // The object form of the directive. The legacy string form ("/ptr") is a mirror
 // (the order namespace is copied into that values field) and keeps source=field.
@@ -52,6 +55,7 @@ export interface NamespaceRule {
   source?: NamespaceSource;
   pointer?: string; // source=values: values field holding the namespace
   value?: string; // source=fixed: the literal namespace
+  template?: string; // source=template: the template the name is rendered from
   hideOrderField?: boolean;
 }
 
@@ -59,6 +63,7 @@ export interface ParsedNamespace {
   source: NamespaceSource;
   pointer?: string;
   value?: string;
+  template?: string;
   // Whether the order form hides its Namespace input (source=values/fixed).
   hideField: boolean;
   // Legacy string form: mirror the order namespace into this values pointer.
@@ -86,12 +91,12 @@ export function parseNamespaceDirective(ns: unknown): ParsedNamespace {
   }
   if (ns && typeof ns === "object") {
     const o = ns as NamespaceRule;
-    const source: NamespaceSource =
-      o.source === "values" || o.source === "fixed" ? o.source : "field";
+    const source: NamespaceSource = o.source && SOURCES.includes(o.source) ? o.source : "field";
     return {
       source,
       pointer: typeof o.pointer === "string" ? o.pointer : undefined,
       value: typeof o.value === "string" ? o.value : undefined,
+      template: typeof o.template === "string" ? o.template : undefined,
       // Only non-field sources can hide the field (field has nothing else to source from).
       hideField: source !== "field" && o.hideOrderField === true,
     };
@@ -100,15 +105,18 @@ export function parseNamespaceDirective(ns: unknown): ParsedNamespace {
 }
 
 // resolveDestNamespace computes the destination namespace to submit: from the
-// values field (source=values), a constant (source=fixed), or the form input
-// (source=field). Empty falls back to the caller's default (service_name).
+// values field (source=values), a constant (source=fixed), a template over the
+// values and ctx (source=template), or the form input (source=field). Empty
+// falls back to the caller's default (service_name).
 export function resolveDestNamespace(
   parsed: ParsedNamespace,
   orderInput: string,
   values: Values,
+  ctx: NamespaceContext = {},
 ): string {
   if (parsed.source === "values" && parsed.pointer) return readObjectPointer(values, parsed.pointer);
   if (parsed.source === "fixed") return parsed.value ?? "";
+  if (parsed.source === "template") return renderNamespaceTemplate(parsed.template ?? "", values, ctx);
   return orderInput;
 }
 
