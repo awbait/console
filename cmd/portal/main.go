@@ -313,6 +313,13 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	})))
 	// Notifications keep for 90 days once read; unread ones stay, however old.
 	reconcilers = append(reconcilers, status.Named("notification-sweep", notifySweeper{notifySvc}))
+	// Deleted orders go for good once DELETED_ORDERS_RETENTION runs out; off
+	// (kept forever) unless it is set. Paused with the writing loops: it
+	// deletes rows, and maintenance may be about the database itself.
+	if cfg.DeletedOrdersRetention > 0 {
+		reconcilers = append(reconcilers, status.Pausable(status.Named("deleted-orders-sweep",
+			deletedOrdersSweeper{provSvc, cfg.DeletedOrdersRetention})))
+	}
 	// In webhook-only mode the poller does not tick on its own (interval <= 0):
 	// state advances solely on webhook-triggered sweeps, plus one startup sweep to
 	// catch up after downtime. In hybrid the poll keeps running as a safety net.
@@ -701,6 +708,16 @@ type notifySweeper struct{ n *notify.Service }
 
 func (s notifySweeper) Reconcile(ctx context.Context) error {
 	return s.n.SweepRead(ctx, notificationRetention)
+}
+
+// deletedOrdersSweeper removes deleted orders past their retention.
+type deletedOrdersSweeper struct {
+	s         *provisioning.Service
+	retention time.Duration
+}
+
+func (d deletedOrdersSweeper) Reconcile(ctx context.Context) error {
+	return d.s.PurgeDeleted(ctx, d.retention)
 }
 
 // How long a read notification is kept. Unread ones are never swept: nobody has

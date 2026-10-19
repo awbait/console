@@ -64,6 +64,10 @@ type Store interface {
 	GetRequest(ctx context.Context, id string) (*models.Request, error)
 	ListRequests(ctx context.Context, f RequestFilter) ([]*models.Request, error)
 	UpdateRequest(ctx context.Context, r *models.Request) error // optimistic lock; ErrStaleVersion
+	// PurgeDeletedRequests removes, for good, up to limit orders deleted before
+	// the cutoff, oldest first, together with their merge requests and history.
+	// Returns how many orders went.
+	PurgeDeletedRequests(ctx context.Context, cutoff time.Time, limit int) (int, error)
 	// ListActive returns non-deleted requests in non-terminal states (for the poller).
 	ListActive(ctx context.Context) ([]*models.Request, error)
 	// SetDrift updates only the drift flag/detail (no optimistic-lock bump), so the

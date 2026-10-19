@@ -79,6 +79,10 @@ type Service struct {
 	// faster than the answer it is waiting for can exist.
 	resyncedAt map[string]time.Time
 	resyncMu   sync.Mutex
+	// purgedAt is when the sweep of deleted orders last looked (see
+	// PurgeDeleted). Process-local for the same reason as resyncedAt.
+	purgedAt time.Time
+	purgeMu  sync.Mutex
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
 	// StandGitLab and StandArgo are what the checks of a stand read through

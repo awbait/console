@@ -1,3 +1,5 @@
+import { ruPlural } from "@/form/fieldErrors";
+
 // User-facing wording of copying an order, to its own stand or another: the
 // menu item, the panel, the toast and the history entry. Kept in one place so
 // the list, the order page and the timeline say it the same way.
@@ -35,4 +37,11 @@ export const copyText = {
   restoreName:
     "Подставлено имя удалённого заказа. Можно сохранить его или указать новое. Если имя уже занято, укажите другое.",
   restoreEventLabel: "Черновик восстановлен из удалённого заказа",
+  // How long a deleted order can still be restored (DELETED_ORDERS_RETENTION).
+  purgeTitle: (days: number) =>
+    days > 0
+      ? `Заказ будет удалён окончательно через ${days} ${ruPlural(days, "день", "дня", "дней")}`
+      : "До окончательного удаления заказа осталось меньше суток",
+  purgeHint: (date: string) =>
+    `Восстановите заказ до ${date}. После этого заказ и его история будут удалены без возможности восстановления.`,
 } as const;
