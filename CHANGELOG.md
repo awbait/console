@@ -2,6 +2,61 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.23.0] - 2026-10-19
+
+### Added
+- Platform administrators can now set how long deleted orders and discarded
+  drafts are kept. After this period, they and their history are permanently
+  deleted. When a retention period is set, each deleted order’s page shows the
+  days remaining and the deadline for restoring it. By default, deleted orders
+  and discarded drafts are kept indefinitely.
+- Service owners can now define a namespace name template so orders deploy to
+  the namespace the chart actually creates. The order form previews the name as
+  the required fields are filled in.
+- Added “Restore order” to the order list and the deleted order’s page. It
+  creates a new draft with the order’s parameters without restoring service
+  data.
+- Added the `SHUTDOWN_DRAIN` environment variable to help prevent interrupted
+  requests during Kubernetes rollouts. During shutdown, the portal first reports
+  that it is not ready to accept requests, then continues serving requests
+  already heading to it for the configured duration. The default is `0`, with no
+  delay.
+- Added the “Argo CD project” field to stand settings. For stands in
+  “Deployment” mode, the stand page checks that the project exists and that the
+  portal account can read and sync its applications.
+
+### Changed
+- Organized the Admin sidebar into groups for monitoring, configuration, and
+  maintenance. Shortened the menu labels to “Orders”, “Publications”, and
+  “Status”. When the menu is collapsed, separators replace group headings.
+- Replaced “Copy to stand” with “Create copy” in the orders list and on the
+  order page. You can now create a draft on the same stand with a new service
+  name or copy an order to another stand.
+
+### Fixed
+- The same service ordered on different stands now gets distinct application
+  names, preventing conflicts in Argo CD. Application names for existing orders
+  remain unchanged. If an application name is already used by an order on
+  another stand in the same Argo CD instance, the portal rejects the new order
+  and asks you to choose a different service name.
+- Removed “Sync with cluster” from the order list row menu and the order page
+  actions menu for administrators viewing deleted orders. The portal also
+  rejects synchronization requests for deleted orders and drafts, even if sent
+  outside the interface.
+- The order form no longer blocks submission when required parameters have
+  service defaults, including parameters hidden from the form. Default values
+  appear as hints, with dropdowns and checkboxes set to their default states.
+  Required parameters without defaults still need to be filled in.
+- Fixed several issues affecting portals running with multiple instances. “Check
+  again” on the “Configuration” page now runs checks on every instance so the
+  page no longer shows stale results from another instance. After a leader
+  switch, administrators no longer receive duplicate configuration alerts, such
+  as warnings about an expiring token or a disabled webhook, and receive alerts
+  again if a resolved problem returns. Order and user counts in monitoring are
+  no longer inflated when summed across instances after a leader switch. During
+  shutdown, the leader now finishes its current background order processing
+  before handing the role to another instance.
+
 ## [0.22.0] - 2026-10-16
 
 ### Added
