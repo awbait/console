@@ -41,6 +41,10 @@ const (
 
 // Server holds dependencies for the HTTP API.
 type Server struct {
+	// Draining is set once the process has been asked to stop: /ready answers
+	// "not ready" from then on while requests are still served.
+	Draining atomic.Bool
+
 	Auth    auth.Authenticator
 	Catalog *catalog.Service
 	Prov    *provisioning.Service
@@ -389,6 +393,12 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// A stopping replica says so first, and keeps serving while the load
+	// balancer takes it out (see config.ShutdownDrain).
+	if s.Draining.Load() {
+		writeErr(w, http.StatusServiceUnavailable, "not_ready", "shutting down")
+		return
+	}
 	// /ready is public (pre-auth); log the upstream detail but return a generic
 	// message so host/port/driver internals are not exposed to anonymous callers.
 	if err := s.Store.Ping(ctx); err != nil {
