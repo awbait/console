@@ -83,32 +83,63 @@ const SECTIONS: { id: SectionId; label: string; home: string; Icon: typeof IconB
 
 type SectionNavItem = { to: string; label: string; Icon: typeof IconBox; exact?: boolean };
 
+// A section's lower nav is a list of groups. A group without a label is the
+// section's main content and sits right under the switcher; labelled groups
+// follow it under a small caps heading.
+type SectionNavGroup = { label?: string; items: SectionNavItem[] };
+
 // Lower-nav items of the security section. The overview matches its route
 // exactly so deeper pages don't also light it up.
-const securitySectionNav: SectionNavItem[] = [
-  { to: "/security", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
-  { to: "/security/policies", label: "Согласование политик", Icon: IconShieldCheck },
-  { to: "/security/kyverno", label: "Kyverno UI", Icon: IconScan },
+const securitySectionNav: SectionNavGroup[] = [
+  {
+    items: [
+      { to: "/security", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
+      { to: "/security/policies", label: "Согласование политик", Icon: IconShieldCheck },
+      { to: "/security/kyverno", label: "Kyverno UI", Icon: IconScan },
+    ],
+  },
 ];
 
 // Lower-nav items of the support section.
-const supportSectionNav: SectionNavItem[] = [
-  { to: "/support", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
-  { to: "/support/requests", label: "Заказы всех команд", Icon: IconBox },
+const supportSectionNav: SectionNavGroup[] = [
+  {
+    items: [
+      { to: "/support", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
+      { to: "/support/requests", label: "Заказы всех команд", Icon: IconBox },
+    ],
+  },
 ];
 
-// Lower-nav items of the platform-admin section.
-const adminSectionNav: SectionNavItem[] = [
-  { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
-  { to: "/admin/requests", label: "Заказы всех команд", Icon: IconBox },
-  { to: "/admin/approvals", label: "Согласование публикаций", Icon: IconChecklist },
-  { to: "/admin/users", label: "Пользователи", Icon: IconUsers },
-  { to: "/admin/status", label: "Состояние платформы", Icon: IconActivity },
-  { to: "/admin/config", label: "Конфигурация", Icon: IconAdjustments },
-  { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
-  { to: "/admin/stands", label: standText.navLabel, Icon: IconServer },
-  { to: "/admin/variables", label: "Переменные", Icon: IconVariable },
-  { to: "/admin/maintenance", label: maintenanceText.navLabel, Icon: IconTool },
+// Lower-nav items of the platform-admin section: daily work first, then what
+// the admin watches, what they configure, and the maintenance switch last.
+const adminSectionNav: SectionNavGroup[] = [
+  {
+    items: [
+      { to: "/admin", label: "Обзор", Icon: IconLayoutDashboard, exact: true },
+      { to: "/admin/requests", label: "Заказы", Icon: IconBox },
+      { to: "/admin/approvals", label: "Публикации", Icon: IconChecklist },
+    ],
+  },
+  {
+    label: "Наблюдение",
+    items: [
+      { to: "/admin/status", label: "Состояние", Icon: IconActivity },
+      { to: "/admin/users", label: "Пользователи", Icon: IconUsers },
+    ],
+  },
+  {
+    label: "Настройка",
+    items: [
+      { to: "/admin/stands", label: standText.navLabel, Icon: IconServer },
+      { to: "/admin/variables", label: "Переменные", Icon: IconVariable },
+      { to: "/admin/categories", label: "Категории каталога", Icon: IconTags },
+      { to: "/admin/config", label: "Конфигурация", Icon: IconAdjustments },
+    ],
+  },
+  {
+    label: "Обслуживание",
+    items: [{ to: "/admin/maintenance", label: maintenanceText.navLabel, Icon: IconTool }],
+  },
 ];
 
 // SideTip labels a sidebar item while the menu is collapsed, where only the
@@ -166,6 +197,44 @@ function labelFade(collapsed: boolean): string {
   return `transition-opacity motion-reduce:transition-none ${
     collapsed ? "opacity-0 duration-100" : "opacity-100 duration-200"
   }`;
+}
+
+// One group of a section's lower nav. A labelled group opens with a small caps
+// heading; collapsed, the heading fades into a divider of the same height, so
+// toggling the menu never moves the icons below it. The heading stays in the
+// accessibility tree in both states and names the group's list.
+function SectionNavGroupView({
+  label,
+  collapsed,
+  children,
+}: {
+  label?: string;
+  collapsed: boolean;
+  children: React.ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div>
+      {label && (
+        <div id={id} className="relative mt-3 flex h-6 items-center whitespace-nowrap pl-[9px]">
+          <span
+            className={`text-xs font-semibold uppercase tracking-wide text-slate-500 ${labelFade(collapsed)}`}
+          >
+            {label}
+          </span>
+          <span
+            aria-hidden
+            className={`pointer-events-none absolute inset-x-2 top-1/2 border-t border-slate-200 transition-opacity motion-reduce:transition-none ${
+              collapsed ? "opacity-100 duration-200" : "opacity-0 duration-100"
+            }`}
+          />
+        </div>
+      )}
+      <ul aria-labelledby={label ? id : undefined} className="mt-1.5 flex flex-col gap-1.5 first:mt-0">
+        {children}
+      </ul>
+    </div>
+  );
 }
 
 // Measure the actual overflow so short labels stay still and long ones only
@@ -614,30 +683,32 @@ export function Layout() {
               {sectionNav ? (
                 /* security/admin section: its own flat nav, no product categories */
                 <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2">
-                  <ul className="flex flex-col gap-1.5">
-                    {sectionNav.map((n) => {
-                      const Icon = n.Icon;
-                      // An order page kept in this section lights up the
-                      // section's own orders list.
-                      const active =
-                        (n.exact ? pathname === n.to : navActive(n.to)) ||
-                        (urlSection === null && n.to.endsWith("/requests"));
-                      return (
-                        <li key={n.to}>
-                          <SideTip label={n.label} enabled={collapsed}>
-                            <Link
-                              to={n.to}
-                              aria-current={active ? "page" : undefined}
-                              className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
-                            >
-                              <Icon size={20} stroke={1.7} className="shrink-0" />
-                              <span className={`shrink-0 ${labelFade(collapsed)}`}>{n.label}</span>
-                            </Link>
-                          </SideTip>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  {sectionNav.map((group) => (
+                    <SectionNavGroupView key={group.label ?? ""} label={group.label} collapsed={collapsed}>
+                      {group.items.map((n) => {
+                        const Icon = n.Icon;
+                        // An order page kept in this section lights up the
+                        // section's own orders list.
+                        const active =
+                          (n.exact ? pathname === n.to : navActive(n.to)) ||
+                          (urlSection === null && n.to.endsWith("/requests"));
+                        return (
+                          <li key={n.to}>
+                            <SideTip label={n.label} enabled={collapsed}>
+                              <Link
+                                to={n.to}
+                                aria-current={active ? "page" : undefined}
+                                className={`flex items-center gap-3 overflow-hidden whitespace-nowrap rounded-md ${ROW} text-sm font-medium text-slate-800 hover:bg-slate-50 aria-[current=page]:bg-brand-50 aria-[current=page]:text-brand-700`}
+                              >
+                                <Icon size={20} stroke={1.7} className="shrink-0" />
+                                <span className={`shrink-0 ${labelFade(collapsed)}`}>{n.label}</span>
+                              </Link>
+                            </SideTip>
+                          </li>
+                        );
+                      })}
+                    </SectionNavGroupView>
+                  ))}
                 </nav>
               ) : (
                 <>
