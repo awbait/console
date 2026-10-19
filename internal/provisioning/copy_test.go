@@ -144,8 +144,7 @@ func TestCopyToAnotherStandWithTheSameClusterName(t *testing.T) {
 	}
 }
 
-// Copying is ordering: members of the team and admins, not readers of it, and
-// not a deleted order.
+// Copying is ordering: members of the team and admins, not readers of it.
 func TestCopyAccess(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)
@@ -163,12 +162,205 @@ func TestCopyAccess(t *testing.T) {
 	if _, err := s.prov.Copy(ctx, admin(), src.ID, provisioning.CopyInput{ServiceName: "pg2"}); err != nil {
 		t.Fatalf("admin copies: %v", err)
 	}
+}
+
+// A deleted order is restored as a new draft in its place: it no longer holds
+// its name, so the copy takes back the name, the identity and the display
+// name on its stand. The deleted row stays as it is.
+func TestCopyRestoresADeletedOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	dev := mustStand(ctx, t, s, "dev", "in-cluster")
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", []byte(`{"views":{"order":{"identity":"/auth/database"}}}`))
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID), func(in *provisioning.CreateInput) {
+		in.Namespace = "db"
+		in.Values = draft("payments")
+		in.DisplayName = "Payments DB"
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 	if _, err := s.prov.Delete(ctx, member("core"), src.ID); err != nil {
 		t.Fatalf("delete draft: %v", err)
 	}
-	_, err = s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{ServiceName: "pg3"})
-	var verr *provisioning.ValidationError
-	if !errors.As(err, &verr) && !errors.Is(err, models.ErrNotFound) {
-		t.Fatalf("a deleted order is not copied: got %v", err)
+	if _, err := s.prov.Copy(ctx, support(), src.ID, provisioning.CopyInput{StandID: dev.ID}); !errors.Is(err, provisioning.ErrForbidden) {
+		t.Fatalf("support does not restore: want ErrForbidden, got %v", err)
+	}
+
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID})
+	if err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if cp.ID == src.ID || cp.Status != models.StatusDraft || cp.ServiceName != "pg1" ||
+		cp.DisplayName != "Payments DB" || cp.Namespace != "db" || cp.StandID != dev.ID {
+		t.Fatalf("restored: %+v", cp)
+	}
+	if !strings.Contains(cp.ValuesYAML, "database: payments") {
+		t.Fatalf("the identity comes back:\n%s", cp.ValuesYAML)
+	}
+	again, err := s.st.GetRequest(ctx, src.ID)
+	if err != nil || again.DeletedAt == nil {
+		t.Fatalf("the deleted order stays deleted: %+v, %v", again, err)
+	}
+	evs, _ := s.st.ListEvents(ctx, cp.ID)
+	var restored bool
+	for _, e := range evs {
+		if e.EventType == "copied" && e.Payload["source_id"] == src.ID && e.Payload["source_deleted"] == true {
+			restored = true
+		}
+	}
+	if !restored {
+		t.Fatalf("the copy records that it restores a deleted order: %+v", evs)
+	}
+	// Restored once, the name is held again.
+	if _, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("second restore under the same name: want a conflict, got %v", err)
+	}
+}
+
+// One more like this on the same stand: what was derived from the name follows
+// the new name (the namespace, the identity, a value the document seeded from
+// it), what was the original's own and would collide is emptied, and the rest
+// travels as it is.
+func TestCopyOnTheSameStand(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	dev := mustStand(ctx, t, s, "dev", "in-cluster")
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}},` +
+		`"initial":{"/ingress/host":"{{.ServiceName}}.example.com","/ingress/class":"{{.Cluster}}"}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	values := draft("pg1")
+	values["ingress"] = map[string]any{"host": "pg1.example.com", "class": "edited"}
+	values["custom"] = "kept"
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID), inCluster("in-cluster-b"),
+		func(in *provisioning.CreateInput) {
+			in.Values = values
+			in.DisplayName = "Payments DB"
+		}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if src.Namespace != "pg1" {
+		t.Fatalf("the original's namespace should come from its name, got %q", src.Namespace)
+	}
+
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg2"})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+	if cp.Cluster != "in-cluster-b" || cp.Namespace != "pg2" || cp.DisplayName != "pg2" {
+		t.Fatalf("copy: cluster=%s namespace=%s display=%s", cp.Cluster, cp.Namespace, cp.DisplayName)
+	}
+	for _, want := range []string{
+		"database: pg2",         // identity that repeated the name follows it
+		"host: pg2.example.com", // initial seeded from the name follows it
+		"class: edited",         // initial whose answer is the same keeps the edit
+		"custom: kept",
+	} {
+		if !strings.Contains(cp.ValuesYAML, want) {
+			t.Errorf("copy values lack %q:\n%s", want, cp.ValuesYAML)
+		}
+	}
+
+	// A namespace somebody typed stays, and an identity of the original's own
+	// would collide in it, so it is left for the form to ask.
+	other, err := s.prov.Create(ctx, member("core"), newOrder("pg3", onStand(dev.ID), func(in *provisioning.CreateInput) {
+		in.Namespace = "db"
+		in.Values = draft("payments")
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	cp, err = s.prov.Copy(ctx, member("core"), other.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg4"})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+	if cp.Namespace != "db" || !strings.Contains(cp.ValuesYAML, `database: ""`) {
+		t.Fatalf("copy: namespace=%s\n%s", cp.Namespace, cp.ValuesYAML)
+	}
+	// Asked for, the namespace is the one given.
+	cp, err = s.prov.Copy(ctx, member("core"), other.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg5", Namespace: "db2"})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+	if cp.Namespace != "db2" {
+		t.Fatalf("copy namespace: %s", cp.Namespace)
+	}
+	// On another stand the original's identity may repeat.
+	prod := mustStand(ctx, t, s, "prod", "prod-a")
+	cp, err = s.prov.Copy(ctx, member("core"), other.ID, provisioning.CopyInput{StandID: prod.ID})
+	if err != nil {
+		t.Fatalf("copy to prod: %v", err)
+	}
+	if cp.Cluster != "prod-a" || !strings.Contains(cp.ValuesYAML, "database: payments") {
+		t.Fatalf("copy to prod: cluster=%s\n%s", cp.Cluster, cp.ValuesYAML)
+	}
+}
+
+// The original's version is no longer on offer: the copy is made of the
+// highest version that is, rather than refused.
+func TestCopyFallsBackToTheLatestOrderableVersion(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	dev := mustStand(ctx, t, s, "dev", "in-cluster")
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.1", view)
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID), func(in *provisioning.CreateInput) {
+		in.Version = "15.4.1"
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	seedVersion(t, s, "postgres", "15.4.2", view)
+	old, err := s.st.GetVersion(ctx, "pub-postgres", "15.4.1")
+	if err != nil {
+		t.Fatalf("get version: %v", err)
+	}
+	old.Orderable = false
+	if err := s.st.UpsertVersion(ctx, old); err != nil {
+		t.Fatalf("withdraw 15.4.1: %v", err)
+	}
+
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg2"})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+	if cp.ChartVersion != "15.4.2" {
+		t.Fatalf("copy version: %s", cp.ChartVersion)
+	}
+}
+
+// The values were written for the original's version, so the field that
+// named the order there follows the new name even when the version the copy
+// goes to names nothing.
+func TestCopyToAnotherVersionKeepsTheOriginalsIdentityField(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	dev := mustStand(ctx, t, s, "dev", "in-cluster")
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.1", []byte(`{"views":{"order":{"identity":"/auth/database"}}}`))
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID), func(in *provisioning.CreateInput) {
+		in.Version = "15.4.1"
+		in.Values = draft("pg1")
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	seedVersion(t, s, "postgres", "15.4.2", []byte(`{"views":{"order":{}}}`))
+	old, err := s.st.GetVersion(ctx, "pub-postgres", "15.4.1")
+	if err != nil {
+		t.Fatalf("get version: %v", err)
+	}
+	old.Orderable = false
+	if err := s.st.UpsertVersion(ctx, old); err != nil {
+		t.Fatalf("withdraw 15.4.1: %v", err)
+	}
+
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg2"})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+	if cp.ChartVersion != "15.4.2" || !strings.Contains(cp.ValuesYAML, "database: pg2") {
+		t.Fatalf("copy: version=%s\n%s", cp.ChartVersion, cp.ValuesYAML)
 	}
 }
