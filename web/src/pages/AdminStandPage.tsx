@@ -15,6 +15,7 @@ import { qk } from "../api/queryKeys";
 import { deploys, type StandCheck } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { NotFound } from "../components/NotFound";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Chip, ErrorBox, SkeletonRows } from "../components/ui";
 import { StandJobs } from "../features/stands/StandJobs";
@@ -89,7 +90,7 @@ export function AdminStandPage() {
   const modeLabel = stand.mode === "git" ? t.modeGit : stand.mode === "console" ? t.modeConsole : t.modeDeploy;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         breadcrumbs={[{ label: t.navLabel, to: "/admin/stands" }, { label: stand.name }]}
         title={t.pageTitle(stand.name)}
@@ -105,7 +106,7 @@ export function AdminStandPage() {
         }
       />
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+      <PageBody gap="blocks">
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
             <Field label={t.clusterAria} value={stand.default_cluster} mono />
@@ -180,8 +181,8 @@ export function AdminStandPage() {
           )}
         </section>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 

@@ -21,6 +21,7 @@ import type { Stand, StandLayout, StandMode } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FormDialogShell } from "../components/FormDialogShell";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, ErrorBox, Hint, Select, SkeletonRows, TextField } from "../components/ui";
 import { standText as t } from "../features/stands/text";
@@ -127,7 +128,7 @@ export function AdminStandsPage() {
   const stands = data ?? [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title={t.navLabel}
         description={t.pageIntro}
@@ -142,7 +143,7 @@ export function AdminStandsPage() {
       {error && <ErrorBox error={error} />}
       {err && <ErrorBox error={new Error(err)} />}
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1 pb-1">
+      <PageBody gap="none">
         {loading ? (
           <SkeletonRows rows={3} />
         ) : stands.length === 0 ? (
@@ -195,7 +196,7 @@ export function AdminStandsPage() {
             </div>
           </div>
         )}
-      </div>
+      </PageBody>
 
       <StandPanel
         target={panel}
@@ -206,7 +207,7 @@ export function AdminStandsPage() {
           toast.success(msg);
         }}
       />
-    </div>
+    </Page>
   );
 }
 

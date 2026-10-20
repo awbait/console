@@ -55,6 +55,7 @@ import { useToast } from "../app/ToastContext";
 import { useTeamLabel, useUser } from "../auth/UserContext";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { CATEGORY_ICON_CHOICES, categoryIcon, categoryIconName, ProductIcon } from "../components/icons";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { PublicationReview } from "../components/PublicationReview";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
@@ -180,10 +181,10 @@ export function AdminOverviewPage() {
   return (
     // Same shape as the rest of the admin section: the heading keeps its place
     // and only the sections below it scroll.
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader title="Администрирование платформы" />
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
+      <PageBody>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Ждут решения" value={queue.length} tone="amber" Icon={IconClock} />
           <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
@@ -258,8 +259,8 @@ export function AdminOverviewPage() {
           />
         </div>
       </section>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 
@@ -425,7 +426,7 @@ export function AdminApprovalsPage() {
     // The page stays within the viewport and only the lists below scroll, so
     // the title and the pending count are still there after scrolling to the
     // bottom of a long table. Same shape as the platform status page.
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title="Согласование публикаций"
         status={
@@ -438,9 +439,7 @@ export function AdminApprovalsPage() {
         }
       />
 
-      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
-          room the clipping edge would otherwise cut off. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
+      <PageBody>
         <section className="flex flex-col">
           <QueueTable items={queue} />
         </section>
@@ -504,8 +503,8 @@ export function AdminApprovalsPage() {
             </Table>
           </div>
         </section>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 
@@ -956,7 +955,7 @@ export function AdminCategoriesPage() {
   return (
     // Same shape as the rest of the admin section: the heading keeps its place
     // and only the list below it scrolls.
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title="Категории каталога"
         description="Перетаскивайте за ручку для порядка, кликните иконку чтобы сменить. Название и порядок сохраняются автоматически."
@@ -964,7 +963,7 @@ export function AdminCategoriesPage() {
 
       {err && <ErrorBox error={new Error(err)} />}
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+      <PageBody gap="blocks">
       <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-surface shadow-sm">
         {order.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-slate-500">Категорий нет. Добавьте первую ниже.</p>
@@ -998,8 +997,8 @@ export function AdminCategoriesPage() {
       </div>
 
       <AddCategory busy={busy} run={run} />
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 

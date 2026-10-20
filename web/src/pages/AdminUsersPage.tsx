@@ -18,6 +18,7 @@ import {
 } from "react-aria-components";
 import { api } from "@/api/client";
 import type { PlatformUser, TeamActivity } from "@/api/types";
+import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
 import { Button, buttonClass, Card, ErrorBox, SkeletonRows, TextField } from "@/components/ui";
 import { ActivityFeed, OrderSelect, useFeed } from "@/features/users/ActivityFeed";
@@ -78,7 +79,7 @@ export function AdminUsersPage() {
   return (
     // The page stays within the viewport: the heading keeps its place and only
     // the sections below it scroll. Same shape as the rest of the admin section.
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title="Пользователи"
         actions={
@@ -104,7 +105,7 @@ export function AdminUsersPage() {
 
       {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
           room the clipping edge would otherwise cut off. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
+      <PageBody>
         {loading && !data ? (
           <SkeletonRows rows={6} />
         ) : error ? (
@@ -177,7 +178,7 @@ export function AdminUsersPage() {
             </section>
           </>
         )}
-      </div>
+      </PageBody>
 
       {person && <UserCard person={person} onClose={() => setPerson(null)} />}
       {!person && team && (
@@ -192,7 +193,7 @@ export function AdminUsersPage() {
           }}
         />
       )}
-    </div>
+    </Page>
   );
 }
 

@@ -23,6 +23,7 @@ import {
   verdictLabel,
 } from "../app/configChecks";
 import { useUser } from "../auth/UserContext";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, ErrorBox, Hint, SkeletonRows, StatusPill } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
@@ -157,7 +158,7 @@ export function ConfigPage() {
   return (
     // Header and search stay put; only the list of settings scrolls. Fifty rows
     // are a long way to scroll back up to the search box.
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title="Конфигурация портала"
         description="Настройки, с которыми запущен портал. Портал проверяет их на живых системах и пишет результат рядом с каждой: видно не только что задано, но и работает ли оно. Только просмотр: значения задаются при запуске. Пароли и токены не показываются."
@@ -226,9 +227,7 @@ export function ConfigPage() {
         />
       )}
 
-      {/* -mx-1/px-1 keeps the cards' shadows and focus rings off the clipping
-          edge of the scroll box. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 pb-1">
+      <PageBody>
         {loading && !data ? (
           <SkeletonRows rows={8} />
         ) : error ? (
@@ -256,8 +255,8 @@ export function ConfigPage() {
             </section>
           ))
         )}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 

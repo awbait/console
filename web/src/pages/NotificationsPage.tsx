@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/api/client";
 import type { AppNotification } from "@/api/types";
 import { useNotifications } from "@/app/NotificationsContext";
+import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, ErrorBox, SkeletonRows } from "@/components/ui";
 import { NotificationRow } from "@/features/notifications/NotificationRow";
@@ -88,7 +89,7 @@ export function NotificationsPage() {
     // Same shape as the platform status page: the header and the filters keep
     // their place, and only the feed below them scrolls. A history is read by
     // scrolling, and the way to mark it all read should not scroll away with it.
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <Page>
       <PageHeader
         title="Уведомления"
         actions={
@@ -118,9 +119,7 @@ export function NotificationsPage() {
         </FilterChip>
       </div>
 
-      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
-          room the clipping edge would otherwise cut off. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+      <PageBody gap="blocks">
         {loading ? (
           <SkeletonRows rows={6} />
         ) : error ? (
@@ -162,8 +161,8 @@ export function NotificationsPage() {
             )}
           </>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 

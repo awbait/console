@@ -294,6 +294,31 @@ body {
   background: transparent;
 }
 
+/* The scrollbar lane of a page body (PageBody): the scroll box reaches 12px
+   into the lane main in Layout leaves on the right, so its bar is drawn beside
+   the content and the content keeps the width of the header above it.
+
+   How much of the lane goes back as padding depends on who draws the bar. The
+   bar above is a classic one: it takes its 10px inside the box, so the gutter
+   is reserved for it up front (or the content would jump by 10px the moment
+   the body starts to scroll) and only the rest of the lane is padding. Firefox
+   draws its own, and on Windows 11 and macOS that is an overlay bar taking no
+   room at all - there the whole lane is padding, or the bar would sit on the
+   cards. Firefox set to always show scrollbars gets a thin classic bar on top
+   of the padding: the content then comes out a few pixels narrower than the
+   header, which is the lesser evil. */
+.scroll-lane {
+  margin-right: -12px;
+  padding-right: 12px;
+}
+
+@supports selector(::-webkit-scrollbar-thumb) {
+  .scroll-lane {
+    scrollbar-gutter: stable;
+    padding-right: 2px;
+  }
+}
+
 /* Уведомление ждёт: колокольчик коротко качается раз в несколько секунд.
    Движение укладывается в первые 12% цикла, дальше значок стоит - иначе шапка
    дёргается постоянно. Поворот от верхней точки, как у настоящего язычка.
