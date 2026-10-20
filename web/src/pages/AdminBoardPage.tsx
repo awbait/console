@@ -236,7 +236,7 @@ export function AdminBoardPage() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm text-slate-800">{e.text}</div>
-                      <div className="truncate text-xs text-slate-500">{e.who}</div>
+                      <MetaLine meta={e.meta} className="mt-0.5" />
                     </div>
                     <time dateTime={e.at} className="shrink-0 pt-0.5 text-xs tabular-nums text-slate-500">
                       {hhmm(e.at)}

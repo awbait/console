@@ -49,7 +49,7 @@ export interface BoardEvent {
   at: string;
   kind: "order" | "publication";
   text: string;
-  who: string;
+  meta: Meta[];
 }
 
 export interface InProgressItem {
@@ -103,6 +103,7 @@ const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
 const svc = (text: string): Meta => ({ kind: "service", text });
 const team = (text: string): Meta => ({ kind: "team", text });
 const stand = (text: string): Meta => ({ kind: "stand", text });
+const person = (text: string): Meta => ({ kind: "person", text });
 
 // People online by hour of the day (0..23): quiet at night, busy in office hours.
 const ONLINE_PROFILE = [1, 0, 0, 0, 0, 0, 1, 2, 5, 9, 12, 13, 10, 9, 12, 13, 11, 8, 5, 3, 2, 2, 1, 1];
@@ -202,17 +203,41 @@ export function stubSummary(now = Date.now()): BoardSummary {
       { id: "jobs", name: "Фоновые задачи", role: "Последний запуск минуту назад", state: "ok", note: "Работают" },
     ],
     events: [
-      { id: "e1", at: ago(now, 3 * MIN), kind: "order", text: "Заказ redis-cache перестал работать", who: "стенд idp · core" },
-      { id: "e2", at: ago(now, 11 * MIN), kind: "order", text: "Создан заказ postgres-main", who: "Алексей Петров · data" },
-      { id: "e3", at: ago(now, 16 * MIN), kind: "order", text: "Изменён заказ kafka-main", who: "Мария Иванова · data" },
+      {
+        id: "e1",
+        at: ago(now, 3 * MIN),
+        kind: "order",
+        text: "Заказ redis-cache перестал работать",
+        meta: [team("core"), stand("idp")],
+      },
+      {
+        id: "e2",
+        at: ago(now, 11 * MIN),
+        kind: "order",
+        text: "Создан заказ postgres-main",
+        meta: [person("Алексей Петров"), team("data"), stand("idp")],
+      },
+      {
+        id: "e3",
+        at: ago(now, 16 * MIN),
+        kind: "order",
+        text: "Изменён заказ kafka-main",
+        meta: [person("Мария Иванова"), team("data"), stand("idp")],
+      },
       {
         id: "e4",
         at: ago(now, 22 * MIN),
         kind: "publication",
         text: "Redis 7.4.2 отправлен на согласование",
-        who: "Сергей Волков · core",
+        meta: [person("Сергей Волков"), team("core")],
       },
-      { id: "e5", at: ago(now, 38 * MIN), kind: "publication", text: "Опубликован nginx 1.27.1", who: "platform" },
+      {
+        id: "e5",
+        at: ago(now, 38 * MIN),
+        kind: "publication",
+        text: "Опубликован nginx 1.27.1",
+        meta: [team("platform")],
+      },
     ],
     inProgress: [
       {
