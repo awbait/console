@@ -287,7 +287,7 @@ function Tile({
     // Fixed steps rather than flex gaps: label 28px, number 36px, context 16px,
     // trend 40px, so a tile without a fraction or with a live dot still puts
     // its number on the same line as its neighbours.
-    <Card padded={false} className="flex flex-col p-4">
+    <Card padded={false} className="flex flex-col px-3.5 py-3">
       <div className="flex h-7 items-center justify-between gap-2">
         <span className="truncate text-sm font-semibold text-slate-800">{label}</span>
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600">
