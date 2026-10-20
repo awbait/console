@@ -23,7 +23,7 @@ import {
   IconUser,
   IconUsers,
 } from "@tabler/icons-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { FormDialogShell } from "@/components/FormDialogShell";
 import { Page, PageBody } from "@/components/Page";
@@ -69,12 +69,18 @@ const STATE_PILL: Record<ComponentState, { tone: string; Icon: typeof IconCircle
 
 export function AdminBoardPage() {
   const [empty, setEmpty] = useState(false);
+  const [offline, setOffline] = useState(false);
   const data = useMemo(() => stubSummary(), []);
   const attention = empty ? [] : data.attention;
+  const updatedAt = useStubUpdates(offline);
 
   return (
     <Page>
-      <PageHeader title={t.title} description={t.draftNote} />
+      <PageHeader
+        title={t.title}
+        status={<LiveIndicator updatedAt={updatedAt} offline={offline} />}
+        description={t.draftNote}
+      />
 
       <PageBody>
         {/* People first, then orders: who is on the platform, then what they do. */}
@@ -127,21 +133,17 @@ export function AdminBoardPage() {
             className="xl:col-span-3"
             title={t.attentionTitle}
             aside={
+              // Draft-only switches to look at the other states; they go away with the stub.
               <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-500">{t.checkedAt(hhmm(data.checkedAt))}</span>
-                {/* Draft-only switch to look at the empty state; goes away with the stub. */}
-                <button
-                  type="button"
-                  onClick={() => setEmpty(!empty)}
-                  className="rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-                >
-                  {empty ? t.showProblems : t.showEmpty}
-                </button>
+                <DraftSwitch onPress={() => setOffline(!offline)}>
+                  {offline ? t.showOnline : t.showOffline}
+                </DraftSwitch>
+                <DraftSwitch onPress={() => setEmpty(!empty)}>{empty ? t.showProblems : t.showEmpty}</DraftSwitch>
               </div>
             }
             summary={attention.length > 0 && attentionSummary(attention)}
           >
-            {attention.length ? <AttentionList items={attention} /> : <AllGood checkedAt={data.checkedAt} />}
+            {attention.length ? <AttentionList items={attention} /> : <AllGood />}
           </Section>
 
           <Section title={t.statusTitle}>
@@ -151,13 +153,10 @@ export function AdminBoardPage() {
                 {data.components.map((c) => {
                   const pill = STATE_PILL[c.state];
                   return (
-                    // A working system is one line; the detail line is kept for the
-                    // ones in trouble, where it says what is wrong.
+                    // One line per system: what is wrong in detail is the attention
+                    // list's job, right beside it. What the system does is in the hint.
                     <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5" title={c.role}>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-slate-800">{c.name}</div>
-                        {c.state !== "ok" && <div className="text-xs text-slate-500">{c.role}</div>}
-                      </div>
+                      <div className="min-w-0 truncate text-sm font-medium text-slate-800">{c.name}</div>
                       <StatusPill tone={pill.tone} Icon={pill.Icon} className="shrink-0">
                         {c.note}
                       </StatusPill>
@@ -521,7 +520,69 @@ function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) 
   );
 }
 
-function AllGood({ checkedAt }: { checkedAt: string }) {
+// The stub's stand-in for the live stream: a fresh "update" every
+// STUB_UPDATE_MS while online, none while the draft switch says offline.
+// The real board subscribes to the summary stream (lib/sse.ts) instead.
+const STUB_UPDATE_MS = 15_000;
+
+function useStubUpdates(offline: boolean): number {
+  const [updatedAt, setUpdatedAt] = useState(() => Date.now());
+  useEffect(() => {
+    if (offline) return;
+    setUpdatedAt(Date.now());
+    const id = setInterval(() => setUpdatedAt(Date.now()), STUB_UPDATE_MS);
+    return () => clearInterval(id);
+  }, [offline]);
+  return updatedAt;
+}
+
+// LiveIndicator is the one freshness mark of the page, next to its title: the
+// board is live, and this says how old what it shows is. While the stream is
+// up it ticks "updated N s ago"; once it drops it says the data is from a
+// given time, so a stale number is never mistaken for a current one.
+function LiveIndicator({ updatedAt, offline }: { updatedAt: number; offline: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, []);
+  const at = new Date(updatedAt).toISOString();
+
+  if (offline) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
+        <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+        {t.liveOffline(hhmm(at))}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-800"
+      title={t.liveHint}
+    >
+      <span className="relative flex h-2 w-2" aria-hidden>
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60 motion-reduce:animate-none" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+      </span>
+      {t.liveUpdated(fmtRelative(at, now))}
+    </span>
+  );
+}
+
+function DraftSwitch({ onPress, children }: { onPress: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      className="rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+    >
+      {children}
+    </button>
+  );
+}
+
+function AllGood() {
   return (
     // Fills the row beside the platform state and keeps the message in the middle.
     <Card className="flex flex-1 items-center justify-center">
@@ -531,7 +592,7 @@ function AllGood({ checkedAt }: { checkedAt: string }) {
         </span>
         <div>
           <div className="text-sm font-medium text-slate-800">{t.allGood}</div>
-          <div className="text-xs text-slate-500">{t.allGoodHint(hhmm(checkedAt))}</div>
+          <div className="text-xs text-slate-500">{t.allGoodHint}</div>
         </div>
       </div>
     </Card>
