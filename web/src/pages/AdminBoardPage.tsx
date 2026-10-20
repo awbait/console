@@ -18,6 +18,7 @@ import {
 } from "@tabler/icons-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, StatusPill } from "@/components/ui";
 import { Sparkline } from "@/features/board/Sparkline";
@@ -61,14 +62,10 @@ export function AdminBoardPage() {
   const attention = empty ? [] : data.attention;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader title={t.title} description={t.draftNote} />
 
-      {/* The right padding is a lane for the scrollbar: an overlay scrollbar
-          (Firefox, Windows 11) takes no room of its own and would otherwise
-          draw over the edge of the cards. The box cannot reach further out:
-          main scrolls too and would clip it. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto pb-1 pl-1 pr-3">
+      <PageBody>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Tile
             Icon={IconBox}
@@ -199,8 +196,8 @@ export function AdminBoardPage() {
             </Card>
           </Section>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 
