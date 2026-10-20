@@ -64,7 +64,11 @@ export function AdminBoardPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <PageHeader title={t.title} description={t.draftNote} />
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
+      {/* The right padding is a lane for the scrollbar: an overlay scrollbar
+          (Firefox, Windows 11) takes no room of its own and would otherwise
+          draw over the edge of the cards. The box cannot reach further out:
+          main scrolls too and would clip it. */}
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto pb-1 pl-1 pr-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Tile
             Icon={IconBox}
