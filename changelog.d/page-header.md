@@ -1,9 +1,0 @@
-### Changed
-
-#### en
-
-Page titles now sit in the same position throughout Console, with status next to the title, action buttons on the right, and explanatory text below. Removed the “Admin”, “InfoSec”, and “All teams” badges beside titles in the administration, information security, and support sections. On the “Maintenance” page, status moved from a separate card to beside the title. Service cards in the catalog now use the service name as the title, with the registry path in smaller text below. Publication and version approval pages now show a trail of navigation links instead of a separate back link. On publication management pages, this trail starts with “Catalog” instead of “Charts”. On the “Variables” page, the warning that variables are not a secret store now appears in a separate yellow block.
-
-#### ru
-
-На всех страницах Console заголовок теперь расположен на одном месте, состояние показано рядом с ним, кнопки действий справа, а пояснение под заголовком. Убрали плашки «Admin», «InfoSec» и «Все команды» рядом с заголовками в разделах администрирования, ИБ и поддержки. На странице «Технические работы» перенесли состояние из отдельной карточки к заголовку. Заголовком карточки сервиса в каталоге теперь служит название сервиса, а путь в реестре показан под ним мелким текстом. На страницах согласования публикации и версии вместо отдельной ссылки «назад» появилась цепочка ссылок для перехода к предыдущим разделам. На страницах управления публикацией эта цепочка начинается с «Каталог» вместо «Чарты». На странице «Переменные» предупреждение о том, что переменные не предназначены для хранения секретов, теперь выделено отдельным жёлтым блоком.

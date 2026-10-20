@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.24.0] - 2026-10-20
+
+### Changed
+- Redesigned the “Overview” page in Console administration to show whether the
+  platform needs attention. It now shows users online, active users, new orders,
+  and user actions on orders, with mini charts and comparisons with yesterday.
+  “Needs attention” lists failures before warnings, covering orders, stands,
+  integrations, storage, background tasks, settings, and maintenance. Each entry
+  shows the service, team, stand, and time, with a link to where the problem can
+  be resolved. The full list opens in a side panel. The overview also shows
+  platform health, orders and stand operations in progress, the approval queue,
+  and recent events. Data refreshes automatically, with the last update time
+  beside the page title. If the connection to Console is lost, the page shows
+  how long the data has been stale. Online and active user charts start
+  collecting data with this version, so they will be short during the first few
+  days. Removed the “Sections” block that duplicated the menu and the
+  publication counters. Publication counters remain on the “Publications” page.
+- Page titles now sit in the same position throughout Console, with status next
+  to the title, action buttons on the right, and explanatory text below. Removed
+  the “Admin”, “InfoSec”, and “All teams” badges beside titles in the
+  administration, information security, and support sections. On the
+  “Maintenance” page, status moved from a separate card to beside the title.
+  Service cards in the catalog now use the service name as the title, with the
+  registry path in smaller text below. Publication and version approval pages
+  now show a trail of navigation links instead of a separate back link. On
+  publication management pages, this trail starts with “Catalog” instead of
+  “Charts”. On the “Variables” page, the warning that variables are not a secret
+  store now appears in a separate yellow block.
+
+### Fixed
+- On administration pages and the “Notifications” page, scrollbars now have
+  their own space on the right and no longer cover cards or tables in Firefox or
+  Chrome. Content now matches the width of the page heading. On the
+  “Configuration” and “Status” pages, spacing between sections has been
+  increased to match other administration pages.
+
 ## [0.23.0] - 2026-10-19
 
 ### Added
