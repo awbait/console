@@ -152,12 +152,15 @@ export function stubSummary(now = Date.now()): BoardSummary {
         since: ago(now, 26 * MIN),
         to: "/admin/requests",
       },
+      // Only a published version counts: a draft or a version under review
+      // cannot be ordered, so its chart missing from the registry breaks
+      // nothing. The summary endpoint must apply the same rule.
       {
         id: "a4",
         severity: "warning",
         kind: "publication",
-        title: "Версии нет в реестре",
-        meta: [svc("ingress-gateway"), { kind: "version", text: "9.4.0, рекомендуемая" }],
+        title: "Опубликованной версии нет в реестре",
+        meta: [svc("ingress-gateway"), { kind: "version", text: "9.4.0" }],
         since: ago(now, 20 * HOUR),
         to: "/admin/approvals",
       },
