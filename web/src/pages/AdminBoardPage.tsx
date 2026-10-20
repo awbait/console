@@ -15,6 +15,7 @@ import {
   IconPackage,
   IconPackageOff,
   IconPlugConnectedX,
+  IconRefresh,
   IconServer,
   IconSettings,
   IconTag,
@@ -22,39 +23,44 @@ import {
   IconUser,
   IconUsers,
 } from "@tabler/icons-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { FormDialogShell } from "@/components/FormDialogShell";
 import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
-import { Button, Card, Chip, StatusPill } from "@/components/ui";
+import { Button, Card, Chip, ErrorBox, SkeletonRows, StatusPill } from "@/components/ui";
 import { Sparkline } from "@/features/board/Sparkline";
-import {
-  type AttentionItem,
-  type AttentionKind,
-  type ComponentState,
-  type InProgressItem,
-  type Meta,
-  type MetaKind,
-  type SeriesPoint,
-  stubSummary,
-} from "@/features/board/stub";
 import { boardText as t } from "@/features/board/text";
+import { useAdminBoard } from "@/features/board/useAdminBoard";
+import type {
+  AttentionItem,
+  AttentionKind,
+  ComponentState,
+  InProgressItem,
+  Meta,
+  MetaKind,
+  SeriesPoint,
+} from "@/features/board/view";
 import { fmtRelative } from "@/lib/time";
 
-// AdminBoardPage is the duty board (issue #469): the page that answers "do I
-// have to do something right now, and what". Built on stub data while the
-// summary endpoint is designed; it lives next to the overview until it replaces
-// it.
+// AdminBoardPage is the admin overview, the duty board (issue #469): the page
+// that answers "do I have to do something right now, and what". It reads one
+// summary (GET /admin/board) and keeps it fresh (useAdminBoard).
 
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const dayMonth = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+// Days come as "2006-01-02", already in the reader's zone: read as a local
+// date, not as UTC midnight, or west of Greenwich every day shifts back one.
+const dayMonth = (day: string) => {
+  const [y, mo, d] = day.split("-").map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+};
 const hourLabel = (iso: string) => `${new Date(iso).getHours()}:00`;
 
 const KIND_ICON: Record<AttentionKind, typeof IconBox> = {
   order: IconBox,
   stand: IconServer,
   integration: IconPlugConnectedX,
+  job: IconRefresh,
   config: IconSettings,
   publication: IconPackageOff,
   maintenance: IconTool,
@@ -62,24 +68,30 @@ const KIND_ICON: Record<AttentionKind, typeof IconBox> = {
 
 const STATE_PILL: Record<ComponentState, { tone: string; Icon: typeof IconCircleCheck }> = {
   ok: { tone: "bg-green-100 text-green-800", Icon: IconCircleCheck },
-  degraded: { tone: "bg-amber-100 text-amber-800", Icon: IconAlertTriangle },
   down: { tone: "bg-red-100 text-red-800", Icon: IconCircleX },
 };
 
 export function AdminBoardPage() {
-  const [empty, setEmpty] = useState(false);
-  const [offline, setOffline] = useState(false);
-  const data = useMemo(() => stubSummary(), []);
-  const attention = empty ? [] : data.attention;
-  const updatedAt = useStubUpdates(offline);
+  const { data, error, updatedAt, offline } = useAdminBoard();
+  const header = (
+    <PageHeader
+      title={t.title}
+      status={updatedAt > 0 && <LiveIndicator updatedAt={updatedAt} offline={offline} />}
+    />
+  );
+  if (!data) {
+    return (
+      <Page>
+        {header}
+        {error ? <ErrorBox error={error} /> : <SkeletonRows rows={6} />}
+      </Page>
+    );
+  }
+  const attention = data.attention;
 
   return (
     <Page>
-      <PageHeader
-        title={t.title}
-        status={<LiveIndicator updatedAt={updatedAt} offline={offline} />}
-        description={t.draftNote}
-      />
+      {header}
 
       <PageBody>
         {/* People first, then orders: who is on the platform, then what they do. */}
@@ -91,7 +103,13 @@ export function AdminBoardPage() {
             note={peak(data.tiles.online.series)}
             live
           >
-            <Sparkline points={data.tiles.online.series} kind="line" label={t.tileOnlineSeries} format={hourLabel} />
+            {/* The samples only start when this ships: until there are two
+                points there is no line to draw, and saying so beats a flat one. */}
+            {data.tiles.online.series.length > 1 ? (
+              <Sparkline points={data.tiles.online.series} kind="line" label={t.tileOnlineSeries} format={hourLabel} />
+            ) : (
+              <div className="flex h-10 items-end text-xs text-slate-400">{t.noHistory}</div>
+            )}
           </Tile>
           <Tile
             Icon={IconUsers}
@@ -131,15 +149,6 @@ export function AdminBoardPage() {
           <Section
             className="xl:col-span-3"
             title={t.attentionTitle}
-            aside={
-              // Draft-only switches to look at the other states; they go away with the stub.
-              <div className="flex items-center gap-3">
-                <DraftSwitch onPress={() => setOffline(!offline)}>
-                  {offline ? t.showOnline : t.showOffline}
-                </DraftSwitch>
-                <DraftSwitch onPress={() => setEmpty(!empty)}>{empty ? t.showProblems : t.showEmpty}</DraftSwitch>
-              </div>
-            }
             summary={attention.length > 0 && attentionSummary(attention)}
           >
             {attention.length ? <AttentionList items={attention} /> : <AllGood />}
@@ -227,24 +236,39 @@ export function AdminBoardPage() {
         </div>
 
         <Section title={t.eventsTitle}>
-            <Card padded={false}>
+          {data.events.length === 0 ? (
+            <Card>
+              <p className="text-sm text-slate-500">{t.eventsEmpty}</p>
+            </Card>
+          ) : (
+            <Card padded={false} className="overflow-hidden">
               <ol className="divide-y divide-slate-100">
                 {data.events.map((e) => (
-                  <li key={e.id} className="flex gap-3 px-4 py-2.5">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
-                      {e.kind === "order" ? <IconBox size={15} stroke={1.8} /> : <IconChecklist size={15} stroke={1.8} />}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm text-slate-800">{e.text}</div>
-                      <MetaLine meta={e.meta} className="mt-0.5" />
-                    </div>
-                    <time dateTime={e.at} className="shrink-0 pt-0.5 text-xs tabular-nums text-slate-500">
-                      {hhmm(e.at)}
-                    </time>
+                  <li key={e.id}>
+                    <Link
+                      to={e.to}
+                      className="flex gap-3 px-4 py-2.5 outline-none transition-colors duration-150 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+                    >
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
+                        {e.kind === "order" ? <IconBox size={15} stroke={1.8} /> : <IconChecklist size={15} stroke={1.8} />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-slate-800">{e.text}</div>
+                        <MetaLine meta={e.meta} className="mt-0.5" />
+                      </div>
+                      <time
+                        dateTime={e.at}
+                        className="shrink-0 pt-0.5 text-xs tabular-nums text-slate-500"
+                        title={new Date(e.at).toLocaleString("ru-RU")}
+                      >
+                        {fmtRelative(e.at)}
+                      </time>
+                    </Link>
                   </li>
                 ))}
               </ol>
             </Card>
+          )}
         </Section>
       </PageBody>
     </Page>
@@ -478,6 +502,7 @@ const META_ICON: Record<MetaKind, typeof IconBox> = {
   version: IconTag,
   setting: IconSettings,
   check: IconListCheck,
+  job: IconRefresh,
   time: IconClock,
 };
 
@@ -516,9 +541,11 @@ function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) 
           <div className="truncate text-sm font-medium text-slate-800">{a.title}</div>
           <MetaLine meta={a.meta} className="mt-1" />
         </div>
-        <time dateTime={a.since} className="shrink-0 text-xs text-slate-500" title={hhmm(a.since)}>
-          {fmtRelative(a.since)}
-        </time>
+        {a.since && (
+          <time dateTime={a.since} className="shrink-0 text-xs text-slate-500" title={hhmm(a.since)}>
+            {fmtRelative(a.since)}
+          </time>
+        )}
         {/* Where the fix is, in words: the row is a link, and its end says to what. */}
         <span className="hidden w-36 shrink-0 items-center justify-end gap-1 text-xs font-medium text-brand-600 sm:flex">
           {t.openAction[a.kind]}
@@ -529,26 +556,10 @@ function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) 
   );
 }
 
-// The stub's stand-in for the live stream: a fresh "update" every
-// STUB_UPDATE_MS while online, none while the draft switch says offline.
-// The real board subscribes to the summary stream (lib/sse.ts) instead.
-const STUB_UPDATE_MS = 15_000;
-
-function useStubUpdates(offline: boolean): number {
-  const [updatedAt, setUpdatedAt] = useState(() => Date.now());
-  useEffect(() => {
-    if (offline) return;
-    setUpdatedAt(Date.now());
-    const id = setInterval(() => setUpdatedAt(Date.now()), STUB_UPDATE_MS);
-    return () => clearInterval(id);
-  }, [offline]);
-  return updatedAt;
-}
-
 // LiveIndicator is the one freshness mark of the page, next to its title: the
-// board is live, and this says how old what it shows is. While the stream is
-// up it ticks "updated N s ago"; once it drops it says the data is from a
-// given time, so a stale number is never mistaken for a current one.
+// board is live, and this says how old what it shows is. While reads succeed
+// it ticks "updated N s ago"; once one fails it says the data is from a given
+// time, so a stale number is never mistaken for a current one.
 function LiveIndicator({ updatedAt, offline }: { updatedAt: number; offline: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -576,18 +587,6 @@ function LiveIndicator({ updatedAt, offline }: { updatedAt: number; offline: boo
       </span>
       {t.liveUpdated(fmtRelative(at, now))}
     </span>
-  );
-}
-
-function DraftSwitch({ onPress, children }: { onPress: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      className="rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-    >
-      {children}
-    </button>
   );
 }
 

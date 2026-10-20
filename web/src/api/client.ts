@@ -2,6 +2,7 @@ import { apiErrorText } from "./errorText";
 import type {
   AboutInfo,
   ActivityFeed,
+  AdminBoard,
   ApiError,
   AppNotification,
   CatalogResponse,
@@ -480,6 +481,10 @@ export const api = {
   testWebhookDelivery: () => req<DeliveryTest>("POST", "/status/checks/webhook-delivery"),
   // runtime configuration, read-only (admin)
   getConfig: () => req<ConfigResponse>("GET", "/config"),
+  // The admin duty board. `tz` is the reader's zone, so "today" and the days of
+  // the trends are the reader's days.
+  getAdminBoard: (tz: string, signal?: AbortSignal) =>
+    req<AdminBoard>("GET", `/admin/board?tz=${encodeURIComponent(tz)}`, undefined, signal),
   // who uses the portal (admin). Three calls because they are read at three
   // rhythms: the page loads once, "who is here now" keeps refreshing, and the
   // feed is re-asked whenever it is narrowed to a team or a person.

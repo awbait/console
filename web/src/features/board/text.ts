@@ -1,10 +1,9 @@
 // User-facing text for the admin duty board. Draft wording: the final strings
-// go through codex before the page replaces the overview.
+// go through codex before the pull request (see .claude/rules/user-facing-text.md).
 import { ruPlural } from "@/form/fieldErrors";
 
 export const boardText = {
   title: "Администрирование платформы",
-  draftNote: "Черновик дежурного борда. Данные на странице демонстрационные.",
 
   tileOrders: "Новые заказы",
   tileOrdersSeries: "Новые заказы по дням",
@@ -19,6 +18,7 @@ export const boardText = {
   vsYesterday: (diff: number) => `${diff > 0 ? "+" : "−"}${Math.abs(diff)} к вчера`,
   sameAsYesterday: "Как вчера",
   peak: (n: number, at: string) => `Пик ${n} в ${at}`,
+  noHistory: "История копится",
 
   attentionTitle: "Требует внимания",
   allGood: "Всё в порядке",
@@ -26,8 +26,7 @@ export const boardText = {
   liveUpdated: (ago: string) => `Обновлено ${ago}`,
   liveHint: "Страница обновляется сама, как только что-то меняется.",
   liveOffline: (time: string) => `Нет связи, данные от ${time}`,
-  showOffline: "Показать обрыв связи",
-  showOnline: "Вернуть связь",
+  loadError: "Не удалось загрузить данные борда.",
   groupCritical: "Сбои",
   groupWarning: "Предупреждения",
   criticalCount: (n: number) => `${n} ${ruPlural(n, "сбой", "сбоя", "сбоев")}`,
@@ -35,38 +34,80 @@ export const boardText = {
   showAll: (n: number) => `Все проблемы · ${n}`,
   attentionPanelSubtitle: (n: number) => `${n} ${ruPlural(n, "проблема", "проблемы", "проблем")}, сначала сбои`,
   close: "Закрыть",
+
+  // What a problem is, by the code the server sends. A code the interface has
+  // not learned yet shows as itself: a row nobody worded is still a problem.
+  attentionCodes: {
+    order_degraded: "Заказ не работает",
+    order_argo_missing: "Приложения заказа нет в Argo CD",
+    order_deploying_long: "Заказ долго разворачивается",
+    order_merge_blocked: "Merge request не сливается",
+    order_drifted: "Заказ расходится с Git",
+    stand_checks_failed: "Стенд не прошёл проверки",
+    stand_checks_warn: "У стенда есть замечания",
+    storage_down: "Хранилище недоступно",
+    job_failing: "Фоновая задача падает",
+    config_fail: "Настройка не работает",
+    config_warn: "Замечание к настройке",
+    maintenance_scheduled: "Запланированы технические работы",
+    maintenance_active: "Идут технические работы",
+    maintenance_overdue: "Технические работы затянулись",
+  } as Record<string, string>,
+  componentDown: (name: string) => `${name} не отвечает`,
+  maintenanceWhen: (code: string, iso: string) => {
+    const d = new Date(iso);
+    const at = d.toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+    return code === "maintenance_scheduled" ? `Начало ${at}` : `Плановое завершение ${at}`;
+  },
+
   metaLabel: {
     service: "Сервис",
     team: "Команда",
     stand: "Стенд",
     person: "Кто запустил",
-    version: "Версия",
+    version: "Сервис в каталоге",
     setting: "Настройка",
     check: "Проверка",
+    job: "Фоновая задача",
     time: "Когда",
   },
   openAction: {
     order: "Открыть заказ",
     stand: "Открыть стенд",
     integration: "Открыть состояние",
+    job: "Открыть состояние",
     config: "Открыть настройку",
     publication: "Открыть публикацию",
     maintenance: "Открыть тех. работы",
-  },
-  since: (when: string) => `с ${when}`,
-  showEmpty: "Показать пустое состояние",
-  showProblems: "Показать проблемы",
+  } as Record<string, string>,
 
   statusTitle: "Состояние платформы",
   statusMore: "Все системы и проверки",
+  componentNames: { storage: "Хранилища", stands: "Стенды", jobs: "Фоновые задачи" } as Record<string, string>,
+  componentRoles: {
+    storage: "База портала и кеш",
+    stands: "Проверки подключения стендов",
+    jobs: "Проведение заказов, синхронизация и другие циклы",
+  } as Record<string, string>,
+  componentOk: { storage: "Доступны", stands: "В порядке", jobs: "Работают" } as Record<string, string>,
+  componentOkDefault: "Доступен",
+  componentDownNote: "Сбой",
 
   eventsTitle: "Последние события",
+  eventsEmpty: "Пока ничего не происходило.",
+  someone: "Кто-то",
 
   progressTitle: "Что происходит",
   progressEmpty: "Сейчас ничего не выполняется.",
+  inProgressCount: (n: number) => `${n} в работе`,
+  jobModeChange: (mode: string) => `Перевод заказов в «${mode}»`,
+  jobModeChangeStage: "Переводит заказы",
+  jobDelete: "Удаление стенда",
+  jobDeleteStage: "Удаляет заказы",
 
   queueTitle: "Очередь согласования",
   queueAll: "Все заявки",
   queueCount: (n: number) => `${n} ${ruPlural(n, "ждёт", "ждут", "ждут")}`,
-  inProgressCount: (n: number) => `${n} в работе`,
+  queueNewVersion: "Новая версия",
+  queueMetadata: "Категория и владелец",
 };

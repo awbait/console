@@ -917,3 +917,93 @@ export interface AppNotification {
   created_at: string;
   read: boolean;
 }
+
+// The admin duty board (GET /admin/board). Like notifications, it carries codes
+// and facts; the words live in features/board/text.ts.
+export interface BoardPoint {
+  at: string; // "2006-01-02" for a day, RFC3339 for an hour
+  value: number;
+}
+
+export interface BoardCount {
+  value: number;
+  total?: number;
+  series: BoardPoint[];
+}
+
+export type BoardAttentionCode =
+  | "order_degraded"
+  | "order_argo_missing"
+  | "order_deploying_long"
+  | "order_merge_blocked"
+  | "order_drifted"
+  | "stand_checks_failed"
+  | "stand_checks_warn"
+  | "integration_down"
+  | "storage_down"
+  | "job_failing"
+  | "config_fail"
+  | "config_warn"
+  | "maintenance_scheduled"
+  | "maintenance_active"
+  | "maintenance_overdue";
+
+export interface BoardAttention {
+  id: string;
+  severity: "critical" | "warning";
+  kind: "order" | "stand" | "integration" | "job" | "config" | "maintenance" | "publication";
+  code: BoardAttentionCode | string;
+  since?: string;
+  order_id?: string;
+  service?: string;
+  team?: string;
+  stand_id?: string;
+  stand?: string;
+  component?: string;
+  check?: string;
+  job?: string;
+  variables?: string[];
+  until?: string;
+}
+
+export interface BoardComponent {
+  id: string; // gitlab | argocd | harbor | keycloak | storage | stands | jobs
+  state: "ok" | "down";
+  since?: string;
+}
+
+export interface BoardWork {
+  kind: "order" | "stand_job";
+  since: string;
+  order_id?: string;
+  service?: string;
+  team?: string;
+  stand_id?: string;
+  stand?: string;
+  status?: string;
+  job_kind?: string;
+  to_mode?: string;
+  done?: number;
+  total?: number;
+  by?: string;
+}
+
+export interface BoardQueueItem {
+  kind: "version" | "publication";
+  publication_id: string;
+  chart_project: string;
+  chart_name: string;
+  version?: string;
+  team: string;
+  since: string;
+}
+
+export interface AdminBoard {
+  generated_at: string;
+  tiles: { online: BoardCount; users: BoardCount; orders: BoardCount; actions: BoardCount };
+  attention: BoardAttention[];
+  components: BoardComponent[];
+  in_progress: BoardWork[];
+  queue: BoardQueueItem[];
+  events: ActivityEvent[];
+}

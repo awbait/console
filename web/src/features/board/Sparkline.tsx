@@ -1,5 +1,5 @@
 import { type PointerEvent, useId, useState } from "react";
-import type { SeriesPoint } from "./stub";
+import type { SeriesPoint } from "./view";
 
 // Sparkline is the trend in a board tile: a short series with no axes, where
 // the shape matters more than any one value. Two forms:

@@ -3,7 +3,6 @@
 // same word is used wherever a stand is named.
 export const standText = {
   navLabel: "Стенды",
-  quickLinkDesc: "настройки стендов",
   pageIntro: "Стенд задаёт среду для заказов, например dev, test или prod. Каждый заказ относится к одному стенду.",
   emptyList: "Стендов пока нет. Добавьте первый стенд, чтобы пользователи могли отправлять на него заказы.",
   namePlaceholder: "dev",

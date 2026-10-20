@@ -38,7 +38,6 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, n
 // nothing.
 const AboutPage = page(() => import("./pages/AboutPage"), "AboutPage");
 const AdminSection = page(() => import("./pages/AdminSection"), "AdminSection");
-const AdminOverviewPage = page(() => import("./pages/AdminSection"), "AdminOverviewPage");
 const AdminBoardPage = page(() => import("./pages/AdminBoardPage"), "AdminBoardPage");
 const AdminApprovalsPage = page(() => import("./pages/AdminSection"), "AdminApprovalsPage");
 const AdminApprovalDetailPage = page(
@@ -121,9 +120,9 @@ const router = createBrowserRouter([
         path: "admin",
         element: <AdminSection />,
         children: [
-          { index: true, element: <AdminOverviewPage /> },
-          // Duty board draft (#469), reachable by address until it replaces the overview.
-          { path: "board", element: <AdminBoardPage /> },
+          // The overview is the duty board (#469); its draft address stays as a redirect.
+          { index: true, element: <AdminBoardPage /> },
+          { path: "board", element: <Navigate to="/admin" replace /> },
           { path: "approvals", element: <AdminApprovalsPage /> },
           { path: "approvals/:project/:name", element: <AdminApprovalDetailPage /> },
           { path: "approvals/:project/:name/:version", element: <VersionApprovalPage /> },
