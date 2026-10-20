@@ -67,5 +67,6 @@ export const boardText = {
 
   queueTitle: "Очередь согласования",
   queueAll: "Все заявки",
-  queueReview: "Рассмотреть",
+  queueCount: (n: number) => `${n} ${ruPlural(n, "ждёт", "ждут", "ждут")}`,
+  inProgressCount: (n: number) => `${n} в работе`,
 };

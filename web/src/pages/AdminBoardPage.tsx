@@ -2,7 +2,6 @@ import {
   IconActivity,
   IconAlertTriangle,
   IconArrowDownRight,
-  IconArrowRight,
   IconArrowUpRight,
   IconBox,
   IconChecklist,
@@ -174,9 +173,18 @@ export function AdminBoardPage() {
             </Card>
           </Section>
 
-          <Section className="xl:col-span-3" title={t.progressTitle} count={data.inProgress.length || undefined}>
+          {/* Without a queue the work in progress takes the whole row. */}
+          <Section
+            className={data.queue.length > 0 ? "xl:col-span-3" : "xl:col-span-4"}
+            title={t.progressTitle}
+            summary={
+              data.inProgress.length > 0 && (
+                <Chip className="bg-brand-50 text-brand-700">{t.inProgressCount(data.inProgress.length)}</Chip>
+              )
+            }
+          >
             {data.inProgress.length ? (
-              <Card padded={false}>
+              <Card padded={false} className="flex-1">
                 <ul className="divide-y divide-slate-100">
                   {data.inProgress.map((p) => (
                     <ProgressRow key={p.id} item={p} />
@@ -184,13 +192,41 @@ export function AdminBoardPage() {
                 </ul>
               </Card>
             ) : (
-              <Card>
+              <Card className="flex-1">
                 <p className="text-sm text-slate-500">{t.progressEmpty}</p>
               </Card>
             )}
           </Section>
 
-          <Section title={t.eventsTitle}>
+          {data.queue.length > 0 && (
+            <Section
+              title={t.queueTitle}
+              summary={<Chip className="bg-amber-50 text-amber-700">{t.queueCount(data.queue.length)}</Chip>}
+            >
+              <Card padded={false} className="flex flex-1 flex-col overflow-hidden">
+                <ul className="flex-1 divide-y divide-slate-100">
+                  {data.queue.map((q) => (
+                    <li key={q.id}>
+                      <Link
+                        to={q.to}
+                        className="flex items-center gap-3 px-4 py-3 outline-none transition-colors duration-150 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-800">{q.service}</div>
+                          <MetaLine meta={[{ kind: "team", text: q.team }]} className="mt-0.5" />
+                        </div>
+                        <span className="shrink-0 text-xs text-slate-500">{q.change}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <CardFooterLink to="/admin/approvals">{t.queueAll}</CardFooterLink>
+              </Card>
+            </Section>
+          )}
+        </div>
+
+        <Section title={t.eventsTitle}>
             <Card padded={false}>
               <ol className="divide-y divide-slate-100">
                 {data.events.map((e) => (
@@ -209,29 +245,7 @@ export function AdminBoardPage() {
                 ))}
               </ol>
             </Card>
-          </Section>
-        </div>
-
-        {data.queue.length > 0 && (
-          <Section title={t.queueTitle} count={data.queue.length}>
-            <Card padded={false} className="overflow-hidden">
-              <ul className="divide-y divide-slate-100">
-                {data.queue.map((q) => (
-                  <li key={q.id} className="flex items-center gap-4 px-4 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-slate-800">{q.service}</div>
-                      <div className="text-xs text-slate-500">
-                        {q.change} · {q.team}
-                      </div>
-                    </div>
-                    <MoreLink to={q.to}>{t.queueReview}</MoreLink>
-                  </li>
-                ))}
-              </ul>
-              <CardFooterLink to="/admin/approvals">{t.queueAll}</CardFooterLink>
-            </Card>
-          </Section>
-        )}
+        </Section>
       </PageBody>
     </Page>
   );
@@ -272,17 +286,6 @@ function Section({
   );
 }
 
-function MoreLink({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Link
-      to={to}
-      className="inline-flex shrink-0 items-center gap-1 rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-    >
-      {children}
-      <IconArrowRight size={14} stroke={1.8} />
-    </Link>
-  );
-}
 
 // CardFooterLink closes a card with the way to the full page, as its last row.
 // Same shape as the attention list's "show more", so every block on the board
