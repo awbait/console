@@ -17,12 +17,21 @@ export interface BoardTiles {
   online: { now: number; series: SeriesPoint[] };
 }
 
+// One fact about where a problem is, drawn as an icon and a value: the icon
+// says what the value is (a service, a team, a stand), so the line reads
+// "kafka-main, data, idp" instead of spelling out "команда" and "стенд".
+export type MetaKind = "service" | "team" | "stand" | "person" | "version" | "setting" | "check" | "time";
+export interface Meta {
+  kind: MetaKind;
+  text: string;
+}
+
 export interface AttentionItem {
   id: string;
   severity: Severity;
   kind: AttentionKind;
   title: string;
-  where: string;
+  meta: Meta[];
   since: string; // ISO timestamp
   to: string;
 }
@@ -47,7 +56,7 @@ export interface InProgressItem {
   id: string;
   kind: "order" | "stand_job";
   title: string;
-  where: string;
+  meta: Meta[];
   stage: string;
   progress?: { done: number; total: number };
   startedAt: string;
@@ -91,6 +100,10 @@ function hours(values: number[], now: number): SeriesPoint[] {
 
 const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
 
+const svc = (text: string): Meta => ({ kind: "service", text });
+const team = (text: string): Meta => ({ kind: "team", text });
+const stand = (text: string): Meta => ({ kind: "stand", text });
+
 // People online by hour of the day (0..23): quiet at night, busy in office hours.
 const ONLINE_PROFILE = [1, 0, 0, 0, 0, 0, 1, 2, 5, 9, 12, 13, 10, 9, 12, 13, 11, 8, 5, 3, 2, 2, 1, 1];
 
@@ -117,7 +130,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "critical",
         kind: "order",
         title: "Заказ не работает",
-        where: "redis-cache · команда core · стенд idp",
+        meta: [svc("redis-cache"), team("core"), stand("idp")],
         since: ago(now, 48 * MIN),
         to: "/admin/requests",
       },
@@ -126,7 +139,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "critical",
         kind: "stand",
         title: "Стенд не прошёл проверки",
-        where: "test · доступ к Argo CD",
+        meta: [stand("test"), { kind: "check", text: "Доступ к Argo CD" }],
         since: ago(now, 3 * HOUR),
         to: "/admin/stands",
       },
@@ -135,7 +148,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "warning",
         kind: "order",
         title: "Заказ долго разворачивается",
-        where: "kafka-main · команда data · стенд idp",
+        meta: [svc("kafka-main"), team("data"), stand("idp")],
         since: ago(now, 26 * MIN),
         to: "/admin/requests",
       },
@@ -144,7 +157,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "warning",
         kind: "publication",
         title: "Версии нет в реестре",
-        where: "ingress-gateway 9.4.0 · рекомендуемая версия",
+        meta: [svc("ingress-gateway"), { kind: "version", text: "9.4.0, рекомендуемая" }],
         since: ago(now, 20 * HOUR),
         to: "/admin/approvals",
       },
@@ -153,7 +166,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "warning",
         kind: "order",
         title: "Merge request не сливается",
-        where: "postgres-analytics · команда data · стенд test",
+        meta: [svc("postgres-analytics"), team("data"), stand("test")],
         since: ago(now, 2 * HOUR),
         to: "/admin/requests",
       },
@@ -162,7 +175,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "warning",
         kind: "maintenance",
         title: "Запланированы технические работы",
-        where: "Сегодня с 22:00 до 23:00",
+        meta: [{ kind: "time", text: "Сегодня с 22:00 до 23:00" }],
         since: ago(now, 26 * HOUR),
         to: "/admin/maintenance",
       },
@@ -171,7 +184,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         severity: "warning",
         kind: "config",
         title: "Настройка с проблемой",
-        where: "Конфигурация · адрес Harbor",
+        meta: [{ kind: "setting", text: "HARBOR_URL" }],
         since: ago(now, 5 * HOUR),
         to: "/admin/config",
       },
@@ -182,7 +195,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
       { id: "harbor", name: "Harbor", role: "Каталог и версии", state: "ok", note: "Доступен" },
       { id: "keycloak", name: "Keycloak", role: "Вход и группы", state: "ok", note: "Доступен" },
       { id: "storage", name: "Хранилища", role: "PostgreSQL, Redis", state: "ok", note: "Доступны" },
-      { id: "stands", name: "Стенды", role: "3 из 4 в порядке", state: "down", note: "Есть проблемы" },
+      { id: "stands", name: "Стенды", role: "test не прошёл проверки", state: "down", note: "Сбой" },
       { id: "jobs", name: "Фоновые задачи", role: "Последний запуск минуту назад", state: "ok", note: "Работают" },
     ],
     events: [
@@ -203,7 +216,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         id: "p1",
         kind: "order",
         title: "postgres-main",
-        where: "стенд idp · команда data",
+        meta: [team("data"), stand("idp")],
         stage: "Разворачивается",
         startedAt: ago(now, 4 * MIN),
       },
@@ -211,7 +224,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         id: "p2",
         kind: "order",
         title: "kafka-main",
-        where: "стенд idp · команда data",
+        meta: [team("data"), stand("idp")],
         stage: "Ждёт слияния merge request",
         startedAt: ago(now, 12 * MIN),
       },
@@ -219,7 +232,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
         id: "p3",
         kind: "stand_job",
         title: "Перевод заказов в «Только Git»",
-        where: "стенд console-stand · Мария Иванова",
+        meta: [stand("console-stand"), { kind: "person", text: "Мария Иванова" }],
         stage: "Переводит заказы",
         progress: { done: 9, total: 15 },
         startedAt: ago(now, 7 * MIN),

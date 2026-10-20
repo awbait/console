@@ -28,7 +28,19 @@ export const boardText = {
   groupWarning: "Предупреждения",
   criticalCount: (n: number) => `${n} ${ruPlural(n, "сбой", "сбоя", "сбоев")}`,
   warningCount: (n: number) => `${n} ${ruPlural(n, "предупреждение", "предупреждения", "предупреждений")}`,
-  showMore: (n: number) => `Показать ещё ${n}`,
+  showAll: (n: number) => `Все проблемы · ${n}`,
+  attentionPanelSubtitle: (n: number) => `${n} ${ruPlural(n, "проблема", "проблемы", "проблем")}, сначала сбои`,
+  close: "Закрыть",
+  metaLabel: {
+    service: "Сервис",
+    team: "Команда",
+    stand: "Стенд",
+    person: "Кто запустил",
+    version: "Версия",
+    setting: "Настройка",
+    check: "Проверка",
+    time: "Когда",
+  },
   openAction: {
     order: "Открыть заказ",
     stand: "Открыть стенд",
@@ -42,7 +54,7 @@ export const boardText = {
   showProblems: "Показать проблемы",
 
   statusTitle: "Состояние платформы",
-  statusMore: "Подробнее",
+  statusMore: "Все системы и проверки",
 
   eventsTitle: "Последние события",
 

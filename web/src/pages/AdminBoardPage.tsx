@@ -10,25 +10,33 @@ import {
   IconCircleCheck,
   IconCircleX,
   IconClick,
+  IconClock,
+  IconListCheck,
   IconLoader2,
+  IconPackage,
   IconPackageOff,
   IconPlugConnectedX,
   IconServer,
   IconSettings,
+  IconTag,
   IconTool,
+  IconUser,
   IconUsers,
 } from "@tabler/icons-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { FormDialogShell } from "@/components/FormDialogShell";
 import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, Chip, StatusPill } from "@/components/ui";
+import { Button, Card, Chip, StatusPill } from "@/components/ui";
 import { Sparkline } from "@/features/board/Sparkline";
 import {
   type AttentionItem,
   type AttentionKind,
   type ComponentState,
   type InProgressItem,
+  type Meta,
+  type MetaKind,
   type SeriesPoint,
   stubSummary,
 } from "@/features/board/stub";
@@ -136,14 +144,15 @@ export function AdminBoardPage() {
             {attention.length ? <AttentionList items={attention} /> : <AllGood checkedAt={data.checkedAt} />}
           </Section>
 
-          <Section title={t.statusTitle} aside={<MoreLink to="/admin/status">{t.statusMore}</MoreLink>}>
-            <Card padded={false}>
-              <ul className="divide-y divide-slate-100">
+          <Section title={t.statusTitle}>
+            {/* Stretches to the attention list beside it; the link stays at the foot. */}
+            <Card padded={false} className="flex flex-1 flex-col overflow-hidden">
+              <ul className="flex-1 divide-y divide-slate-100">
                 {data.components.map((c) => {
                   const pill = STATE_PILL[c.state];
                   return (
                     // A working system is one line; the detail line is kept for the
-                    // ones in trouble, where it says what is wrong ("3 of 4").
+                    // ones in trouble, where it says what is wrong.
                     <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5" title={c.role}>
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-slate-800">{c.name}</div>
@@ -156,6 +165,7 @@ export function AdminBoardPage() {
                   );
                 })}
               </ul>
+              <CardFooterLink to="/admin/status">{t.statusMore}</CardFooterLink>
             </Card>
           </Section>
 
@@ -198,12 +208,8 @@ export function AdminBoardPage() {
         </div>
 
         {data.queue.length > 0 && (
-          <Section
-            title={t.queueTitle}
-            count={data.queue.length}
-            aside={<MoreLink to="/admin/approvals">{t.queueAll}</MoreLink>}
-          >
-            <Card padded={false}>
+          <Section title={t.queueTitle} count={data.queue.length}>
+            <Card padded={false} className="overflow-hidden">
               <ul className="divide-y divide-slate-100">
                 {data.queue.map((q) => (
                   <li key={q.id} className="flex items-center gap-4 px-4 py-2.5">
@@ -217,6 +223,7 @@ export function AdminBoardPage() {
                   </li>
                 ))}
               </ul>
+              <CardFooterLink to="/admin/approvals">{t.queueAll}</CardFooterLink>
             </Card>
           </Section>
         )}
@@ -268,6 +275,20 @@ function MoreLink({ to, children }: { to: string; children: ReactNode }) {
     >
       {children}
       <IconArrowRight size={14} stroke={1.8} />
+    </Link>
+  );
+}
+
+// CardFooterLink closes a card with the way to the full page, as its last row.
+// Same shape as the attention list's "show more", so every block on the board
+// ends the same way instead of hanging a link off its header.
+function CardFooterLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="block border-t border-slate-100 px-4 py-2.5 text-center text-xs font-medium text-brand-600 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+    >
+      {children}
     </Link>
   );
 }
@@ -353,7 +374,7 @@ function peak(series: SeriesPoint[]): string {
 
 // How many problems the board lists before folding the rest away. Enough to
 // see what is on fire, short enough that the rest of the board stays in view.
-const ATTENTION_ROWS = 6;
+const ATTENTION_ROWS = 4;
 
 // The two groups of the list, worst first. The group header says the
 // severity in words, so a row does not need a badge of its own and the
@@ -375,17 +396,53 @@ function attentionSummary(items: AttentionItem[]): ReactNode {
   );
 }
 
+// AttentionList is the block on the board: a fixed number of rows, so the
+// block keeps the height of the platform state beside it, and the whole list
+// in a side panel. Expanding in place would push the rest of the board down
+// and break the row it shares.
 function AttentionList({ items }: { items: AttentionItem[] }) {
-  const [all, setAll] = useState(false);
+  const [open, setOpen] = useState(false);
   // Fold by position over the whole list, so the cut never hides a failure
   // while showing a warning: failures come first.
-  const shown = new Set((all ? items : items.slice(0, ATTENTION_ROWS)).map((a) => a.id));
-  const hidden = items.length - shown.size;
+  const shown = items.slice(0, ATTENTION_ROWS);
 
   return (
-    <Card padded={false} className="overflow-hidden">
+    <Card padded={false} className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex-1">
+        <AttentionGroups items={shown} />
+      </div>
+      {items.length > shown.length && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-full border-t border-slate-100 px-4 py-2.5 text-center text-xs font-medium text-brand-600 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+        >
+          {t.showAll(items.length)}
+        </button>
+      )}
+      <FormDialogShell
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        icon={<IconAlertTriangle size={20} stroke={1.8} />}
+        title={t.attentionTitle}
+        subtitle={t.attentionPanelSubtitle(items.length)}
+        maxWidth="max-w-2xl"
+        footer={(close) => <Button onPress={close}>{t.close}</Button>}
+      >
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <AttentionGroups items={items} />
+        </div>
+      </FormDialogShell>
+    </Card>
+  );
+}
+
+// AttentionGroups lays the rows out under their severity headers, worst first.
+function AttentionGroups({ items }: { items: AttentionItem[] }) {
+  return (
+    <>
       {SEVERITY_GROUPS.map((g) => {
-        const rows = items.filter((a) => a.severity === g.severity && shown.has(a.id));
+        const rows = items.filter((a) => a.severity === g.severity);
         if (rows.length === 0) return null;
         return (
           <section key={g.severity} className="border-b border-slate-100 last:border-b-0">
@@ -401,16 +458,38 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
           </section>
         );
       })}
-      {hidden > 0 && (
-        <button
-          type="button"
-          onClick={() => setAll(true)}
-          className="w-full border-t border-slate-100 px-4 py-2.5 text-center text-xs font-medium text-brand-600 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
-        >
-          {t.showMore(hidden)}
-        </button>
-      )}
-    </Card>
+    </>
+  );
+}
+
+const META_ICON: Record<MetaKind, typeof IconBox> = {
+  service: IconPackage,
+  team: IconUsers,
+  stand: IconServer,
+  person: IconUser,
+  version: IconTag,
+  setting: IconSettings,
+  check: IconListCheck,
+  time: IconClock,
+};
+
+// MetaLine is the "where" of a row: values with an icon each instead of the
+// words "команда" and "стенд". The icon carries the meaning for the eye and
+// the hidden label for a screen reader.
+function MetaLine({ meta, className = "" }: { meta: Meta[]; className?: string }) {
+  return (
+    <div className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500 ${className}`}>
+      {meta.map((m) => {
+        const Icon = META_ICON[m.kind];
+        return (
+          <span key={`${m.kind}:${m.text}`} className="inline-flex min-w-0 items-center gap-1" title={t.metaLabel[m.kind]}>
+            <Icon size={13} stroke={1.8} className="shrink-0 text-slate-400" aria-hidden />
+            <span className="sr-only">{t.metaLabel[m.kind]}:</span>
+            <span className="truncate">{m.text}</span>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -427,7 +506,7 @@ function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) 
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-slate-800">{a.title}</div>
-          <div className="mt-0.5 truncate text-xs text-slate-500">{a.where}</div>
+          <MetaLine meta={a.meta} className="mt-1" />
         </div>
         <time dateTime={a.since} className="shrink-0 text-xs text-slate-500" title={hhmm(a.since)}>
           {fmtRelative(a.since)}
@@ -444,7 +523,8 @@ function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) 
 
 function AllGood({ checkedAt }: { checkedAt: string }) {
   return (
-    <Card>
+    // Fills the row beside the platform state and keeps the message in the middle.
+    <Card className="flex flex-1 items-center justify-center">
       <div className="flex items-center gap-3 py-2">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-600">
           <IconCircleCheck size={20} stroke={1.8} />
@@ -468,7 +548,7 @@ function ProgressRow({ item }: { item: InProgressItem }) {
         </span>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-slate-800">{item.title}</div>
-          <div className="truncate text-xs text-slate-500">{item.where}</div>
+          <MetaLine meta={item.meta} className="mt-0.5" />
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
