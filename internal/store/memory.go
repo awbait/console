@@ -39,6 +39,11 @@ type Memory struct {
 	maintEvents []*models.MaintenanceEvent
 	now        func() time.Time
 	lastStamp  time.Time
+
+	// userHours and online are the board's history: who was seen in which
+	// UTC hour, and the leader's samples of how many people were online.
+	userHours map[time.Time]map[string]bool
+	online    []*models.OnlineSample
 }
 
 var _ Store = (*Memory)(nil)

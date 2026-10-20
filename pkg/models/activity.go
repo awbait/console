@@ -99,6 +99,27 @@ type ActivityCount struct {
 	Count     int    `json:"count"`
 }
 
+// NewOrderEvents are the order events that mean a new order: somebody created
+// one, from scratch or as a copy. Drafts are not orders yet, and an import is
+// the platform adopting an existing service, not a person ordering one.
+var NewOrderEvents = []string{"created", "copied"}
+
+// DayCounts is one day of the admin board's trend tiles. Day is the calendar
+// date in the reader's time zone, "2006-01-02".
+type DayCounts struct {
+	Day         string `json:"day"`
+	NewOrders   int    `json:"new_orders"`
+	Actions     int    `json:"actions"`
+	ActiveUsers int    `json:"active_users"`
+}
+
+// OnlineSample is how many people were online at a moment, as the leader
+// sampled it for the board.
+type OnlineSample struct {
+	At     time.Time `json:"at"`
+	Online int       `json:"online"`
+}
+
 // TeamActivity is one team as the activity page shows it: how many people the
 // portal has seen from it, and how many of them are around.
 type TeamActivity struct {

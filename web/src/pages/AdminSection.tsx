@@ -1,5 +1,4 @@
 import {
-  IconActivity,
   IconAlertTriangle,
   IconArrowRight,
   IconCheck,
@@ -8,18 +7,12 @@ import {
   IconCircleCheck,
   IconClock,
   IconDots,
-  IconFileText,
   IconGripVertical,
   IconLock,
   IconPackage,
   IconPencil,
   IconPlus,
-  IconServer,
-  IconStack,
-  IconTags,
   IconTrash,
-  IconUsers,
-  IconVariable,
   IconX,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -59,7 +52,6 @@ import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { PublicationReview } from "../components/PublicationReview";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
-import { standText } from "../features/stands/text";
 import { fieldMsg, ruPlural } from "../form/fieldErrors";
 import { useAsync } from "../hooks/useAsync";
 
@@ -156,144 +148,6 @@ export function AdminSection() {
     );
   }
   return <Outlet />;
-}
-
-// ---------------------------------------------------------------------------
-// Overview
-// ---------------------------------------------------------------------------
-
-// How many queue rows the overview shows before sending the reader to the full
-// queue. Enough to see what is waiting, short enough that the page stays a
-// summary.
-const OVERVIEW_QUEUE_ROWS = 5;
-
-export function AdminOverviewPage() {
-  const { data: pubs, error, loading } = useAsync(() => api.listPublications(), []);
-  const { data: pendingVers } = useAsync(() => api.pendingVersions(), []);
-  if (loading) return <SkeletonRows rows={5} />;
-  if (error) return <ErrorBox error={error} />;
-
-  const all = pubs ?? [];
-  const queue = buildQueue(all, pendingVers ?? []);
-  const published = all.filter((p) => effStatus(p) === "APPROVED").length;
-  const drafts = all.filter((p) => effStatus(p) === "DRAFT" || effStatus(p) === "REJECTED").length;
-
-  return (
-    // Same shape as the rest of the admin section: the heading keeps its place
-    // and only the sections below it scroll.
-    <Page>
-      <PageHeader title="Администрирование платформы" />
-
-      <PageBody>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Ждут решения" value={queue.length} tone="amber" Icon={IconClock} />
-          <StatCard label="Опубликовано" value={published} tone="emerald" Icon={IconCircleCheck} />
-          <StatCard label="Черновики" value={drafts} tone="slate" Icon={IconFileText} />
-          <StatCard label="Всего публикаций" value={all.length} tone="brand" Icon={IconStack} />
-        </div>
-
-      <section className="flex flex-col">
-        <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-800">Очередь на согласование</h2>
-          {queue.length > OVERVIEW_QUEUE_ROWS && (
-            <Link
-              to="/admin/approvals"
-              className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:text-brand-700"
-            >
-              Все {queue.length}
-              <IconArrowRight size={14} stroke={1.8} />
-            </Link>
-          )}
-        </div>
-        <QueueTable items={queue.slice(0, OVERVIEW_QUEUE_ROWS)} />
-      </section>
-
-      <section className="flex flex-col">
-        <h2 className="mb-3 text-sm font-semibold text-slate-800">Разделы</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <QuickLink
-            to="/admin/approvals"
-            tone="amber"
-            Icon={IconChecklist}
-            title="Согласование публикаций"
-            desc={
-              queue.length > 0
-                ? `${queue.length} ${ruPlural(queue.length, "решение", "решения", "решений")} ждёт`
-                : "очередь пуста"
-            }
-          />
-          <QuickLink
-            to="/admin/users"
-            tone="emerald"
-            Icon={IconUsers}
-            title="Пользователи"
-            desc="кто пользуется порталом и что делает"
-          />
-          <QuickLink
-            to="/admin/status"
-            tone="brand"
-            Icon={IconActivity}
-            title="Состояние платформы"
-            desc="интеграции, хранилища, циклы"
-          />
-          <QuickLink
-            to="/admin/categories"
-            tone="slate"
-            Icon={IconTags}
-            title="Категории каталога"
-            desc="структура разделов каталога"
-          />
-          <QuickLink
-            to="/admin/stands"
-            tone="slate"
-            Icon={IconServer}
-            title={standText.navLabel}
-            desc={standText.quickLinkDesc}
-          />
-          <QuickLink
-            to="/admin/variables"
-            tone="slate"
-            Icon={IconVariable}
-            title="Переменные"
-            desc="значения для документов версий"
-          />
-        </div>
-      </section>
-      </PageBody>
-    </Page>
-  );
-}
-
-function QuickLink({
-  to,
-  tone,
-  Icon,
-  title,
-  desc,
-}: {
-  to: string;
-  tone: Tone;
-  Icon: typeof IconClock;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="group flex items-center justify-between rounded-lg border border-slate-200 bg-surface p-4 shadow-sm outline-none hover:border-brand-300 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-500"
-    >
-      <span className="flex items-center gap-3">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${TONE[tone]}`}>
-          <Icon size={18} stroke={1.8} />
-        </span>
-        <span>
-          <span className="block text-sm font-medium text-slate-800">{title}</span>
-          <span className="block text-xs text-slate-500">{desc}</span>
-        </span>
-      </span>
-      <IconArrowRight size={18} className="text-slate-300 group-hover:text-brand-500" />
-    </Link>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -508,9 +362,8 @@ export function AdminApprovalsPage() {
   );
 }
 
-// QueueTable renders the decision queue. Shared by the overview (top rows) and
-// the approvals page (all of them) so the two never drift into two designs for
-// the same list.
+// QueueTable renders the decision queue on the approvals page. The admin
+// overview (the duty board) shows the head of the same queue in its own block.
 function QueueTable({ items }: { items: QueueItem[] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-surface shadow-sm">

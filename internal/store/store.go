@@ -152,6 +152,24 @@ type Store interface {
 	// type and team. For the gauges, which need totals rather than rows.
 	CountActivity(ctx context.Context, since time.Time) ([]*models.ActivityCount, error)
 
+	// Admin board history. TouchUser also records the hour a person was seen
+	// in, which is what the active users trend counts.
+	//
+	// DailyCounts returns, per calendar day in loc from since onwards, how many
+	// orders were created (models.NewOrderEvents), how many order events people
+	// wrote (system actors excluded) and how many people were seen. Days with
+	// nothing are left out; the caller fills the gaps.
+	DailyCounts(ctx context.Context, since time.Time, loc *time.Location) ([]*models.DayCounts, error)
+	// CountLiveOrders counts the orders that exist: not deleted, not drafts.
+	CountLiveOrders(ctx context.Context) (int, error)
+	// RecordOnline stores one sample of how many people are online.
+	RecordOnline(ctx context.Context, at time.Time, online int) error
+	// OnlineSamples returns the samples from since onwards, oldest first.
+	OnlineSamples(ctx context.Context, since time.Time) ([]*models.OnlineSample, error)
+	// PruneBoardHistory drops the hours of presence before usersBefore and the
+	// online samples before onlineBefore.
+	PruneBoardHistory(ctx context.Context, usersBefore, onlineBefore time.Time) error
+
 	// Platform variables: named values a version document references as
 	// "{{.Vars.OPS}}". Read on every order write that mentions one, so the list
 	// is small by design and always read whole.

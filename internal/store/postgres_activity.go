@@ -37,6 +37,12 @@ func (p *Postgres) TouchUser(ctx context.Context, u *models.PlatformUser) error 
 		Scan(&u.FirstSeen, &u.LastSeen, &u.Visits); err != nil {
 		return err
 	}
+	// The hour of the appearance feeds the board's active users trend. It rides
+	// on the same throttled call, so it costs one small insert per person per
+	// touch window, not one per request.
+	if err := p.recordUserHour(ctx, u.Subject, u.LastSeen); err != nil {
+		return err
+	}
 	// An appearance is also when the portal learns that somebody is in a team or
 	// holds a role. Recorded here rather than only when they open the bell, so
 	// that being around for a week without looking at it does not cost the week's

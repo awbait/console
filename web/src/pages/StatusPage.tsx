@@ -27,8 +27,9 @@ import { safeHref } from "../lib/href";
 // Status auto-refresh interval, seconds.
 const REFRESH_SECONDS = 30;
 
-// Integration names as their vendors write them.
-const COMPONENT_LABELS: Record<string, string> = {
+// Integration names as their vendors write them. Exported with the two maps
+// below for the admin board, so both pages name a system the same way.
+export const COMPONENT_LABELS: Record<string, string> = {
   keycloak: "Keycloak",
   harbor: "Harbor",
   gitlab: "GitLab",
@@ -37,7 +38,7 @@ const COMPONENT_LABELS: Record<string, string> = {
 
 // What each component does for the portal. An admin opening this page during an
 // incident should not have to remember which system holds what.
-const COMPONENT_ROLE: Record<string, string> = {
+export const COMPONENT_ROLE: Record<string, string> = {
   keycloak: "Вход в портал и группы пользователей",
   harbor: "Реестр чартов: каталог, версии и формы заказа",
   gitlab: "Репозитории и merge request заказов",
@@ -55,7 +56,7 @@ const BACKEND_LABELS: Record<string, string> = {
 
 // The background loops, in terms of what they do. "Reconciler" is an
 // implementation word; the page says what stops happening if one of them fails.
-const RECONCILERS: Record<string, { label: string; what: string }> = {
+export const RECONCILERS: Record<string, { label: string; what: string }> = {
   provisioning: {
     label: "Проведение заказов",
     what: "Продвигает заказы по этапам: merge request, слияние, выкатка, готовность.",
