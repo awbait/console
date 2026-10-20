@@ -21,6 +21,7 @@ import { Link } from "react-router-dom";
 import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, StatusPill } from "@/components/ui";
+import { BoardTiles } from "@/features/board/BoardTiles";
 import { Sparkline } from "@/features/board/Sparkline";
 import {
   type AttentionItem,
@@ -58,6 +59,7 @@ const STATE_PILL: Record<ComponentState, { tone: string; Icon: typeof IconCircle
 
 export function AdminBoardPage() {
   const [empty, setEmpty] = useState(false);
+  const [tiles, setTiles] = useState<"codex" | "mine">("codex");
   const data = useMemo(() => stubSummary(), []);
   const attention = empty ? [] : data.attention;
 
@@ -66,32 +68,39 @@ export function AdminBoardPage() {
       <PageHeader title={t.title} description={t.draftNote} />
 
       <PageBody>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Tile
-            Icon={IconBox}
-            label={t.tileOrders}
-            value={data.tiles.orders.today}
-            total={data.tiles.orders.total}
-            hint={t.tileOrdersHint}
-          >
-            <Sparkline points={data.tiles.orders.series} label={t.tileOrdersHint} format={dayMonth} />
-          </Tile>
-          <Tile Icon={IconClick} label={t.tileActions} value={data.tiles.actions.today} hint={t.tileActionsHint}>
-            <Sparkline points={data.tiles.actions.series} label={t.tileActionsHint} format={dayMonth} />
-          </Tile>
-          <Tile
-            Icon={IconUsers}
-            label={t.tileUsers}
-            value={data.tiles.users.today}
-            total={data.tiles.users.total}
-            hint={t.tileUsersHint}
-          >
-            <Sparkline points={data.tiles.users.series} label={t.tileUsersHint} format={dayMonth} />
-          </Tile>
-          <Tile Icon={IconActivity} label={t.tileOnline} value={data.tiles.online.now} hint={t.tileOnlineHint} live>
-            <Sparkline points={data.tiles.online.series} kind="line" label={t.tileOnlineHint} format={hourLabel} />
-          </Tile>
+        {/* Draft-only switch between tile designs; goes away once one is chosen. */}
+        <div className="-mb-5 flex gap-1 self-start rounded-lg bg-slate-100 p-0.5 text-xs">
+          {(["codex", "mine"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setTiles(v)}
+              className={`rounded-md px-2.5 py-1 font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                tiles === v ? "bg-surface text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {v === "codex" ? "Вариант codex" : "Вариант Claude"}
+            </button>
+          ))}
         </div>
+        {tiles === "codex" ? (
+          <BoardTiles tiles={data.tiles} />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Tile Icon={IconBox} label={t.tileOrders} value={data.tiles.orders.today} total={data.tiles.orders.total}>
+              <Sparkline points={data.tiles.orders.series} label={t.tileOrdersSeries} format={dayMonth} />
+            </Tile>
+            <Tile Icon={IconClick} label={t.tileActions} value={data.tiles.actions.today}>
+              <Sparkline points={data.tiles.actions.series} label={t.tileActionsSeries} format={dayMonth} />
+            </Tile>
+            <Tile Icon={IconUsers} label={t.tileUsers} value={data.tiles.users.today} total={data.tiles.users.total}>
+              <Sparkline points={data.tiles.users.series} label={t.tileUsersSeries} format={dayMonth} />
+            </Tile>
+            <Tile Icon={IconActivity} label={t.tileOnline} value={data.tiles.online.now} live>
+              <Sparkline points={data.tiles.online.series} kind="line" label={t.tileOnlineSeries} format={hourLabel} />
+            </Tile>
+          </div>
+        )}
 
         <Section
           title={t.attentionTitle}
@@ -247,7 +256,6 @@ function Tile({
   label,
   value,
   total,
-  hint,
   live,
   children,
 }: {
@@ -255,35 +263,34 @@ function Tile({
   label: string;
   value: number;
   total?: number;
-  hint: string;
   live?: boolean;
   children: ReactNode;
 }) {
+  // The chart runs along the bottom edge of the card, so the card clips it to
+  // its rounded corners and only the top part is padded.
   return (
-    <Card className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-slate-600">{label}</span>
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-          <Icon size={17} stroke={1.8} />
-        </span>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-semibold leading-none text-slate-900">{value}</span>
-        {total !== undefined ? (
-          <span className="text-sm text-slate-500">
-            {t.today} · {t.ofTotal} {total}
+    <Card padded={false} className="flex flex-col overflow-hidden">
+      <div className="flex flex-col gap-3 px-4 pt-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-slate-600">{label}</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+            <Icon size={17} stroke={1.8} />
           </span>
-        ) : (
-          live && (
-            <span className="relative flex h-2 w-2 self-center" aria-hidden>
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60 motion-reduce:animate-none" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-            </span>
-          )
-        )}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <span className="text-3xl font-semibold leading-none text-slate-900">{value}</span>
+            {live && (
+              <span className="relative flex h-2 w-2" aria-hidden>
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60 motion-reduce:animate-none" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+            )}
+          </span>
+          {total !== undefined && <span className="text-xs text-slate-500">{t.total(total)}</span>}
+        </div>
       </div>
-      <div className="mt-auto pt-1">{children}</div>
-      <div className="text-xs text-slate-500">{hint}</div>
+      <div className="mt-auto pt-3">{children}</div>
     </Card>
   );
 }
