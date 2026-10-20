@@ -5,6 +5,7 @@ import { qk } from "../api/queryKeys";
 import type { Stand, Variable } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, ErrorBox, SkeletonRows } from "../components/ui";
 import { variableText as vt } from "../features/variables/text";
@@ -53,7 +54,7 @@ export function AdminVariablesPage() {
   const variables = data ?? [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title="Переменные"
         description={
@@ -81,7 +82,7 @@ export function AdminVariablesPage() {
       {error && <ErrorBox error={error} />}
       {err && <ErrorBox error={new Error(err)} />}
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+      <PageBody gap="blocks">
         {loading ? (
           <SkeletonRows rows={4} />
         ) : (
@@ -119,8 +120,8 @@ export function AdminVariablesPage() {
         )}
 
         <AddVariable busy={busy} run={run} />
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 

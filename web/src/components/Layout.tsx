@@ -846,8 +846,11 @@ export function Layout() {
         {/* -m-1 p-1: the scroll box clips at its own edge, which cut the focus
             rings and shadows of controls sitting flush against it (the buttons in
             a page header). The inset padding gives them 4px of room and the
-            negative margin takes it back off the layout, so nothing moves. */}
-        <main className="relative -m-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-1">
+            negative margin takes it back off the layout, so nothing moves.
+            On the right the room is the scrollbar lane (12px) instead: the bar
+            is drawn in the shell's gutter beside the page, never over it, and
+            PageBody reaches into the same lane for its own bar (see Page.tsx). */}
+        <main className="relative -my-1 -ml-1 -mr-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto py-1 pl-1 pr-3">
           {/* The page fills the column edge to edge - width is capped by the
               shell above, not here. flex-1 + min-h-0 gives full-height pages
               (e.g. the view builder, which uses flex-1 at its root) a real

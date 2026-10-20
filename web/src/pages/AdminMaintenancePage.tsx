@@ -7,6 +7,7 @@ import { qk } from "../api/queryKeys";
 import type { MaintenanceEvent, MaintenanceStatus, MaintenanceWindow } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Checkbox, Chip, ErrorBox, SkeletonRows, TextField } from "../components/ui";
 import { maintenanceText as t } from "../features/maintenance/text";
@@ -52,7 +53,7 @@ export function AdminMaintenancePage() {
   const scheduled = status?.state === "scheduled";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title={t.navLabel}
         status={status && <Chip className={STATE_TONE[status.state]}>{stateLabel(status)}</Chip>}
@@ -61,7 +62,7 @@ export function AdminMaintenancePage() {
 
       {error && <ErrorBox error={error} onRetry={reload} />}
 
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
+      <PageBody gap="blocks">
         {loading || !status ? (
           !error && <SkeletonRows rows={4} />
         ) : (
@@ -79,7 +80,7 @@ export function AdminMaintenancePage() {
             <History events={data.history} />
           </>
         )}
-      </div>
+      </PageBody>
 
       <ConfirmDialog
         isOpen={confirming}
@@ -94,7 +95,7 @@ export function AdminMaintenancePage() {
           refresh();
         }}
       />
-    </div>
+    </Page>
   );
 }
 

@@ -16,6 +16,7 @@ import { api } from "../api/client";
 import type { CapabilityStatus, ComponentStatus, ReconcilerStatus, StandChecksSummary } from "../api/types";
 import { capabilityText } from "../app/capabilities";
 import { useUser } from "../auth/UserContext";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, buttonClass, ErrorBox, SkeletonRows, StatusPill } from "../components/ui";
 import { maintenanceText } from "../features/maintenance/text";
@@ -174,7 +175,7 @@ export function StatusPage() {
     // The page stays within the viewport: the header keeps its place and only
     // the sections below it scroll, so the verdict and the refresh button are
     // still there after scrolling down to a failing component.
-    <div className="flex min-h-0 flex-1 flex-col gap-5">
+    <Page>
       <PageHeader
         title="Состояние платформы"
         status={
@@ -213,9 +214,7 @@ export function StatusPage() {
         }
       />
 
-      {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
-          room the clipping edge would otherwise cut off. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 pb-1">
+      <PageBody>
         {loading && !data ? (
           <SkeletonRows rows={6} />
         ) : error ? (
@@ -325,8 +324,8 @@ export function StatusPage() {
             </Section>
           </>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 
