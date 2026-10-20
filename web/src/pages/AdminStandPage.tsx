@@ -14,9 +14,9 @@ import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
 import { deploys, type StandCheck } from "../api/types";
 import { useToast } from "../app/ToastContext";
-import { Breadcrumbs } from "../components/Breadcrumbs";
 import { NotFound } from "../components/NotFound";
-import { Button, ErrorBox, SkeletonRows } from "../components/ui";
+import { PageHeader } from "../components/PageHeader";
+import { Button, Chip, ErrorBox, SkeletonRows } from "../components/ui";
 import { StandJobs } from "../features/stands/StandJobs";
 import { standCheckReasons, standText as t } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
@@ -90,21 +90,20 @@ export function AdminStandPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="shrink-0">
-        <Breadcrumbs items={[{ label: t.navLabel, to: "/admin/stands" }, { label: stand.name }]} />
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold">{t.pageTitle(stand.name)}</h1>
-          {stand.default && (
-            <span
-              title={t.defaultHint}
-              className="inline-flex shrink-0 items-center gap-1 rounded bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700"
-            >
-              <IconStar size={12} stroke={2} />
-              {t.defaultBadge}
+      <PageHeader
+        breadcrumbs={[{ label: t.navLabel, to: "/admin/stands" }, { label: stand.name }]}
+        title={t.pageTitle(stand.name)}
+        status={
+          stand.default && (
+            <span title={t.defaultHint}>
+              <Chip className="bg-brand-50 text-brand-700">
+                <IconStar size={12} stroke={2} />
+                {t.defaultBadge}
+              </Chip>
             </span>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-1 pb-1">
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">

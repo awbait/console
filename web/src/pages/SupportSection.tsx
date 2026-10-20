@@ -4,7 +4,6 @@ import {
   IconBox,
   IconCircleCheck,
   IconGitFork,
-  IconLifebuoy,
   IconLoader2,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -14,6 +13,7 @@ import { isLive } from "../api/orderStatus";
 import type { OrderRequest, RequestStatus } from "../api/types";
 import { useUser } from "../auth/UserContext";
 import { ProductIcon } from "../components/icons";
+import { PageHeader } from "../components/PageHeader";
 import { StatusBadge } from "../components/StatusBadge";
 import { ErrorBox, SkeletonRows } from "../components/ui";
 import { OrdersTable } from "../features/orders/OrdersTable";
@@ -96,12 +96,7 @@ export function SupportOverviewPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Обзор поддержки</h1>
-        <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${TONE.brand}`}>
-          <IconLifebuoy size={13} stroke={1.8} /> Все команды
-        </span>
-      </div>
+      <PageHeader title="Обзор поддержки" />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Сервисов всего" value={live.length} tone="brand" Icon={IconBox} />

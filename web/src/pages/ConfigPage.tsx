@@ -23,6 +23,7 @@ import {
   verdictLabel,
 } from "../app/configChecks";
 import { useUser } from "../auth/UserContext";
+import { PageHeader } from "../components/PageHeader";
 import { Button, ErrorBox, Hint, SkeletonRows, StatusPill } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { CONFIG_GROUPS, CONFIG_TEXT } from "./configText";
@@ -157,26 +158,22 @@ export function ConfigPage() {
     // Header and search stay put; only the list of settings scrolls. Fifty rows
     // are a long way to scroll back up to the search box.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Конфигурация портала</h1>
-          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
-            Настройки, с которыми запущен портал. Портал проверяет их на живых системах и пишет
-            результат рядом с каждой: видно не только что задано, но и работает ли оно. Только
-            просмотр: значения задаются при запуске. Пароли и токены не показываются.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onPress={testDelivery} isDisabled={testing} className="gap-1.5">
-            <IconSend size={16} stroke={1.8} className="text-slate-400" />
-            {testing ? "Ждём доставку…" : "Проверить доставку"}
-          </Button>
-          <Button variant="secondary" onPress={runChecks} isDisabled={running} className="gap-1.5">
-            <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
-            {running ? "Проверяем…" : "Проверить сейчас"}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Конфигурация портала"
+        description="Настройки, с которыми запущен портал. Портал проверяет их на живых системах и пишет результат рядом с каждой: видно не только что задано, но и работает ли оно. Только просмотр: значения задаются при запуске. Пароли и токены не показываются."
+        actions={
+          <>
+            <Button variant="secondary" onPress={testDelivery} isDisabled={testing} className="gap-1.5">
+              <IconSend size={16} stroke={1.8} className="text-slate-400" />
+              {testing ? "Ждём доставку…" : "Проверить доставку"}
+            </Button>
+            <Button variant="secondary" onPress={runChecks} isDisabled={running} className="gap-1.5">
+              <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+              {running ? "Проверяем…" : "Проверить сейчас"}
+            </Button>
+          </>
+        }
+      />
 
       {!loading && !error && (
         <div className="flex shrink-0 flex-wrap items-center gap-3">

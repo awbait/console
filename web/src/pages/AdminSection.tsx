@@ -1,7 +1,6 @@
 import {
   IconActivity,
   IconAlertTriangle,
-  IconArrowLeft,
   IconArrowRight,
   IconCheck,
   IconChecklist,
@@ -16,7 +15,6 @@ import {
   IconPencil,
   IconPlus,
   IconServer,
-  IconSettings,
   IconStack,
   IconTags,
   IconTrash,
@@ -55,7 +53,9 @@ import type {
 import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
 import { useToast } from "../app/ToastContext";
 import { useTeamLabel, useUser } from "../auth/UserContext";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { CATEGORY_ICON_CHOICES, categoryIcon, categoryIconName, ProductIcon } from "../components/icons";
+import { PageHeader } from "../components/PageHeader";
 import { PublicationReview } from "../components/PublicationReview";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "../components/ui";
 import { standText } from "../features/stands/text";
@@ -181,13 +181,7 @@ export function AdminOverviewPage() {
     // Same shape as the rest of the admin section: the heading keeps its place
     // and only the sections below it scroll.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Администрирование платформы</h1>
-        <Chip className="bg-brand-50 text-brand-700">
-          <IconSettings size={13} stroke={1.8} className="text-brand-400" />
-          Admin
-        </Chip>
-      </div>
+      <PageHeader title="Администрирование платформы" />
 
       <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto px-1 pb-1">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -432,15 +426,17 @@ export function AdminApprovalsPage() {
     // the title and the pending count are still there after scrolling to the
     // bottom of a long table. Same shape as the platform status page.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Согласование публикаций</h1>
-        {queue.length > 0 && (
-          <Chip className="bg-amber-50 text-amber-700">
-            <IconClock size={13} stroke={1.8} className="text-amber-500" />
-            {queue.length} {ruPlural(queue.length, "решение", "решения", "решений")} ждёт
-          </Chip>
-        )}
-      </div>
+      <PageHeader
+        title="Согласование публикаций"
+        status={
+          queue.length > 0 && (
+            <Chip className="bg-amber-50 text-amber-700">
+              <IconClock size={13} stroke={1.8} className="text-amber-500" />
+              {queue.length} {ruPlural(queue.length, "решение", "решения", "решений")} ждёт
+            </Chip>
+          )
+        }
+      />
 
       {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
           room the clipping edge would otherwise cut off. */}
@@ -805,21 +801,14 @@ export function AdminApprovalDetailPage() {
   );
   const pendingVersions = (versions ?? []).filter((v) => v.status === "PENDING");
 
-  const back = (
-    <Link
-      to="/admin/approvals"
-      className="inline-flex w-fit items-center gap-1 text-sm text-slate-500 outline-none hover:text-slate-700 focus-visible:text-brand-600"
-    >
-      <IconArrowLeft size={16} stroke={1.8} /> Согласование публикаций
-    </Link>
-  );
+  const parent = { label: "Согласование публикаций", to: "/admin/approvals" };
 
   if (loading && !pub) return <Loading label="Загружаем публикацию" />;
   if (error && !pub) return <ErrorBox error={error} />;
   if (!pub) {
     return (
       <div className="flex flex-col gap-5">
-        {back}
+        <Breadcrumbs items={[parent, { label: `${project}/${name}` }]} />
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           Публикация {project}/{name} не найдена.
         </div>
@@ -830,20 +819,18 @@ export function AdminApprovalDetailPage() {
   const st = STATUS_META[effStatus(pub)];
   return (
     <div className="flex flex-col gap-5">
-      {back}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-          <IconPackage size={20} stroke={1.8} />
-        </span>
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold text-slate-900">{chartLabel(pub.chart_name)}</h1>
-          <p className="truncate text-xs text-slate-400">
-            {pub.chart_project}/{pub.chart_name}
-          </p>
-        </div>
-        <Badge tone={st.tone}>{st.label}</Badge>
-        <Badge tone="brand">{teamLabel(pub.owner_team)}</Badge>
-      </div>
+      <PageHeader
+        breadcrumbs={[parent, { label: chartLabel(pub.chart_name) }]}
+        icon={<ProductIcon project={pub.chart_project} name={pub.chart_name} size={22} />}
+        title={chartLabel(pub.chart_name)}
+        subtitle={`${pub.chart_project}/${pub.chart_name}`}
+        status={
+          <>
+            <Badge tone={st.tone}>{st.label}</Badge>
+            <Badge tone="brand">{teamLabel(pub.owner_team)}</Badge>
+          </>
+        }
+      />
 
       {/* Metadata (category/owner) approval, if any. */}
       {pub.status === "PENDING" && <PublicationReview pub={pub} onReviewed={reload} />}
@@ -970,13 +957,10 @@ export function AdminCategoriesPage() {
     // Same shape as the rest of the admin section: the heading keeps its place
     // and only the list below it scrolls.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="shrink-0">
-        <h1 className="text-xl font-semibold">Категории каталога</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Перетаскивайте за ручку для порядка, кликните иконку чтобы сменить. Название и порядок
-          сохраняются автоматически.
-        </p>
-      </div>
+      <PageHeader
+        title="Категории каталога"
+        description="Перетаскивайте за ручку для порядка, кликните иконку чтобы сменить. Название и порядок сохраняются автоматически."
+      />
 
       {err && <ErrorBox error={new Error(err)} />}
 

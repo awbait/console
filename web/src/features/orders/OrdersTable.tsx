@@ -27,6 +27,7 @@ import { useToast } from "@/app/ToastContext";
 import { canModify, useUser } from "@/auth/UserContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
+import { PageHeader } from "@/components/PageHeader";
 import {
   STATUS_GROUPS,
   StatusBadge,
@@ -279,15 +280,16 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
 
   return (
     <div>
-      <div className="mb-4 flex min-h-9 items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-        {orderTo ? (
-          <LinkButton to={orderTo} variant="primary" className="gap-1.5">
-            <IconPlus size={16} stroke={2} />
-            Заказать
-          </LinkButton>
-        ) : orderDisabledReason ? (
-          <div className="flex items-center gap-2">
+      <PageHeader
+        className="mb-4"
+        title={title}
+        actions={
+          orderTo ? (
+            <LinkButton to={orderTo} variant="primary" className="gap-1.5">
+              <IconPlus size={16} stroke={2} />
+              Заказать
+            </LinkButton>
+          ) : orderDisabledReason ? (
             <span
               title={orderDisabledReason}
               aria-disabled="true"
@@ -296,9 +298,9 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
               <IconPlus size={16} stroke={2} />
               Заказать
             </span>
-          </div>
-        ) : null}
-      </div>
+          ) : undefined
+        }
+      />
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {allTeams && (

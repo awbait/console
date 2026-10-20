@@ -16,7 +16,8 @@ import { api } from "../api/client";
 import type { CapabilityStatus, ComponentStatus, ReconcilerStatus, StandChecksSummary } from "../api/types";
 import { capabilityText } from "../app/capabilities";
 import { useUser } from "../auth/UserContext";
-import { Button, buttonClass, ErrorBox, SkeletonRows } from "../components/ui";
+import { PageHeader } from "../components/PageHeader";
+import { Button, buttonClass, ErrorBox, SkeletonRows, StatusPill } from "../components/ui";
 import { maintenanceText } from "../features/maintenance/text";
 import { standText } from "../features/stands/text";
 import { useAsync } from "../hooks/useAsync";
@@ -174,41 +175,43 @@ export function StatusPage() {
     // the sections below it scroll, so the verdict and the refresh button are
     // still there after scrolling down to a failing component.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Состояние платформы</h1>
-          {data &&
-            (data.healthy ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                <IconCircleCheck size={14} stroke={2} /> Всё работает
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                <IconAlertTriangle size={14} stroke={2} /> Есть проблемы
-              </span>
-            ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-slate-400 sm:inline">
-            обновляется каждые {REFRESH_SECONDS} сек
-          </span>
-          {safeHref(data?.grafana_url) && (
-            <a
-              href={safeHref(data?.grafana_url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass("secondary", "gap-1.5")}
-            >
-              Графики в Grafana
-              <IconExternalLink size={14} stroke={1.8} />
-            </a>
-          )}
-          <Button variant="secondary" onPress={reload} isDisabled={loading} className="gap-1.5">
-            <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
-            {loading ? "Обновляем…" : "Обновить"}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Состояние платформы"
+        status={
+          data &&
+          (data.healthy ? (
+            <StatusPill tone="bg-emerald-50 text-emerald-700" Icon={IconCircleCheck}>
+              Всё работает
+            </StatusPill>
+          ) : (
+            <StatusPill tone="bg-amber-50 text-amber-700" Icon={IconAlertTriangle}>
+              Есть проблемы
+            </StatusPill>
+          ))
+        }
+        actions={
+          <>
+            <span className="hidden text-xs text-slate-400 sm:inline">
+              обновляется каждые {REFRESH_SECONDS} сек
+            </span>
+            {safeHref(data?.grafana_url) && (
+              <a
+                href={safeHref(data?.grafana_url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClass("secondary", "gap-1.5")}
+              >
+                Графики в Grafana
+                <IconExternalLink size={14} stroke={1.8} />
+              </a>
+            )}
+            <Button variant="secondary" onPress={reload} isDisabled={loading} className="gap-1.5">
+              <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+              {loading ? "Обновляем…" : "Обновить"}
+            </Button>
+          </>
+        }
+      />
 
       {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
           room the clipping edge would otherwise cut off. */}

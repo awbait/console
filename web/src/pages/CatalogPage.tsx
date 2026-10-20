@@ -31,6 +31,7 @@ import { noTeamNotice } from "../auth/access";
 import { useTeamLabel, useUser } from "../auth/UserContext";
 import { AddChartDialog } from "../components/AddChartDialog";
 import { categoryIcon } from "../components/icons";
+import { PageHeader } from "../components/PageHeader";
 import { Button, OutageState, SkeletonCards } from "../components/ui";
 import { CatalogCards, CatalogList } from "../features/catalog/CatalogItems";
 import { canManageChart, isOrderableChart } from "../features/catalog/catalogModel";
@@ -112,13 +113,12 @@ export function CatalogPage() {
       onSelectionChange={(key) => setParam("tab", key === "unpublished" ? "unpublished" : "")}
       className="catalog-page"
     >
-      <div className="catalog-heading">
-        <div>
-          <h1 className="text-xl font-semibold">Каталог</h1>
-          <p className="mt-1 text-sm text-slate-500">Сервисы для вашего проекта</p>
-        </div>
-        <AddChartDialog />
-      </div>
+      <PageHeader
+        className="catalog-heading"
+        title="Каталог"
+        description="Сервисы для вашего проекта"
+        actions={<AddChartDialog />}
+      />
       <TabList aria-label="Раздел каталога" className="catalog-tabs">
         <Tab id="available" className="catalog-tab">
           Доступные сервисы<span className="catalog-count">{available.length}</span>

@@ -1,7 +1,6 @@
 import {
   IconExternalLink,
   IconRefresh,
-  IconSettings,
   IconUser,
   IconUserCheck,
   IconUsers,
@@ -19,7 +18,8 @@ import {
 } from "react-aria-components";
 import { api } from "@/api/client";
 import type { PlatformUser, TeamActivity } from "@/api/types";
-import { Button, buttonClass, Card, Chip, ErrorBox, SkeletonRows, TextField } from "@/components/ui";
+import { PageHeader } from "@/components/PageHeader";
+import { Button, buttonClass, Card, ErrorBox, SkeletonRows, TextField } from "@/components/ui";
 import { ActivityFeed, OrderSelect, useFeed } from "@/features/users/ActivityFeed";
 import { Avatar, displayName, OnlinePill, ROLE_LABEL, TeamChips } from "@/features/users/parts";
 import { TeamCard } from "@/features/users/TeamCard";
@@ -79,32 +79,28 @@ export function AdminUsersPage() {
     // The page stays within the viewport: the heading keeps its place and only
     // the sections below it scroll. Same shape as the rest of the admin section.
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex min-h-9 shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">Пользователи</h1>
-          <Chip className="bg-brand-50 text-brand-700">
-            <IconSettings size={13} stroke={1.8} className="text-brand-400" />
-            Admin
-          </Chip>
-        </div>
-        <div className="flex items-center gap-2">
-          {grafana && (
-            <a
-              href={grafana}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass("secondary", "gap-1.5")}
-            >
-              Тренды в Grafana
-              <IconExternalLink size={14} stroke={1.8} />
-            </a>
-          )}
-          <Button variant="secondary" onPress={reload} className="gap-1.5">
-            <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
-            Обновить
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Пользователи"
+        actions={
+          <>
+            {grafana && (
+              <a
+                href={grafana}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonClass("secondary", "gap-1.5")}
+              >
+                Тренды в Grafana
+                <IconExternalLink size={14} stroke={1.8} />
+              </a>
+            )}
+            <Button variant="secondary" onPress={reload} className="gap-1.5">
+              <IconRefresh size={16} stroke={1.8} className="text-slate-400" />
+              Обновить
+            </Button>
+          </>
+        }
+      />
 
       {/* The scroll box: -mx-1/px-1 gives the cards' shadows and focus rings the
           room the clipping edge would otherwise cut off. */}

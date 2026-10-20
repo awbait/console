@@ -33,6 +33,7 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
 import { NotFound } from "@/components/NotFound";
+import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge, statusGroup, statusNextStep } from "@/components/StatusBadge";
 import { Button, Card, Select, SkeletonRows } from "@/components/ui";
 import { standText } from "@/features/stands/text";
@@ -470,12 +471,10 @@ export function RequestDetailPage() {
           </button>
         </div>
       )}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-            <ProductIcon project={r.chart_project} name={r.chart_name} size={22} />
-          </span>
-          {editingName ? (
+      <PageHeader
+        icon={<ProductIcon project={r.chart_project} name={r.chart_name} size={22} />}
+        heading={
+          editingName ? (
             <div className="flex items-center gap-1.5">
               <input
                 ref={nameInputRef}
@@ -508,7 +507,7 @@ export function RequestDetailPage() {
             </div>
           ) : (
             <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate text-xl font-semibold">{r.display_name || r.service_name}</h1>
+              <h1 className="truncate text-xl font-semibold text-slate-900">{r.display_name || r.service_name}</h1>
               {editable && (
                 <button
                   onClick={startRename}
@@ -519,22 +518,24 @@ export function RequestDetailPage() {
                 </button>
               )}
             </div>
-          )}
-        </div>
-        <DetailActions
-          isDraft={isDraft}
-          onContinue={isDraft && modifiable ? () => navigate(`/requests/${r.id}/edit`) : undefined}
-          onSubmit={isDraft && modifiable ? onSubmit : undefined}
-          onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
-          onSync={
-            !isDraft && r.status !== "DELETED" && user?.role === "admin" && deploys(stand) ? onSync : undefined
-          }
-          onCopy={canModify(user, r.team) ? () => setCopying(true) : undefined}
-          restore={r.status === "DELETED"}
-          onDelete={modifiable && !openMR ? () => setConfirmDelete(true) : undefined}
-          notify={canUpgrade}
-        />
-      </div>
+          )
+        }
+        actions={
+          <DetailActions
+            isDraft={isDraft}
+            onContinue={isDraft && modifiable ? () => navigate(`/requests/${r.id}/edit`) : undefined}
+            onSubmit={isDraft && modifiable ? onSubmit : undefined}
+            onUpgrade={canUpgrade ? () => setUpgradeOpen(true) : undefined}
+            onSync={
+              !isDraft && r.status !== "DELETED" && user?.role === "admin" && deploys(stand) ? onSync : undefined
+            }
+            onCopy={canModify(user, r.team) ? () => setCopying(true) : undefined}
+            restore={r.status === "DELETED"}
+            onDelete={modifiable && !openMR ? () => setConfirmDelete(true) : undefined}
+            notify={canUpgrade}
+          />
+        }
+      />
 
       <CopyOrderDialog
         order={copying ? r : null}

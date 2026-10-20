@@ -33,15 +33,7 @@
   d: path("M10.5 3v18m3-18v18") !important;
 }
 .catalog-heading {
-  display: flex;
-  flex-shrink: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 20px;
-}
-.catalog-heading > :first-child {
-  min-width: 0;
 }
 .catalog-tabs {
   display: flex;
@@ -531,8 +523,6 @@
 }
 @container (max-width: 520px) {
   .catalog-heading {
-    flex-wrap: wrap;
-    gap: 12px;
     margin-bottom: 16px;
   }
   .catalog-tabs {

@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { Changelog, withContent } from "../components/Changelog";
+import { PageHeader } from "../components/PageHeader";
 import { Card, ErrorBox, SkeletonText } from "../components/ui";
 import { useAsync } from "../hooks/useAsync";
 import { isRelease, releaseAnchor } from "../lib/release";
@@ -49,7 +50,7 @@ export function AboutPage() {
     // leave the freed half of the window empty. What has to stay readable says
     // so itself - the notes are capped at a line length inside the list.
     <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1">
-      <h1 className="shrink-0 text-xl font-semibold text-slate-900">О портале</h1>
+      <PageHeader title="О портале" />
 
       {about.loading && !info ? (
         <SkeletonText lines={4} />
