@@ -547,7 +547,7 @@ function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) 
           </time>
         )}
         {/* Where the fix is, in words: the row is a link, and its end says to what. */}
-        <span className="hidden w-36 shrink-0 items-center justify-end gap-1 text-xs font-medium text-brand-600 sm:flex">
+        <span className="hidden w-44 shrink-0 items-center justify-end gap-1 text-xs font-medium text-brand-600 sm:flex">
           {t.openAction[a.kind]}
           <IconChevronRight size={14} stroke={2} className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
         </span>
