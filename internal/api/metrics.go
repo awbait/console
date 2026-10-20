@@ -102,6 +102,7 @@ func (s *Server) refreshActivityMetrics(ctx context.Context) {
 		}
 	}
 	observability.SetTeamUserCounts(teams)
+	s.recordBoardHistory(ctx, ov.Totals.Online)
 
 	counts, err := s.Store.CountActivity(ctx, time.Now().Add(-actionWindow))
 	if err != nil {
@@ -115,6 +116,30 @@ func (s *Server) refreshActivityMetrics(ctx context.Context) {
 		})
 	}
 	observability.SetUserActionCounts("24h", actions)
+}
+
+// Board history: the online tile samples into fixed buckets, so however often
+// the refresher ticks a day holds at most a bucket's worth of rows, and the
+// latest reading in a bucket replaces the earlier ones. Presence by the hour
+// is kept for the two weeks the trend shows plus a margin, the online samples
+// for the day the tile draws plus one.
+const (
+	onlineSampleBucket = 5 * time.Minute
+	userHoursKeep      = 31 * 24 * time.Hour
+	onlineSamplesKeep  = 48 * time.Hour
+)
+
+// recordBoardHistory takes the online sample and drops history the board no
+// longer draws. It runs here because this loop is already the leader's, and
+// one replica sampling is what keeps the series from counting people twice.
+func (s *Server) recordBoardHistory(ctx context.Context, online int) {
+	now := time.Now()
+	if err := s.Store.RecordOnline(ctx, now.Truncate(onlineSampleBucket), online); err != nil {
+		s.logger().Warn("board: record online sample failed", "err", err)
+	}
+	if err := s.Store.PruneBoardHistory(ctx, now.Add(-userHoursKeep), now.Add(-onlineSamplesKeep)); err != nil {
+		s.logger().Warn("board: prune history failed", "err", err)
+	}
 }
 
 // refreshOrderMetrics counts non-deleted-scoped orders by status across all
