@@ -91,17 +91,25 @@ function hours(values: number[], now: number): SeriesPoint[] {
 
 const ago = (now: number, ms: number) => new Date(now - ms).toISOString();
 
+// People online by hour of the day (0..23): quiet at night, busy in office hours.
+const ONLINE_PROFILE = [1, 0, 0, 0, 0, 0, 1, 2, 5, 9, 12, 13, 10, 9, 12, 13, 11, 8, 5, 3, 2, 2, 1, 1];
+
+// The last 24 hours ending at the current one, valued by the hour of the day,
+// so the peak lands in the afternoon whatever time the page is opened.
+function onlineByHour(now: number): BoardTiles["online"] {
+  const hour = new Date(now).getHours();
+  const values = Array.from({ length: 24 }, (_, i) => ONLINE_PROFILE[(hour - 23 + i + 24) % 24]);
+  return { now: values[23], series: hours(values, now) };
+}
+
 export function stubSummary(now = Date.now()): BoardSummary {
   return {
     checkedAt: ago(now, 40 * 1000),
     tiles: {
       orders: { today: 3, total: 412, series: days([4, 6, 2, 0, 1, 7, 5, 8, 3, 2, 0, 6, 9, 3], now) },
-      actions: { today: 27, series: days([31, 44, 18, 2, 5, 52, 40, 61, 37, 29, 4, 48, 66, 27], now) },
-      users: { today: 18, total: 240, series: days([22, 25, 19, 3, 4, 27, 24, 29, 21, 20, 2, 26, 30, 18], now) },
-      online: {
-        now: 6,
-        series: hours([1, 0, 0, 0, 0, 0, 1, 3, 7, 11, 12, 10, 8, 11, 13, 12, 9, 7, 4, 2, 1, 1, 4, 6], now),
-      },
+      actions: { today: 27, series: days([31, 44, 18, 2, 5, 52, 40, 61, 37, 29, 4, 48, 21, 27], now) },
+      users: { today: 18, total: 240, series: days([22, 25, 19, 3, 4, 27, 24, 29, 21, 20, 2, 26, 14, 18], now) },
+      online: onlineByHour(now),
     },
     attention: [
       {

@@ -56,12 +56,14 @@ export function Sparkline({
       )}
       {hover !== null && (
         <div
-          className={`pointer-events-none absolute bottom-full z-10 mb-1.5 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-white shadow-md ${align}`}
+          className={`pointer-events-none absolute bottom-full z-10 mb-1.5 flex items-baseline gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-surface px-2 py-1 text-xs shadow-lg ${align}`}
           style={{ left: `${cx(hover)}%` }}
           aria-hidden
         >
-          <span className="text-slate-300">{format(points[hover].at)}</span>{" "}
-          <span className="font-semibold">{points[hover].value}</span>
+          {/* Theme tokens only: a fixed white on a flipping dark fill vanished
+              in the dark theme and left the date without its number. */}
+          <span className="text-slate-500">{format(points[hover].at)}</span>
+          <span className="font-semibold tabular-nums text-slate-900">{points[hover].value}</span>
         </div>
       )}
     </div>
