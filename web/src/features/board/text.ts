@@ -1,5 +1,7 @@
 // User-facing text for the admin duty board. Draft wording: the final strings
 // go through codex before the page replaces the overview.
+import { ruPlural } from "@/form/fieldErrors";
+
 export const boardText = {
   title: "Администрирование платформы",
   draftNote: "Черновик дежурного борда. Данные на странице демонстрационные.",
@@ -22,8 +24,19 @@ export const boardText = {
   checkedAt: (time: string) => `Проверено в ${time}`,
   allGood: "Всё в порядке",
   allGoodHint: (time: string) => `Последняя проверка в ${time}. Проблем не найдено.`,
-  severityCritical: "Сбой",
-  severityWarning: "Внимание",
+  groupCritical: "Сбои",
+  groupWarning: "Предупреждения",
+  criticalCount: (n: number) => `${n} ${ruPlural(n, "сбой", "сбоя", "сбоев")}`,
+  warningCount: (n: number) => `${n} ${ruPlural(n, "предупреждение", "предупреждения", "предупреждений")}`,
+  showMore: (n: number) => `Показать ещё ${n}`,
+  openAction: {
+    order: "Открыть заказ",
+    stand: "Открыть стенд",
+    integration: "Открыть состояние",
+    config: "Открыть настройку",
+    publication: "Открыть публикацию",
+    maintenance: "Открыть тех. работы",
+  },
   since: (when: string) => `с ${when}`,
   showEmpty: "Показать пустое состояние",
   showProblems: "Показать проблемы",

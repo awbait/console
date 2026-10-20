@@ -22,7 +22,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
-import { Card, StatusPill } from "@/components/ui";
+import { Card, Chip, StatusPill } from "@/components/ui";
 import { Sparkline } from "@/features/board/Sparkline";
 import {
   type AttentionItem,
@@ -125,7 +125,7 @@ export function AdminBoardPage() {
               </button>
             </div>
           }
-          count={attention.length || undefined}
+          summary={attention.length > 0 && attentionSummary(attention)}
         >
           {attention.length ? <AttentionList items={attention} /> : <AllGood checkedAt={data.checkedAt} />}
         </Section>
@@ -222,24 +222,28 @@ function Section({
   title,
   aside,
   count,
+  summary,
   children,
 }: {
   title: string;
   aside?: ReactNode;
   count?: number;
+  // Richer than count: chips that say what the number is made of.
+  summary?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="flex flex-col">
       <div className="mb-3 flex min-h-7 items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          {title}
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
           {count !== undefined && (
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium tabular-nums text-slate-600">
               {count}
             </span>
           )}
-        </h2>
+          {summary}
+        </div>
         {aside}
       </div>
       {children}
@@ -338,51 +342,94 @@ function peak(series: SeriesPoint[]): string {
   return top ? t.peak(top.value, hourLabel(top.at)) : "";
 }
 
+// How many problems the board lists before folding the rest away. Enough to
+// see what is on fire, short enough that the rest of the board stays in view.
+const ATTENTION_ROWS = 6;
+
+// The two groups of the list, worst first. The group header says the
+// severity in words, so a row does not need a badge of its own and the
+// severity is never carried by colour alone.
+const SEVERITY_GROUPS = [
+  { severity: "critical", label: () => t.groupCritical, tone: "bg-red-50 text-red-600", dot: "bg-red-500" },
+  { severity: "warning", label: () => t.groupWarning, tone: "bg-amber-50 text-amber-600", dot: "bg-amber-500" },
+] as const;
+
+// attentionSummary is the header of the block: how many of each, in words.
+function attentionSummary(items: AttentionItem[]): ReactNode {
+  const critical = items.filter((a) => a.severity === "critical").length;
+  const warning = items.length - critical;
+  return (
+    <span className="flex items-center gap-1.5">
+      {critical > 0 && <Chip className="bg-red-50 text-red-700">{t.criticalCount(critical)}</Chip>}
+      {warning > 0 && <Chip className="bg-amber-50 text-amber-700">{t.warningCount(warning)}</Chip>}
+    </span>
+  );
+}
+
 function AttentionList({ items }: { items: AttentionItem[] }) {
+  const [all, setAll] = useState(false);
+  // Fold by position over the whole list, so the cut never hides a failure
+  // while showing a warning: failures come first.
+  const shown = new Set((all ? items : items.slice(0, ATTENTION_ROWS)).map((a) => a.id));
+  const hidden = items.length - shown.size;
+
   return (
     <Card padded={false} className="overflow-hidden">
-      <ul className="divide-y divide-slate-100">
-        {items.map((a) => {
-          const KindIcon = KIND_ICON[a.kind];
-          const critical = a.severity === "critical";
-          return (
-            <li key={a.id}>
-              <Link
-                to={a.to}
-                className="group flex items-center gap-3 px-4 py-3 outline-none transition-colors duration-150 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
-              >
-                <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                    critical ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
-                  }`}
-                >
-                  <KindIcon size={18} stroke={1.8} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-slate-800">{a.title}</span>
-                    <StatusPill
-                      tone={critical ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}
-                      Icon={critical ? IconCircleX : IconAlertTriangle}
-                    >
-                      {critical ? t.severityCritical : t.severityWarning}
-                    </StatusPill>
-                  </div>
-                  <div className="mt-0.5 truncate text-xs text-slate-500">{a.where}</div>
-                </div>
-                <time dateTime={a.since} className="shrink-0 text-xs text-slate-500" title={hhmm(a.since)}>
-                  {fmtRelative(a.since)}
-                </time>
-                <IconChevronRight
-                  size={16}
-                  className="shrink-0 text-slate-300 transition-colors group-hover:text-slate-500"
-                />
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      {SEVERITY_GROUPS.map((g) => {
+        const rows = items.filter((a) => a.severity === g.severity && shown.has(a.id));
+        if (rows.length === 0) return null;
+        return (
+          <section key={g.severity} className="border-b border-slate-100 last:border-b-0">
+            <h3 className="flex items-center gap-2 bg-slate-50 px-4 py-1.5 text-xs font-medium text-slate-500">
+              <span className={`h-1.5 w-1.5 rounded-full ${g.dot}`} aria-hidden />
+              {g.label()}
+            </h3>
+            <ul className="divide-y divide-slate-100">
+              {rows.map((a) => (
+                <AttentionRow key={a.id} item={a} tone={g.tone} />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setAll(true)}
+          className="w-full border-t border-slate-100 px-4 py-2.5 text-center text-xs font-medium text-brand-600 outline-none hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+        >
+          {t.showMore(hidden)}
+        </button>
+      )}
     </Card>
+  );
+}
+
+function AttentionRow({ item: a, tone }: { item: AttentionItem; tone: string }) {
+  const KindIcon = KIND_ICON[a.kind];
+  return (
+    <li>
+      <Link
+        to={a.to}
+        className="group flex items-center gap-3 px-4 py-3 outline-none transition-colors duration-150 hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+      >
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+          <KindIcon size={17} stroke={1.8} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-slate-800">{a.title}</div>
+          <div className="mt-0.5 truncate text-xs text-slate-500">{a.where}</div>
+        </div>
+        <time dateTime={a.since} className="shrink-0 text-xs text-slate-500" title={hhmm(a.since)}>
+          {fmtRelative(a.since)}
+        </time>
+        {/* Where the fix is, in words: the row is a link, and its end says to what. */}
+        <span className="hidden w-36 shrink-0 items-center justify-end gap-1 text-xs font-medium text-brand-600 sm:flex">
+          {t.openAction[a.kind]}
+          <IconChevronRight size={14} stroke={2} className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+        </span>
+      </Link>
+    </li>
   );
 }
 
