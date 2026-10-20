@@ -70,7 +70,7 @@ export function AdminBoardPage() {
 
       <PageBody>
         {/* People first, then orders: who is on the platform, then what they do. */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-6">
           <Tile
             Icon={IconActivity}
             label={t.tileOnline}
@@ -110,37 +110,44 @@ export function AdminBoardPage() {
           </Tile>
         </div>
 
-        <Section
-          title={t.attentionTitle}
-          aside={
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-500">{t.checkedAt(hhmm(data.checkedAt))}</span>
-              {/* Draft-only switch to look at the empty state; goes away with the stub. */}
-              <button
-                type="button"
-                onClick={() => setEmpty(!empty)}
-                className="rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                {empty ? t.showProblems : t.showEmpty}
-              </button>
-            </div>
-          }
-          summary={attention.length > 0 && attentionSummary(attention)}
-        >
-          {attention.length ? <AttentionList items={attention} /> : <AllGood checkedAt={data.checkedAt} />}
-        </Section>
+        {/* Two rows on the tiles' four-column grid, so every edge on the page
+            lines up: three columns for what to act on (problems, work in
+            progress), the last one for the background (platform state, recent
+            events), right under the last tile. */}
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-4 xl:gap-6">
+          <Section
+            className="xl:col-span-3"
+            title={t.attentionTitle}
+            aside={
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">{t.checkedAt(hhmm(data.checkedAt))}</span>
+                {/* Draft-only switch to look at the empty state; goes away with the stub. */}
+                <button
+                  type="button"
+                  onClick={() => setEmpty(!empty)}
+                  className="rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+                >
+                  {empty ? t.showProblems : t.showEmpty}
+                </button>
+              </div>
+            }
+            summary={attention.length > 0 && attentionSummary(attention)}
+          >
+            {attention.length ? <AttentionList items={attention} /> : <AllGood checkedAt={data.checkedAt} />}
+          </Section>
 
-        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2 xl:gap-6">
           <Section title={t.statusTitle} aside={<MoreLink to="/admin/status">{t.statusMore}</MoreLink>}>
             <Card padded={false}>
               <ul className="divide-y divide-slate-100">
                 {data.components.map((c) => {
                   const pill = STATE_PILL[c.state];
                   return (
-                    <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    // A working system is one line; the detail line is kept for the
+                    // ones in trouble, where it says what is wrong ("3 of 4").
+                    <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5" title={c.role}>
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-800">{c.name}</div>
-                        <div className="truncate text-xs text-slate-500">{c.role}</div>
+                        <div className="truncate text-sm font-medium text-slate-800">{c.name}</div>
+                        {c.state !== "ok" && <div className="text-xs text-slate-500">{c.role}</div>}
                       </div>
                       <StatusPill tone={pill.tone} Icon={pill.Icon} className="shrink-0">
                         {c.note}
@@ -150,6 +157,22 @@ export function AdminBoardPage() {
                 })}
               </ul>
             </Card>
+          </Section>
+
+          <Section className="xl:col-span-3" title={t.progressTitle} count={data.inProgress.length || undefined}>
+            {data.inProgress.length ? (
+              <Card padded={false}>
+                <ul className="divide-y divide-slate-100">
+                  {data.inProgress.map((p) => (
+                    <ProgressRow key={p.id} item={p} />
+                  ))}
+                </ul>
+              </Card>
+            ) : (
+              <Card>
+                <p className="text-sm text-slate-500">{t.progressEmpty}</p>
+              </Card>
+            )}
           </Section>
 
           <Section title={t.eventsTitle}>
@@ -173,22 +196,6 @@ export function AdminBoardPage() {
             </Card>
           </Section>
         </div>
-
-        <Section title={t.progressTitle} count={data.inProgress.length || undefined}>
-          {data.inProgress.length ? (
-            <Card padded={false}>
-              <ul className="divide-y divide-slate-100">
-                {data.inProgress.map((p) => (
-                  <ProgressRow key={p.id} item={p} />
-                ))}
-              </ul>
-            </Card>
-          ) : (
-            <Card>
-              <p className="text-sm text-slate-500">{t.progressEmpty}</p>
-            </Card>
-          )}
-        </Section>
 
         {data.queue.length > 0 && (
           <Section
@@ -223,8 +230,10 @@ function Section({
   aside,
   count,
   summary,
+  className = "",
   children,
 }: {
+  className?: string;
   title: string;
   aside?: ReactNode;
   count?: number;
@@ -233,7 +242,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col">
+    <section className={`flex min-w-0 flex-col ${className}`}>
       <div className="mb-3 flex min-h-7 items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-800">{title}</h2>

@@ -181,7 +181,7 @@ export function stubSummary(now = Date.now()): BoardSummary {
       { id: "argocd", name: "Argo CD", role: "Выкатка и состояние заказов", state: "ok", note: "Доступен" },
       { id: "harbor", name: "Harbor", role: "Каталог и версии", state: "ok", note: "Доступен" },
       { id: "keycloak", name: "Keycloak", role: "Вход и группы", state: "ok", note: "Доступен" },
-      { id: "storage", name: "База данных и кеш", role: "PostgreSQL, Redis", state: "ok", note: "Доступны" },
+      { id: "storage", name: "Хранилища", role: "PostgreSQL, Redis", state: "ok", note: "Доступны" },
       { id: "stands", name: "Стенды", role: "3 из 4 в порядке", state: "down", note: "Есть проблемы" },
       { id: "jobs", name: "Фоновые задачи", role: "Последний запуск минуту назад", state: "ok", note: "Работают" },
     ],
