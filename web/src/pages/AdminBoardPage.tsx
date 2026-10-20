@@ -149,13 +149,19 @@ export function AdminBoardPage() {
           <Section title={t.statusTitle}>
             {/* Stretches to the attention list beside it; the link stays at the foot. */}
             <Card padded={false} className="flex flex-1 flex-col overflow-hidden">
-              <ul className="flex-1 divide-y divide-slate-100">
+              {/* The rows split the card's height evenly, so they are all one
+                  height and the card has no empty band above its link. */}
+              <ul className="flex flex-1 flex-col divide-y divide-slate-100">
                 {data.components.map((c) => {
                   const pill = STATE_PILL[c.state];
                   return (
                     // One line per system: what is wrong in detail is the attention
                     // list's job, right beside it. What the system does is in the hint.
-                    <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5" title={c.role}>
+                    <li
+                      key={c.id}
+                      className="flex min-h-10 flex-1 basis-0 items-center justify-between gap-3 px-4"
+                      title={c.role}
+                    >
                       <div className="min-w-0 truncate text-sm font-medium text-slate-800">{c.name}</div>
                       <StatusPill tone={pill.tone} Icon={pill.Icon} className="shrink-0">
                         {c.note}
