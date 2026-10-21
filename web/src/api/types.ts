@@ -785,10 +785,56 @@ export interface PublicationVersion {
   updated_at: string;
 }
 
+// Who put something forward for a decision and when, from the event journal.
+// by is the OIDC subject, by_name what the portal knows them as (the subject
+// itself when the user directory has no record of them).
+export interface Submission {
+  by: string;
+  by_name: string;
+  at: string;
+}
+
 // A version awaiting review together with its publication (admin approval queue).
 export interface PendingVersion {
   publication: ChartPublication;
   version: PublicationVersion;
+  // Absent when the journal has no record of the submission.
+  submitted?: Submission;
+}
+
+// What is wrong with a publication, as the server says it (GET /admin/publications).
+// The page puts words to the codes; an unknown code from a newer server is shown
+// by its code rather than dropped.
+export type RegistryIssue =
+  | "chart_missing"
+  | "gone"
+  | "no_owner"
+  | "no_order_form"
+  | "not_orderable"
+  | "deprecated";
+
+// A publication's versions counted by state, and what the catalog offers.
+export interface VersionSummary {
+  total: number;
+  approved: number;
+  pending: number;
+  draft: number;
+  rejected: number;
+  deprecated: number;
+  gone: number;
+  orderable: string[];
+  recommended?: string;
+}
+
+// One row of the admin's publications registry: everything the list shows,
+// assembled by the server.
+export interface RegistryRow {
+  publication: ChartPublication;
+  versions: VersionSummary;
+  orders: { live: number; total: number };
+  issues: (RegistryIssue | string)[];
+  // Who proposed the category and owner now under review. Absent otherwise.
+  submitted?: Submission;
 }
 
 export interface PublicationEvent {

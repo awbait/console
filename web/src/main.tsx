@@ -39,10 +39,13 @@ function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, n
 const AboutPage = page(() => import("./pages/AboutPage"), "AboutPage");
 const AdminSection = page(() => import("./pages/AdminSection"), "AdminSection");
 const AdminBoardPage = page(() => import("./pages/AdminBoardPage"), "AdminBoardPage");
-const AdminApprovalsPage = page(() => import("./pages/AdminSection"), "AdminApprovalsPage");
-const AdminApprovalDetailPage = page(
-  () => import("./pages/AdminSection"),
-  "AdminApprovalDetailPage",
+const AdminPublicationsPage = page(
+  () => import("./pages/AdminPublicationsPage"),
+  "AdminPublicationsPage",
+);
+const ApprovalRedirectPage = page(
+  () => import("./pages/AdminPublicationsPage"),
+  "ApprovalRedirectPage",
 );
 const AdminCategoriesPage = page(() => import("./pages/AdminSection"), "AdminCategoriesPage");
 const AdminStandsPage = page(() => import("./pages/AdminStandsPage"), "AdminStandsPage");
@@ -123,8 +126,11 @@ const router = createBrowserRouter([
           // The overview is the duty board (#469); its draft address stays as a redirect.
           { index: true, element: <AdminBoardPage /> },
           { path: "board", element: <Navigate to="/admin" replace /> },
-          { path: "approvals", element: <AdminApprovalsPage /> },
-          { path: "approvals/:project/:name", element: <AdminApprovalDetailPage /> },
+          { path: "approvals", element: <AdminPublicationsPage /> },
+          // The decision on a publication's category and owner is a panel on the
+          // page above now; the address stays for the links that lead here and
+          // forwards to where the decision is made.
+          { path: "approvals/:project/:name", element: <ApprovalRedirectPage /> },
           { path: "approvals/:project/:name/:version", element: <VersionApprovalPage /> },
           { path: "requests", element: <SupportRequestsPage /> },
           { path: "categories", element: <AdminCategoriesPage /> },
