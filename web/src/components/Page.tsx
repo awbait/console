@@ -37,6 +37,12 @@ const GAP = {
 //   otherwise sit on the cards; a classic one would take its width off them,
 //   and the body would come out narrower than the header above it.
 // main in Layout leaves the lane free, so the box has somewhere to reach.
+//
+// relative makes the box the containing block for absolutely-positioned
+// descendants: the sr-only labels in a list (and react-aria's hidden nodes)
+// are position: absolute and would otherwise anchor to main at their static
+// offset, below the fold of a long body, and grow main's scroll height past
+// the page - a second scrollbar beside the body's own.
 export function PageBody({
   children,
   gap = "sections",
@@ -48,7 +54,7 @@ export function PageBody({
 }) {
   return (
     <div
-      className={`scroll-lane -ml-1 flex min-h-0 flex-1 flex-col overflow-y-auto pb-1 pl-1 ${GAP[gap]} ${className}`}
+      className={`scroll-lane relative -ml-1 flex min-h-0 flex-1 flex-col overflow-y-auto pb-1 pl-1 ${GAP[gap]} ${className}`}
     >
       {children}
     </div>
