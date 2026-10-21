@@ -506,6 +506,12 @@ func (s *Service) teamsRunning(ctx context.Context, p *models.ChartPublication, 
 type PendingVersion struct {
 	Publication *models.ChartPublication   `json:"publication"`
 	Version     *models.PublicationVersion `json:"version"`
+	// Submitted says who put the version forward and when, from the event
+	// journal: the queue names the person waiting on the decision, and how long
+	// they have waited is counted from the submission, not from the row's last
+	// change. Nil when the journal has no record of it (rows older than the
+	// journal, or a journal write that failed).
+	Submitted *Submission `json:"submitted,omitempty"`
 }
 
 // PendingVersions returns every PENDING version across all publications (the
@@ -515,6 +521,7 @@ func (s *Service) PendingVersions(ctx context.Context) ([]PendingVersion, error)
 	if err != nil {
 		return nil, err
 	}
+	names := s.userNames(ctx)
 	var out []PendingVersion
 	for _, p := range pubs {
 		vs, err := s.store.ListVersions(ctx, p.ID)
@@ -527,6 +534,7 @@ func (s *Service) PendingVersions(ctx context.Context) ([]PendingVersion, error)
 		// comes back by itself if the version does. The owner still sees it on the
 		// chart's page, where it can be withdrawn.
 		present, known := s.inRegistry(ctx, p.ChartProject, p.ChartName)
+		var journal []*models.PublicationEvent
 		for _, v := range vs {
 			if v.Status != models.PubPending {
 				continue
@@ -540,7 +548,15 @@ func (s *Service) PendingVersions(ctx context.Context) ([]PendingVersion, error)
 			if known && !present[v.ChartVersion] {
 				continue
 			}
-			out = append(out, PendingVersion{Publication: p, Version: v})
+			// The journal is read once per publication, and only for one that
+			// has something in the queue.
+			if journal == nil {
+				journal = s.journal(ctx, p.ID)
+			}
+			out = append(out, PendingVersion{
+				Publication: p, Version: v,
+				Submitted: submissionOf(journal, eventVersionSubmitted, v.ChartVersion, names),
+			})
 		}
 	}
 	return out, nil
@@ -588,8 +604,14 @@ func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublicatio
 	if err != nil {
 		return CatalogView{}, err
 	}
+	return catalogView(p, versions, presentSet(inRegistry)), nil
+}
+
+// catalogView is CatalogVersions on versions already loaded and a registry
+// state already known (nil present means not known): the admin's registry
+// walks every publication and has both in hand.
+func catalogView(p *models.ChartPublication, versions []*models.PublicationVersion, present map[string]bool) CatalogView {
 	var out CatalogView
-	present := presentSet(inRegistry)
 	for _, v := range versions {
 		if v.Published() && present != nil && !present[v.ChartVersion] {
 			out.Gone = append(out.Gone, v.ChartVersion)
@@ -623,7 +645,7 @@ func (s *Service) CatalogVersions(ctx context.Context, p *models.ChartPublicatio
 		out.Orderable[i] = v.ChartVersion
 	}
 	out.Recommended = resolveOrderableVersion(p, versions, "")
-	return out, nil
+	return out
 }
 
 // ActiveViewVersion returns the approved view of an orderable version (for order

@@ -197,6 +197,7 @@ func (s *Server) Router() http.Handler {
 			// the duty board (admin): one summary of what needs attention, put
 			// together from the sources below - see internal/api/board.go.
 			r.Get("/admin/board", s.handleAdminBoard)
+			r.Get("/admin/publications", s.handleAdminPublications) // the registry page's rows
 			// system status (integrations + storage health)
 			r.Get("/status", s.handleSystemStatus)
 			// configuration checks: what is actually wired up (admin). Its own
