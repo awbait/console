@@ -55,7 +55,7 @@ codex (OpenAI Codex CLI, стоит на машине: `codex --version`). Claud
 **2. Запуск.** Без интерактива, только чтение, без сохранения сессии:
 
 ```bash
-codex exec -s read-only --ephemeral -C D:\work\idp --color never -o <scratch>/out.md - < <scratch>/brief.md
+codex exec -s read-only --ephemeral -C <repo root> --color never -o <scratch>/out.md - < <scratch>/brief.md
 ```
 
 Ответ приходит в `out.md`, ход работы в stdout (его можно отправить в лог
