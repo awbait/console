@@ -1,0 +1,36 @@
+{
+  "labels": [
+    { "name": "type/feature", "color": "0e8a16", "description": "New capability" },
+    { "name": "type/bug", "color": "d73a4a", "description": "Something does not work as intended" },
+    { "name": "type/enhancement", "color": "a2eeef", "description": "Improvement of an existing capability" },
+    { "name": "type/chore", "color": "fef2c0", "description": "Refactoring, dependencies, infrastructure" },
+    { "name": "type/docs", "color": "0075ca", "description": "Documentation" },
+    { "name": "type/design", "color": "c2e0c6", "description": "Product decision: how it should work and look, before code" },
+    { "name": "type/research", "color": "d4c5f9", "description": "Investigation without code; result is a comment or a document" },
+
+    { "name": "status/triage", "color": "ededed", "description": "New, not labelled yet" },
+    { "name": "status/needs-analysis", "color": "c5def5", "description": "Needs analysis and a plan before work" },
+    { "name": "status/needs-approval", "color": "fbca04", "description": "Plan is ready, waiting for the owner" },
+    { "name": "status/ready", "color": "0e8a16", "description": "Can be taken into work" },
+    { "name": "status/in-progress", "color": "1d76db", "description": "Taken; see assignee and the claim comment" },
+    { "name": "status/review", "color": "d93f0b", "description": "PR open or result posted, waiting for the owner" },
+    { "name": "status/blocked", "color": "b60205", "description": "Stopped; reason in a comment" },
+
+    { "name": "priority/p0", "color": "b60205", "description": "Blocker, drop everything" },
+    { "name": "priority/p1", "color": "d93f0b", "description": "In the current release" },
+    { "name": "priority/p2", "color": "fbca04", "description": "When there is time (default)" },
+
+    { "name": "area/backend", "color": "1d76db", "description": "Portal server: cmd/, internal/, pkg/" },
+    { "name": "area/frontend", "color": "5319e7", "description": "Web UI: web/" },
+    { "name": "area/charts", "color": "0e8a16", "description": "Service charts and the chart convention (console-charts repo)" },
+    { "name": "area/ops", "color": "b60205", "description": "CI, images, stand, deployments/" },
+    { "name": "area/security", "color": "d93f0b", "description": "Security section, policies, access" },
+    { "name": "area/notifications", "color": "bfd4f2", "description": "Notifications and event feed" },
+    { "name": "area/graph", "color": "006b75", "description": "Dependency graph and canvas" },
+
+    { "name": "human-only", "color": "5319e7", "description": "Must not be delegated to an agent" },
+    { "name": "epic", "color": "c5def5", "description": "Umbrella issue that links several tasks" },
+    { "name": "tech-debt", "color": "fbca04", "description": "Known shortcut to pay back" },
+    { "name": "on-hold", "color": "ededed", "description": "Postponed until it becomes relevant" }
+  ]
+}
