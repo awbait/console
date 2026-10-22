@@ -14,7 +14,7 @@ import {
   fieldRequirements,
   patternError,
 } from "./fieldErrors";
-import { matchedThens, pinnedAt } from "./fieldPath";
+import { activeBranches, branchesBelow, itemBranches, pinnedAt } from "./fieldPath";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -120,6 +120,7 @@ function leafErrors(s: Schema, v: unknown, path: string, out: Map<string, string
 
 // walkErrors mirrors what the form RENDERS (same view/hidden/required/conditional
 // logic as ObjectFields), so we only flag fields the user can actually fill.
+// inherited: the branch fragments the levels above handed down to this node.
 function walkErrors(
   node: Schema,
   value: unknown,
@@ -128,12 +129,13 @@ function walkErrors(
   base: string,
   out: Map<string, string>,
   defaults?: Values,
+  inherited: Schema[] = [],
 ) {
   const s = deref(node, root);
   if (isHidden(s)) return;
   if (Array.isArray(s.oneOf)) {
     const opts = s.oneOf.map((o: Schema) => deref(o, root));
-    walkErrors(opts[matchVariant(value, opts, root)], value, root, undefined, base, out, defaults);
+    walkErrors(opts[matchVariant(value, opts, root)], value, root, undefined, base, out, defaults, inherited);
     return;
   }
   if (s.type === "object" && s.properties) {
@@ -143,12 +145,11 @@ function walkErrors(
       if (!field) continue;
       // A field named by a path belongs to the object one level down, and that
       // object, not the form's root, is what says whether it is required and
-      // whether the current values hide it.
-      const required = new Set<string>([
-        ...(field.owner.required ?? []),
-        ...conditionalRequired(field.owner, field.ownerValue, root),
-      ]);
-      const hidden = new Set<string>(conditionalHidden(field.owner, field.ownerValue, root));
+      // whether the current values hide it: its own branches plus what the
+      // branches above handed down about it.
+      const branches = fieldBranches(k, s, (value as Values) ?? {}, root, inherited);
+      const required = new Set<string>([...(field.owner.required ?? []), ...requiredBy(branches)]);
+      const hidden = new Set<string>(hiddenBy(branches, root));
       const childNode = view?.overrides?.[k] ? { ...field.node, ...view.overrides[k] } : field.node;
       const child = deref(childNode, root);
       if (hidden.has(field.label) || isHidden(child)) continue;
@@ -174,7 +175,16 @@ function walkErrors(
         continue;
       }
       if (cv === undefined) continue;
-      walkErrors(childNode, cv, root, child["ui:view"] as View | undefined, cpath, out, defaults);
+      walkErrors(
+        childNode,
+        cv,
+        root,
+        child["ui:view"] as View | undefined,
+        cpath,
+        out,
+        defaults,
+        branchesBelow(branches, field.label, root),
+      );
     }
     return;
   }
@@ -205,7 +215,17 @@ function walkErrors(
       // say it needs filling instead of letting the row quietly disappear. A row
       // of fields answers for its own required keys one level down.
       if (!card && emptyVal(it)) out.set(ipath, fieldMsg.required);
-      else walkErrors(s.items ?? {}, it, root, s["ui:view"] as View | undefined, ipath, out, defaults);
+      else
+        walkErrors(
+          s.items ?? {},
+          it,
+          root,
+          s["ui:view"] as View | undefined,
+          ipath,
+          out,
+          defaults,
+          itemBranches(inherited, root),
+        );
     });
     return;
   }
@@ -367,24 +387,50 @@ export function orderedKeys(s: Schema): string[] {
   return [...inOrder, ...props.filter((k) => !inOrder.includes(k))];
 }
 
-// conditionalRequired returns keys made required by satisfied if/then branches
-// for the current value. Mirrors the chart schema's conditional requirements
-// (e.g. listener hostname/tlsMode for HTTPS/TLS).
-function conditionalRequired(schema: Schema, value: Values, root: Schema): string[] {
-  return matchedThens(schema, value, root).flatMap((t) => (t.required as string[]) ?? []);
+// requiredBy returns the keys the applying branch fragments make required.
+// Mirrors the chart schema's conditional requirements (e.g. listener
+// hostname/tlsMode for HTTPS/TLS).
+function requiredBy(branches: Schema[]): string[] {
+  return branches.flatMap((b) => (b.required as string[]) ?? []);
 }
 
-// conditionalHidden returns keys the satisfied if/then branches mark hidden for
-// the current value, so a chart can drop a field that stops making sense (a TCP
-// entry point has no domain) without the portal knowing what the field means.
-function conditionalHidden(schema: Schema, value: Values, root: Schema): string[] {
+// hiddenBy returns the keys the applying branch fragments mark hidden, so a
+// chart can drop a field that stops making sense (a TCP entry point has no
+// domain) without the portal knowing what the field means.
+function hiddenBy(branches: Schema[], root: Schema): string[] {
   const out: string[] = [];
-  for (const t of matchedThens(schema, value, root)) {
-    for (const [k, node] of Object.entries(t.properties ?? {})) {
+  for (const b of branches) {
+    for (const [k, node] of Object.entries(b.properties ?? {})) {
       if (isHidden(deref(node as Schema, root))) out.push(k);
     }
   }
   return out;
+}
+
+// fieldBranches answers which branch fragments apply to the object that owns a
+// field named by key or path (see resolveField): the fragments handed down to
+// this level, narrowed to each segment of the path, plus the own branches of
+// every object along the way. The caller reads required and hidden off them
+// and hands branchesBelow(..., label) to the field's own subtree.
+export function fieldBranches(
+  key: string,
+  schema: Schema,
+  value: Values,
+  root: Schema,
+  inherited: Schema[] = [],
+): Schema[] {
+  const segments = key.split("/");
+  let node = deref(schema, root);
+  let v: Values = value ?? {};
+  let branches = activeBranches(node, v, root, inherited);
+  for (let i = 0; i < segments.length - 1; i++) {
+    const next = node.properties?.[segments[i]];
+    if (!next) return branches;
+    node = deref(next, root);
+    v = (v?.[segments[i]] as Values) ?? {};
+    branches = activeBranches(node, v, root, branchesBelow(branches, segments[i], root));
+  }
+  return branches;
 }
 
 // seedDefaults builds an initial value for a schema from const/default.
@@ -531,6 +577,7 @@ function ObjectFields({
   onChange,
   view,
   path = "",
+  branches: inherited = [],
 }: {
   schema: Schema;
   root: Schema;
@@ -538,6 +585,8 @@ function ObjectFields({
   onChange: (v: Values) => void;
   view?: View;
   path?: string;
+  // Branch fragments the levels above handed down to this object.
+  branches?: Schema[];
 }) {
   // Fields the view forces to be filled in, on top of what the schema requires.
   // Written the way the view names them, so a path ("pooler/poolMode") counts.
@@ -550,14 +599,13 @@ function ObjectFields({
         // Effective required = declared required + conditional (if/then) required
         // for the current value, so the form mirrors the schema (e.g. a listener's
         // hostname/tlsMode become required once protocol is HTTPS/TLS). Read off
-        // the object that declares the field: for a path it is one level down.
-        const required = new Set<string>([
-          ...(field.owner.required ?? []),
-          ...conditionalRequired(field.owner, field.ownerValue, root),
-        ]);
+        // the object that declares the field: for a path it is one level down,
+        // and the branches above may have something to say about it too.
+        const branches = fieldBranches(k, schema, value, root, inherited);
+        const required = new Set<string>([...(field.owner.required ?? []), ...requiredBy(branches)]);
         // Fields the current value hides (e.g. the domain of a TCP entry point):
         // the chart marks them ui:widget "hidden" inside the matching if/then branch.
-        const hidden = new Set<string>(conditionalHidden(field.owner, field.ownerValue, root));
+        const hidden = new Set<string>(hiddenBy(branches, root));
         // A view may override a field's schema hints (e.g. render the gateways
         // array as a single object). Overrides shallow-merge onto the node, so
         // existing hints like ui:widget compose. View applies to this level only.
@@ -578,6 +626,7 @@ function ObjectFields({
               value={field.value}
               onChange={(v) => onChange(setAt(value ?? {}, k.split("/"), v))}
               path={childPath}
+              branches={branchesBelow(branches, field.label, root)}
             />
           </div>
         );
@@ -595,6 +644,7 @@ function Field({
   onChange,
   path = "",
   hideLabel,
+  branches = [],
 }: {
   name: string;
   schema: Schema;
@@ -605,6 +655,8 @@ function Field({
   path?: string;
   // Suppress the visible label (used for primitive array rows).
   hideLabel?: boolean;
+  // Branch fragments the levels above handed down to this field's subtree.
+  branches?: Schema[];
 }) {
   const validation = useContext(ValidationCtx);
   const lockActive = useContext(LockActiveCtx);
@@ -633,9 +685,32 @@ function Field({
   const sub = (node: React.ReactNode) => <LockedCtx.Provider value={locked}>{node}</LockedCtx.Provider>;
 
   if (s["ui:widget"] === "single" && s.type === "array")
-    return sub(<SingleField name={name} schema={s} root={root} required={required} value={value} onChange={onChange} path={path} />);
+    return sub(
+      <SingleField
+        name={name}
+        schema={s}
+        root={root}
+        required={required}
+        value={value}
+        onChange={onChange}
+        path={path}
+        branches={itemBranches(branches, root)}
+      />,
+    );
 
-  if (s.oneOf) return sub(<VariantField name={name} schema={s} root={root} required={required} value={value} onChange={onChange} path={path} />);
+  if (s.oneOf)
+    return sub(
+      <VariantField
+        name={name}
+        schema={s}
+        root={root}
+        required={required}
+        value={value}
+        onChange={onChange}
+        path={path}
+        branches={branches}
+      />,
+    );
 
   if (s.enum) {
     return (
@@ -675,7 +750,18 @@ function Field({
         />
       );
     case "array":
-      return sub(<ArrayField name={name} schema={s} root={root} required={required} value={value} onChange={onChange} path={path} />);
+      return sub(
+        <ArrayField
+          name={name}
+          schema={s}
+          root={root}
+          required={required}
+          value={value}
+          onChange={onChange}
+          path={path}
+          branches={itemBranches(branches, root)}
+        />,
+      );
     case "object":
       if (s.properties)
         return sub(
@@ -687,6 +773,7 @@ function Field({
               onChange={(v) => onChange(v)}
               view={s["ui:view"] as View | undefined}
               path={path}
+              branches={branches}
             />
           </Section>,
         );
@@ -839,6 +926,7 @@ function VariantField({
   value,
   onChange,
   path = "",
+  branches = [],
 }: {
   name: string;
   schema: Schema;
@@ -847,10 +935,11 @@ function VariantField({
   value: unknown;
   onChange: (v: unknown) => void;
   path?: string;
+  branches?: Schema[];
 }) {
   return (
     <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
-      <VariantBody schema={schema} root={root} value={value} onChange={onChange} path={path} />
+      <VariantBody schema={schema} root={root} value={value} onChange={onChange} path={path} branches={branches} />
     </Section>
   );
 }
@@ -865,12 +954,15 @@ function VariantBody({
   value,
   onChange,
   path = "",
+  branches = [],
 }: {
   schema: Schema;
   root: Schema;
   value: unknown;
   onChange: (v: unknown) => void;
   path?: string;
+  // Branch fragments that apply to whichever variant is chosen.
+  branches?: Schema[];
 }) {
   const locked = useContext(LockedCtx);
   const options: Schema[] = schema.oneOf.map((o: Schema) => deref(o, root));
@@ -888,7 +980,14 @@ function VariantBody({
           options={options.map((o, i) => ({ id: String(i), label: text(o.title) ?? `Вариант ${i + 1}` }))}
         />
         {selected.type === "object" && selected.properties ? (
-          <ObjectFields schema={selected} root={root} value={(value as Values) ?? {}} onChange={onChange} path={path} />
+          <ObjectFields
+            schema={selected}
+            root={root}
+            value={(value as Values) ?? {}}
+            onChange={onChange}
+            path={path}
+            branches={branches}
+          />
         ) : (
           <Field name={name} schema={selected} root={root} required value={value} onChange={onChange} path={path} />
         )}
@@ -905,6 +1004,7 @@ function ArrayField({
   value,
   onChange,
   path = "",
+  branches = [],
 }: {
   name: string;
   schema: Schema;
@@ -913,6 +1013,8 @@ function ArrayField({
   value: unknown;
   onChange: (v: unknown) => void;
   path?: string;
+  // Branch fragments that apply to every item of the list.
+  branches?: Schema[];
 }) {
   const locked = useContext(LockedCtx);
   const validation = useContext(ValidationCtx);
@@ -1067,6 +1169,7 @@ function ArrayField({
                     onChange={(v) => setAt(i, v)}
                     view={schema["ui:view"] as View | undefined}
                     path={`${path}/${i}`}
+                    branches={branches}
                   />
                 </div>
               </DisclosurePanel>
@@ -1094,6 +1197,7 @@ function ArrayField({
                   onChange={(v) => setAt(i, v)}
                   path={`${path}/${i}`}
                   hideLabel
+                  branches={branches}
                 />
               </div>
               <Hint text={noRemove ? removeHint : "Удалить"}>
@@ -1139,6 +1243,7 @@ function SingleField({
   value,
   onChange,
   path = "",
+  branches = [],
 }: {
   name: string;
   schema: Schema;
@@ -1147,6 +1252,8 @@ function SingleField({
   value: unknown;
   onChange: (v: unknown) => void;
   path?: string;
+  // Branch fragments that apply to the one item.
+  branches?: Schema[];
 }) {
   const itemSchema = deref(schema.items ?? {}, root);
   const item = Array.isArray(value) ? value[0] : undefined;
@@ -1181,11 +1288,23 @@ function SingleField({
           onChange={setItem}
           view={schema["ui:view"] as View | undefined}
           path={`${path}/0`}
+          branches={branches}
         />
       </Section>
     );
   }
-  return <Field name={name} schema={itemSchema} root={root} required value={item} onChange={setItem} path={`${path}/0`} />;
+  return (
+    <Field
+      name={name}
+      schema={itemSchema}
+      root={root}
+      required
+      value={item}
+      onChange={setItem}
+      path={`${path}/0`}
+      branches={branches}
+    />
+  );
 }
 
 // mapRow carries a stable client-side id so React keys survive add/remove/reorder
