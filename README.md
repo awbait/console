@@ -169,6 +169,12 @@ Windows-скрипт `run-oidc.ps1` подхватывает установле�
 
 </details>
 
+### Участие в разработке
+
+Как подготовить рабочее место, вести ветки, коммиты, записи журнала и PR,
+описано в [CONTRIBUTING.md](CONTRIBUTING.md). Правила проекта для людей и
+агентов (Claude Code, Codex) собраны в [AGENTS.md](AGENTS.md).
+
 <a id="documentation"></a>
 
 ## Документация

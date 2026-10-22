@@ -37,8 +37,13 @@ __pycache__/
 *.swp
 .DS_Store
 
-# Claude local settings (skills are tracked)
+# Agent local state. Skills (.agents/skills) and rules (.claude/rules) are tracked.
 .claude/settings.local.json
+
+# Git worktrees: made by hand (.worktrees/) and by Claude Code (.claude/worktrees/).
+# See AGENTS.md, "Worktrees".
+/.worktrees/
+/.claude/worktrees/
 
 # Playwright Agent CLI: browser workspace and per-run artifacts (snapshots,
 # screenshots, traces, saved storage state). The skill itself is tracked.

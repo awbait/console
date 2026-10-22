@@ -35,6 +35,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docker: ${{ steps.filter.outputs.docker }}
       migrations: ${{ steps.filter.outputs.migrations }}
+      changelog: ${{ steps.filter.outputs.changelog }}
     steps:
       - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v4
@@ -54,6 +55,11 @@ jobs:
             migrations:
               - 'internal/store/migrations/**'
               - 'atlas.hcl'
+            changelog:
+              - 'changelog.d/**'
+              - 'CHANGELOG.md'
+              - 'CHANGELOG.ru.md'
+              - '.agents/skills/changelog/scripts/**'
             docker:
               - 'Dockerfile'
               - 'collector/Dockerfile'
@@ -138,6 +144,16 @@ jobs:
         # stays in the OSS CLI and needs no login.
         run: atlas migrate validate --env local
 
+  changelog:
+    needs: changes
+    if: needs.changes.outputs.changelog == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate changelog entries and links
+        # Standard-library Python only; the runner's python3 is 3.11+.
+        run: make changelog-check
+
   docker:
     needs: changes
     if: needs.changes.outputs.docker == 'true'
@@ -165,7 +181,7 @@ jobs:
   # Single required status check. Stays green when upstream jobs are skipped
   # (path filters), fails if any of them failed or was cancelled.
   ci:
-    needs: [backend, web, migrations, docker]
+    needs: [backend, web, migrations, changelog, docker]
     if: always()
     runs-on: ubuntu-latest
     steps:

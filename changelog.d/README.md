@@ -7,9 +7,10 @@
 в общих файлах журнала.
 
 Файл записи создаёт автор изменения или агент по скиллу `changelog`.
-Скилл описывает порядок работы; команды ниже запускают сборщик этого проекта
-из `cmd/changelog`. На релизе сборщик удаляет использованные записи,
-а папка и этот README остаются.
+Скилл описывает порядок работы, а собирает журнал его скрипт
+`.agents/skills/changelog/scripts/changelog.py` (Python 3.11+, без зависимостей);
+настройки сборщика в `changelog.toml` рядом. На релизе сборщик удаляет
+использованные записи, а папка, этот README и `changelog.toml` остаются.
 
 ## Как добавить
 
@@ -23,6 +24,12 @@ Fixed incorrect validation errors when ordering services with multiple component
 
 #### ru
 Исправили ошибочные сообщения о неверных параметрах в форме заказа сервисов с несколькими компонентами.
+```
+
+Или заготовку сделает сборщик:
+
+```bash
+python .agents/skills/changelog/scripts/changelog.py new fix-order-form -c Fixed
 ```
 
 Категория - одна из шести: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`,
@@ -41,7 +48,7 @@ Fixed incorrect validation errors when ordering services with multiple component
 ## Как писать саму запись
 
 Правила текста, тона, перевода и проверки находятся в
-[скилле changelog](../.claude/skills/changelog/SKILL.md).
+[скилле changelog](../.agents/skills/changelog/SKILL.md).
 Соглашения Console, включая подпись команды, описаны в
 [правилах проекта](../.claude/rules/changelog.md).
 Этот README описывает формат файлов и команды, не вводя отдельный стиль.
@@ -50,9 +57,13 @@ Fixed incorrect validation errors when ordering services with multiple component
 
 ```bash
 make changelog                  # показать, что накопилось, ничего не трогая
+make changelog-check            # проверить записи и ссылки версий (то же делают lefthook и CI)
 make changelog RELEASE=0.16.0   # собрать в оба файла и убрать отсюда
 ```
 
 Секции `## [Unreleased]` в файлах журнала больше нет: несобранные изменения
 живут здесь. Побочный эффект: страница «О портале» на сборке между релизами их
 не показывает, только выпущенные секции.
+
+Ссылки сравнения версий в конце журналов (`[0.24.0]: https://...`) дописывает
+сборщик на релизе; руками их не ведём.
