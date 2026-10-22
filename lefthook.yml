@@ -41,3 +41,7 @@ pre-push:
     migrate-validate:
       glob: "internal/store/migrations/*.sql"
       run: atlas migrate validate --env local
+    # Waiting changelog entries and version links (changelog skill script).
+    changelog-check:
+      glob: "{changelog.d/*,CHANGELOG.md,CHANGELOG.ru.md}"
+      run: python .agents/skills/changelog/scripts/changelog.py check

@@ -1,0 +1,12 @@
+# Settings for .agents/skills/changelog/scripts/changelog.py (make changelog).
+languages = ["en", "ru"]
+wrap = 80
+
+[files]
+en = "CHANGELOG.md"
+ru = "CHANGELOG.ru.md"
+
+# Reference links at the end of each changelog, one per released version.
+[links]
+compare = "https://github.com/awbait/console/compare/v{previous}...v{version}"
+first = "https://github.com/awbait/console/releases/tag/v{version}"
