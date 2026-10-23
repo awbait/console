@@ -83,6 +83,22 @@ func TestPostgresStands(t *testing.T) {
 		t.Fatalf("list: %+v %v", list, err)
 	}
 
+	// Where the stand's Argo CD reads the files: written, read back, changed.
+	edge.ArgoGitPath = "core/edge-mirror"
+	if err := pg.UpdateStand(ctx, edge); err != nil {
+		t.Fatalf("update argo path: %v", err)
+	}
+	if got, err := pg.GetStand(ctx, edge.ID); err != nil || got.ArgoGitPath != "core/edge-mirror" {
+		t.Fatalf("argo path read back: %+v %v", got, err)
+	}
+	mirror := &models.Stand{ID: uuid.NewString(), Name: "mirror", DefaultCluster: "mirror", ArgoGitPath: "core/mirror"}
+	if err := pg.CreateStand(ctx, mirror); err != nil {
+		t.Fatalf("create with argo path: %v", err)
+	}
+	if got, err := pg.GetStand(ctx, mirror.ID); err != nil || got.ArgoGitPath != "core/mirror" {
+		t.Fatalf("argo path stored at creation: %+v %v", got, err)
+	}
+
 	// Orphans: an order without a stand is attached by AdoptOrphanRequests and
 	// read back with its stand.
 	r := &models.Request{ID: uuid.NewString(), CreatedBy: "u", Team: "core", ChartProject: "p", ChartName: "c",

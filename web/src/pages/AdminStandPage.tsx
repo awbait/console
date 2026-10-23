@@ -115,6 +115,7 @@ export function AdminStandPage() {
             <Field label={t.pathLabel} value={stand.git_path || t.pathMissing} mono={stand.git_path !== ""} warn={stand.git_path === ""} />
             {stand.chart_registry && <Field label={t.registryLabel} value={stand.chart_registry} mono />}
             {stand.git_url && <Field label={t.gitUrlLabel} value={stand.git_url} mono />}
+            {stand.argocd_git_path && <Field label={t.argoPathLabel} value={stand.argocd_git_path} mono />}
             {stand.argocd_namespace && <Field label={t.argoNsLabel} value={stand.argocd_namespace} mono />}
             {stand.argocd_project && <Field label={t.argoProjectLabel} value={stand.argocd_project} mono />}
             {stand.locked && <Field label="" value={t.lockedHint} muted />}

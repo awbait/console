@@ -195,7 +195,8 @@ type StandFields =
   | "chart_registry"
   | "git_url"
   | "argocd_namespace"
-  | "argocd_project";
+  | "argocd_project"
+  | "argocd_git_path";
 
 export const api = {
   // auth
@@ -286,6 +287,7 @@ export const api = {
       git_url: s.git_url,
       argocd_namespace: s.argocd_namespace,
       argocd_project: s.argocd_project,
+      argocd_git_path: s.argocd_git_path,
     }),
   updateStand: (s: Pick<Stand, "id" | StandFields>) =>
     req<Stand>("PATCH", `/stands/${enc(s.id)}`, {
@@ -298,6 +300,7 @@ export const api = {
       git_url: s.git_url,
       argocd_namespace: s.argocd_namespace,
       argocd_project: s.argocd_project,
+      argocd_git_path: s.argocd_git_path,
     }),
   setDefaultStand: (id: string) => req<void>("POST", `/stands/${enc(id)}/default`),
   // The Argo CD wiring of a stand, as YAML text ops applies by hand, and the
