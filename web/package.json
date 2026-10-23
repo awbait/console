@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:playground": "tsc -b && vite build --mode playground",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "bun test",

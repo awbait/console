@@ -1,0 +1,52 @@
+name: Pages
+
+# Publishes the view playground (web/playground.html) to GitHub Pages: the
+# version constructor's editor and preview with no portal behind them, so a
+# chart author can paste a values.schema.json and see the order form.
+# Runs on main when the frontend or the view document's format changes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'internal/views/document.schema.json'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Build playground
+        run: bun run build:playground
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist-playground
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
