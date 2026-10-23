@@ -29,6 +29,21 @@ const (
 	StatusDeleted         RequestStatus = "DELETED"
 )
 
+// Live reports whether an order stands for a service that exists: its create
+// merge request is merged, so its manifests are in Git (or kept in the portal)
+// and the cluster is being kept to them. Such an order can be edited, upgraded
+// and deleted, and it counts as a running service. The interface keeps the same
+// list (web/src/api/orderStatus.ts), the state machine enforces it as the
+// states an update may leave from (internal/provisioning/state_machine.go).
+func (s RequestStatus) Live() bool {
+	switch s {
+	case StatusMRMerged, StatusDeploying, StatusHealthy, StatusDegraded, StatusArgoMissing,
+		StatusGitSaved, StatusConsoleSaved:
+		return true
+	}
+	return false
+}
+
 // MRStatus mirrors the GitLab merge request state we care about.
 type MRStatus string
 

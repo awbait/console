@@ -1,11 +1,9 @@
-import { IconAlertTriangle, IconArrowRight, IconArrowsSort, IconArrowUpCircle, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPackages, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconArrowsSort, IconArrowUpCircle, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPackages, IconPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Cell,
   Column,
-  Dialog,
-  DialogTrigger,
   Menu,
   MenuItem,
   MenuTrigger,
@@ -15,7 +13,7 @@ import {
   TableBody,
   TableHeader,
 } from "react-aria-components";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { isLive } from "@/api/orderStatus";
@@ -28,6 +26,7 @@ import { canModify, useUser } from "@/auth/UserContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
 import { PageHeader } from "@/components/PageHeader";
+import { SearchFilter } from "@/components/SearchFilter";
 import {
   STATUS_GROUPS,
   StatusBadge,
@@ -110,7 +109,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   useEffect(() => {
     return subscribe("/api/v1/requests/events", { status_changed: () => reload() }, "orders");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reload]);
 
   const { team } = useTeam();
   const { user } = useUser();
@@ -138,7 +137,14 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const [newestFirst, setNewestFirst] = useState(true);
   // Cross-team facet filters (only used when allTeams). Empty set = no filter.
   const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
-  const [productFilter, setProductFilter] = useState<Set<string>>(new Set());
+  // The product facet can be set from the address (?product=<chart name>): the
+  // publications registry links here to "the orders on this service", and a
+  // link that lands on the full list leaves the reader to find the filter.
+  const [params] = useSearchParams();
+  const [productFilter, setProductFilter] = useState<Set<string>>(() => {
+    const product = params.get("product");
+    return new Set(product ? [product] : []);
+  });
   const [namespaceFilter, setNamespaceFilter] = useState<Set<string>>(new Set());
   const [standFilter, setStandFilter] = useState<Set<string>>(new Set());
   // The order pending delete confirmation (null = dialog closed).
@@ -172,7 +178,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const standOptions = useMemo(
     () => [...new Set(scoped.map(standName))].filter(Boolean).sort(),
     // biome-ignore lint/correctness/useExhaustiveDependencies: standName reads stands, which is the dependency
-    [scoped, stands],
+    [scoped, standName],
   );
 
   const rows = useMemo(() => {
@@ -195,7 +201,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       if (ad !== bd) return ad - bd;
       return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
-  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, stands]);
+  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, standName]);
 
   // Is anything still hidden to the right of the pinned pair? That is the only
   // moment their edge means something, so it is drawn only then.
@@ -234,7 +240,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       el.removeEventListener("wheel", onWheel);
       ro.disconnect();
     };
-  }, [rows.length, loading, allTeams]);
+  }, []);
 
   if (loading) return <SkeletonRows rows={6} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -626,105 +632,6 @@ function StatusFilter({
   );
 }
 
-// SearchFilter is a chip that opens a popover with a search box and a checkbox
-// list - for facets with many values (teams, products) where typing to narrow
-// down is faster than scanning. Empty selection means "no filter" (show all).
-function SearchFilter({
-  label,
-  searchPlaceholder,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  searchPlaceholder: string;
-  options: string[];
-  selected: Set<string>;
-  onChange: (s: Set<string>) => void;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = q
-    ? options.filter((o) => o.toLowerCase().includes(q.toLowerCase()))
-    : options;
-  const toggle = (v: string) => {
-    const next = new Set(selected);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    onChange(next);
-  };
-  const active = selected.size > 0;
-  return (
-    <DialogTrigger>
-      <Button
-        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-          active
-            ? "border-brand-200 bg-brand-50 text-brand-700"
-            : "border-slate-200 text-slate-600 hover:bg-slate-50"
-        }`}
-      >
-        {label}
-        {active && <span className="text-brand-500">{selected.size}</span>}
-        <IconChevronDown size={13} stroke={1.8} className={active ? "text-brand-400" : "text-slate-400"} />
-      </Button>
-      <Popover className="w-60 rounded-md border border-slate-200 bg-surface shadow-lg outline-none entering:animate-in entering:fade-in">
-        <Dialog className="outline-none">
-          <div className="border-b border-slate-100 p-2">
-            <div className="relative">
-              <IconSearch size={14} stroke={1.8} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                autoFocus
-                type="text"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="w-full rounded-md border border-slate-200 bg-surface py-1 pl-7 pr-2 text-sm outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
-              />
-            </div>
-          </div>
-          <ul className="max-h-64 overflow-auto p-1">
-            {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-slate-400">Ничего не найдено</li>
-            ) : (
-              filtered.map((o) => {
-                const isSelected = selected.has(o);
-                return (
-                  <li key={o}>
-                    <button
-                      type="button"
-                      onClick={() => toggle(o)}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-slate-50 focus-visible:bg-slate-50"
-                    >
-                      <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
-                        }`}
-                      >
-                        {isSelected && <IconCheck size={12} stroke={3} />}
-                      </span>
-                      <span className="truncate text-slate-700">{o}</span>
-                    </button>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-          {active && (
-            <div className="border-t border-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => onChange(new Set())}
-                className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                <IconX size={13} stroke={2} />
-                Сбросить ({selected.size})
-              </button>
-            </div>
-          )}
-        </Dialog>
-      </Popover>
-    </DialogTrigger>
-  );
-}
 
 function RowActions({
   isDraft,
