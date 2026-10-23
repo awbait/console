@@ -233,9 +233,9 @@
           "errorMessage": "Поле \"description\" должно быть строкой"
         },
         "ui:widget": {
-          "description": "Как рисовать поле: \"single\" - одна карточка вместо списка, \"edit\" - редактируемое поле, \"hidden\" - скрыть",
-          "enum": ["single", "edit", "hidden"],
-          "errorMessage": "Неизвестный виджет: доступны \"single\", \"edit\", \"hidden\""
+          "description": "Как показывать поле: \"single\" - первый элемент списка одной формой, \"edit\" - обычное редактирование, \"hidden\" - скрыть поле, \"textarea\" - многострочный ввод для строкового поля.",
+          "enum": ["single", "edit", "hidden", "textarea"],
+          "errorMessage": "Неизвестный виджет: доступны \"single\", \"edit\", \"hidden\", \"textarea\""
         },
         "ui:readOnly": {
           "description": "Показать значение, но не давать его менять",
