@@ -6,7 +6,7 @@ import {
   DisclosurePanel,
   Heading,
 } from "react-aria-components";
-import { Button, Checkbox, Hint, Select, TextField } from "../components/ui";
+import { Button, Checkbox, Hint, Select, TextArea, TextField } from "../components/ui";
 import {
   defaultPlaceholder,
   type FieldRequirement,
@@ -781,6 +781,24 @@ function Field({
         return sub(<MapField name={name} label={label} desc={desc} value={value} onChange={onChange} />);
       return null;
     default:
+      // A string, drawn on one line unless the view asks for a multi-line
+      // field. The widget only picks the control: the value is the same
+      // string, line breaks included, and empty still means "not set".
+      if (s["ui:widget"] === "textarea")
+        return (
+          <TextArea
+            label={label}
+            description={desc}
+            requirements={requirements}
+            isRequired={required}
+            isDisabled={locked}
+            errorText={err}
+            hideLabel={hideLabel}
+            placeholder={fallback != null ? defaultPlaceholder(String(fallback)) : undefined}
+            value={value != null ? String(value) : ""}
+            onChange={(v) => change(v === "" ? undefined : v)}
+          />
+        );
       return (
         <TextField
           label={label}
