@@ -1,6 +1,6 @@
 // User-facing wording of the playground, in one place.
 export const playgroundText = {
-  pageTitle: "Плейграунд формы заказа Console",
+  pageTitle: "Плейграунд формы заказа",
   intro:
     "Вставьте values.schema.json, чтобы увидеть все поля схемы в форме заказа. Настройте view.schema.json, чтобы собрать форму и страницу продукта.",
   openFile: "Открыть файл",
@@ -20,6 +20,10 @@ export const playgroundText = {
   noViews: "Добавьте view в документ, чтобы увидеть форму.",
   schemaSyntax: "Синтаксис JSON в values.schema.json",
   viewSyntax: "Синтаксис JSON в view.schema.json",
-  sourceLink: "Исходный код",
+  reset: "Сбросить",
+  resetTitle: "Сбросить схему и документ?",
+  resetMessage:
+    "Схема и документ будут очищены. Всё, что вы ввели, будет удалено, в том числе из памяти браузера.",
+  resetConfirm: "Сбросить всё",
   dropHere: "Перетащите файл схемы сюда.",
 };

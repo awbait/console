@@ -7,10 +7,10 @@
 import Editor from "@monaco-editor/react";
 import {
   IconAlertCircle,
-  IconBrandGithub,
   IconFileCode,
   IconFileUpload,
   IconLink,
+  IconRestore,
   IconSparkles,
 } from "@tabler/icons-react";
 import { type DragEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +19,7 @@ import { useTheme } from "@/app/ThemeContext";
 import { useToast } from "@/app/ToastContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ThemeMenu } from "@/components/ThemeMenu";
-import { Button, buttonClass, Card } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import { useSchemaRefNavigation, useViewDocumentHints } from "@/features/publications/monacoHints";
 import {
   EditorTab,
@@ -42,8 +42,6 @@ import {
   saveState,
 } from "./state";
 import { playgroundText as t } from "./text";
-
-export const REPO_URL = "https://github.com/awbait/console";
 
 // Model paths end the way monacoHints expects: the document's suffix binds the
 // format schema and the completions, the chart's suffix the $ref navigation.
@@ -142,6 +140,14 @@ export function Playground() {
     setTab("view");
   }
 
+  // Back to the empty page. The save effect writes the empty state over what
+  // the browser kept, so a reload does not bring the old documents back.
+  const [confirmReset, setConfirmReset] = useState(false);
+  function reset() {
+    setState({ schema: "", view: DEFAULT_VIEW });
+    setTab("schema");
+  }
+
   async function share() {
     const hash = await encodeShare(state);
     history.replaceState(null, "", `#${hash}`);
@@ -161,7 +167,15 @@ export function Playground() {
     <div className="flex h-screen flex-col bg-app text-slate-800">
       <header className="shrink-0 border-b border-slate-200 bg-surface">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-4 py-3">
-          <h1 className="mr-auto text-base font-semibold text-slate-800">{t.pageTitle}</h1>
+          {/* The portal's wordmark, as Layout sets it, with the page's own name
+              after it: the same bar a person knows from the portal, and one
+              heading that reads "console: playground". */}
+          <h1 className="mr-auto flex min-w-0 items-baseline gap-3">
+            <span className="text-2xl font-bold lowercase leading-none tracking-tight text-brand-600">
+              console
+            </span>
+            <span className="truncate text-base font-semibold text-slate-800">{t.pageTitle}</span>
+          </h1>
           <input
             ref={fileInput}
             type="file"
@@ -180,14 +194,14 @@ export function Playground() {
             <IconSparkles size={16} stroke={1.8} />
             {t.loadSample}
           </Button>
+          <Button onPress={() => (untouched ? reset() : setConfirmReset(true))}>
+            <IconRestore size={16} stroke={1.8} />
+            {t.reset}
+          </Button>
           <Button variant="primary" onPress={() => void share()}>
             <IconLink size={16} stroke={1.8} />
             {t.share}
           </Button>
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className={buttonClass()}>
-            <IconBrandGithub size={16} stroke={1.8} />
-            {t.sourceLink}
-          </a>
           <ThemeMenu />
         </div>
       </header>
@@ -286,6 +300,15 @@ export function Playground() {
         message={t.sampleReplaceMessage}
         confirmLabel={t.sampleReplaceConfirm}
         onConfirm={loadSample}
+      />
+      <ConfirmDialog
+        isOpen={confirmReset}
+        onOpenChange={setConfirmReset}
+        title={t.resetTitle}
+        message={t.resetMessage}
+        confirmLabel={t.resetConfirm}
+        danger
+        onConfirm={reset}
       />
     </div>
   );
