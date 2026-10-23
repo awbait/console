@@ -217,3 +217,34 @@ func TestRenderApplicationEscapesScalars(t *testing.T) {
 		t.Fatalf("normal version should be bare:\n%s", out)
 	}
 }
+
+// The path a stand's Argo CD reads the orders under stands in for the
+// stand's own path, and only for it: the team subgroup and the chart
+// repository below carry over, a path not under the stand's is left alone,
+// and a stand naming no other path reads where the portal writes.
+func TestArgoRepoPath(t *testing.T) {
+	g := newGitOps(t)
+	group := &models.Stand{Layout: models.LayoutGroup, GitPath: "managed-services/edp", ArgoGitPath: "core/edp-mirror"}
+	repo := &models.Stand{Layout: models.LayoutRepository, GitPath: "managed-services/edp", ArgoGitPath: "core/managed-services-edp"}
+	same := &models.Stand{Layout: models.LayoutGroup, GitPath: "managed-services/edp"}
+	cases := []struct {
+		name string
+		st   *models.Stand
+		path string
+		want string
+	}{
+		{"group layout keeps the team and chart below", group, "managed-services/edp/team-core/postgres", "core/edp-mirror/team-core/postgres"},
+		{"repository layout is the whole path", repo, "managed-services/edp", "core/managed-services-edp"},
+		{"a path not under the stand's is left alone", group, "managed-services/team-core/postgres", "managed-services/team-core/postgres"},
+		{"a prefix that is not a segment is not the stand's path", group, "managed-services/edp-old/team-core/postgres", "managed-services/edp-old/team-core/postgres"},
+		{"no other path, no change", same, "managed-services/edp/team-core/postgres", "managed-services/edp/team-core/postgres"},
+		{"no stand, no change", nil, "managed-services/team-core/postgres", "managed-services/team-core/postgres"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := g.ArgoRepoPath(c.st, c.path); got != c.want {
+				t.Fatalf("ArgoRepoPath = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

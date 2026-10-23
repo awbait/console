@@ -43,10 +43,19 @@ type Stand struct {
 	// platform's configured registry (CHART_REGISTRY).
 	ChartRegistry string `json:"chart_registry"`
 	// GitURL is the GitLab the stand's Argo CD reads values from, as it sees
-	// it: another address of the portal's GitLab, or a mirror keeping the
-	// same paths. Only the scheme and host part change in the application's
-	// repoURL. Empty means the address the portal itself uses.
+	// it: another address of the portal's GitLab, or a mirror. Only the
+	// scheme and host part of the application's repoURL come from here; the
+	// path is GitPath's unless ArgoGitPath says otherwise. Empty means the
+	// address the portal itself uses.
 	GitURL string `json:"git_url"`
+	// ArgoGitPath is the path the stand's Argo CD reads the orders' files
+	// under, when it is not GitPath: the repository was mirrored or moved to
+	// another path, and the application's repoURL has to name that one. It
+	// replaces GitPath in the repoURL and in the stand's manifests, and
+	// nothing else: the portal keeps writing under GitPath. Under the group
+	// layout the team subgroup and the chart repository follow it the way
+	// they follow GitPath. Empty means GitPath.
+	ArgoGitPath string `json:"argocd_git_path"`
 	// ArgoNamespace is the namespace the stand's Argo CD runs in, where its
 	// Applications live. Empty means ARGOCD_NAMESPACE.
 	ArgoNamespace string `json:"argocd_namespace"`

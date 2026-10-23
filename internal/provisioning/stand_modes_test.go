@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"console/internal/provisioning"
+	"console/internal/store"
 	"console/pkg/models"
 )
 
@@ -405,5 +407,118 @@ func TestStandArgoProject(t *testing.T) {
 	bad.ArgoProject = "Edp_Apps"
 	if err := s.prov.CreateStand(ctx, admin(), bad); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandArgoProj {
 		t.Fatalf("a project that is not a Kubernetes name: %v", err)
+	}
+}
+
+// A stand whose repository Argo CD reads at another path than the portal
+// writes to: mirrored, or moved under another group. The application names
+// the path Argo CD reads, with the stand's Git address or the portal's own
+// in front of it; the stand's manifests point the app-of-apps there too; the
+// portal keeps writing where it did. Under the group layout the team and the
+// chart follow the other path. Import renders through the same stand, so a
+// manifest written with the other path is recognised as the portal's.
+func TestStandArgoGitPath(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	s.prov.GitLabURL = "https://gitlab.idp.example.com"
+
+	// One repository, mirrored under another group of another GitLab.
+	repo := standWith("edp", "edp-a", models.LayoutRepository, "managed-services/edp")
+	repo.GitURL = "http://gitea.example.com"
+	repo.ArgoGitPath = " /core/managed-services-edp.git/ "
+	if err := s.prov.CreateStand(ctx, admin(), repo); err != nil {
+		t.Fatalf("create stand: %v", err)
+	}
+	if repo.ArgoGitPath != "core/managed-services-edp" {
+		t.Fatalf("the path is trimmed and loses .git: %q", repo.ArgoGitPath)
+	}
+	r, err := s.prov.Create(ctx, member("core"), newOrder("pg1", placed("pg1", repo.ID)))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	proj, err := s.gl.GetProject(ctx, "managed-services/edp")
+	if err != nil {
+		t.Fatalf("the portal still writes under its own path: %v", err)
+	}
+	s.mergeLatestMR(ctx, t, r.ID)
+	app, err := s.gl.GetFile(ctx, proj.ID, s.gitops.AppPath(r), "main")
+	if err != nil {
+		t.Fatalf("application.yaml: %v", err)
+	}
+	if want := "repoURL: http://gitea.example.com/core/managed-services-edp.git"; !strings.Contains(string(app), want) {
+		t.Fatalf("application lacks %q:\n%s", want, app)
+	}
+	out, err := s.prov.StandManifests(repo)
+	if err != nil {
+		t.Fatalf("manifests: %v", err)
+	}
+	if want := "repoURL: http://gitea.example.com/core/managed-services-edp.git"; !strings.Contains(out, want) {
+		t.Fatalf("manifests lack %q:\n%s", want, out)
+	}
+	if strings.Contains(out, "managed-services/edp") {
+		t.Fatalf("manifests still name the portal's path:\n%s", out)
+	}
+
+	// A group in the same GitLab, under another path: the address is the
+	// portal's own, the team subgroup and the chart repository follow.
+	group := standWith("stage", "stage-a", models.LayoutGroup, "managed-services")
+	group.ArgoGitPath = "core/stage-mirror"
+	if err := s.prov.CreateStand(ctx, admin(), group); err != nil {
+		t.Fatalf("create group stand: %v", err)
+	}
+	r2, err := s.prov.Create(ctx, member("core"), newOrder("pg2", placed("pg2", group.ID)))
+	if err != nil {
+		t.Fatalf("create on group: %v", err)
+	}
+	proj2, err := s.gl.GetProject(ctx, "managed-services/team-core/postgres")
+	if err != nil {
+		t.Fatalf("the chart repository is where the portal writes: %v", err)
+	}
+	s.mergeLatestMR(ctx, t, r2.ID)
+	app2, err := s.gl.GetFile(ctx, proj2.ID, s.gitops.AppPath(r2), "main")
+	if err != nil {
+		t.Fatalf("application.yaml: %v", err)
+	}
+	base := strings.TrimSuffix(proj2.WebURL, "/managed-services/team-core/postgres")
+	if want := "repoURL: " + base + "/core/stage-mirror/team-core/postgres.git"; !strings.Contains(string(app2), want) {
+		t.Fatalf("application lacks %q:\n%s", want, app2)
+	}
+	out, err = s.prov.StandManifests(group)
+	if err != nil {
+		t.Fatalf("group manifests: %v", err)
+	}
+	for _, want := range []string{`group: "core/stage-mirror"`, "url: https://gitlab.idp.example.com/core/stage-mirror"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("group manifests lack %q:\n%s", want, out)
+		}
+	}
+
+	// Forgotten by the portal, the manifest written with the other path is
+	// still the portal's own to the import.
+	now := time.Now()
+	r.Status, r.DeletedAt = models.StatusDeleted, &now
+	if err := s.st.UpdateRequest(ctx, r); err != nil {
+		t.Fatalf("forget: %v", err)
+	}
+	if err := s.prov.ImportFromGit(ctx); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	list, _ := s.prov.List(ctx, admin(), store.RequestFilter{Stand: repo.ID})
+	found := false
+	for _, got := range list {
+		if got.ServiceName == "pg1" && got.DeletedAt == nil && got.Imported {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the order written with the other path is not adopted back: %+v", list)
+	}
+
+	// The other path follows the rule of the path itself.
+	var verr *provisioning.ValidationError
+	bad := standWith("bad", "bad-a", models.LayoutRepository, "managed-services/bad")
+	bad.ArgoGitPath = "core/../etc"
+	if err := s.prov.CreateStand(ctx, admin(), bad); !errors.As(err, &verr) || verr.Message != provisioning.MsgStandPath {
+		t.Fatalf("a path in the wrong shape: %v", err)
 	}
 }

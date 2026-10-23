@@ -138,6 +138,26 @@ func (g *GitOps) GroupOf(st *models.Stand) string {
 	return st.GitPath
 }
 
+// ArgoRepoPath is the path the stand's Argo CD reads the repository at
+// projectPath under: the same path, unless the stand names another
+// (ArgoGitPath), in which case that one stands in for the stand's own
+// GitPath. Under the group layout the team subgroup and the chart repository
+// below GitPath carry over; under the repository layout the whole path is
+// the other one. A path that is not under GitPath (an order written before
+// the stand had one) is left as it is.
+func (g *GitOps) ArgoRepoPath(st *models.Stand, projectPath string) string {
+	if st == nil || st.ArgoGitPath == "" || st.GitPath == "" {
+		return projectPath
+	}
+	if projectPath == st.GitPath {
+		return st.ArgoGitPath
+	}
+	if rest, ok := strings.CutPrefix(projectPath, st.GitPath+"/"); ok {
+		return st.ArgoGitPath + "/" + rest
+	}
+	return projectPath
+}
+
 // TeamSegment is the team's own folder or subgroup name, e.g. "team-core".
 func (g *GitOps) TeamSegment(team string) string {
 	return render(g.SubgroupTmpl, tmplData{Team: team})

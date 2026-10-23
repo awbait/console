@@ -425,6 +425,7 @@ interface Draft {
   layout: StandLayout;
   path: string;
   gitUrl: string;
+  argoPath: string;
   argoNs: string;
   argoProject: string;
   registry: string;
@@ -437,6 +438,7 @@ const EMPTY: Draft = {
   layout: "group",
   path: "",
   gitUrl: "",
+  argoPath: "",
   argoNs: "",
   argoProject: "",
   registry: "",
@@ -450,6 +452,7 @@ function draftOf(s: Stand): Draft {
     layout: s.layout,
     path: s.git_path,
     gitUrl: s.git_url ?? "",
+    argoPath: s.argocd_git_path ?? "",
     argoNs: s.argocd_namespace ?? "",
     argoProject: s.argocd_project ?? "",
     registry: s.chart_registry ?? "",
@@ -466,6 +469,11 @@ function normalized(d: Draft) {
     layout: d.layout,
     git_path: d.path.trim().replace(/^\/+|\/+$/g, ""),
     git_url: d.gitUrl.trim().replace(/\/+$/g, ""),
+    // A clone address pasted whole ends in ".git"; the portal drops it too.
+    argocd_git_path: d.argoPath
+      .trim()
+      .replace(/^\/+|\/+$/g, "")
+      .replace(/\.git$/, ""),
     argocd_namespace: d.argoNs.trim(),
     argocd_project: d.argoProject.trim(),
     chart_registry: d.registry.trim().replace(/\/+$/g, ""),
@@ -507,6 +515,7 @@ function StandPanel({
     cluster: clusterError(n.default_cluster) ?? (!n.default_cluster ? fieldMsg.required : null),
     path: pathError(n.git_path) ?? (!n.git_path && !stand?.locked ? t.errPathEmpty : null),
     gitUrl: gitUrlError(n.git_url),
+    argoPath: pathError(n.argocd_git_path),
     argoNs: argoNsError(n.argocd_namespace),
     argoProject: argoProjectError(n.argocd_project),
     registry: registryError(n.chart_registry),
@@ -536,14 +545,21 @@ function StandPanel({
   // follow at once: each moves when its application is written next. Said
   // before saving, in the same dialog a mode change asks in.
   const movesProject = !!stand && locked && n.argocd_project !== (stand.argocd_project ?? "");
-  const confirmText = [startsJob && t.modeChangeConfirm(modeOf(d.mode).label), movesProject && t.argoProjectChangeConfirm]
+  // The path Argo CD reads at follows the same rule: the orders' applications
+  // pick it up one by one, when they are written next.
+  const movesPath = !!stand && locked && n.argocd_git_path !== (stand.argocd_git_path ?? "");
+  const confirmText = [
+    startsJob && t.modeChangeConfirm(modeOf(d.mode).label),
+    movesProject && t.argoProjectChangeConfirm,
+    movesPath && t.argoPathChangeConfirm,
+  ]
     .filter(Boolean)
     .join(" ");
 
   async function save() {
     setTried(true);
     if (!valid) return;
-    if ((startsJob || movesProject) && !confirmMode) {
+    if ((startsJob || movesProject || movesPath) && !confirmMode) {
       setConfirmMode(true);
       return;
     }
@@ -661,6 +677,15 @@ function StandPanel({
               description={t.gitUrlHint}
               errorText={shown("gitUrl", n.git_url)}
             />
+            <TextField
+              label={t.argoPathLabel}
+              isDisabled={busy}
+              value={d.argoPath}
+              onChange={set("argoPath")}
+              placeholder={t.argoPathPlaceholder}
+              description={t.argoPathHint}
+              errorText={shown("argoPath", n.argocd_git_path)}
+            />
           </Group>
 
           <Group title={t.groupArgo}>
@@ -701,7 +726,7 @@ function StandPanel({
       <ConfirmDialog
         isOpen={confirmMode}
         onOpenChange={setConfirmMode}
-        title={startsJob ? t.modeLabel : t.argoProjectLabel}
+        title={startsJob ? t.modeLabel : movesProject ? t.argoProjectLabel : t.argoPathLabel}
         message={confirmText}
         onConfirm={submit}
       />

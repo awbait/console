@@ -479,6 +479,10 @@ export interface Stand {
   // values from and the namespace it runs in. "" is the platform's own.
   git_url: string;
   argocd_namespace: string;
+  // The path the stand's Argo CD reads the orders' files under when the
+  // repository was mirrored or moved: it stands in for git_path in the
+  // application's repoURL and in the stand's manifests. "" is git_path.
+  argocd_git_path: string;
   // The Argo CD project the stand's applications belong to; "" is the
   // platform's (ARGOCD_PROJECT).
   argocd_project: string;

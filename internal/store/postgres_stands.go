@@ -12,11 +12,11 @@ import (
 // by hand, read whole by every reader (the order form, the list filter, the
 // admin page), the way the variables are.
 
-const standCols = `id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, git_url, argocd_namespace, argocd_project, argo_connected, checked_at, storage_created, deleted_at, created_at, updated_at`
+const standCols = `id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, git_url, argocd_namespace, argocd_project, argocd_git_path, argo_connected, checked_at, storage_created, deleted_at, created_at, updated_at`
 
 func scanStand(row pgx.Row) (*models.Stand, error) {
 	var s models.Stand
-	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.Mode, &s.ChartRegistry, &s.GitURL, &s.ArgoNamespace, &s.ArgoProject,
+	err := row.Scan(&s.ID, &s.Name, &s.DefaultCluster, &s.Default, &s.Layout, &s.GitPath, &s.Mode, &s.ChartRegistry, &s.GitURL, &s.ArgoNamespace, &s.ArgoProject, &s.ArgoGitPath,
 		&s.ArgoConnected, &s.CheckedAt, &s.StorageCreated, &s.DeletedAt, &s.CreatedAt, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
@@ -102,10 +102,10 @@ func (p *Postgres) DeleteStand(ctx context.Context, id string) error {
 func (p *Postgres) CreateStand(ctx context.Context, s *models.Stand) error {
 	standDefaults(s)
 	err := p.db.QueryRow(ctx, `
-		INSERT INTO stands (id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, git_url, argocd_namespace, argocd_project)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		INSERT INTO stands (id, name, default_cluster, is_default, layout, git_path, mode, chart_registry, git_url, argocd_namespace, argocd_project, argocd_git_path)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING argo_connected, checked_at, created_at, updated_at`,
-		s.ID, s.Name, s.DefaultCluster, s.Default, s.Layout, s.GitPath, s.Mode, s.ChartRegistry, s.GitURL, s.ArgoNamespace, s.ArgoProject).Scan(&s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
+		s.ID, s.Name, s.DefaultCluster, s.Default, s.Layout, s.GitPath, s.Mode, s.ChartRegistry, s.GitURL, s.ArgoNamespace, s.ArgoProject, s.ArgoGitPath).Scan(&s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
@@ -115,10 +115,10 @@ func (p *Postgres) CreateStand(ctx context.Context, s *models.Stand) error {
 func (p *Postgres) UpdateStand(ctx context.Context, s *models.Stand) error {
 	standDefaults(s)
 	err := p.db.QueryRow(ctx, `
-		UPDATE stands SET name=$2, default_cluster=$3, layout=$4, git_path=$5, mode=$6, chart_registry=$7, git_url=$8, argocd_namespace=$9, argocd_project=$10, updated_at=NOW()
+		UPDATE stands SET name=$2, default_cluster=$3, layout=$4, git_path=$5, mode=$6, chart_registry=$7, git_url=$8, argocd_namespace=$9, argocd_project=$10, argocd_git_path=$11, updated_at=NOW()
 		WHERE id=$1
 		RETURNING is_default, argo_connected, checked_at, created_at, updated_at`,
-		s.ID, s.Name, s.DefaultCluster, s.Layout, s.GitPath, s.Mode, s.ChartRegistry, s.GitURL, s.ArgoNamespace, s.ArgoProject).Scan(&s.Default, &s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
+		s.ID, s.Name, s.DefaultCluster, s.Layout, s.GitPath, s.Mode, s.ChartRegistry, s.GitURL, s.ArgoNamespace, s.ArgoProject, s.ArgoGitPath).Scan(&s.Default, &s.ArgoConnected, &s.CheckedAt, &s.CreatedAt, &s.UpdatedAt)
 	if isUniqueViolation(err) {
 		return models.ErrConflict
 	}
