@@ -255,6 +255,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/stands/{id}/checks", s.handleStandChecks)            // admin: run the stand's checks now
 			r.Get("/stands/{id}/jobs", s.handleListStandJobs)            // admin: the stand's jobs, newest first
 			r.Post("/stands/{id}/jobs/{job}/stop", s.handleStopStandJob) // admin
+			r.Get("/stands/{id}/regenerate", s.handlePreviewRegenerate)   // admin: how many orders a regeneration looks at
+			r.Post("/stands/{id}/regenerate", s.handleRegenerateStand)    // admin: starts the job writing every application.yaml again
 			r.Delete("/stands/{id}", s.handleDeleteStand)                // admin: starts the job that deletes the stand
 
 			// platform variables: named values a version document references as

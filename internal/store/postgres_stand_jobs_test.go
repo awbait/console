@@ -47,15 +47,19 @@ func TestPostgresStandJobs(t *testing.T) {
 	}
 
 	now := time.Now().Truncate(time.Microsecond)
-	j.Total, j.Done, j.Waiting = 3, 1, 1
+	j.Total, j.Done, j.Waiting, j.Skipped = 3, 1, 1, 1
 	j.Failures = []models.StandJobFailure{{OrderID: "o1", ServiceName: "pg1", Reason: "mr_closed"}}
+	j.Handled = map[string]string{"o2": models.StandJobUpdated, "o3": models.StandJobSkipped}
 	j.Status, j.FinishedAt = models.StandJobDone, &now
 	if err := pg.UpdateStandJob(ctx, j); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	got, err := pg.GetStandJob(ctx, j.ID)
-	if err != nil || got.Total != 3 || got.Done != 1 || len(got.Failures) != 1 || got.Failures[0].ServiceName != "pg1" || !got.FinishedAt.Equal(now) {
+	if err != nil || got.Total != 3 || got.Done != 1 || got.Skipped != 1 || len(got.Failures) != 1 || got.Failures[0].ServiceName != "pg1" || !got.FinishedAt.Equal(now) {
 		t.Fatalf("round-trip: %+v %v", got, err)
+	}
+	if got.Handled["o2"] != models.StandJobUpdated || got.Handled["o3"] != models.StandJobSkipped {
+		t.Fatalf("what the job handled is kept: %+v", got.Handled)
 	}
 	if err := pg.CreateStandJob(ctx, &second); err != nil {
 		t.Fatalf("a new job once the first is done: %v", err)

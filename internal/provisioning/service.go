@@ -1617,6 +1617,8 @@ func commitTitle(action models.MRAction, chart, service string) string {
 		return fmt.Sprintf("feat(%s): write %s instance kept in the portal", service, chart)
 	case models.ActionUnpublish:
 		return fmt.Sprintf("chore(%s): move %s instance to the portal only", service, chart)
+	case models.ActionRegenerate:
+		return fmt.Sprintf("chore(%s): regenerate %s application manifest", service, chart)
 	default:
 		return fmt.Sprintf("chore(%s): update", service)
 	}
@@ -1633,8 +1635,9 @@ func mrTitle(action models.MRAction, r *models.Request) string {
 		models.ActionCreate: "deploy",
 		models.ActionUpdate: "update",
 		models.ActionDelete:    "remove",
-		models.ActionPublish:   "publish",
-		models.ActionUnpublish: "unpublish",
+		models.ActionPublish:    "publish",
+		models.ActionUnpublish:  "unpublish",
+		models.ActionRegenerate: "regenerate",
 	}[action]
 	if verb == "" {
 		verb = "change"
