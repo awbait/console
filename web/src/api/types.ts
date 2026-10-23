@@ -505,13 +505,16 @@ export interface Stand {
 export interface StandJob {
   id: string;
   stand_id: string;
-  kind: "mode_change" | "delete";
+  kind: "mode_change" | "delete" | "regenerate";
   from_mode: StandMode;
   to_mode: StandMode;
   status: "running" | "done" | "stopped";
   total: number;
   done: number;
   waiting: number;
+  // What a regeneration left alone: orders whose manifest in Git already
+  // matched. Zero for the other kinds.
+  skipped: number;
   failures: StandJobFailure[];
   created_by: string;
   created_at: string;

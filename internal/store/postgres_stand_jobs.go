@@ -10,13 +10,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const standJobCols = `id, stand_id, kind, from_mode, to_mode, status, total, done, waiting, failures, created_by, created_at, finished_at`
+const standJobCols = `id, stand_id, kind, from_mode, to_mode, status, total, done, waiting, skipped, failures, handled, created_by, created_at, finished_at`
 
 func scanStandJob(row pgx.Row) (*models.StandJob, error) {
 	var j models.StandJob
-	var failures []byte
+	var failures, handled []byte
 	err := row.Scan(&j.ID, &j.StandID, &j.Kind, &j.FromMode, &j.ToMode, &j.Status,
-		&j.Total, &j.Done, &j.Waiting, &failures, &j.CreatedBy, &j.CreatedAt, &j.FinishedAt)
+		&j.Total, &j.Done, &j.Waiting, &j.Skipped, &failures, &handled, &j.CreatedBy, &j.CreatedAt, &j.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) || isInvalidUUID(err) {
 		return nil, models.ErrNotFound
 	}
@@ -29,6 +29,12 @@ func scanStandJob(row pgx.Row) (*models.StandJob, error) {
 			return nil, fmt.Errorf("stand job failures: %w", err)
 		}
 	}
+	j.Handled = map[string]string{}
+	if len(handled) > 0 {
+		if err := json.Unmarshal(handled, &j.Handled); err != nil {
+			return nil, fmt.Errorf("stand job handled: %w", err)
+		}
+	}
 	return &j, nil
 }
 
@@ -39,16 +45,27 @@ func jobFailures(j *models.StandJob) ([]byte, error) {
 	return json.Marshal(j.Failures)
 }
 
+func jobHandled(j *models.StandJob) ([]byte, error) {
+	if len(j.Handled) == 0 {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(j.Handled)
+}
+
 func (p *Postgres) CreateStandJob(ctx context.Context, j *models.StandJob) error {
 	failures, err := jobFailures(j)
 	if err != nil {
 		return err
 	}
+	handled, err := jobHandled(j)
+	if err != nil {
+		return err
+	}
 	err = p.db.QueryRow(ctx, `
-		INSERT INTO stand_jobs (id, stand_id, kind, from_mode, to_mode, status, total, done, waiting, failures, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		INSERT INTO stand_jobs (id, stand_id, kind, from_mode, to_mode, status, total, done, waiting, skipped, failures, handled, created_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING created_at`,
-		j.ID, j.StandID, j.Kind, j.FromMode, j.ToMode, j.Status, j.Total, j.Done, j.Waiting, failures, j.CreatedBy).Scan(&j.CreatedAt)
+		j.ID, j.StandID, j.Kind, j.FromMode, j.ToMode, j.Status, j.Total, j.Done, j.Waiting, j.Skipped, failures, handled, j.CreatedBy).Scan(&j.CreatedAt)
 	switch {
 	case isUniqueViolation(err):
 		return models.ErrConflict
@@ -63,11 +80,15 @@ func (p *Postgres) UpdateStandJob(ctx context.Context, j *models.StandJob) error
 	if err != nil {
 		return err
 	}
+	handled, err := jobHandled(j)
+	if err != nil {
+		return err
+	}
 	tag, err := p.db.Exec(ctx, `
 		UPDATE stand_jobs
-		SET status=$2, total=$3, done=$4, waiting=$5, failures=$6, finished_at=$7
+		SET status=$2, total=$3, done=$4, waiting=$5, failures=$6, finished_at=$7, skipped=$8, handled=$9
 		WHERE id=$1`,
-		j.ID, j.Status, j.Total, j.Done, j.Waiting, failures, j.FinishedAt)
+		j.ID, j.Status, j.Total, j.Done, j.Waiting, failures, j.FinishedAt, j.Skipped, handled)
 	if isInvalidUUID(err) {
 		return models.ErrNotFound
 	}

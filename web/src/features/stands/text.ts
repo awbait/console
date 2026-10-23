@@ -54,7 +54,20 @@ export const standText = {
   jobRunningHint:
     "Заказы переходят в новый режим. Пока переход не завершён или не остановлен, изменить режим, способ хранения в GitLab и путь нельзя.",
   jobsTitle: "Задачи стенда",
-  jobsIntro: "Здесь показаны задачи перевода заказов в другой режим. Перевод идёт в фоне, задачу можно остановить.",
+  jobsIntro:
+    "Здесь показаны задачи перевода заказов в другой режим, удаления стенда и перегенерации application.yaml. Задачи выполняются в фоне, их можно остановить.",
+  regenerateButton: "Перегенерировать application.yaml",
+  regenerateTitle: "Перегенерировать application.yaml заказов стенда?",
+  regenerateConfirm: (n: number) =>
+    `Будет проверено ${n} заказов. Если application.yaml отличается от файла в Git, портал откроет merge request для его обновления. Значения заказа и версия чарта не изменятся.`,
+  regenerateStartedToast: "Запущена задача перегенерации application.yaml заказов стенда.",
+  regenerateDisabledMode: "В режиме «Только портал» файлы заказа в GitLab не создаются.",
+  jobRegenerate: "Перегенерация application.yaml",
+  jobRegenerateProgress: (updated: number, skipped: number, total: number) =>
+    `Обновлено заказов: ${updated}, пропущено: ${skipped}, всего: ${total}`,
+  jobRegenerateFailuresTitle: "Ошибки обновления",
+  regenerateFailureUpstream:
+    "Не удалось обновить application.yaml из-за ошибки или отсутствия ответа GitLab. Запустите перегенерацию снова, когда GitLab станет доступен.",
   jobModeChange: (from: string, to: string) => `Перевод заказов из режима «${from}» в режим «${to}»`,
   jobProgress: (done: number, total: number) => `Переведено заказов: ${done} из ${total}.`,
   jobStatusRunning: "Идёт",

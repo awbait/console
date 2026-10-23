@@ -122,7 +122,7 @@ export function AdminStandPage() {
           </dl>
         </section>
 
-        <StandJobs standId={stand.id} onChanged={reload} />
+        <StandJobs stand={stand} onChanged={reload} />
 
         <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">

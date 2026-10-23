@@ -317,6 +317,11 @@ export const api = {
     req<{ jobs: StandJob[] }>("GET", `/stands/${enc(id)}/jobs`, undefined, signal),
   stopStandJob: (id: string, jobId: string) =>
     req<StandJob>("POST", `/stands/${enc(id)}/jobs/${enc(jobId)}/stop`),
+  // Writing every order's application.yaml again from the stand's settings:
+  // how many orders that would look at, and starting the job. Admin only.
+  previewRegenerate: (id: string, signal?: AbortSignal) =>
+    req<{ total: number }>("GET", `/stands/${enc(id)}/regenerate`, undefined, signal),
+  regenerateStand: (id: string) => req<StandJob>("POST", `/stands/${enc(id)}/regenerate`),
   // Starts the job that deletes the stand; name is what the admin typed to
   // confirm. Admin only.
   deleteStand: (id: string, name: string) => req<StandJob>("DELETE", `/stands/${enc(id)}`, { name }),

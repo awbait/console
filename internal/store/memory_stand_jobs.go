@@ -13,6 +13,10 @@ func cloneJob(j *models.StandJob) *models.StandJob {
 	if c.Failures == nil {
 		c.Failures = []models.StandJobFailure{}
 	}
+	c.Handled = make(map[string]string, len(j.Handled))
+	for k, v := range j.Handled {
+		c.Handled[k] = v
+	}
 	return &c
 }
 

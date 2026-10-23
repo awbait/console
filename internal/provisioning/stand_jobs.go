@@ -189,8 +189,11 @@ func (s *Service) advanceJob(ctx context.Context, j *models.StandJob) error {
 	if err != nil {
 		return err
 	}
-	if j.Kind == models.StandJobDelete {
+	switch j.Kind {
+	case models.StandJobDelete:
 		return s.advanceDeleteJob(ctx, j, st)
+	case models.StandJobRegenerate:
+		return s.advanceRegenerateJob(ctx, j, st)
 	}
 	orders, err := s.store.ListRequests(ctx, store.RequestFilter{Admin: true, Stand: st.ID})
 	if err != nil {

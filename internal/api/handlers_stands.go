@@ -171,6 +171,28 @@ func (s *Server) handleListStandJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
 
+// handlePreviewRegenerate answers how many orders a regeneration of the
+// stand's applications would look at: what the confirmation shows.
+func (s *Server) handlePreviewRegenerate(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Prov.PreviewRegenerate(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": n})
+}
+
+// handleRegenerateStand starts the job that writes every order's
+// application.yaml again from the stand's current settings.
+func (s *Server) handleRegenerateStand(w http.ResponseWriter, r *http.Request) {
+	j, err := s.Prov.RegenerateStand(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, j)
+}
+
 // handleStopStandJob stops a running job of the stand.
 func (s *Server) handleStopStandJob(w http.ResponseWriter, r *http.Request) {
 	j, err := s.Prov.StopStandJob(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "job"))
