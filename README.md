@@ -65,6 +65,13 @@ Kubernetes и GitOps. Платформенная команда публикуе
 
 ![Конструктор формы заказа](web/public/docs-content/images/view-constructor.png)
 
+Тот же редактор и предпросмотр без портала опубликованы как плейграунд на
+[awbait.github.io/console](https://awbait.github.io/console/): вставьте
+`values.schema.json` чарта, посмотрите форму заказа и соберите
+`view.schema.json`. Локально он открывается на дев-сервере по адресу
+`/playground.html`, собирается командой `bun run build:playground` в `web/`,
+на Pages его выкладывает `.github/workflows/pages.yml`.
+
 </details>
 
 <a id="workflow"></a>
