@@ -263,12 +263,18 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 		versions = []*models.PublicationVersion{}
 	}
 	// Who is editing each one, from the lease. A cache that does not answer
-	// costs the badge, not the list.
+	// costs the badge, not the list: one warning, and the rest go out without.
+	var leaseErr error
 	for _, v := range versions {
+		v.Editing = nil
+		if leaseErr != nil {
+			continue
+		}
 		ed, err := s.Pubs.Editing(r.Context(), id, v.ChartVersion)
 		if err != nil {
+			leaseErr = err
 			s.logger().Warn("edit lease unavailable", "publication_id", id, "err", err)
-			break
+			continue
 		}
 		v.Editing = ed
 	}

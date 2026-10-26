@@ -41,7 +41,7 @@ type EditLockedError struct {
 }
 
 func (e *EditLockedError) Error() string {
-	return fmt.Sprintf("документ редактирует %s", e.Editor.Name)
+	return fmt.Sprintf("Документ редактирует %s. Дождитесь окончания редактирования или попросите администратора передать документ вам.", e.Editor.Name)
 }
 
 // Is keeps errors.Is(err, models.ErrConflict) true, like the other conflicts
