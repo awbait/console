@@ -38,6 +38,7 @@ import { useToast } from "../app/ToastContext";
 import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
 import type { Crumb } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
+import { editLeaseText } from "../features/publications/editLeaseText";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
@@ -857,6 +858,17 @@ function VersionRow({
               <Chip className="bg-red-50 text-red-700">
                 <IconAlertTriangle size={12} stroke={2} />
                 Нет в реестре
+              </Chip>
+            </span>
+          )}
+          {/* Somebody has the document open in the constructor right now. A
+              word, not a lock: the row's own actions are unaffected, and
+              whoever opens the editor meets the full explanation there. */}
+          {row?.editing && (
+            <span title={editLeaseText.editingTitle(row.editing.name)}>
+              <Chip className="bg-brand-50 text-brand-700">
+                <IconPencil size={12} stroke={2} />
+                {editLeaseText.editingChip(row.editing.name)}
               </Chip>
             </span>
           )}

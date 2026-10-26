@@ -15,7 +15,7 @@ import { maintenanceText } from "../features/maintenance/text";
 
 // Codes whose server message is meant for the user and is more specific than
 // anything written here: field-level validation and a name already taken.
-const KEEP_SERVER_MESSAGE = new Set(["validation_failed", "conflict"]);
+const KEEP_SERVER_MESSAGE = new Set(["validation_failed", "conflict", "edit_locked"]);
 
 const BY_CODE: Record<string, string> = {
   // The portal is closed for maintenance (503). The lock screen takes over a

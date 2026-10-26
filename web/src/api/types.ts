@@ -790,6 +790,21 @@ export interface PublicationVersion {
   version: number;
   created_at: string;
   updated_at: string;
+  // Who holds the document of this version in the constructor right now,
+  // absent when nobody does. Filled by the server from the edit lease, not
+  // stored with the version.
+  editing?: Editor | null;
+}
+
+// The holder of an edit lease on a version document: one person edits it at a
+// time, everybody else reads. subject is who they are to the server, name what
+// the banner says, since and until the lease's span (it is renewed while their
+// page is open and lapses on its own after that).
+export interface Editor {
+  subject: string;
+  name: string;
+  since: string;
+  until: string;
 }
 
 // A version awaiting review together with its publication (admin approval queue).
@@ -907,6 +922,7 @@ export interface ApiError {
   details?: FieldError[]; // per-field schema validation failures
   mr_url?: string; // open merge request blocking the change (error "open_mr")
   mr_iid?: number;
+  editor?: Editor; // who holds the version document (error "edit_locked")
 }
 
 // One thing the portal has to tell somebody about. The sentence is not here:
