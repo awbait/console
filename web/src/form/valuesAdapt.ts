@@ -22,7 +22,7 @@
 // "0" next to the new fields is a list that was spread, and the element inside
 // it is where the answers are.
 
-import { deref, fieldBreadcrumb, type Schema } from "./fieldPath";
+import { deref, escapeToken, fieldBreadcrumb, mapValueSchema, type Schema } from "./fieldPath";
 import { mergeUnder } from "./valuesMerge";
 
 type Values = Record<string, unknown>;
@@ -70,6 +70,7 @@ function adapt(
   // walk guessed would change the variant under the person.
   if (Array.isArray(s.oneOf)) return { value };
   if (s.type === "object" && s.properties) return adaptObject(s, value, root, label, path, notes);
+  if (s.type === "object" && mapValueSchema(s)) return adaptMap(s, value, root, label, path, notes);
   if (s.type === "array") return adaptArray(s, value, root, label, path, notes);
   // A leaf that holds a whole structure is a field that used to be one - there
   // is no first element to take and no key to read it by.
@@ -159,6 +160,34 @@ function recoverSpreadList(s: Schema, value: Values, name: string, notes: string
 function listToBlock(name: string, count: number): string {
   const head = `${name}: раньше это был список, теперь одно поле. Значения первого элемента перенесены.`;
   return count > 1 ? `${head} Остальные элементы удалены.` : head;
+}
+
+// adaptMap fits a value to a map of free keys: the keys are the person's own
+// and stay as they are, and each value is fitted to the schema every entry
+// follows, the way a list fits each of its rows. An entry is named by its key
+// in a note (fieldBreadcrumb), because that is the only name it has. The map
+// itself holding something other than an object is a field that changed kind,
+// and there is no key to read a value by.
+function adaptMap(
+  s: Schema,
+  value: unknown,
+  root: Schema,
+  label: (path: string) => string,
+  path: string,
+  notes: string[],
+): { value: unknown } | null {
+  if (value === undefined || value === null) return { value };
+  if (!isObject(value)) {
+    notes.push(`${label(path)}: прежнее значение не подходит новой версии. Поле очищено.`);
+    return null;
+  }
+  const entry = mapValueSchema(s) ?? {};
+  const out: Values = {};
+  for (const [key, child] of Object.entries(value)) {
+    const fitted = adapt(entry, child, root, label, `${path}/${escapeToken(key)}`, notes);
+    if (fitted) out[key] = fitted.value;
+  }
+  return { value: out };
 }
 
 // adaptArray fits a value to a list.

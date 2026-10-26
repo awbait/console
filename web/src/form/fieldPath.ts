@@ -23,16 +23,71 @@ export function deref(node: Schema | undefined, root: Schema): Schema {
   return n;
 }
 
-// nodeAt resolves the schema node at a JSON Pointer into the values.
+// escapeToken and unescapeToken are the two halves of RFC 6901: a key that
+// carries "/" or "~" (a vhost "/billing", an annotation key) travels inside a
+// pointer as "~1" and "~0", which is how the server writes the path of a
+// failing map entry too (provisioning.escapePointerToken).
+export function escapeToken(key: string): string {
+  return key.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+export function unescapeToken(token: string): string {
+  return token.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+// pointerTokens splits a pointer into the keys it names, unescaped.
+export function pointerTokens(pointer: string): string[] {
+  return pointer.split("/").filter(Boolean).map(decodeURIComponent).map(unescapeToken);
+}
+
+// mapValueSchema answers the schema every entry of a map of free keys follows,
+// or undefined when the node is not such a map. A map is an object the chart
+// describes by its values rather than by its keys: "additionalProperties" with
+// a schema, or a single "patternProperties" template, whose pattern then
+// constrains the key (see mapKeyPattern). An object that declares properties is
+// a block of fields, not a map, whatever else it says.
+export function mapValueSchema(s: Schema): Schema | undefined {
+  if (s.properties) return undefined;
+  if (s.additionalProperties && typeof s.additionalProperties === "object") return s.additionalProperties;
+  const patterns = s.patternProperties;
+  if (patterns && typeof patterns === "object") {
+    const keys = Object.keys(patterns);
+    if (keys.length === 1 && patterns[keys[0]] && typeof patterns[keys[0]] === "object") return patterns[keys[0]];
+  }
+  return undefined;
+}
+
+// mapKeyPattern is the regular expression a map's keys must match, if the chart
+// states one: "propertyNames.pattern", else the one template of patternProperties.
+export function mapKeyPattern(s: Schema): string | undefined {
+  const names = s.propertyNames;
+  if (names && typeof names === "object" && typeof names.pattern === "string") return names.pattern;
+  if (s.additionalProperties && typeof s.additionalProperties === "object") return undefined;
+  const patterns = s.patternProperties;
+  if (patterns && typeof patterns === "object") {
+    const keys = Object.keys(patterns);
+    if (keys.length === 1) return keys[0];
+  }
+  return undefined;
+}
+
+// nodeAt resolves the schema node at a JSON Pointer into the values. A segment
+// that names no property steps into a map entry, whose schema is the map's
+// value schema.
 export function nodeAt(pointer: string, root: Schema): Schema | undefined {
   let node: Schema | undefined = deref(root, root);
-  for (const seg of pointer.split("/").filter(Boolean).map(decodeURIComponent)) {
+  for (const seg of pointerTokens(pointer)) {
     if (!node) return undefined;
-    node = /^\d+$/.test(seg)
-      ? deref(node.items ?? {}, root)
-      : node.properties?.[seg]
-        ? deref(node.properties[seg], root)
-        : undefined;
+    if (/^\d+$/.test(seg) && node.items) {
+      node = deref(node.items, root);
+      continue;
+    }
+    if (node.properties?.[seg]) {
+      node = deref(node.properties[seg], root);
+      continue;
+    }
+    const entry = mapValueSchema(node);
+    node = entry ? deref(entry, root) : undefined;
   }
   return node;
 }
@@ -148,7 +203,7 @@ function resolveConst(then: Schema, path: string[], root: Schema): unknown | und
 // of a ui:widget:"single" field (one item, the index is noise), and shows other
 // array indices as human "#N". Without a schema it falls back to raw keys.
 export function fieldBreadcrumb(pointer: string, root?: Schema, view?: Schema): string {
-  let segs = pointer.split("/").filter(Boolean).map(decodeURIComponent);
+  let segs = pointerTokens(pointer);
   let node: Schema | undefined = root ? deref(root, root) : undefined;
   let curView: Schema | undefined = view;
   let skipIndex = false;
@@ -167,6 +222,19 @@ export function fieldBreadcrumb(pointer: string, root?: Schema, view?: Schema): 
     curView = named.childView;
   }
   for (const seg of segs) {
+    // A map entry is called by its key: the key is the name the person typed
+    // into the row, and the schema has no title for it. Decided before the
+    // index rule, because a map may well have "0" for a key.
+    const entry = node && root && !node.properties?.[seg] && !node.items ? mapValueSchema(node) : undefined;
+    if (entry) {
+      out = out ? `${out} › ${seg}` : seg;
+      skipIndex = false;
+      node = deref(entry, root!);
+      // Inside an entry the form draws the value schema's own view, else the
+      // view written on the map node (the one a view override handed down).
+      curView = (node["ui:view"] ?? curView) as Schema | undefined;
+      continue;
+    }
     if (/^\d+$/.test(seg)) {
       if (skipIndex) skipIndex = false; // single widget: omit the [0]
       else out += out ? ` #${Number(seg) + 1}` : `#${Number(seg) + 1}`;
@@ -211,5 +279,5 @@ function namedByView(
 // they are, including the "/" and "~" a Kubernetes annotation key carries, which
 // is the whole reason the segments travel separately from the dotted path.
 export function pointerOf(field: string[]): string {
-  return field.map((s) => `/${s.replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
+  return field.map((s) => `/${escapeToken(s)}`).join("");
 }
