@@ -245,6 +245,7 @@ export function PublicationOverview({
   subtitle,
   status,
   actions,
+  decision,
   after,
 }: {
   pub: ChartPublication;
@@ -255,6 +256,9 @@ export function PublicationOverview({
   subtitle?: React.ReactNode;
   status?: React.ReactNode;
   actions?: React.ReactNode;
+  // The decision on a proposed category and owner, drawn in place of the
+  // approval banners (the admin's publication page decides right here).
+  decision?: React.ReactNode;
   // Sections drawn under the versions.
   after?: React.ReactNode;
 }) {
@@ -556,7 +560,9 @@ export function PublicationOverview({
 
       {/* Metadata (category/owner) change has its own approval flow. The
           admin is the one deciding it, and decides on the registry page. */}
-      {metaPending && isAdmin ? (
+      {decision ? (
+        decision
+      ) : metaPending && isAdmin ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span>{adminPublicationText.adminPendingHint}</span>
           <Link

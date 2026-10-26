@@ -12,6 +12,7 @@ import { ErrorBox, LinkButton, Loading } from "@/components/ui";
 import { adminPublicationText as t } from "@/features/publications/adminPublicationText";
 import { IssuePill } from "@/features/publications/IssuePill";
 import { actorLabel, describeEvent } from "@/features/publications/journal";
+import { MetaDecisionCard, MetaDraftNotice } from "@/features/publications/MetaDecision";
 import { registryText } from "@/features/publications/registryText";
 import { useAsync } from "@/hooks/useAsync";
 import { fmtDateTime, fmtRecent } from "@/lib/time";
@@ -62,6 +63,15 @@ export function AdminPublicationPage() {
     reloadRows();
   };
   const ordersTo = `/admin/requests?product=${encodeURIComponent(name)}`;
+  // What a team proposed about the category and owner: decided here when it
+  // was sent, shown as their draft when it was not.
+  const hasDraft = !!pub.draft_category_id || !!pub.draft_owner_team;
+  const decision =
+    pub.status === "PENDING" ? (
+      <MetaDecisionCard pub={pub} submitted={row?.submitted} onDecided={reload} />
+    ) : hasDraft ? (
+      <MetaDraftNotice pub={pub} />
+    ) : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -88,6 +98,7 @@ export function AdminPublicationPage() {
             <LinkButton to={`/catalog/${project}/${name}/manage`}>{t.openManage}</LinkButton>
           </>
         }
+        decision={decision}
         after={<JournalSection pub={pub} />}
       />
     </div>

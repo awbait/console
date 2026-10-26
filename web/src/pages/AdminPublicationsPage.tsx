@@ -29,11 +29,10 @@ import {
   TableHeader,
 } from "react-aria-components";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { api, errorMessage } from "@/api/client";
+import { api } from "@/api/client";
 import { qk } from "@/api/queryKeys";
 import type { ChartPublication, PendingVersion, PublicationStatus, RegistryRow } from "@/api/types";
 import { chartLabel, useCatalog } from "@/app/CatalogContext";
-import { useToast } from "@/app/ToastContext";
 import { useTeamLabel } from "@/auth/UserContext";
 import { FormDialogShell } from "@/components/FormDialogShell";
 import { FormErrors } from "@/components/FormErrors";
@@ -43,6 +42,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SearchFilter } from "@/components/SearchFilter";
 import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "@/components/ui";
 import { IssuePill } from "@/features/publications/IssuePill";
+import { Change, CommentField, ProposalDiff, SubmittedBy, useMetaDecision } from "@/features/publications/MetaDecision";
 import { registryText as t } from "@/features/publications/registryText";
 import { useAsync } from "@/hooks/useAsync";
 
@@ -474,18 +474,6 @@ function QueueRow({ item, onDecide }: { item: QueueItem; onDecide: () => void })
   );
 }
 
-// Change is "was > will be" for one proposed value. The old value is muted,
-// not struck: a strike in a light colour reads as a tear through the text.
-function Change({ from, to }: { from: string; to: string }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className="text-slate-400">{from}</span>
-      <IconArrowRight size={12} className="text-slate-400" aria-hidden />
-      <span className="font-medium text-slate-700">{to}</span>
-    </span>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Registry rows
 // ---------------------------------------------------------------------------
@@ -623,40 +611,9 @@ function MetaDecisionPanel({
   onClose: () => void;
   onDecided: () => void;
 }) {
-  const { categories } = useCatalog();
-  const teamLabel = useTeamLabel();
-  const toast = useToast();
-  const [comment, setComment] = useState("");
-  const [busy, setBusy] = useState<null | "approve" | "reject">(null);
-  const [err, setErr] = useState<string | null>(null);
   const p = row?.publication ?? null;
-  const catLabel = (id: string) => categories.find((c) => c.id === id)?.label ?? id;
   const pendingMeta = p?.status === "PENDING";
-
-  async function decide(action: "approve" | "reject") {
-    if (!p) return;
-    if (action === "reject" && comment.trim() === "") {
-      setErr(t.commentRequired);
-      return;
-    }
-    setBusy(action);
-    setErr(null);
-    try {
-      if (action === "approve") {
-        await api.approvePublication(p.id);
-        toast.success(t.approved);
-      } else {
-        await api.rejectPublication(p.id, comment.trim());
-        toast.success(t.rejected);
-      }
-      setComment("");
-      onDecided();
-    } catch (e) {
-      setErr(errorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { comment, onComment, busy, err, decide } = useMetaDecision(p, onDecided);
 
   return (
     <FormDialogShell
@@ -683,61 +640,15 @@ function MetaDecisionPanel({
       {p && (
         <div className="flex flex-col gap-4">
           <div className="overflow-hidden rounded-lg border border-slate-200">
-            {pendingMeta && (p.draft_category_id || p.draft_owner_team) ? (
-              <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3 text-sm">
-                {p.draft_category_id && (
-                  <>
-                    <dt className="text-xs uppercase tracking-wide text-slate-400">{t.panelCategory}</dt>
-                    <dd>
-                      <Change from={catLabel(p.category_id)} to={catLabel(p.draft_category_id)} />
-                    </dd>
-                  </>
-                )}
-                {p.draft_owner_team && (
-                  <>
-                    <dt className="text-xs uppercase tracking-wide text-slate-400">{t.panelOwner}</dt>
-                    <dd>
-                      <Change from={teamLabel(p.owner_team)} to={teamLabel(p.draft_owner_team)} />
-                    </dd>
-                  </>
-                )}
-              </dl>
-            ) : (
-              <p className="px-4 py-3 text-sm text-slate-500">{t.panelNoChanges}</p>
-            )}
+            {pendingMeta ? <ProposalDiff pub={p} /> : <p className="px-4 py-3 text-sm text-slate-500">{t.panelNoChanges}</p>}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500">
-              {row?.submitted && (
-                <>
-                  <span className="inline-flex items-center gap-1">
-                    <IconUser size={13} stroke={1.8} className="text-slate-400" aria-hidden />
-                    {row.submitted.by_name}
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <IconClock size={13} stroke={1.8} className="text-slate-400" aria-hidden />
-                    {fullDate(row.submitted.at)}
-                  </span>
-                </>
-              )}
+              <SubmittedBy submitted={row?.submitted} />
               <Link to={publicationPath(p)} className="ml-auto font-medium text-brand-600 hover:underline">
                 {t.panelOpenPublication}
               </Link>
             </div>
           </div>
-          {pendingMeta && (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-xs font-medium text-slate-600">{t.commentLabel}</span>
-              <textarea
-                value={comment}
-                onChange={(e) => {
-                  setComment(e.target.value);
-                  if (err) setErr(null);
-                }}
-                rows={3}
-                placeholder={t.commentPlaceholder}
-                className="rounded-md border border-slate-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
-              />
-            </label>
-          )}
+          {pendingMeta && <CommentField value={comment} onChange={onComment} />}
           {err && <FormErrors message={err} />}
         </div>
       )}
