@@ -14,6 +14,12 @@ describe("scalarTypesOf", () => {
     expect([...(scalarTypesOf({ type: ["string", "integer"] }, {}) ?? [])].sort()).toEqual(["integer", "string"]);
   });
 
+  test("a oneOf of bare types is the same choice", () => {
+    const got = scalarTypesOf({ oneOf: [{ type: "string" }, { type: "boolean" }] }, {});
+    expect([...(got ?? [])].sort()).toEqual(["boolean", "string"]);
+    expect(scalarTypesOf({ oneOf: [{ type: "string" }, { type: "object", properties: {} }] }, {})).toBeUndefined();
+  });
+
   test("follows a reference inside the choice", () => {
     const root = { definitions: { n: { type: "number" } } };
     const got = scalarTypesOf({ anyOf: [{ type: "string" }, { $ref: "#/definitions/n" }] }, root);

@@ -49,6 +49,15 @@ const schema = {
       },
       additionalProperties: false,
     },
+    // The same written as oneOf, as another chart does for exchange arguments.
+    xargs: {
+      title: "Аргументы обменника",
+      type: "object",
+      patternProperties: {
+        "^(.*)$": { oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }] },
+      },
+      additionalProperties: false,
+    },
   },
 };
 
@@ -103,6 +112,15 @@ describe("a map drawn by the schema of its values", () => {
     expect(html).toContain('value="true"');
     expect(html).toContain('value="null"');
     expect(html).toContain("сохраняются как значения своего типа");
+  });
+
+  test("a oneOf of bare scalars is the same text line, not a variant card", () => {
+    const html = markup({ xargs: { "alternate-exchange": "dlx", "x-max": 5 } });
+    expect(html).toContain('placeholder="значение"');
+    expect(html).toContain('value="dlx"');
+    expect(html).toContain('value="5"');
+    expect(html).not.toContain("Вариант");
+    expect(html).not.toContain("[object Object]");
   });
 });
 

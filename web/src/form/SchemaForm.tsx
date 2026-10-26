@@ -1393,10 +1393,12 @@ const nextRowID = () => `ai${++rowSeq}`;
 type MapKind = "text" | "any" | "scalar" | "fields";
 
 function mapKindOf(entry: Schema, root: Schema): MapKind {
+  // Before the variant check: a oneOf of bare scalar types is a value to type,
+  // not a variant to pick (a card with a picker over "string", "integer"...).
+  if (scalarTypesOf(entry, root)) return "any";
   if ((entry.type === "object" && entry.properties) || Array.isArray(entry.oneOf) || mapValueSchema(entry)) {
     return "fields";
   }
-  if (scalarTypesOf(entry, root)) return "any";
   // "Any JSON" (a choice with an object or a list in it) stays a string the
   // person types.
   if (Array.isArray(entry.anyOf) || Array.isArray(entry.type)) return "text";
