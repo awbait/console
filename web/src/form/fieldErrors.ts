@@ -58,6 +58,10 @@ export const fieldHint = {
   charsetDots: "Строчные латинские буквы, цифры, точка и дефис.",
   integer: "Целое число.",
   pathSlash: "Путь начинается с косой черты.",
+  // Under a map whose entries may be any scalar (mapScalar.ts): how the typed
+  // text is read.
+  anyScalar:
+    'Числа, true, false и null сохраняются как значения своего типа. Значения в кавычках, например "5", и остальные сохраняются как текст.',
 };
 
 // What an empty field with a value of its own shows in grey. Named, because
