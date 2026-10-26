@@ -41,6 +41,7 @@ import { FormErrors } from "../components/FormErrors";
 import { adminPublicationText } from "../features/publications/adminPublicationText";
 import { editLeaseText } from "../features/publications/editLeaseText";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
 import { ruPlural } from "../form/fieldErrors";
@@ -480,8 +481,11 @@ export function PublicationOverview({
   const liveRows = rows.filter((e) => !isRetired(e));
   const retiredRows = rows.filter(isRetired);
 
+  // The header stays put and the cards below it scroll, the way the other
+  // pages are framed: a long journal or version table must not carry the
+  // crumbs and the chips out of view.
   return (
-    <div className="flex flex-col gap-4">
+    <Page className="gap-4">
       <PageHeader
         breadcrumbs={breadcrumbs}
         title={title ?? `Управление: ${chartLabel(name)}`}
@@ -556,6 +560,7 @@ export function PublicationOverview({
         }
       />
 
+      <PageBody gap="none" className="gap-4">
       {canAdopt && <AdoptCard pub={pub} teams={adoptTargets} onAdopted={reload} />}
 
       {/* Metadata (category/owner) change has its own approval flow. The
@@ -696,6 +701,7 @@ export function PublicationOverview({
       )}
 
       {after}
+      </PageBody>
 
       {/* A version leaves support with a reason attached: it is what the teams
           still running it are told, and what the chip explains months later. The
@@ -732,7 +738,7 @@ export function PublicationOverview({
           return onDeprecate(row, note.trim());
         }}
       />
-    </div>
+    </Page>
   );
 }
 
