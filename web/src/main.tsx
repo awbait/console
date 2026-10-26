@@ -47,6 +47,7 @@ const ApprovalRedirectPage = page(
   () => import("./pages/AdminPublicationsPage"),
   "ApprovalRedirectPage",
 );
+const AdminPublicationPage = page(() => import("./pages/AdminPublicationPage"), "AdminPublicationPage");
 const AdminCategoriesPage = page(() => import("./pages/AdminSection"), "AdminCategoriesPage");
 const AdminStandsPage = page(() => import("./pages/AdminStandsPage"), "AdminStandsPage");
 const AdminStandPage = page(() => import("./pages/AdminStandPage"), "AdminStandPage");
@@ -142,6 +143,8 @@ const router = createBrowserRouter([
           { path: "status", element: <StatusPage /> },
           { path: "config", element: <ConfigPage /> },
           { path: "publications", element: <Navigate to="/admin/approvals" replace /> },
+          // A publication as the admin works with it, inside the section.
+          { path: "publications/:project/:name", element: <AdminPublicationPage /> },
         ],
       },
       { path: "status", element: <Navigate to="/admin/status" replace /> },

@@ -25,6 +25,7 @@ import { useToast } from "@/app/ToastContext";
 import { canModify, useUser } from "@/auth/UserContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
+import { Page } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchFilter } from "@/components/SearchFilter";
 import {
@@ -75,7 +76,7 @@ const ALL_GROUPS = STATUS_GROUPS.map((g) => g.key);
 // its width, which is why that column is pinned to a fixed 4rem (w-16): its
 // content is a single icon button, well inside those bounds, so the column
 // cannot grow and leave a gap between the two.
-const PINNED_HEAD = "sticky z-10 bg-slate-50";
+const PINNED_HEAD = "sticky z-30 bg-slate-50";
 const PINNED_CELL = "sticky z-10 bg-surface group-hover:bg-slate-50 group-focus-visible:bg-slate-50";
 const ACTIONS_W = "w-16";
 const AT_ACTIONS = "right-0";
@@ -285,9 +286,12 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   };
 
   return (
-    <div>
+    // The header and the filters stay put; the table is the one box that
+    // scrolls, both ways. It is as tall as its rows until they outgrow the
+    // page, then it shrinks to the room left (min-h-0 + overflow on a flex
+    // child) and its header pins to the top of the box.
+    <Page>
       <PageHeader
-        className="mb-4"
         title={title}
         actions={
           orderTo ? (
@@ -308,7 +312,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         }
       />
 
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+      <div className="-mt-1 flex shrink-0 flex-wrap items-center gap-1.5">
         {allTeams && (
           <>
             <SearchFilter
@@ -373,7 +377,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           not fit slides under the pinned status and actions. */}
       <div
         ref={scroller}
-        className="overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm"
+        className="scroll-lane relative min-h-0 overflow-auto rounded-lg border border-slate-200 bg-surface shadow-sm"
       >
         {/* Separated borders, not collapsed ones: with collapsed borders a
             browser paints neither the border nor the shadow of a cell, and the
@@ -383,7 +387,11 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           aria-label={title}
           className="w-full min-w-max border-separate border-spacing-0 whitespace-nowrap text-sm"
         >
-          <TableHeader className="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 [&_th]:border-b [&_th]:border-slate-200">
+          {/* Every header cell pins to the top of the scroll box on its own:
+              a sticky thead does nothing with separated borders, and a cell
+              paints no background unless given one. The pinned pair sits
+              above the rest (z-30 in PINNED_HEAD) where the two overlap. */}
+          <TableHeader className="text-xs font-medium uppercase tracking-wide text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:border-b [&_th]:border-slate-200 [&_th]:bg-slate-50">
             <Column className="px-4 py-2.5 text-left">Категория</Column>
             {allTeams && <Column className="px-4 py-2.5 text-left">Команда</Column>}
             <Column className="px-4 py-2.5 text-left">Продукт</Column>
@@ -565,7 +573,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           navigate(`/requests/${draft.id}/edit`);
         }}
       />
-    </div>
+    </Page>
   );
 }
 

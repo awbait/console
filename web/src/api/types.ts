@@ -863,6 +863,9 @@ export interface PublicationEvent {
   id: number;
   publication_id: string;
   actor: string;
+  // What the portal knows the actor as; absent when the user directory has
+  // no record of them.
+  actor_name?: string;
   event_type: string;
   from_status?: PublicationStatus;
   to_status?: PublicationStatus;

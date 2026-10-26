@@ -41,7 +41,8 @@ import { ProductIcon } from "@/components/icons";
 import { Page, PageBody } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
 import { SearchFilter } from "@/components/SearchFilter";
-import { Button, Card, Chip, ErrorBox, Hint, Loading, SkeletonRows, StatusPill } from "@/components/ui";
+import { Button, Card, Chip, ErrorBox, Loading, SkeletonRows } from "@/components/ui";
+import { IssuePill } from "@/features/publications/IssuePill";
 import { registryText as t } from "@/features/publications/registryText";
 import { useAsync } from "@/hooks/useAsync";
 
@@ -56,8 +57,11 @@ import { useAsync } from "@/hooks/useAsync";
 // panel here, opened from the queue or by ?meta=project/name, which is what
 // the old decision page's address forwards to (ApprovalRedirectPage).
 
-const managePath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =>
-  `/catalog/${p.chart_project}/${p.chart_name}/manage`;
+// Where a publication is worked on from here: its page in the admin section,
+// not the catalog's management page, which would drop the admin out of the
+// section with no way back.
+const publicationPath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =>
+  `/admin/publications/${p.chart_project}/${p.chart_name}`;
 const catalogPath = (p: Pick<ChartPublication, "chart_project" | "chart_name">) =>
   `/catalog/${p.chart_project}/${p.chart_name}`;
 const versionPath = (p: Pick<ChartPublication, "chart_project" | "chart_name">, version: string) =>
@@ -74,19 +78,11 @@ const STATUS_TONE: Record<PublicationStatus, string> = {
   APPROVED: "bg-emerald-50 text-emerald-700",
   REJECTED: "bg-red-50 text-red-700",
 };
-// Problems are red when nothing can be ordered because of them, amber when
-// somebody has to act or something is on its way out, neutral when the
-// publication is simply not there yet.
-const ISSUE_TONE: Record<string, string> = {
-  chart_missing: "bg-red-50 text-red-700",
-  gone: "bg-red-50 text-red-700",
-  no_owner: "bg-amber-50 text-amber-700",
-  not_orderable: "bg-amber-50 text-amber-700",
-  deprecated: "bg-amber-50 text-amber-700",
-  no_order_form: "bg-slate-100 text-slate-600",
-};
-
 const effStatus = (p: ChartPublication): PublicationStatus => p.effective_status ?? p.status;
+// What teams see in the catalog right now: the server lists the versions the
+// catalog offers, and a service with none of them is not there to order,
+// whatever its approval status says.
+const inCatalog = (r: RegistryRow) => r.versions.orderable.length > 0;
 
 // What the queue is made of: a version somebody submitted, or a publication
 // whose category and owner somebody proposed.
@@ -147,6 +143,7 @@ export function AdminPublicationsPage() {
   const [cats, setCats] = useState<Set<string>>(new Set());
   const [owners, setOwners] = useState<Set<string>>(new Set());
   const [onlyIssues, setOnlyIssues] = useState(false);
+  const [onlyInCatalog, setOnlyInCatalog] = useState(false);
 
   const all = rows ?? [];
   const catLabel = (id: string) => categories.find((c) => c.id === id)?.label ?? id;
@@ -176,17 +173,19 @@ export function AdminPublicationsPage() {
       if (cats.size && !cats.has(catLabel(p.category_id))) return false;
       if (owners.size && !owners.has(ownerName(p.owner_team))) return false;
       if (onlyIssues && r.issues.length === 0) return false;
+      if (onlyInCatalog && !inCatalog(r)) return false;
       return true;
     })
     // Newest change first: the registry is read to see what moved.
     .sort((a, b) => b.publication.updated_at.localeCompare(a.publication.updated_at));
-  const filtered = q !== "" || statuses.size > 0 || cats.size > 0 || owners.size > 0 || onlyIssues;
+  const filtered = q !== "" || statuses.size > 0 || cats.size > 0 || owners.size > 0 || onlyIssues || onlyInCatalog;
   const reset = () => {
     setQuery("");
     setStatuses(new Set());
     setCats(new Set());
     setOwners(new Set());
     setOnlyIssues(false);
+    setOnlyInCatalog(false);
   };
 
   // Where a row leads: to the decision it waits on, else to its management.
@@ -197,7 +196,7 @@ export function AdminPublicationsPage() {
       return;
     }
     const pv = (pending ?? []).find((v) => v.publication.id === p.id);
-    navigate(pv ? versionPath(p, pv.version.chart_version) : managePath(p));
+    navigate(pv ? versionPath(p, pv.version.chart_version) : publicationPath(p));
   };
 
   const onDecided = () => {
@@ -226,11 +225,15 @@ export function AdminPublicationsPage() {
         }
       />
 
-      <PageBody>
+      {/* The queue and the registry's toolbar stay put; only the registry's
+          rows scroll (the PageBody inside the registry section). The chip in
+          the header already counts the queue, so its title does not. A long
+          queue scrolls within itself rather than pushing the registry off
+          the screen. */}
         {queue.length > 0 && (
-          <Section title={t.queueTitle} count={queue.length}>
+          <Section title={t.queueTitle}>
             <Card padded={false} className="overflow-hidden">
-              <ul className="divide-y divide-slate-100">
+              <ul className="max-h-[40vh] divide-y divide-slate-100 overflow-y-auto">
                 {queue.map((item) => (
                   <QueueRow key={item.key} item={item} onDecide={() => item.kind === "meta" && openMeta(item.row)} />
                 ))}
@@ -242,6 +245,7 @@ export function AdminPublicationsPage() {
         <Section
           title={t.registryTitle}
           count={all.length}
+          className="min-h-0 flex-1"
           summary={
             withIssues > 0 && (
               <button
@@ -318,6 +322,17 @@ export function AdminPublicationsPage() {
               {onlyIssues && <IconCheck size={12} stroke={3} />}
               {t.onlyIssues}
             </button>
+            <button
+              type="button"
+              onClick={() => setOnlyInCatalog((v) => !v)}
+              aria-pressed={onlyInCatalog}
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                onlyInCatalog ? "border-brand-200 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {onlyInCatalog && <IconCheck size={12} stroke={3} />}
+              {t.onlyInCatalog}
+            </button>
             {filtered && (
               <button
                 type="button"
@@ -330,6 +345,7 @@ export function AdminPublicationsPage() {
             )}
           </div>
 
+          <PageBody gap="none">
           {/* No overflow-hidden here: it would make this box the scroll container
               and the sticky header below would have nothing to stick to. The
               header rounds its own top corners instead. */}
@@ -375,8 +391,8 @@ export function AdminPublicationsPage() {
               </TableBody>
             </Table>
           </div>
+          </PageBody>
         </Section>
-      </PageBody>
 
       <MetaDecisionPanel row={deciding} onClose={closeMeta} onDecided={onDecided} />
     </Page>
@@ -458,13 +474,14 @@ function QueueRow({ item, onDecide }: { item: QueueItem; onDecide: () => void })
   );
 }
 
-// Change is "was > will be" for one proposed value.
+// Change is "was > will be" for one proposed value. The old value is muted,
+// not struck: a strike in a light colour reads as a tear through the text.
 function Change({ from, to }: { from: string; to: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="line-through decoration-slate-300">{from}</span>
-      <IconArrowRight size={12} className="text-slate-300" aria-hidden />
-      <span>{to}</span>
+      <span className="text-slate-400">{from}</span>
+      <IconArrowRight size={12} className="text-slate-400" aria-hidden />
+      <span className="font-medium text-slate-700">{to}</span>
     </span>
   );
 }
@@ -567,8 +584,8 @@ function RegistryRowView({
             className="min-w-56 rounded-md border border-slate-200 bg-surface py-1 shadow-lg outline-none entering:animate-in entering:fade-in"
           >
             <Menu className="outline-none" onAction={(key) => navigate(String(key))}>
-              <MenuItem id={managePath(p)} className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none hover:bg-slate-50 focus:bg-slate-50">
-                {t.openManage}
+              <MenuItem id={publicationPath(p)} className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none hover:bg-slate-50 focus:bg-slate-50">
+                {t.openPublication}
               </MenuItem>
               <MenuItem id={catalogPath(p)} className="cursor-pointer px-3 py-1.5 text-sm text-slate-700 outline-none hover:bg-slate-50 focus:bg-slate-50">
                 {t.openCatalog}
@@ -590,25 +607,6 @@ function Mark({ tone, text }: { tone: string; text: string }) {
       <span className={`h-1.5 w-1.5 rounded-full ${tone}`} aria-hidden />
       {text}
     </span>
-  );
-}
-
-// IssuePill names one problem and explains it on hover or focus. A code this
-// build does not know (a newer server) is shown as the code: better than a
-// problem the page silently drops.
-function IssuePill({ code }: { code: string }) {
-  const known = (t.issue as Record<string, { label: string; hint: string }>)[code];
-  const tone = ISSUE_TONE[code] ?? "bg-slate-100 text-slate-600";
-  const pill = (
-    <StatusPill tone={tone} Icon={IconAlertTriangle}>
-      {known?.label ?? code}
-    </StatusPill>
-  );
-  if (!known) return pill;
-  return (
-    <Hint text={known.hint}>
-      <AriaButton className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{pill}</AriaButton>
-    </Hint>
   );
 }
 
@@ -678,7 +676,7 @@ function MetaDecisionPanel({
             </Button>
           </>
         ) : (
-          <Button onPress={close}>{t.panelOpenManage}</Button>
+          <Button onPress={close}>{t.panelOpenPublication}</Button>
         )
       }
     >
@@ -720,8 +718,8 @@ function MetaDecisionPanel({
                   </span>
                 </>
               )}
-              <Link to={managePath(p)} className="ml-auto font-medium text-brand-600 hover:underline">
-                {t.panelOpenManage}
+              <Link to={publicationPath(p)} className="ml-auto font-medium text-brand-600 hover:underline">
+                {t.panelOpenPublication}
               </Link>
             </div>
           </div>
@@ -755,16 +753,18 @@ function Section({
   title,
   count,
   summary,
+  className = "",
   children,
 }: {
   title: string;
   count?: number;
   summary?: ReactNode;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="flex min-w-0 flex-col">
-      <div className="mb-3 flex min-h-7 items-center gap-2">
+    <section className={`flex min-w-0 flex-col ${className}`}>
+      <div className="mb-3 flex min-h-7 shrink-0 items-center gap-2">
         <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
         {count !== undefined && (
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium tabular-nums text-slate-600">
@@ -815,6 +815,6 @@ export function ApprovalRedirectPage() {
       ? `/admin/approvals?meta=${encodeURIComponent(metaKey(pub))}`
       : pending.length === 1
         ? versionPath(pub, pending[0].chart_version)
-        : managePath(pub);
+        : publicationPath(pub);
   return <Navigate to={to} replace />;
 }
