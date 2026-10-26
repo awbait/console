@@ -490,7 +490,9 @@ export function PublicationOverview({
               role), so their chip shows the live value and never a proposal;
               a team's proposal is theirs to send and the admin's to decide
               on the registry page. */}
-          {metaEditable ? (
+          {/* A chart nobody owns yet gets its category together with its owner
+              from the card below, so up here it is only read. */}
+          {metaEditable && !isUnclaimed(pub) ? (
             <ChipSelect
               label="Категория"
               icon={<IconCategory size={13} stroke={1.8} className="text-slate-400" />}
@@ -500,7 +502,7 @@ export function PublicationOverview({
               onChange={(id) => onMetaChange({ category_id: id })}
               info="Категория изменится только после согласования"
             />
-          ) : pub.draft_category_id ? (
+          ) : pub.draft_category_id && !isAdmin ? (
             <ProposalChip
               label="Категория"
               from={categoryLabel}
@@ -526,7 +528,7 @@ export function PublicationOverview({
               onChange={(t) => onMetaChange({ owner_team: t })}
               info="Владелец изменится только после согласования"
             />
-          ) : pub.draft_owner_team ? (
+          ) : pub.draft_owner_team && !isAdmin ? (
             <ProposalChip
               label="Владелец"
               from={teamLabel(pub.owner_team)}
