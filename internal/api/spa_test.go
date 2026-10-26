@@ -10,9 +10,10 @@ import (
 
 func TestSPAHandler(t *testing.T) {
 	fsys := fstest.MapFS{
-		"index.html":    {Data: []byte("<html>shell</html>")},
-		"assets/app.js": {Data: []byte("console.log(1)")},
-		"favicon.ico":   {Data: []byte("\x00\x00\x01\x00")},
+		"index.html":            {Data: []byte("<html>shell</html>")},
+		"assets/app.js":         {Data: []byte("console.log(1)")},
+		"favicon.ico":           {Data: []byte("\x00\x00\x01\x00")},
+		"docs-content/intro.md": {Data: []byte("# intro")},
 	}
 	h, err := spaHandler(fsys)
 	if err != nil {
@@ -30,6 +31,12 @@ func TestSPAHandler(t *testing.T) {
 		{"client route serves shell", "/requests/123", 200, "shell", "no-cache", "text/html"},
 		{"asset served with immutable cache", "/assets/app.js", 200, "console.log", "immutable", ""},
 		{"missing asset is 404", "/assets/missing.js", 404, "", "", ""},
+		{"missing doc under a shipped directory is 404", "/docs-content/missing.md", 404, "", "", ""},
+		{"missing root file with extension is 404", "/robots.txt", 404, "", "", ""},
+		// A chart version in the last segment looks like a file extension to
+		// path.Ext; the route must still get the shell on reload (#504).
+		{"route with dotted version serves shell", "/catalog/managed-services/ingress-gateway/manage/12.0.0", 200, "shell", "no-cache", "text/html"},
+		{"approval route with dotted version serves shell", "/approvals/managed-services/ingress-gateway/1.2.3", 200, "shell", "no-cache", "text/html"},
 		// The icon is a real file, not the shell: an image content type (sniffed,
 		// since .ico is missing from Go's table and from a scratch image's
 		// /etc/mime.types) and a cache header of its own, because the embedded FS
