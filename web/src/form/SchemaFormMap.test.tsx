@@ -38,6 +38,17 @@ const schema = {
       minProperties: 1,
       additionalProperties: { type: "string" },
     },
+    // RabbitMQ queue arguments: any scalar, under one pattern that takes every key.
+    args: {
+      title: "Аргументы",
+      type: "object",
+      patternProperties: {
+        "^(.*)$": {
+          anyOf: [{ type: "string" }, { type: "integer" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
+        },
+      },
+      additionalProperties: false,
+    },
   },
 };
 
@@ -81,6 +92,18 @@ describe("a map drawn by the schema of its values", () => {
     expect(html).toContain('id="ff/vhosts/~1billing"');
     expect(html).toContain('value="/billing"');
   });
+
+  test("an any-scalar value is a text line that shows each value as it reads back", () => {
+    const html = markup({ args: { "x-delivery-limit": 5, "x-queue-mode": "lazy", "x-note": "5", on: true, none: null } });
+    expect(html).toContain('placeholder="значение"');
+    expect(html).toContain('value="5"');
+    expect(html).toContain('value="lazy"');
+    // A string that looks like a number is shown quoted, so it stays a string.
+    expect(html).toContain('value="&quot;5&quot;"');
+    expect(html).toContain('value="true"');
+    expect(html).toContain('value="null"');
+    expect(html).toContain("сохраняются как значения своего типа");
+  });
 });
 
 describe("collectErrors over a map", () => {
@@ -111,6 +134,10 @@ describe("collectErrors over a map", () => {
 
   test("too few entries is reported on the map", () => {
     expect(collectErrors(schema, { named: {} }).get("/named")).toBeString();
+  });
+
+  test("an any-scalar map accepts every scalar type", () => {
+    expect(collectErrors(schema, { args: { a: 5, b: "x", c: true, d: null } }).size).toBe(0);
   });
 
   test("a plain string map is not checked beyond its own rules", () => {

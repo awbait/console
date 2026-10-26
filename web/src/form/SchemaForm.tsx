@@ -10,6 +10,7 @@ import { Button, Checkbox, Hint, Select, TextArea, TextField } from "../componen
 import {
   defaultPlaceholder,
   type FieldRequirement,
+  fieldHint,
   fieldMsg,
   fieldRequirements,
   patternError,
@@ -23,6 +24,7 @@ import {
   mapValueSchema,
   pinnedAt,
 } from "./fieldPath";
+import { parseScalar, type ScalarType, scalarText, scalarTypesOf } from "./mapScalar";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -1362,7 +1364,10 @@ function errorsUnder(validation: Validation, prefix: string): number {
 // (FE-M2): keying by array index made disclosure/focus state shift to a sibling
 // when a middle row was removed. The key is not the identity either: renaming
 // an entry keeps its row, its value and its place in the list.
-type mapRow = { k: string; v: unknown; id: string };
+// t is the text an "any" row shows while it is typed: "5." is on its way to
+// "5.5", and the value it stands for so far (5) would show as "5" and eat the
+// dot. Rows of the other kinds show their value and have no text of their own.
+type mapRow = { k: string; v: unknown; id: string; t?: string };
 let mapRowSeq = 0;
 const nextMapRowID = () => `mr${++mapRowSeq}`;
 
@@ -1375,6 +1380,9 @@ const nextRowID = () => `ai${++rowSeq}`;
 // A map draws its entries by the schema their values follow (mapValueSchema):
 //   text   - a string with no rules, or any JSON: the key and the value on one
 //            line as two inputs, the value kept as a string;
+//   any    - any scalar (a choice between string, number, boolean, null): the
+//            same two inputs, the text read into the type it stands for
+//            (mapScalar.ts), so a queue argument typed as 5 is the number 5;
 //   scalar - a number, a boolean, a choice, a string with rules: the key input
 //            beside the control the schema gets anywhere else in the form;
 //   fields - an object, a variant or a map: a card per entry, like a row of a
@@ -1382,13 +1390,15 @@ const nextRowID = () => `ai${++rowSeq}`;
 // A chart that describes a map as "name -> settings" (RabbitMQ users, each with
 // tags and permissions) is the reason the last two exist: typed into a text
 // row, a number left as a string and an object showed as "[object Object]".
-type MapKind = "text" | "scalar" | "fields";
+type MapKind = "text" | "any" | "scalar" | "fields";
 
-function mapKindOf(entry: Schema): MapKind {
+function mapKindOf(entry: Schema, root: Schema): MapKind {
   if ((entry.type === "object" && entry.properties) || Array.isArray(entry.oneOf) || mapValueSchema(entry)) {
     return "fields";
   }
-  // "Any JSON" (a choice between every type) stays a string the person types.
+  if (scalarTypesOf(entry, root)) return "any";
+  // "Any JSON" (a choice with an object or a list in it) stays a string the
+  // person types.
   if (Array.isArray(entry.anyOf) || Array.isArray(entry.type)) return "text";
   if (entry.enum) return "scalar";
   if (entry.type === "string" || entry.type === undefined) {
@@ -1409,8 +1419,15 @@ function mapObject(value: unknown, kind: MapKind): Values {
   return out;
 }
 
-function valueToMapRows(value: unknown, kind: MapKind): mapRow[] {
-  return Object.entries(mapObject(value, kind)).map(([k, v]) => ({ k, v, id: nextMapRowID() }));
+// valueToMapRows builds the rows for a map value. types is what an "any" entry
+// admits (scalarTypesOf), and says how its value is shown as text.
+function valueToMapRows(value: unknown, kind: MapKind, types?: ReadonlySet<ScalarType>): mapRow[] {
+  return Object.entries(mapObject(value, kind)).map(([k, v]) => ({
+    k,
+    v,
+    id: nextMapRowID(),
+    t: types ? scalarText(v, types) : undefined,
+  }));
 }
 
 // rowsToObject is the object the current rows represent. A blank key is a row
@@ -1428,6 +1445,7 @@ function rowsToObject(rows: mapRow[]): Values {
 function newMapEntry(entry: Schema, root: Schema, kind: MapKind): unknown {
   const seeded = seedDefaults(entry, root);
   if (kind === "text") return seeded === undefined ? "" : String(seeded);
+  if (kind === "any") return seeded === undefined ? "" : seeded;
   if (seeded !== undefined) return seeded;
   return kind === "fields" ? {} : undefined;
 }
@@ -1465,14 +1483,16 @@ function MapField({
   const locked = useContext(LockedCtx);
   const validation = useContext(ValidationCtx);
   const entry = deref(mapValueSchema(schema) ?? {}, root);
-  const kind = mapKindOf(entry);
+  const kind = mapKindOf(entry, root);
+  // The scalar types an "any" entry admits: what its typed text is read into.
+  const anyTypes = kind === "any" ? scalarTypesOf(entry, root) : undefined;
   // What an entry card draws inside: the value schema's own view, else the view
   // written on the map node, which is where a view override lands (walkErrors
   // and fieldBreadcrumb read it the same way).
   const entryView = (entry["ui:view"] ?? schema["ui:view"]) as View | undefined;
   const label = text(schema.title) ?? name;
   const desc = text(schema.description);
-  const [rows, setRows] = useState<mapRow[]>(() => valueToMapRows(value, kind));
+  const [rows, setRows] = useState<mapRow[]>(() => valueToMapRows(value, kind, anyTypes));
   // Entry cards are collapsed by default, except the one just added - its key
   // is still blank and its fields are what the person is about to fill in - and
   // the ones a submit attempt found errors in. Kept per row id (FE-M2).
@@ -1484,7 +1504,7 @@ function MapField({
   // does not clobber in-progress typing: a blank key or a duplicate one is not
   // in the object either way.
   useEffect(() => {
-    if (!sameValues(rowsToObject(rows), mapObject(value, kind))) setRows(valueToMapRows(value, kind));
+    if (!sameValues(rowsToObject(rows), mapObject(value, kind))) setRows(valueToMapRows(value, kind, anyTypes));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
@@ -1499,13 +1519,19 @@ function MapField({
     push(rows.map((x) => (x.id === id ? { ...x, k } : x)));
   };
   const setVal = (id: string, v: unknown) => push(rows.map((x) => (x.id === id ? { ...x, v } : x)));
+  // An "any" row keeps the text as typed and the value it stands for so far.
+  const setText = (id: string, t: string) => {
+    const v = anyTypes ? parseScalar(t, anyTypes) : t;
+    push(rows.map((x) => (x.id === id ? { ...x, v, t } : x)));
+  };
   const remove = (id: string) => {
     push(rows.filter((x) => x.id !== id));
     setExpandOverride(({ [id]: _gone, ...rest }) => rest);
   };
   const add = () => {
     const id = nextMapRowID();
-    push([...rows, { k: "", v: newMapEntry(entry, root, kind), id }]);
+    const v = newMapEntry(entry, root, kind);
+    push([...rows, { k: "", v, id, t: anyTypes ? scalarText(v, anyTypes) : undefined }]);
     if (kind === "fields") setExpandOverride((o) => ({ ...o, [id]: true }));
   };
 
@@ -1677,8 +1703,8 @@ function MapField({
                     className="flex-1 rounded-md border border-gray-300 bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
                     placeholder="значение"
                     aria-label="значение"
-                    value={String(r.v ?? "")}
-                    onChange={(e) => setVal(r.id, e.target.value)}
+                    value={anyTypes ? (r.t ?? scalarText(r.v, anyTypes)) : String(r.v ?? "")}
+                    onChange={(e) => (anyTypes ? setText(r.id, e.target.value) : setVal(r.id, e.target.value))}
                   />
                 )}
                 {removeButton(r, <IconX size={16} stroke={2} />, kind === "scalar" ? "border border-transparent" : "")}
@@ -1687,6 +1713,7 @@ function MapField({
             </div>
           );
         })}
+        {anyTypes && rows.length > 0 && <p className="text-xs text-gray-500">{fieldHint.anyScalar}</p>}
         {!locked && (
           <div>
             <Button variant="secondary" onPress={add}>
