@@ -14,7 +14,15 @@ import {
   fieldRequirements,
   patternError,
 } from "./fieldErrors";
-import { activeBranches, branchesBelow, itemBranches, pinnedAt } from "./fieldPath";
+import {
+  activeBranches,
+  branchesBelow,
+  escapeToken,
+  itemBranches,
+  mapKeyPattern,
+  mapValueSchema,
+  pinnedAt,
+} from "./fieldPath";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -227,6 +235,30 @@ function walkErrors(
           itemBranches(inherited, root),
         );
     });
+    return;
+  }
+  const entry = s.type === "object" ? mapValueSchema(s) : undefined;
+  if (entry) {
+    // A map of free keys: every entry is checked against the one schema its
+    // values follow, under the path the server would name it by (the key,
+    // pointer-escaped). The entry's own view is what the card draws inside it,
+    // else the view written on the map node, so the two agree on what is shown.
+    const obj = objectValue(value);
+    const keys = Object.keys(obj);
+    if (typeof s.minProperties === "number" && keys.length < s.minProperties)
+      out.set(base, fieldMsg.minItems(s.minProperties));
+    const keyPattern = mapKeyPattern(s);
+    const entryView = (deref(entry, root)["ui:view"] ?? view) as View | undefined;
+    for (const key of keys) {
+      const epath = `${base}/${escapeToken(key)}`;
+      // A key the chart's pattern rejects is reported on the entry: the key is
+      // the entry's name, and the value is not looked at until the name is right.
+      if (keyPattern && !matchesPattern(keyPattern, key)) {
+        out.set(epath, patternError(keyPattern, key));
+        continue;
+      }
+      walkErrors(entry, obj[key], root, entryView, epath, out, defaults);
+    }
     return;
   }
   leafErrors(s, value, base, out);
@@ -462,9 +494,7 @@ export function newArrayItem(arr: Schema, root: Schema): unknown {
   // number or enum row starts empty: an {} there reaches the text input as
   // String({}), and the new row reads "[object Object]" instead of blank.
   const holdsFields =
-    (items.type === "object" && items.properties) ||
-    Array.isArray(items.oneOf) ||
-    (items.additionalProperties && typeof items.additionalProperties === "object");
+    (items.type === "object" && items.properties) || Array.isArray(items.oneOf) || mapValueSchema(items) !== undefined;
   return holdsFields ? {} : undefined;
 }
 
@@ -777,8 +807,8 @@ function Field({
             />
           </Section>,
         );
-      if (s.additionalProperties && typeof s.additionalProperties === "object")
-        return sub(<MapField name={name} label={label} desc={desc} value={value} onChange={onChange} />);
+      if (mapValueSchema(s))
+        return sub(<MapField name={name} schema={s} root={root} value={value} onChange={onChange} path={path} />);
       return null;
     default:
       // A string, drawn on one line unless the view asks for a multi-line
@@ -1038,17 +1068,10 @@ function ArrayField({
   const validation = useContext(ValidationCtx);
   const items: unknown[] = Array.isArray(value) ? value : [];
   const itemSchema = deref(schema.items ?? {}, root);
-  // Number of currently visible errors inside an item's subtree (the item path or
-  // any descendant). A collapsed card uses this to flag that it hides invalid or
-  // unfilled required fields, which the user otherwise cannot see until expanding.
-  const itemErrorCount = (i: number): number => {
-    const prefix = `${path}/${i}`;
-    let n = 0;
-    for (const ep of validation.errors.keys()) {
-      if ((ep === prefix || ep.startsWith(`${prefix}/`)) && (validation.showAll || validation.touched.has(ep))) n++;
-    }
-    return n;
-  };
+  // Number of currently visible errors inside an item's subtree. A collapsed
+  // card uses this to flag that it hides invalid or unfilled required fields,
+  // which the user otherwise cannot see until expanding.
+  const itemErrorCount = (i: number): number => errorsUnder(validation, `${path}/${i}`);
   const isObjectItem = itemSchema.type === "object" && itemSchema.properties;
   const minItems = typeof schema.minItems === "number" ? schema.minItems : 0;
   // Can't remove below the schema minimum, and not at all when the array is locked.
@@ -1325,10 +1348,21 @@ function SingleField({
   );
 }
 
+// errorsUnder counts the errors on show inside a subtree: the path itself and
+// everything below it. A collapsed card uses it to flag what it hides.
+function errorsUnder(validation: Validation, prefix: string): number {
+  let n = 0;
+  for (const ep of validation.errors.keys()) {
+    if ((ep === prefix || ep.startsWith(`${prefix}/`)) && (validation.showAll || validation.touched.has(ep))) n++;
+  }
+  return n;
+}
+
 // mapRow carries a stable client-side id so React keys survive add/remove/reorder
 // (FE-M2): keying by array index made disclosure/focus state shift to a sibling
-// when a middle row was removed.
-type mapRow = { k: string; v: string; id: string };
+// when a middle row was removed. The key is not the identity either: renaming
+// an entry keeps its row, its value and its place in the list.
+type mapRow = { k: string; v: unknown; id: string };
 let mapRowSeq = 0;
 const nextMapRowID = () => `mr${++mapRowSeq}`;
 
@@ -1338,50 +1372,119 @@ const nextMapRowID = () => `mr${++mapRowSeq}`;
 let rowSeq = 0;
 const nextRowID = () => `ai${++rowSeq}`;
 
-function valueToMapRows(value: unknown): mapRow[] {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? Object.entries(value as Values).map(([k, v]) => ({ k, v: String(v), id: nextMapRowID() }))
-    : [];
+// A map draws its entries by the schema their values follow (mapValueSchema):
+//   text   - a string with no rules, or any JSON: the key and the value on one
+//            line as two inputs, the value kept as a string;
+//   scalar - a number, a boolean, a choice, a string with rules: the key input
+//            beside the control the schema gets anywhere else in the form;
+//   fields - an object, a variant or a map: a card per entry, like a row of a
+//            list, the key in its header and the fields inside.
+// A chart that describes a map as "name -> settings" (RabbitMQ users, each with
+// tags and permissions) is the reason the last two exist: typed into a text
+// row, a number left as a string and an object showed as "[object Object]".
+type MapKind = "text" | "scalar" | "fields";
+
+function mapKindOf(entry: Schema): MapKind {
+  if ((entry.type === "object" && entry.properties) || Array.isArray(entry.oneOf) || mapValueSchema(entry)) {
+    return "fields";
+  }
+  // "Any JSON" (a choice between every type) stays a string the person types.
+  if (Array.isArray(entry.anyOf) || Array.isArray(entry.type)) return "text";
+  if (entry.enum) return "scalar";
+  if (entry.type === "string" || entry.type === undefined) {
+    const ruled =
+      ["pattern", "minLength", "maxLength", "format"].some((k) => k in entry) || typeof entry["ui:widget"] === "string";
+    return ruled ? "scalar" : "text";
+  }
+  return "scalar";
 }
 
-// rowsToObject is the object the current rows represent (skipping blank keys).
+// mapObject is the object a map value holds, in the shape the rows keep it: a
+// text row holds its value as the string it shows.
+function mapObject(value: unknown, kind: MapKind): Values {
+  const obj = objectValue(value);
+  if (kind !== "text") return obj;
+  const out: Values = {};
+  for (const [k, v] of Object.entries(obj)) out[k] = String(v);
+  return out;
+}
+
+function valueToMapRows(value: unknown, kind: MapKind): mapRow[] {
+  return Object.entries(mapObject(value, kind)).map(([k, v]) => ({ k, v, id: nextMapRowID() }));
+}
+
+// rowsToObject is the object the current rows represent. A blank key is a row
+// still being named and stays out; a key another row above already uses keeps
+// that row's value, and the later row is told the name is taken (see keyError).
 function rowsToObject(rows: mapRow[]): Values {
   const obj: Values = {};
-  for (const r of rows) if (r.k) obj[r.k] = r.v;
+  for (const r of rows) if (r.k && !Object.prototype.hasOwnProperty.call(obj, r.k)) obj[r.k] = r.v;
   return obj;
 }
 
-function sameStringMap(a: Values, b: Values): boolean {
-  const ka = Object.keys(a);
-  if (ka.length !== Object.keys(b).length) return false;
-  return ka.every((k) => String(b[k]) === String(a[k]));
+// newMapEntry is the value a freshly added entry starts with: the entry schema's
+// own defaults, else an empty block for a card to put its fields in, else
+// nothing. A text row starts blank, for the same reason a list row does.
+function newMapEntry(entry: Schema, root: Schema, kind: MapKind): unknown {
+  const seeded = seedDefaults(entry, root);
+  if (kind === "text") return seeded === undefined ? "" : String(seeded);
+  if (seeded !== undefined) return seeded;
+  return kind === "fields" ? {} : undefined;
 }
 
+// mapEntrySummary is the one-line preview a collapsed entry card shows beside
+// its key, from the fields the value holds.
+function mapEntrySummary(entry: Schema, value: unknown, root: Schema): string {
+  if (Array.isArray(entry.oneOf)) {
+    const options: Schema[] = entry.oneOf.map((o: Schema) => deref(o, root));
+    return summarize(options[matchVariant(value, options, root)], value, root);
+  }
+  return entry.properties ? summarize(entry, value, root) : "";
+}
+
+const keyInputClass = (invalid: boolean) =>
+  `w-full rounded-md border bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+    invalid ? "border-red-500 focus:border-red-500" : "border-gray-300 focus:border-brand-500"
+  }`;
+
 function MapField({
-  label,
-  desc,
+  name,
+  schema,
+  root,
   value,
   onChange,
+  path = "",
 }: {
   name: string;
-  label: string;
-  desc?: string;
+  schema: Schema;
+  root: Schema;
   value: unknown;
   onChange: (v: unknown) => void;
+  path?: string;
 }) {
   const locked = useContext(LockedCtx);
-  const [rows, setRows] = useState<mapRow[]>(() => valueToMapRows(value));
+  const validation = useContext(ValidationCtx);
+  const entry = deref(mapValueSchema(schema) ?? {}, root);
+  const kind = mapKindOf(entry);
+  // What an entry card draws inside: the value schema's own view, else the view
+  // written on the map node, which is where a view override lands (walkErrors
+  // and fieldBreadcrumb read it the same way).
+  const entryView = (entry["ui:view"] ?? schema["ui:view"]) as View | undefined;
+  const label = text(schema.title) ?? name;
+  const desc = text(schema.description);
+  const [rows, setRows] = useState<mapRow[]>(() => valueToMapRows(value, kind));
+  // Entry cards are collapsed by default, except the one just added - its key
+  // is still blank and its fields are what the person is about to fill in - and
+  // the ones a submit attempt found errors in. Kept per row id (FE-M2).
+  const [expandOverride, setExpandOverride] = useState<Record<string, boolean>>({});
 
   // FE-M1: resync local rows when value changes externally (form<->raw toggle,
   // draft hydration, upgrade prefill). Our own edits go through push, which keeps
   // value in sync with rows, so this only fires on a genuine outside change and
-  // does not clobber in-progress typing.
+  // does not clobber in-progress typing: a blank key or a duplicate one is not
+  // in the object either way.
   useEffect(() => {
-    const incoming: Values = {};
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      for (const [k, v] of Object.entries(value as Values)) incoming[k] = String(v);
-    }
-    if (!sameStringMap(rowsToObject(rows), incoming)) setRows(valueToMapRows(value));
+    if (!sameValues(rowsToObject(rows), mapObject(value, kind))) setRows(valueToMapRows(value, kind));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
@@ -1390,40 +1493,203 @@ function MapField({
     const obj = rowsToObject(next);
     onChange(Object.keys(obj).length ? obj : undefined);
   };
+  const entryPath = (k: string) => `${path}/${escapeToken(k)}`;
+  const setKey = (id: string, k: string) => {
+    validation.mark(entryPath(k));
+    push(rows.map((x) => (x.id === id ? { ...x, k } : x)));
+  };
+  const setVal = (id: string, v: unknown) => push(rows.map((x) => (x.id === id ? { ...x, v } : x)));
+  const remove = (id: string) => {
+    push(rows.filter((x) => x.id !== id));
+    setExpandOverride(({ [id]: _gone, ...rest }) => rest);
+  };
+  const add = () => {
+    const id = nextMapRowID();
+    push([...rows, { k: "", v: newMapEntry(entry, root, kind), id }]);
+    if (kind === "fields") setExpandOverride((o) => ({ ...o, [id]: true }));
+  };
+
+  // What the key of a row is told: that a row above already uses the name (the
+  // value here is not saved until it is renamed), else what the entry's path
+  // holds once touched - a key the chart's pattern rejects (walkErrors). A
+  // scalar row leaves the latter to its control, which reads the same path.
+  const keyErrors = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (r.k === "") continue;
+    if (seen.has(r.k)) keyErrors.set(r.id, fieldMsg.taken(r.k));
+    else if (kind !== "scalar") {
+      const p = entryPath(r.k);
+      const err = validation.showAll || validation.touched.has(p) ? validation.errors.get(p) : undefined;
+      if (err) keyErrors.set(r.id, err);
+    }
+    seen.add(r.k);
+  }
+
+  useEffect(() => {
+    if (!validation.showAll || kind !== "fields") return;
+    setExpandOverride((prev) => {
+      let next = prev;
+      for (const r of rows) {
+        if (r.k && next[r.id] === undefined && errorsUnder(validation, entryPath(r.k)) > 0) {
+          if (next === prev) next = { ...prev };
+          next[r.id] = true;
+        }
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validation.showAll, validation.errors, validation.touched, rows]);
+
+  const keyInput = (r: mapRow) => (
+    <input
+      disabled={locked}
+      className={keyInputClass(keyErrors.has(r.id))}
+      placeholder="ключ"
+      aria-label="ключ"
+      aria-invalid={keyErrors.has(r.id) || undefined}
+      value={r.k}
+      onChange={(e) => setKey(r.id, e.target.value)}
+    />
+  );
+  const keyError = (r: mapRow) => {
+    const err = keyErrors.get(r.id);
+    return err ? (
+      <p role="alert" className="mt-1 text-xs text-red-600">
+        {err}
+      </p>
+    ) : null;
+  };
+  const removeButton = (r: mapRow, icon: React.ReactNode, className = "") => (
+    <Hint text={locked ? "Только для чтения" : "Удалить"}>
+      <Button
+        variant="danger"
+        aria-label="Удалить"
+        className={`${className} ${locked ? "opacity-50" : ""}`}
+        onPress={() => !locked && remove(r.id)}
+      >
+        {icon}
+      </Button>
+    </Hint>
+  );
 
   return (
     <Section label={label} desc={desc}>
       <div className="flex flex-col gap-2">
         {rows.length === 0 && <p className="text-xs text-gray-400">Нет записей.</p>}
-        {rows.map((r) => (
-          <div key={r.id} className="flex items-center gap-2">
-            <input
-              disabled={locked}
-              className="w-1/3 rounded-md border border-gray-300 bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
-              placeholder="ключ"
-              value={r.k}
-              onChange={(e) => push(rows.map((x) => (x.id === r.id ? { ...x, k: e.target.value } : x)))}
-            />
-            <input
-              disabled={locked}
-              className="flex-1 rounded-md border border-gray-300 bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
-              placeholder="значение"
-              value={r.v}
-              onChange={(e) => push(rows.map((x) => (x.id === r.id ? { ...x, v: e.target.value } : x)))}
-            />
-            <Button
-              variant="danger"
-              aria-label="Удалить"
-              isDisabled={locked}
-              onPress={() => push(rows.filter((x) => x.id !== r.id))}
-            >
-              <IconX size={16} stroke={2} />
-            </Button>
-          </div>
-        ))}
+        {rows.map((r) => {
+          // Anchored by the entry's path, so the error summary finds the entry
+          // the server named. A row without a key is not addressable yet.
+          const anchor = r.k ? fieldAnchorId(entryPath(r.k)) : undefined;
+          if (kind === "fields") {
+            const errCount = r.k ? errorsUnder(validation, entryPath(r.k)) : 0;
+            return (
+              // The anchor sits on a wrapper: Disclosure keeps its own id for
+              // the trigger/panel pair and does not pass one through.
+              <div key={r.id} id={anchor} className="scroll-mt-24">
+                <Disclosure
+                  isExpanded={expandOverride[r.id] ?? false}
+                  onExpandedChange={(e) => setExpandOverride((o) => ({ ...o, [r.id]: e }))}
+                  className={`group rounded-md border bg-surface ${errCount > 0 ? "border-red-300" : "border-gray-200"}`}
+                >
+                {/* The key sits in the header beside the trigger, not inside it:
+                    an input inside a button would toggle the card on every click.
+                    The trigger is named by the key, which is the entry's name. */}
+                <div className="flex items-start gap-1 pr-1.5">
+                  <Heading className="shrink-0">
+                    <AriaButton
+                      slot="trigger"
+                      aria-label={r.k || label}
+                      className="flex items-center px-2 py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                    >
+                      <IconChevronRight
+                        size={16}
+                        className="shrink-0 text-gray-400 transition-transform group-data-[expanded]:rotate-90"
+                      />
+                    </AriaButton>
+                  </Heading>
+                  <div className="w-1/3 min-w-0 py-1">
+                    {keyInput(r)}
+                    {keyError(r)}
+                  </div>
+                  <span className="min-w-0 flex-1 truncate py-2.5 text-sm text-gray-600">
+                    {mapEntrySummary(entry, r.v, root)}
+                  </span>
+                  {errCount > 0 && (
+                    // Hidden once expanded: the inline field errors are then visible.
+                    <span className="my-2.5 flex shrink-0 items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 group-data-[expanded]:hidden">
+                      <IconAlertTriangle size={12} stroke={2} />
+                      {errCount}
+                    </span>
+                  )}
+                  <div className="py-1">{removeButton(r, <IconTrash size={16} stroke={1.8} />)}</div>
+                </div>
+                <DisclosurePanel>
+                  <div className="border-t border-gray-100 px-3 py-3">
+                    {entry.type === "object" && entry.properties ? (
+                      <ObjectFields
+                        schema={entry}
+                        root={root}
+                        value={objectValue(r.v)}
+                        onChange={(v) => setVal(r.id, v)}
+                        view={entryView}
+                        path={entryPath(r.k)}
+                      />
+                    ) : (
+                      <Field
+                        name={r.k || label}
+                        schema={entry}
+                        root={root}
+                        required
+                        value={r.v}
+                        onChange={(v) => setVal(r.id, v)}
+                        path={entryPath(r.k)}
+                      />
+                    )}
+                  </div>
+                </DisclosurePanel>
+                </Disclosure>
+              </div>
+            );
+          }
+          return (
+            <div key={r.id} id={anchor} className="scroll-mt-24">
+              <div className={`flex gap-2 ${kind === "scalar" ? "items-start" : "items-center"}`}>
+                <div className="w-1/3">{keyInput(r)}</div>
+                {kind === "scalar" ? (
+                  // The control the schema gets anywhere else, label-less: the
+                  // key beside it is the label.
+                  <div className="min-w-0 flex-1">
+                    <Field
+                      name={r.k || label}
+                      schema={entry}
+                      root={root}
+                      required
+                      value={r.v}
+                      onChange={(v) => setVal(r.id, v)}
+                      path={entryPath(r.k)}
+                      hideLabel
+                    />
+                  </div>
+                ) : (
+                  <input
+                    disabled={locked}
+                    className="flex-1 rounded-md border border-gray-300 bg-surface px-2 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500"
+                    placeholder="значение"
+                    aria-label="значение"
+                    value={String(r.v ?? "")}
+                    onChange={(e) => setVal(r.id, e.target.value)}
+                  />
+                )}
+                {removeButton(r, <IconX size={16} stroke={2} />, kind === "scalar" ? "border border-transparent" : "")}
+              </div>
+              {keyError(r)}
+            </div>
+          );
+        })}
         {!locked && (
           <div>
-            <Button variant="secondary" onPress={() => push([...rows, { k: "", v: "", id: nextMapRowID() }])}>
+            <Button variant="secondary" onPress={add}>
               + Добавить
             </Button>
           </div>

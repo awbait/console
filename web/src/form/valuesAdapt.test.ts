@@ -117,6 +117,44 @@ describe("adaptToSchema", () => {
     expect(notes[0]).toStartWith("Выход:");
   });
 
+  test("each entry of a map is fitted to the schema its values follow", () => {
+    // RabbitMQ users: a map "name -> settings". Between two versions the
+    // permissions of a user became one block instead of a list; the entry is
+    // named by its key, which is the only name it has.
+    const users = {
+      type: "object",
+      properties: {
+        users: {
+          title: "Пользователи",
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            properties: {
+              tags: { type: "string" },
+              permissions: { title: "Права", type: "object", properties: { read: { type: "string" } } },
+            },
+          },
+        },
+      },
+    };
+    const { values: out, notes } = adaptToSchema(users, {
+      users: { alice: { tags: "admin", permissions: [{ read: ".*" }] }, bob: { tags: "none" } },
+    });
+    expect(out.users).toEqual({ alice: { tags: "admin", permissions: { read: ".*" } }, bob: { tags: "none" } });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toStartWith("Пользователи › alice › Права:");
+  });
+
+  test("a map that holds something other than entries is cleared and said so", () => {
+    const labels = {
+      type: "object",
+      properties: { labels: { title: "Лейблы", type: "object", additionalProperties: { type: "string" } } },
+    };
+    const { values: out, notes } = adaptToSchema(labels, { labels: ["a", "b"] });
+    expect(out).toEqual({});
+    expect(notes[0]).toStartWith("Лейблы:");
+  });
+
   test("a variant is left to the form to sort out", () => {
     const variant = {
       type: "object",
