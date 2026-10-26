@@ -289,6 +289,12 @@ func (s *Server) Router() http.Handler {
 			r.Get("/publications/pending-versions", s.handlePendingVersions) // admin queue (static path wins over /{id})
 			r.Get("/publications/{id}/versions", s.handleListVersions)
 			r.Put("/publications/{id}/versions/{version}", s.handleSaveVersionView)
+			// One person edits a version document at a time: the lease, and the
+			// stream the other pages watch it through.
+			r.Get("/publications/{id}/versions/{version}/lock", s.handleGetEditLock)
+			r.Post("/publications/{id}/versions/{version}/lock", s.handleAcquireEditLock)
+			r.Delete("/publications/{id}/versions/{version}/lock", s.handleReleaseEditLock)
+			r.Get("/publications/{id}/versions/{version}/events", s.handleVersionEvents)
 			r.Post("/publications/{id}/versions/{version}/validate", s.handleValidateVersion)
 			r.Post("/publications/{id}/versions/{version}/submit", s.handleSubmitVersion)
 			r.Post("/publications/{id}/versions/{version}/withdraw", s.handleWithdrawVersion)

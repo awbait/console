@@ -253,7 +253,8 @@ func (s *Server) handlePendingVersions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
-	versions, err := s.Pubs.ListVersions(r.Context(), chi.URLParam(r, "id"))
+	id := chi.URLParam(r, "id")
+	versions, err := s.Pubs.ListVersions(r.Context(), id)
 	if err != nil {
 		s.writeDomainErr(w, r, err)
 		return
@@ -261,7 +262,79 @@ func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 	if versions == nil {
 		versions = []*models.PublicationVersion{}
 	}
+	// Who is editing each one, from the lease. A cache that does not answer
+	// costs the badge, not the list.
+	for _, v := range versions {
+		ed, err := s.Pubs.Editing(r.Context(), id, v.ChartVersion)
+		if err != nil {
+			s.logger().Warn("edit lease unavailable", "publication_id", id, "err", err)
+			break
+		}
+		v.Editing = ed
+	}
 	writeJSON(w, http.StatusOK, versions)
+}
+
+// --- edit lease on a version document ---
+
+type editLockReq struct {
+	// Force takes the lease over whoever holds it; administrators only.
+	Force bool `json:"force"`
+}
+
+// handleAcquireEditLock takes or renews the caller's lease on a version
+// document: 200 with the holder, 409 edit_locked with the other holder.
+func (s *Server) handleAcquireEditLock(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	var body editLockReq
+	// The body is optional: a renewal sends nothing.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	ed, err := s.Pubs.AcquireEdit(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version"), body.Force)
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ed)
+}
+
+// handleReleaseEditLock hands the caller's lease back: 204 whether it was
+// held or already gone, 409 edit_locked when it is somebody else's.
+func (s *Server) handleReleaseEditLock(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	if err := s.Pubs.ReleaseEdit(r.Context(), u, chi.URLParam(r, "id"), chi.URLParam(r, "version")); err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleGetEditLock reports who holds a version document, null when nobody.
+func (s *Server) handleGetEditLock(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := s.Pubs.Get(r.Context(), id); err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	ed, err := s.Pubs.Editing(r.Context(), id, chi.URLParam(r, "version"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"editing": ed})
+}
+
+// handleVersionEvents streams what happens to one version document: saves and
+// lease changes, as signals. Readable by whoever may read the publication.
+func (s *Server) handleVersionEvents(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := s.Pubs.Get(r.Context(), id); err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	s.stream(w, r, publications.VersionTopic(id, chi.URLParam(r, "version")))
 }
 
 type saveVersionReq struct {

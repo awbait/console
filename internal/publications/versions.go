@@ -44,6 +44,14 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 	if strings.TrimSpace(chartVersion) == "" {
 		return nil, invalid("chart_version is required")
 	}
+	// Somebody else's live lease refuses the save before anything else is
+	// looked at: whatever is wrong with the document, it is not this person's
+	// to fix right now. A free lease is taken here, so a save that arrives
+	// without one (the page closing, a lease that lapsed unnoticed) still
+	// lands and locks the document for its author.
+	if err := s.requireEdit(ctx, u, pubID, chartVersion); err != nil {
+		return nil, err
+	}
 	if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {
 		return nil, err
 	}
@@ -72,6 +80,9 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 		return nil, err
 	}
 	s.addEvent(ctx, p.ID, u, "version_updated", "", "", map[string]any{"chart_version": chartVersion})
+	s.publishVersion(pubID, chartVersion, "view_saved", map[string]any{
+		"editor": editorFor(u, s.now()), "at": s.now(),
+	})
 	return v, nil
 }
 
@@ -79,6 +90,11 @@ func (s *Service) SaveVersionView(ctx context.Context, u *models.User, pubID, ch
 func (s *Service) SubmitVersion(ctx context.Context, u *models.User, pubID, chartVersion string) (*models.PublicationVersion, error) {
 	p, v, err := s.loadManagedVersion(ctx, u, pubID, chartVersion)
 	if err != nil {
+		return nil, err
+	}
+	// Sending somebody else's half-written document for review is the same
+	// intrusion as overwriting it.
+	if err := s.requireEdit(ctx, u, pubID, chartVersion); err != nil {
 		return nil, err
 	}
 	if err := s.RequireInRegistry(ctx, p, chartVersion); err != nil {

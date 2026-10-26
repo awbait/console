@@ -13,7 +13,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
+	"console/internal/cache"
+	"console/internal/events"
 	"console/internal/store"
 	"console/internal/views"
 	"console/pkg/models"
@@ -87,6 +90,15 @@ type Service struct {
 	// notify tells a service's owners what a reviewer decided. Optional: nil in
 	// tests, where nobody is listening.
 	notify Notifier
+	// leases holds the edit leases on version documents (editing.go). Optional:
+	// nil in tests that do not care, and then nobody is ever refused.
+	leases cache.Leases
+	// bus is where a saved document and a changed lease are announced, so the
+	// browsers looking at the same version hear about it (editing.go).
+	// Optional: nil in tests.
+	bus events.Bus
+	// now is the clock; tests may replace it.
+	now func() time.Time
 	// Log is the structured logger; wired by main. Nil-safe via logger().
 	Log *slog.Logger
 }
@@ -108,11 +120,19 @@ type Notifier interface {
 }
 
 func New(st store.Store, schemas SchemaSource) *Service {
-	return &Service{store: st, schemas: schemas}
+	return &Service{store: st, schemas: schemas, now: time.Now}
 }
 
 // SetNotifier wires the notification domain in (main does it after both exist).
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
+
+// SetLeases wires the lease capability of the cache in; without it version
+// documents are not locked while somebody edits them.
+func (s *Service) SetLeases(l cache.Leases) { s.leases = l }
+
+// SetBus wires the events bus in; without it nobody hears about saves and
+// lease changes except through polling.
+func (s *Service) SetBus(b events.Bus) { s.bus = b }
 
 // SetDiscoveryOwner wires the admin group owning auto-discovered drafts (from
 // config); it bounds which publications are considered unclaimed by Adopt.

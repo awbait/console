@@ -218,6 +218,11 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 	}
 	pubsSvc := publications.New(st, catalogSvc)
 	pubsSvc.Log = observability.Component(log, "publications")
+	pubsSvc.SetBus(bus)
+	// Both cache backends hold leases; the assertion is the port's shape.
+	if leases, ok := c.(cache.Leases); ok {
+		pubsSvc.SetLeases(leases)
+	}
 	// The admin group owning auto-discovered drafts; also bounds which
 	// publications count as unclaimed for adoption.
 	discoveryOwner := "platform-admins"

@@ -21,6 +21,9 @@ type errorBody struct {
 	// merge request that blocks a new change.
 	MRURL string `json:"mr_url,omitempty"`
 	MRIID int    `json:"mr_iid,omitempty"`
+	// Editor accompanies the "edit_locked" conflict: who holds the version
+	// document, so the page can name them instead of a bare "conflict".
+	Editor *models.Editor `json:"editor,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -49,7 +52,13 @@ func (s *Server) writeDomainErr(w http.ResponseWriter, r *http.Request, err erro
 	var ve *provisioning.ValidationError
 	var pve *publications.ValidationError
 	var ome *provisioning.OpenMRError
+	var ele *publications.EditLockedError
 	switch {
+	case errors.As(err, &ele):
+		// Somebody else holds the version document: 409 with who, so the page
+		// opens read-only and says whom to wait for.
+		writeJSON(w, http.StatusConflict,
+			errorBody{Error: "edit_locked", Message: ele.Error(), Editor: &ele.Editor})
 	case errors.As(err, &ome):
 		// An order's open MR blocks the change: 409 with a link so the UI can
 		// point the user at it instead of showing a bare English domain string.
