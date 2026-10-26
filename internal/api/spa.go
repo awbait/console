@@ -15,8 +15,12 @@ import (
 //     file server sends neither Last-Modified nor ETag and the browser refetches
 //     the favicon on every page it opens;
 //   - the app shell (index.html) is served with no-cache so deploys take effect;
-//   - an unknown path without a file extension is a client-side route and falls
-//     back to the shell; a missing path WITH an extension (a stale asset) is 404.
+//   - an unknown path is a client-side route and falls back to the shell, unless
+//     it clearly asked for a static file: a missing name inside a directory the
+//     build ships (assets/, docs-content/) or a missing root file with an
+//     extension (favicon, robots.txt) is 404. The dot alone does not decide:
+//     app routes carry chart versions like 12.0.0 in their last segment, and a
+//     path.Ext check would turn a page reload there into a 404 (#504).
 //
 // The FS is read-only and embedded in the binary, so there is no host filesystem
 // and no path-traversal surface.
@@ -54,10 +58,24 @@ func spaHandler(dist fs.FS) (http.Handler, error) {
 				return
 			}
 		}
-		if path.Ext(upath) != "" {
+		if looksLikeStaticFile(dist, upath) {
 			http.NotFound(w, r)
 			return
 		}
 		serveShell()
 	}), nil
+}
+
+// looksLikeStaticFile reports whether a path that is not in dist was a request
+// for a file rather than a client-side route: it sits under a directory that
+// exists in dist, or it is a single root-level name with an extension. Anything
+// deeper and outside the shipped directories is the router's business, whatever
+// characters its segments contain.
+func looksLikeStaticFile(dist fs.FS, upath string) bool {
+	dir, _, nested := strings.Cut(upath, "/")
+	if !nested {
+		return path.Ext(upath) != ""
+	}
+	info, err := fs.Stat(dist, dir)
+	return err == nil && info.IsDir()
 }
