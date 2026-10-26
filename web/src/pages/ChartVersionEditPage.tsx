@@ -1,4 +1,4 @@
-import Editor from "@monaco-editor/react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -8,8 +8,10 @@ import {
   IconCloudOff,
   IconEyeOff,
   IconHelpCircle,
+  IconLockOpen,
   IconPackageOff,
   IconTag,
+  IconUserEdit,
   IconX,
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -53,6 +55,8 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FormErrors } from "../components/FormErrors";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading } from "../components/ui";
+import { lockedBy, readsAlong, useEditLease } from "../features/publications/editLease";
+import { editLeaseText } from "../features/publications/editLeaseText";
 import {
   chartModelPath,
   dependencyModelPath,
@@ -317,7 +321,13 @@ function VersionEditor({
   // The catalog is the source for "does it exist" - the stored row outlives the
   // artifact, which is the whole reason this state is possible.
   const inRegistry = !chart || (chart.versions ?? []).includes(version);
-  const editable = isOwner && !pending && !deprecated && inRegistry;
+  // Whether this person could edit the version at all. Whether they do is the
+  // lease's answer: one person at a time holds the document, the others read
+  // it and follow the holder's saves (features/publications/editLease.ts).
+  const mayEdit = isOwner && !pending && !deprecated && inRegistry;
+  const lease = useEditLease(pub.id, version, mayEdit, () => reloadVersions());
+  const editable = mayEdit && lease.state.kind === "mine";
+  const isAdmin = user?.role === "admin";
   // Without the chart there is no schema, so both the form preview and the
   // schema tab have nothing to show. Naming the file that failed to load
   // explains nothing to the person looking at it - say what happened instead.
@@ -357,6 +367,46 @@ function VersionEditor({
     loaded.current = true;
   }, [versions, version]);
   const dirty = saved !== null && text !== saved;
+
+  // A reading page follows the document as the holder saves it. The guard
+  // above keeps a background refetch from clobbering this person's edits;
+  // here there are none to clobber, and the point is the opposite: the text
+  // on the screen is somebody else's and should be their latest. The editor's
+  // view state (scroll, folds) is kept across the swap, so a reader halfway
+  // down the document is not thrown back to the top every two seconds.
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const reading = readsAlong(lease.state, dirty);
+  useEffect(() => {
+    if (!reading || !versions) return;
+    const row = versions.find((v) => v.chart_version === version) ?? null;
+    const doc = row?.view_json ?? row?.approved_view_json ?? null;
+    const next = doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE;
+    setText((cur) => {
+      if (cur === next) return cur;
+      const ed = editorRef.current;
+      const vs = ed?.saveViewState() ?? null;
+      if (vs) requestAnimationFrame(() => ed?.restoreViewState(vs));
+      return next;
+    });
+    setSaved(next);
+    setStored(doc !== null);
+  }, [reading, versions, version]);
+
+  // After a lost lease the editor keeps what was typed until the person says
+  // they have what they need from it; then the current document takes over
+  // and the page reads along like any other.
+  function discardLocal() {
+    const row = versions?.find((v) => v.chart_version === version) ?? null;
+    const doc = row?.view_json ?? row?.approved_view_json ?? null;
+    const next = doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE;
+    setText(next);
+    setSaved(next);
+    setStored(doc !== null);
+    setRefused(null);
+    setErr(null);
+    lease.resign();
+  }
+  const [confirmTakeOver, setConfirmTakeOver] = useState(false);
 
   // Versions this one can take a document from. A chart's new version usually
   // differs from the last by a field or two, and the rest of the document was
@@ -445,12 +495,18 @@ function VersionEditor({
   // outlives the component, since nothing aborts it.
   const pendingSave = useRef<ViewDocument | null>(null);
   pendingSave.current = parsed && dirty && editable && refused !== text ? parsed : null;
+  // The lease goes back after the save, not beside it: a save that arrives
+  // without a lease takes one, and two requests on the wire at once could land
+  // in either order, leaving the document held for a minute by a page that is
+  // gone.
+  const { release } = lease;
   useEffect(() => {
     return () => {
       const doc = pendingSave.current;
-      if (doc) void api.saveVersionView(pub.id, version, doc).catch(() => {});
+      const saved = doc ? api.saveVersionView(pub.id, version, doc).catch(() => {}) : Promise.resolve();
+      void saved.then(() => release());
     };
-  }, [pub.id, version]);
+  }, [pub.id, version, release]);
 
   // Closing the tab is the one exit the portal cannot save through, so it asks.
   useEffect(() => {
@@ -481,6 +537,13 @@ function VersionEditor({
       if (notify) success("Черновик сохранён");
       return true;
     } catch (e) {
+      // Somebody else holds the document now: the banner says so, and says
+      // what to do about the text on the screen, so no second notice here.
+      const holder = lockedBy(e);
+      if (holder) {
+        lease.refused(holder);
+        return false;
+      }
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
       setRefused(sent);
       return false;
@@ -497,6 +560,11 @@ function VersionEditor({
       reloadVersions();
       success("Версия отправлена на согласование");
     } catch (e) {
+      const holder = lockedBy(e);
+      if (holder) {
+        lease.refused(holder);
+        return;
+      }
       setErr(e instanceof HttpError ? e.message : (e as Error).message);
     } finally {
       setBusy(null);
@@ -678,6 +746,50 @@ function VersionEditor({
           )}
         </div>
       )}
+      {/* The lease, in the same place and voice as the two notices above: why
+          the editor is read-only, and the one thing that can be done about it.
+          Icon and words, not colour alone, tell the three cases apart. */}
+      {mayEdit && lease.state.kind === "locked" && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="flex items-center gap-2">
+            <IconUserEdit size={16} stroke={1.8} className="shrink-0 text-amber-600" aria-hidden />
+            {editLeaseText.locked(lease.state.holder.name)}
+          </span>
+          {isAdmin && (
+            <Button isDisabled={busy !== null} onPress={() => setConfirmTakeOver(true)}>
+              {editLeaseText.takeOverButton}
+            </Button>
+          )}
+        </div>
+      )}
+      {mayEdit && lease.state.kind === "free" && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <span className="flex items-center gap-2">
+            <IconLockOpen size={16} stroke={1.8} className="shrink-0 text-emerald-600" aria-hidden />
+            {editLeaseText.freed}
+          </span>
+          <Button variant="primary" isDisabled={busy !== null} onPress={() => void lease.take()}>
+            {editLeaseText.takeButton}
+          </Button>
+        </div>
+      )}
+      {mayEdit && lease.state.kind === "lost" && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span className="flex items-center gap-2">
+            <IconAlertTriangle size={16} stroke={1.8} className="shrink-0 text-red-600" aria-hidden />
+            {lease.state.holder
+              ? editLeaseText.lost(lease.state.holder.name)
+              : editLeaseText.lostNobody}
+          </span>
+          {/* Nothing to copy: the page reads along already, and the only
+              button left is the one the next state offers. */}
+          {dirty && (
+            <Button isDisabled={busy !== null} onPress={discardLocal}>
+              {editLeaseText.showCurrentButton}
+            </Button>
+          )}
+        </div>
+      )}
       {err && <FormErrors message={err} />}
 
       {/* Builder: the document on the left (+ chart schema alongside, read-only), preview on
@@ -737,6 +849,9 @@ function VersionEditor({
                   theme={monacoTheme}
                   value={text}
                   onChange={(v) => setText(v ?? "")}
+                  onMount={(ed) => {
+                    editorRef.current = ed;
+                  }}
                   options={{
                     minimap: { enabled: false },
                     fontSize: 13,
@@ -878,6 +993,22 @@ function VersionEditor({
         onConfirm={() => {
           if (confirmSource) takeFrom(confirmSource);
         }}
+      />
+      {/* The administrator's take-over. The holder's name is read at render:
+          by the time the dialog is answered the document may be free, and the
+          take then simply succeeds. */}
+      <ConfirmDialog
+        isOpen={confirmTakeOver}
+        onOpenChange={setConfirmTakeOver}
+        title={editLeaseText.takeOverTitle(
+          lease.state.kind === "locked" ? lease.state.holder.name : "",
+        )}
+        confirmLabel={editLeaseText.takeOverConfirm}
+        danger
+        message={editLeaseText.takeOverMessage(
+          lease.state.kind === "locked" ? lease.state.holder.name : "",
+        )}
+        onConfirm={() => void lease.take(true)}
       />
     </div>
   );

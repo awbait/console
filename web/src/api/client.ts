@@ -17,6 +17,7 @@ import type {
   ConfigResponse,
   CreateOrderBody,
   DeliveryTest,
+  Editor,
   FieldError,
   JSONSchema,
   MaintenanceInput,
@@ -66,6 +67,9 @@ export class HttpError extends Error {
   // link the user straight to it.
   mrUrl?: string;
   mrIid?: number;
+  // Who holds the version document (code "edit_locked"); the constructor
+  // names them in its banner.
+  editor?: Editor;
   constructor(status: number, body: ApiError | null) {
     // The message is what the user reads, so it is written for them (see
     // errorText). The raw code and status stay on the instance for debug lines.
@@ -75,6 +79,7 @@ export class HttpError extends Error {
     this.details = body?.details ?? [];
     this.mrUrl = body?.mr_url;
     this.mrIid = body?.mr_iid;
+    this.editor = body?.editor;
   }
 }
 
@@ -127,11 +132,18 @@ export function setMaintenanceHandler(h: (() => void) | null) {
   maintenanceHandler = h;
 }
 
+// keepalive lets a request outlive its page: the browser finishes it after the
+// tab is closed. For the few things that must be said on the way out.
+interface ReqOptions {
+  keepalive?: boolean;
+}
+
 async function req<T>(
   method: string,
   path: string,
   body?: unknown,
   signal?: AbortSignal,
+  opts?: ReqOptions,
 ): Promise<T> {
   // Combine the default timeout with the caller's signal (useAsync aborts on
   // unmount/deps change), so either source can cancel the in-flight fetch.
@@ -148,6 +160,7 @@ async function req<T>(
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: combined,
+      keepalive: opts?.keepalive,
     });
   } catch (e) {
     // The timeout aborts with a TimeoutError; surface it as a clear message
@@ -406,6 +419,26 @@ export const api = {
     ),
   saveVersionView: (id: string, version: string, view: ViewDocument) =>
     req<PublicationVersion>("PUT", `/publications/${enc(id)}/versions/${enc(version)}`, { view }),
+  // The edit lease on a version document (one person edits at a time). Taking
+  // it is also renewing it; a 409 "edit_locked" names who holds it instead.
+  // force is the administrator's take-over.
+  acquireEditLock: (id: string, version: string, force = false) =>
+    req<Editor>(
+      "POST",
+      `/publications/${enc(id)}/versions/${enc(version)}/lock`,
+      force ? { force: true } : undefined,
+    ),
+  // Giving the lease back on the way out: with keepalive the browser finishes
+  // the request after the tab is gone.
+  releaseEditLock: (id: string, version: string, opts?: { keepalive?: boolean }) =>
+    req<void>("DELETE", `/publications/${enc(id)}/versions/${enc(version)}/lock`, undefined, undefined, opts),
+  getEditLock: (id: string, version: string, signal?: AbortSignal) =>
+    req<{ editing: Editor | null }>(
+      "GET",
+      `/publications/${enc(id)}/versions/${enc(version)}/lock`,
+      undefined,
+      signal,
+    ),
   validateVersion: (id: string, version: string, view: ViewDocument) =>
     req<{ issues: ViewIssue[] }>("POST", `/publications/${enc(id)}/versions/${enc(version)}/validate`, {
       view,
