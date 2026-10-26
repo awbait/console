@@ -340,8 +340,10 @@ CREATE UNIQUE INDEX uniq_active_service
 - `GET /publications`, `POST /publications`, `GET|PATCH /publications/{id}` - публикации (метаданные + legacy single-view)
 - `POST /publications/{id}/submit|withdraw|approve|reject` - FSM метаданных
 - `GET /publications/{id}/versions` - версии публикации
-- `PUT /publications/{id}/versions/{version}` - сохранить черновик view версии
-- `POST /publications/{id}/versions/{version}/validate|submit|withdraw|approve|reject` - FSM версии
+- `PUT /publications/{id}/versions/{version}` - сохранить черновик view версии (409 `edit_locked`, если документ держит другой редактор)
+- `GET|POST|DELETE /publications/{id}/versions/{version}/lock` - аренда на редактирование документа версии: кто держит, взять или продлить (`{"force": true}` - забрать, admin), отпустить. TTL 60 с, живёт в кеше; в списке версий владелец аренды приходит полем `editing`
+- `GET /publications/{id}/versions/{version}/events` - SSE одной версии: `view_saved`, `edit_acquired`, `edit_released` (только сигнал, документ перечитывается)
+- `POST /publications/{id}/versions/{version}/validate|submit|withdraw|approve|reject` - FSM версии (submit тоже под арендой)
 - `POST /publications/{id}/versions/{version}/orderable` - allowlist (доступность для заказа)
 - `POST /publications/{id}/recommended` - выбрать рекомендуемую версию
 - `GET /publications/pending-versions` - очередь версий на согласование (admin)

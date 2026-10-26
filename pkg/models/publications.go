@@ -146,6 +146,22 @@ type PublicationVersion struct {
 	Version             int       `json:"version"` // optimistic lock
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
+	// Editing is who holds the edit lease on this version's document right
+	// now, nil when nobody does. It is not a column: the lease lives in the
+	// cache (see internal/publications), and the API fills this in when it
+	// lists versions so the constructor learns about it in the same request.
+	Editing *Editor `json:"editing,omitempty"`
+}
+
+// Editor is the holder of an edit lease on a version document: who they are
+// for display, since when they have held it, and when it lapses unless they
+// renew it. Subject is what the holder is compared by; Name is what the other
+// person reads in the banner.
+type Editor struct {
+	Subject string    `json:"subject"`
+	Name    string    `json:"name"`
+	Since   time.Time `json:"since"`
+	Until   time.Time `json:"until"`
 }
 
 // Deprecated reports that the owner has taken this version out of support:
