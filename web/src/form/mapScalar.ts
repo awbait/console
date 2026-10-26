@@ -19,12 +19,15 @@ const INT_RE = /^-?\d+$/;
 const NUM_RE = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 // scalarTypesOf names the scalar types an entry admits when it is a choice
-// between several: an anyOf of typed branches or a list of types. Nothing when
-// the entry is anything else - one type, which the form draws as that type's
-// own control, or a choice with an object or a list in it, which stays text.
+// between several: an anyOf or oneOf of typed branches, or a list of types.
+// Nothing when the entry is anything else - one type, which the form draws as
+// that type's own control, or a choice with an object or a list in it, which
+// stays text. A oneOf of bare types is the same choice to the person typing;
+// whether a value fits exactly one branch is the server's to say.
 export function scalarTypesOf(entry: Schema, root: Schema): ReadonlySet<ScalarType> | undefined {
+  const choice = Array.isArray(entry.anyOf) ? entry.anyOf : Array.isArray(entry.oneOf) ? entry.oneOf : undefined;
   let branches: Schema[];
-  if (Array.isArray(entry.anyOf)) branches = entry.anyOf.map((b: Schema) => deref(b, root));
+  if (choice) branches = choice.map((b: Schema) => deref(b, root));
   else if (Array.isArray(entry.type)) branches = entry.type.map((t: unknown) => ({ type: t }));
   else return undefined;
   if (branches.length === 0) return undefined;
