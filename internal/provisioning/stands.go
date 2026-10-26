@@ -62,23 +62,40 @@ func (s *Service) fallbackStand() *models.Stand {
 
 // appTarget is where the application of an order on this stand points: the
 // repository at projectPath as the stand's Argo CD reaches it, the stand's
-// registry, its Argo CD namespace and project. webURL is the repository's
-// address in the portal's own GitLab, used when the stand names no Git address.
-func appTarget(st *models.Stand, projectPath, webURL string) AppTarget {
+// registry, its Argo CD namespace and project. The repository's address is
+// put together from the stand's Git address, else portalURL (the GitLab the
+// portal writes to), and the path the stand's Argo CD reads it at
+// (GitOps.ArgoRepoPath). webURL is the repository's address in the portal's
+// own GitLab, kept as it is when the stand changes neither.
+func appTarget(g *GitOps, st *models.Stand, projectPath, webURL, portalURL string) AppTarget {
 	t := AppTarget{RepoURL: webURL}
 	if st == nil {
 		return t
 	}
 	t.Registry, t.AppNamespace, t.Project = st.ChartRegistry, st.ArgoNamespace, st.ArgoProject
-	if st.GitURL != "" && projectPath != "" {
-		t.RepoURL = strings.TrimRight(st.GitURL, "/") + "/" + projectPath
+	if projectPath == "" {
+		return t
+	}
+	path := g.ArgoRepoPath(st, projectPath)
+	base := strings.TrimRight(st.GitURL, "/")
+	if base == "" && path != projectPath {
+		// Same GitLab, another path: the address GitLab gave the repository
+		// says where that GitLab is, with the configured one as the fallback.
+		if b, ok := strings.CutSuffix(webURL, "/"+projectPath); ok && b != "" {
+			base = b
+		} else {
+			base = strings.TrimRight(portalURL, "/")
+		}
+	}
+	if base != "" {
+		t.RepoURL = base + "/" + path
 	}
 	return t
 }
 
 // renderApp renders the application of an order on its stand.
 func (s *Service) renderApp(r *models.Request, st *models.Stand, projectPath, webURL string) (string, error) {
-	return s.gitops.RenderApplicationFor(r, appTarget(st, projectPath, webURL))
+	return s.gitops.RenderApplicationFor(r, appTarget(s.gitops, st, projectPath, webURL, s.GitLabURL))
 }
 
 // repoPathOf is the full path of the repository an order's files are in.
@@ -257,6 +274,13 @@ func checkStand(st *models.Stand, requirePath bool) error {
 	st.ArgoProject = strings.TrimSpace(st.ArgoProject)
 	if st.ArgoProject != "" && !validCluster(st.ArgoProject) {
 		return &ValidationError{Message: MsgStandArgoProj}
+	}
+	// The path Argo CD reads at follows the rule of the path the portal
+	// writes to: it lands in the same repoURL. Pasted with the ".git" a clone
+	// address ends in, it is taken without it, the way the render adds it.
+	st.ArgoGitPath = strings.TrimSuffix(strings.Trim(strings.TrimSpace(st.ArgoGitPath), "/"), ".git")
+	if st.ArgoGitPath != "" && !models.ValidGitPath(st.ArgoGitPath) {
+		return &ValidationError{Message: MsgStandPath}
 	}
 	if st.GitPath == "" {
 		if requirePath {

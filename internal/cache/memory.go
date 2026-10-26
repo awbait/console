@@ -18,7 +18,9 @@ type Memory struct {
 	// presence sets, keyed the same way Redis keys its sorted sets: key ->
 	// member -> when it was last seen (see presence.go).
 	presence map[string]map[string]time.Time
-	now      func() time.Time
+	// leases are the held keys of the Leases capability (see leases.go).
+	leases map[string]memLease
+	now    func() time.Time
 }
 
 var _ Cache = (*Memory)(nil)

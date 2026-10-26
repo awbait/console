@@ -23,6 +23,7 @@ type standBody struct {
 	GitURL         string `json:"git_url"`
 	ArgoNamespace  string `json:"argocd_namespace"`
 	ArgoProject    string `json:"argocd_project"`
+	ArgoGitPath    string `json:"argocd_git_path"`
 }
 
 func (b standBody) stand(id string) *models.Stand {
@@ -30,6 +31,7 @@ func (b standBody) stand(id string) *models.Stand {
 		ID: id, Name: b.Name, DefaultCluster: b.DefaultCluster,
 		Layout: b.Layout, GitPath: b.GitPath, Mode: b.Mode, ChartRegistry: b.ChartRegistry,
 		GitURL: b.GitURL, ArgoNamespace: b.ArgoNamespace, ArgoProject: b.ArgoProject,
+		ArgoGitPath: b.ArgoGitPath,
 	}
 }
 
@@ -167,6 +169,28 @@ func (s *Server) handleListStandJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
+// handlePreviewRegenerate answers how many orders a regeneration of the
+// stand's applications would look at: what the confirmation shows.
+func (s *Server) handlePreviewRegenerate(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Prov.PreviewRegenerate(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": n})
+}
+
+// handleRegenerateStand starts the job that writes every order's
+// application.yaml again from the stand's current settings.
+func (s *Server) handleRegenerateStand(w http.ResponseWriter, r *http.Request) {
+	j, err := s.Prov.RegenerateStand(r.Context(), auth.UserFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, j)
 }
 
 // handleStopStandJob stops a running job of the stand.

@@ -1,8 +1,8 @@
-import { IconPlayerStop } from "@tabler/icons-react";
+import { IconFileText, IconPlayerStop } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
-import type { StandJob, StandMode } from "@/api/types";
+import type { Stand, StandJob, StandMode } from "@/api/types";
 import { useToast } from "@/app/ToastContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Button, ErrorBox, SkeletonRows } from "@/components/ui";
@@ -10,8 +10,11 @@ import { useAsync } from "@/hooks/useAsync";
 import { standJobFailures, standText as t } from "./text";
 
 // The jobs of one stand, newest first: what moved the stand's orders when its
-// mode changed, how far it got, and what it gave up on. A running job is
-// polled, so the count moves without a reload, and can be stopped.
+// mode changed, what deleted them, what wrote their manifests again, how far
+// each got, and what it gave up on. A running job is polled, so the count
+// moves without a reload, and can be stopped. The one job an admin starts
+// from here is the regeneration: the other two start from the stand's
+// settings and its deletion.
 
 const POLL_MS = 5000;
 
@@ -27,7 +30,8 @@ const STATUS: Record<StandJob["status"], { label: string; tone: string }> = {
   stopped: { label: t.jobStatusStopped, tone: "bg-slate-100 text-slate-600" },
 };
 
-export function StandJobs({ standId, onChanged }: { standId: string; onChanged?: () => void }) {
+export function StandJobs({ stand, onChanged }: { stand: Stand; onChanged?: () => void }) {
+  const standId = stand.id;
   const jobs = useAsync((signal) => api.standJobs(standId, signal), [standId]);
   const running = jobs.data?.jobs.some((j) => j.status === "running") ?? false;
 
@@ -38,10 +42,20 @@ export function StandJobs({ standId, onChanged }: { standId: string; onChanged?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
+  const changed = () => {
+    jobs.reload();
+    onChanged?.();
+  };
+
   return (
     <section className="rounded-lg border border-slate-200 bg-surface p-4 shadow-sm">
-      <h2 className="text-base font-semibold text-slate-800">{t.jobsTitle}</h2>
-      <p className="mt-0.5 max-w-2xl text-sm text-slate-500">{t.jobsIntro}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-800">{t.jobsTitle}</h2>
+          <p className="mt-0.5 max-w-2xl text-sm text-slate-500">{t.jobsIntro}</p>
+        </div>
+        <RegenerateAction stand={stand} busy={running || !!stand.job} onStarted={changed} />
+      </div>
       {jobs.error && <ErrorBox error={jobs.error} />}
       {jobs.loading && !jobs.data ? (
         <SkeletonRows rows={2} className="mt-3" />
@@ -50,14 +64,7 @@ export function StandJobs({ standId, onChanged }: { standId: string; onChanged?:
       ) : (
         <ul className="mt-3 flex flex-col gap-2">
           {jobs.data?.jobs.map((j) => (
-            <JobRow
-              key={j.id}
-              job={j}
-              onStopped={() => {
-                jobs.reload();
-                onChanged?.();
-              }}
-            />
+            <JobRow key={j.id} job={j} onStopped={changed} />
           ))}
         </ul>
       )}
@@ -65,15 +72,87 @@ export function StandJobs({ standId, onChanged }: { standId: string; onChanged?:
   );
 }
 
+// RegenerateAction starts the job writing every order's application.yaml
+// again, after asking with the number of orders it will look at. Greyed out
+// while another job runs, and on a stand whose orders are not in Git, where
+// the button says why.
+function RegenerateAction({ stand, busy, onStarted }: { stand: Stand; busy: boolean; onStarted: () => void }) {
+  const toast = useToast();
+  const [count, setCount] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const consoleOnly = stand.mode === "console";
+  const disabled = busy || consoleOnly || loading;
+  const reason = consoleOnly ? t.regenerateDisabledMode : busy ? t.deleteDisabledJob : undefined;
+
+  async function ask() {
+    setLoading(true);
+    setError(null);
+    try {
+      const { total } = await api.previewRegenerate(stand.id);
+      setCount(total);
+    } catch (e) {
+      setError(e as Error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      {/* The reason sits on the button as a title: a disabled button does not
+          open a tooltip, and there is no room for a sentence beside it. */}
+      <span title={reason}>
+        <Button variant="secondary" onPress={ask} isDisabled={disabled} className="h-[30px] text-xs">
+          <IconFileText size={14} stroke={2} />
+          {t.regenerateButton}
+        </Button>
+      </span>
+      {reason && <span className="text-xs text-slate-500">{reason}</span>}
+      {error && <ErrorBox error={error} />}
+      <ConfirmDialog
+        isOpen={count !== null}
+        onOpenChange={(open) => {
+          if (!open) setCount(null);
+        }}
+        title={t.regenerateTitle}
+        message={t.regenerateConfirm(count ?? 0)}
+        confirmLabel={t.regenerateButton}
+        onConfirm={async () => {
+          await api.regenerateStand(stand.id);
+          toast.success(t.regenerateStartedToast);
+          onStarted();
+        }}
+      />
+    </div>
+  );
+}
+
 function JobRow({ job, onStopped }: { job: StandJob; onStopped: () => void }) {
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
   const status = STATUS[job.status] ?? STATUS.stopped;
-  const pct = job.total > 0 ? Math.round((job.done / job.total) * 100) : 0;
   const isDelete = job.kind === "delete";
+  const isRegenerate = job.kind === "regenerate";
+  // A regeneration is as far along as what it has decided about, written or
+  // left alone; the other jobs count what they moved.
+  const settled = isRegenerate ? job.done + job.skipped : job.done;
+  const pct = job.total > 0 ? Math.round((settled / job.total) * 100) : 0;
   const title = isDelete
     ? t.jobDelete
-    : t.jobModeChange(MODE_LABEL[job.from_mode] ?? job.from_mode, MODE_LABEL[job.to_mode] ?? job.to_mode);
+    : isRegenerate
+      ? t.jobRegenerate
+      : t.jobModeChange(MODE_LABEL[job.from_mode] ?? job.from_mode, MODE_LABEL[job.to_mode] ?? job.to_mode);
+  const progress = isDelete
+    ? t.jobDeleteProgress(job.done, job.total)
+    : isRegenerate
+      ? t.jobRegenerateProgress(job.done, job.skipped, job.total)
+      : t.jobProgress(job.done, job.total);
+  const failureText = (reason: string, detail?: string) => {
+    if (reason === "rejected") return detail;
+    if (reason === "upstream" && isRegenerate) return t.regenerateFailureUpstream;
+    return standJobFailures[reason] ?? reason;
+  };
   return (
     <li className="rounded-md border border-slate-200 px-3 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -94,13 +173,11 @@ function JobRow({ job, onStopped }: { job: StandJob; onStopped: () => void }) {
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={job.total}
-          aria-valuenow={job.done}
+          aria-valuenow={settled}
         >
           <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
         </div>
-        <p className="text-xs text-slate-600">
-          {isDelete ? t.jobDeleteProgress(job.done, job.total) : t.jobProgress(job.done, job.total)}
-        </p>
+        <p className="text-xs text-slate-600">{progress}</p>
       </div>
       {job.status === "running" && job.waiting > 0 && (
         <p className="mt-1 text-xs text-slate-500">{t.jobWaitingMerge}</p>
@@ -112,7 +189,9 @@ function JobRow({ job, onStopped }: { job: StandJob; onStopped: () => void }) {
       )}
       {job.failures.length > 0 && (
         <div className="mt-2">
-          <p className="text-xs font-medium text-rose-700">{t.jobFailuresTitle}</p>
+          <p className="text-xs font-medium text-rose-700">
+            {isRegenerate ? t.jobRegenerateFailuresTitle : t.jobFailuresTitle}
+          </p>
           <ul className="mt-1 flex flex-col gap-1">
             {job.failures.map((f) => (
               <li key={f.order_id} className="text-xs text-slate-600">
@@ -120,7 +199,7 @@ function JobRow({ job, onStopped }: { job: StandJob; onStopped: () => void }) {
                   {f.service_name}
                 </Link>
                 {": "}
-                {f.reason === "rejected" ? f.detail : (standJobFailures[f.reason] ?? f.reason)}
+                {failureText(f.reason, f.detail)}
                 {f.reason === "upstream" && f.detail && (
                   <span className="mt-0.5 block font-mono text-[11px] text-slate-400">{f.detail}</span>
                 )}

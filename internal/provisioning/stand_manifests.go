@@ -188,12 +188,14 @@ func (s *Service) StandManifests(st *models.Stand) (string, error) {
 	if st.GitPath == "" {
 		return "", &ValidationError{Message: MsgStandPathEmpty}
 	}
-	// The stand's Argo CD may see GitLab under another address, and run in
-	// another namespace: the manifests are written as it sees things.
+	// The stand's Argo CD may see GitLab under another address, read the
+	// orders under another path, and run in another namespace: the
+	// manifests are written as it sees things, the way application.yaml is.
 	base := strings.TrimRight(s.GitLabURL, "/")
 	if st.GitURL != "" {
 		base = strings.TrimRight(st.GitURL, "/")
 	}
+	path := s.gitops.ArgoRepoPath(st, st.GitPath)
 	ns := s.ArgoCDNamespace
 	if st.ArgoNamespace != "" {
 		ns = st.ArgoNamespace
@@ -206,8 +208,8 @@ func (s *Service) StandManifests(st *models.Stand) (string, error) {
 		Stand:       st.Name,
 		GitLabURL:   base,
 		GitLabAPI:   base,
-		GitPath:     st.GitPath,
-		RepoURL:     base + "/" + st.GitPath + ".git",
+		GitPath:     path,
+		RepoURL:     base + "/" + path + ".git",
 		Branch:      s.defaultBranch,
 		Project:     s.gitops.ArgoProjectOf(st),
 		Namespace:   ns,

@@ -50,15 +50,58 @@ export function ifMatches(ifSchema: Schema, value: Record<string, unknown>, root
   return true;
 }
 
-// matchedThens returns the "then" schemas of the if/then branches (top-level and
-// inside allOf) whose condition holds for the current value.
+// matchedThens returns the branch schemas that apply to the current value: the
+// "then" of every if/then (top-level and inside allOf) whose condition holds,
+// and the "else" of every one whose condition does not. A chart that hides the
+// fields of one mode in "then" and the fields of the other in "else" is read
+// whole, not half.
 export function matchedThens(schema: Schema, value: Record<string, unknown>, root: Schema): Schema[] {
   const branches: Schema[] = [];
   if (schema.if) branches.push(schema);
   for (const a of (schema.allOf as Schema[]) ?? []) if (a.if) branches.push(a);
-  return branches
-    .filter((b) => b.then && ifMatches(b.if, value ?? {}, root))
-    .map((b) => b.then as Schema);
+  const out: Schema[] = [];
+  for (const b of branches) {
+    const taken = ifMatches(b.if, value ?? {}, root) ? b.then : b.else;
+    if (taken) out.push(deref(taken as Schema, root));
+  }
+  return out;
+}
+
+// activeBranches returns the branch fragments that apply to an object right
+// now: what the branches of its ancestors say about it (inherited, see
+// branchesBelow) plus its own satisfied branches.
+//
+// A chart declares a rule where every field it touches is visible, which is
+// usually the root: "in direct mode the waypoint list makes no sense" is
+// written at the root and points three levels down. Each level the form
+// renders therefore carries down the fragment of the branch that concerns it,
+// and reads the fragment the same way it reads a branch of its own.
+export function activeBranches(
+  schema: Schema,
+  value: Record<string, unknown>,
+  root: Schema,
+  inherited: Schema[] = [],
+): Schema[] {
+  return [...inherited, ...matchedThens(schema, value ?? {}, root)];
+}
+
+// branchesBelow narrows branch fragments to what they say about one child key:
+// a fragment that has properties[key] carries on (dereferenced), the rest stop.
+export function branchesBelow(branches: Schema[], key: string, root: Schema): Schema[] {
+  const out: Schema[] = [];
+  for (const b of branches) {
+    const next = b.properties?.[key];
+    if (next) out.push(deref(next as Schema, root));
+  }
+  return out;
+}
+
+// itemBranches narrows branch fragments of an array to what they say about its
+// items.
+export function itemBranches(branches: Schema[], root: Schema): Schema[] {
+  const out: Schema[] = [];
+  for (const b of branches) if (b.items) out.push(deref(b.items as Schema, root));
+  return out;
 }
 
 // pinnedAt answers what a field is pinned to right now, or undefined when

@@ -1,4 +1,4 @@
-.PHONY: build run-oidc watch web infra obs test vet lint tidy cover hooks down docker env-example changelog \
+.PHONY: build run-oidc watch web infra obs test vet lint tidy cover hooks down docker env-example changelog changelog-check \
 	up-upstreams-infra down-upstreams gitlab-seed \
 	stand-up stand-down stand-charts stand-appset stand-token stand-reset \
 	stand-gitlab-webhooks seed-import
@@ -119,8 +119,15 @@ env-example:
 #   make changelog RELEASE=0.16.0
 # RELEASE rather than VERSION: VERSION is this build's own version, taken from
 # git a few lines above, and it is never the one being released.
+# The builder is the changelog skill's script (Python 3.11+, standard library
+# only); its settings are in changelog.d/changelog.toml.
+CHANGELOG := python .agents/skills/changelog/scripts/changelog.py
 changelog:
-	go run ./cmd/changelog $(if $(RELEASE),-version $(RELEASE))
+	$(CHANGELOG) $(if $(RELEASE),release $(RELEASE),preview)
+
+# Validate the waiting entries and the version links; lefthook and CI run this.
+changelog-check:
+	$(CHANGELOG) check
 
 cover:
 	go test -cover ./internal/...

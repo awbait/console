@@ -31,8 +31,9 @@ codex (OpenAI Codex CLI, стоит на машине: `codex --version`). Claud
 ## Что Claude пишет сам
 
 Комментарии в коде, сообщения коммитов, тела PR и issue, комментарии к ним,
-документация для разработчиков в `docs/`, правила и скиллы в `.claude/`,
-логи, метрики, тексты тестов. Это читают разработчики, а не пользователи.
+документация для разработчиков в `docs/`, `AGENTS.md`, правила в `.claude/`
+и скиллы в `.agents/`, логи, метрики, тексты тестов. Это читают разработчики,
+а не пользователи.
 
 ## Порядок
 
@@ -41,7 +42,7 @@ codex (OpenAI Codex CLI, стоит на машине: `codex --version`). Claud
 - что за продукт и кто читатель (пользователь портала, не разработчик);
 - факты: что изменилось, где это видно, что нужно сделать пользователю;
 - какие файлы с правилами текста codex должен прочитать до ответа:
-  `.claude/rules/ux-copy.md` для интерфейса, `.claude/skills/changelog/SKILL.md`
+  `.claude/rules/ux-copy.md` для интерфейса, `.agents/skills/changelog/SKILL.md`
   и `changelog.d/README.md` для журнала;
 - запреты этого репозитория, явно: без длинного тире «—», без точек с
   запятой, без имён компонентов, пропсов, функций и внутренних сущностей;
@@ -55,7 +56,7 @@ codex (OpenAI Codex CLI, стоит на машине: `codex --version`). Claud
 **2. Запуск.** Без интерактива, только чтение, без сохранения сессии:
 
 ```bash
-codex exec -s read-only --ephemeral -C D:\work\idp --color never -o <scratch>/out.md - < <scratch>/brief.md
+codex exec -s read-only --ephemeral -C <repo root> --color never -o <scratch>/out.md - < <scratch>/brief.md
 ```
 
 Ответ приходит в `out.md`, ход работы в stdout (его можно отправить в лог

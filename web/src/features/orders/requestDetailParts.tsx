@@ -454,6 +454,7 @@ const MR_ACTION_EVENT: Record<string, string> = {
   delete: "Запрошено удаление заказа",
   publish: "Открыт merge request для сохранения файлов заказа в Git.",
   unpublish: "Открыт merge request для удаления файлов заказа из Git. Заказ останется в портале.",
+  regenerate: "Открыт merge request для обновления application.yaml.",
 };
 
 // What the person who ordered the service needs: their own actions, and what

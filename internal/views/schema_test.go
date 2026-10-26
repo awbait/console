@@ -192,3 +192,18 @@ func TestShapeIssuesDoNotCascade(t *testing.T) {
 		t.Fatalf("unexpected message: %q", issues[0].Message)
 	}
 }
+
+// The widgets a field override may name. "textarea" draws a string over
+// several lines; a value nobody spelled out is refused by name, so a typo in
+// the editor is caught before the form ever renders.
+func TestWidgetValues(t *testing.T) {
+	ok := `{"views":{"order":{"overrides":{"motd":{"ui:widget":"textarea"}}}}}`
+	if issues := views.Validate([]byte(ok), nil); len(issues) > 0 {
+		t.Fatalf("textarea widget refused: %+v", issues)
+	}
+	bad := `{"views":{"order":{"overrides":{"motd":{"ui:widget":"multiline"}}}}}`
+	issues := views.Validate([]byte(bad), nil)
+	if !hasIssue(issues, "/views/order/overrides/motd/ui:widget", "textarea") {
+		t.Fatalf("want the unknown widget refused with the allowed values named, got %+v", issues)
+	}
+}

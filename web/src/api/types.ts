@@ -479,6 +479,10 @@ export interface Stand {
   // values from and the namespace it runs in. "" is the platform's own.
   git_url: string;
   argocd_namespace: string;
+  // The path the stand's Argo CD reads the orders' files under when the
+  // repository was mirrored or moved: it stands in for git_path in the
+  // application's repoURL and in the stand's manifests. "" is git_path.
+  argocd_git_path: string;
   // The Argo CD project the stand's applications belong to; "" is the
   // platform's (ARGOCD_PROJECT).
   argocd_project: string;
@@ -501,13 +505,16 @@ export interface Stand {
 export interface StandJob {
   id: string;
   stand_id: string;
-  kind: "mode_change" | "delete";
+  kind: "mode_change" | "delete" | "regenerate";
   from_mode: StandMode;
   to_mode: StandMode;
   status: "running" | "done" | "stopped";
   total: number;
   done: number;
   waiting: number;
+  // What a regeneration left alone: orders whose manifest in Git already
+  // matched. Zero for the other kinds.
+  skipped: number;
   failures: StandJobFailure[];
   created_by: string;
   created_at: string;
@@ -783,6 +790,21 @@ export interface PublicationVersion {
   version: number;
   created_at: string;
   updated_at: string;
+  // Who holds the document of this version in the constructor right now,
+  // absent when nobody does. Filled by the server from the edit lease, not
+  // stored with the version.
+  editing?: Editor | null;
+}
+
+// The holder of an edit lease on a version document: one person edits it at a
+// time, everybody else reads. subject is who they are to the server, name what
+// the banner says, since and until the lease's span (it is renewed while their
+// page is open and lapses on its own after that).
+export interface Editor {
+  subject: string;
+  name: string;
+  since: string;
+  until: string;
 }
 
 // Who put something forward for a decision and when, from the event journal.
@@ -946,6 +968,7 @@ export interface ApiError {
   details?: FieldError[]; // per-field schema validation failures
   mr_url?: string; // open merge request blocking the change (error "open_mr")
   mr_iid?: number;
+  editor?: Editor; // who holds the version document (error "edit_locked")
 }
 
 // One thing the portal has to tell somebody about. The sentence is not here:

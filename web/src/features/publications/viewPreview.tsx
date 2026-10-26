@@ -24,7 +24,7 @@ import { api } from "@/api/client";
 import { qk } from "@/api/queryKeys";
 import type { OrderRequest, ViewDocument } from "@/api/types";
 import { useUser } from "@/auth/UserContext";
-import { ProductIcon } from "@/components/icons";
+import { ProductIcon, type TablerIcon } from "@/components/icons";
 import type { PersistValues } from "@/components/products/GenericProductTabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui";
@@ -136,6 +136,19 @@ export function SplitHandle({ onPointerDown }: { onPointerDown: (e: React.Pointe
       className="group hidden shrink-0 cursor-col-resize touch-none items-stretch justify-center px-1.5 lg:flex"
     >
       <div className="w-1 rounded-full bg-slate-200 transition-colors group-hover:bg-brand-400" />
+    </div>
+  );
+}
+
+// PanelNotice fills a panel that has nothing to show: a circled icon and one
+// line, centred - the same empty state the catalog and the order lists use.
+export function PanelNotice({ Icon, text }: { Icon: TablerIcon; text: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+        <Icon size={24} stroke={1.6} />
+      </span>
+      <p className="text-sm text-slate-500">{text}</p>
     </div>
   );
 }

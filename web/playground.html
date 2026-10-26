@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Console - Playground</title>
+    <link rel="icon" href="./favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <!-- The same first-paint theme pick as index.html: a dark page never
+         flashes white on the way in. Mirrors ThemeContext. -->
+    <script>
+      try {
+        var t = localStorage.getItem("idp-theme");
+        if (t !== "light" && t !== "dark" && t !== "rn") {
+          t = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/playground/main.tsx"></script>
+  </body>
+</html>

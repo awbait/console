@@ -54,7 +54,20 @@ export const standText = {
   jobRunningHint:
     "Заказы переходят в новый режим. Пока переход не завершён или не остановлен, изменить режим, способ хранения в GitLab и путь нельзя.",
   jobsTitle: "Задачи стенда",
-  jobsIntro: "Здесь показаны задачи перевода заказов в другой режим. Перевод идёт в фоне, задачу можно остановить.",
+  jobsIntro:
+    "Здесь показаны задачи перевода заказов в другой режим, удаления стенда и перегенерации application.yaml. Задачи выполняются в фоне, их можно остановить.",
+  regenerateButton: "Перегенерировать application.yaml",
+  regenerateTitle: "Перегенерировать application.yaml заказов стенда?",
+  regenerateConfirm: (n: number) =>
+    `Будет проверено ${n} заказов. Если application.yaml отличается от файла в Git, портал откроет merge request для его обновления. Значения заказа и версия чарта не изменятся.`,
+  regenerateStartedToast: "Запущена задача перегенерации application.yaml заказов стенда.",
+  regenerateDisabledMode: "В режиме «Только портал» файлы заказа в GitLab не создаются.",
+  jobRegenerate: "Перегенерация application.yaml",
+  jobRegenerateProgress: (updated: number, skipped: number, total: number) =>
+    `Обновлено заказов: ${updated}, пропущено: ${skipped}, всего: ${total}`,
+  jobRegenerateFailuresTitle: "Ошибки обновления",
+  regenerateFailureUpstream:
+    "Не удалось обновить application.yaml из-за ошибки или отсутствия ответа GitLab. Запустите перегенерацию снова, когда GitLab станет доступен.",
   jobModeChange: (from: string, to: string) => `Перевод заказов из режима «${from}» в режим «${to}»`,
   jobProgress: (done: number, total: number) => `Переведено заказов: ${done} из ${total}.`,
   jobStatusRunning: "Идёт",
@@ -95,8 +108,14 @@ export const standText = {
   gitUrlLabel: "Адрес GitLab для Argo CD",
   gitUrlPlaceholder: "https://gitlab.edp.example.com",
   gitUrlHint:
-    "Если Argo CD читает файлы из другого GitLab, укажите его адрес, например https://gitlab.edp.example.com, с теми же путями к репозиториям. Оставьте поле пустым, чтобы использовать GitLab, в который портал сохраняет заказы.",
+    "Если Argo CD читает файлы из другого GitLab, укажите его адрес, например https://gitlab.edp.example.com. Оставьте поле пустым, чтобы использовать GitLab, в который портал сохраняет заказы. Если путь тоже отличается, укажите его в поле «Путь для Argo CD».",
   errGitUrl: "Укажите адрес GitLab с http:// или https://, например https://gitlab.edp.example.com.",
+  argoPathLabel: "Путь для Argo CD",
+  argoPathPlaceholder: "core/managed-services-edp",
+  argoPathHint:
+    "Укажите путь, по которому Argo CD читает файлы заказов, если он отличается от пути в GitLab портала. Оставьте поле пустым, чтобы использовать значение поля «Путь в GitLab».",
+  argoPathChangeConfirm:
+    "Уже размещённые заказы не перейдут на новый путь сразу. Каждый заказ получит новый путь, когда портал заново запишет его application.yaml при следующем изменении или обновлении заказа. Убедитесь, что новый путь существует в GitLab, который читает Argo CD, и содержит те же файлы, что и путь портала. Зеркало или перенос должна настроить команда эксплуатации. Заказы, созданные со старым путём, портал больше не распознает как свои при импорте из Git.",
   argoNsLabel: "Namespace Argo CD",
   argoNsPlaceholder: "ecpk-argocd",
   argoNsHint:

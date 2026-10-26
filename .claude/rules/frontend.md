@@ -42,14 +42,14 @@ center`, `inbox`, `badge count` дают ноль результатов. Пус
 **Когда не нужен.** Хуки, API-клиент, типы, роутинг, обработка ошибок без UI:
 там он только добавит шума.
 
-**Как пользоваться.** Скилл лежит в `.claude/skills/ui-ux-pro-max`, поиск идёт
+**Как пользоваться.** Скилл лежит в `.agents/skills/ui-ux-pro-max`, поиск идёт
 через его Python-скрипт:
 
 ```bash
 # дизайн-система под задачу (первый шаг для новой страницы)
-python .claude/skills/ui-ux-pro-max/scripts/search.py "internal platform dashboard" --design-system
+python .agents/skills/ui-ux-pro-max/scripts/search.py "internal platform dashboard" --design-system
 # точечный запрос по домену: ux, color, typography, style, product, gsap, chart, icon
-python .claude/skills/ui-ux-pro-max/scripts/search.py "empty state" --domain ux
+python .agents/skills/ui-ux-pro-max/scripts/search.py "empty state" --domain ux
 ```
 
 Категории в скилле упорядочены по важности: доступность и попадание в тип
@@ -83,7 +83,7 @@ playwright-cli screenshot     # картинка, когда важен сам �
 страницах, `resize` для узких экранов, `route` для мока ответов API,
 `state-save`/`state-load` для переиспользования входа, `requests` и `response-body`
 для разбора сетевого обмена. Справочники по трейсам, видео и генерации тестов
-лежат в `.claude/skills/playwright-cli/references`.
+лежат в `.agents/skills/playwright-cli/references`.
 
 **Дешевизна.** Снимок дерева - это текст, он на порядок дешевле скриншота и
 пригоден для diff'а. Скриншот нужен, только когда вопрос именно в том, как это

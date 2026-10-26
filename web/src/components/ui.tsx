@@ -23,6 +23,7 @@ import {
   OverlayArrow,
   Popover,
   SelectValue,
+  TextArea as AriaTextArea,
   TooltipTrigger,
 } from "react-aria-components";
 import { Link, type LinkProps } from "react-router-dom";
@@ -320,6 +321,108 @@ export function TextField({
       </div>
       {error ? (
         <span className="text-xs text-red-600">{error}</span>
+      ) : (
+        description && <span className="text-xs text-gray-500">{description}</span>
+      )}
+    </AriaTextField>
+  );
+}
+
+// TextArea is TextField for a value that runs over several lines: a message
+// template, a list of addresses, a fragment of configuration. The same label,
+// description, requirements and error around a <textarea>, so a schema field
+// drawn with ui:widget "textarea" reads like its neighbours. Line breaks go
+// into the value as typed; nothing here folds or trims them.
+export function TextArea({
+  label,
+  description,
+  requirements,
+  value,
+  onChange,
+  errorText,
+  onBlur,
+  hideLabel,
+  rows = 4,
+  ...rest
+}: {
+  label: string;
+  description?: string;
+  requirements?: FieldRequirement[];
+  value: string;
+  onChange: (v: string) => void;
+  errorText?: string;
+  onBlur?: () => void;
+  hideLabel?: boolean;
+  isRequired?: boolean;
+  isDisabled?: boolean;
+  placeholder?: string;
+  // Lines shown before the field grows with its content (field-sizing where
+  // the browser has it); the person can also drag the corner.
+  rows?: number;
+}) {
+  const rules = requirements ?? [];
+  const invalid = !!errorText;
+  const hasRules = rules.length > 0;
+  const [hintHovered, setHintHovered] = useState(false);
+  const [typing, setTyping] = useState(false);
+  return (
+    <AriaTextField
+      value={value}
+      onChange={onChange}
+      isRequired={rest.isRequired}
+      isDisabled={rest.isDisabled}
+      isInvalid={invalid}
+      aria-label={hideLabel ? label : undefined}
+      className="flex flex-col gap-1"
+    >
+      {!hideLabel && (
+        <Label className="text-sm font-medium text-gray-700">
+          {label}
+          {rest.isRequired && <span className="text-red-500"> *</span>}
+        </Label>
+      )}
+      <div className="relative">
+        <AriaTextArea
+          rows={rows}
+          placeholder={rest.placeholder}
+          onFocus={() => setTyping(true)}
+          onBlur={() => {
+            setTyping(false);
+            onBlur?.();
+          }}
+          // Same box as TextField's Input. resize-y: taller when the text wants
+          // it, never wider than the form. field-sizing grows it with the
+          // content where supported; rows is the floor everywhere.
+          className={`w-full resize-y rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none [field-sizing:content] placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+            hasRules ? "pr-8" : "pr-2"
+          } ${
+            invalid
+              ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+              : "border-gray-300 focus:border-brand-500 focus:ring-brand-500"
+          }`}
+        />
+        {hasRules && (
+          // Top corner, not vertically centred: the field is tall, and the icon
+          // belongs with the first line the way it does on a single-line field.
+          <span className="absolute right-1 top-1.5 flex items-center">
+            <Hint
+              text={<RequirementList items={rules} value={value} />}
+              isOpen={hintIsOpen({ typing, hovered: hintHovered, rules, value })}
+              onOpenChange={setHintHovered}
+              placement="bottom end"
+            >
+              <AriaButton
+                aria-label="Требования к полю"
+                className="rounded p-1 text-slate-400 outline-none transition-colors hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                <IconInfoCircle size={15} stroke={1.8} />
+              </AriaButton>
+            </Hint>
+          </span>
+        )}
+      </div>
+      {errorText ? (
+        <span className="text-xs text-red-600">{errorText}</span>
       ) : (
         description && <span className="text-xs text-gray-500">{description}</span>
       )}

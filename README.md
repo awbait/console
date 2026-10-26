@@ -65,6 +65,13 @@ Kubernetes и GitOps. Платформенная команда публикуе
 
 ![Конструктор формы заказа](web/public/docs-content/images/view-constructor.png)
 
+Тот же редактор и предпросмотр без портала опубликованы как плейграунд на
+[awbait.github.io/console](https://awbait.github.io/console/): вставьте
+`values.schema.json` чарта, посмотрите форму заказа и соберите
+`view.schema.json`. Локально он открывается на дев-сервере по адресу
+`/playground.html`, собирается командой `bun run build:playground` в `web/`,
+на Pages его выкладывает `.github/workflows/pages.yml`.
+
 </details>
 
 <a id="workflow"></a>
@@ -168,6 +175,12 @@ Harbor, GitLab и Argo CD читает из `.env`.
 Windows-скрипт `run-oidc.ps1` подхватывает установленный Air автоматически.
 
 </details>
+
+### Участие в разработке
+
+Как подготовить рабочее место, вести ветки, коммиты, записи журнала и PR,
+описано в [CONTRIBUTING.md](CONTRIBUTING.md). Правила проекта для людей и
+агентов (Claude Code, Codex) собраны в [AGENTS.md](AGENTS.md).
 
 <a id="documentation"></a>
 

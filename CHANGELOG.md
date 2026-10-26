@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.25.0] - 2026-10-23
+
+### Added
+- Added an optional Argo CD path in stand settings for mirrors or repositories
+  stored under a different path. The portal continues saving order files to the
+  configured GitLab path.
+- Added an action on the stand page to regenerate application.yaml for existing
+  orders after stand settings change. The background task opens a merge request
+  for each order whose file differs from Git and shows progress and errors.
+- Service owners can now enable multiline input for string fields in the order
+  form by setting `"ui:widget": "textarea"` in the view document. Line breaks
+  are preserved in values, making it suitable for banner text, message
+  templates, or addresses entered one per line.
+
+### Changed
+- The order form now follows the chart’s rules for hiding fields in each mode,
+  including fields in nested sections and list rows. These fields no longer need
+  to be filled in or show validation errors.
+
+### Fixed
+- Removed the extra vertical scrollbar from the administration overview,
+  publication approvals, users, platform status, and maintenance pages. These
+  pages now have a single scrollbar for the page content.
+
 ## [0.24.0] - 2026-10-20
 
 ### Changed
@@ -1022,6 +1046,16 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
   and images of the portal and the collector.
 
 [Unreleased]: https://github.com/awbait/console/compare/v0.18.0...HEAD
+
+[0.25.0]: https://github.com/awbait/console/compare/v0.24.0...v0.25.0
+[0.24.0]: https://github.com/awbait/console/compare/v0.23.0...v0.24.0
+[0.23.0]: https://github.com/awbait/console/compare/v0.22.0...v0.23.0
+[0.22.0]: https://github.com/awbait/console/compare/v0.21.0...v0.22.0
+[0.21.0]: https://github.com/awbait/console/compare/v0.20.1...v0.21.0
+[0.20.1]: https://github.com/awbait/console/compare/v0.20.0...v0.20.1
+[0.20.0]: https://github.com/awbait/console/compare/v0.19.0...v0.20.0
+[0.19.0]: https://github.com/awbait/console/compare/v0.18.1...v0.19.0
+[0.18.1]: https://github.com/awbait/console/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/awbait/console/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/awbait/console/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/awbait/console/compare/v0.16.0...v0.17.0

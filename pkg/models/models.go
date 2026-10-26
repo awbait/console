@@ -68,6 +68,10 @@ const (
 	// moves to console-only. Merged, the order is kept in the portal; closed,
 	// its files stay where they were.
 	ActionUnpublish MRAction = "unpublish"
+	// ActionRegenerate writes an order's application.yaml again from its
+	// stand's current settings, values untouched. Opened by a stand's
+	// regeneration job, one per order.
+	ActionRegenerate MRAction = "regenerate"
 )
 
 // Role is a portal authorization role. Exactly one role per user, derived from
