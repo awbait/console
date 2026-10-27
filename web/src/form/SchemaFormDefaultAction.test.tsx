@@ -60,3 +60,37 @@ describe("the default-value action of a text field", () => {
     expect(html).not.toContain(defaultAction.insert);
   });
 });
+
+describe("a number field with a default", () => {
+  const nums = {
+    type: "object",
+    properties: {
+      replicas: { title: "Реплики", type: "integer", default: 3 },
+      ratio: { title: "Доля", type: "number" },
+    },
+  };
+  const render = (value: Record<string, unknown>, chartDefaults?: Record<string, unknown>) =>
+    renderToStaticMarkup(<SchemaForm schema={nums} value={value} onChange={() => {}} chartDefaults={chartDefaults} />);
+
+  test("shows the default in grey and offers to take it in", () => {
+    const html = render({});
+    expect(html).toContain('placeholder="по умолчанию 3"');
+    expect(count(html, defaultAction.insert)).toBe(1);
+  });
+
+  test("a filled number field offers to let go of its value", () => {
+    expect(render({ replicas: 5 })).toContain(defaultAction.reset);
+  });
+
+  test("a values.yaml answer counts, and is offered as the number it reads as", () => {
+    const html = render({}, { ratio: "0.5" });
+    expect(html).toContain('placeholder="по умолчанию 0.5"');
+    expect(count(html, defaultAction.insert)).toBe(2);
+  });
+
+  test("an answer that is not a number is shown but not offered", () => {
+    const html = render({ replicas: 1 }, { ratio: "auto" });
+    expect(html).toContain('placeholder="по умолчанию auto"');
+    expect(html).not.toContain(defaultAction.insert);
+  });
+});
