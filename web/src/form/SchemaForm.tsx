@@ -733,6 +733,17 @@ function Field({
   };
   // Wrap nested (object/array/variant) renders so descendants inherit the lock.
   const sub = (node: React.ReactNode) => <LockedCtx.Provider value={locked}>{node}</LockedCtx.Provider>;
+  // The action beside the label of a field with a default (DefaultAction).
+  // inserted is the default as a value of the field's own type; nothing there,
+  // or a locked field, and there is no action.
+  const defaultActionWith = (inserted: unknown) =>
+    inserted !== undefined && !locked ? (
+      <DefaultAction
+        filled={value != null && value !== ""}
+        onInsert={() => change(inserted)}
+        onReset={() => change(undefined)}
+      />
+    ) : undefined;
 
   if (s["ui:widget"] === "single" && s.type === "array")
     return sub(
@@ -784,7 +795,12 @@ function Field({
         <Checkbox label={label} isRequired={required} isDisabled={locked} isSelected={Boolean(value ?? fallback ?? false)} onChange={(v) => change(v)} />
       );
     case "number":
-    case "integer":
+    case "integer": {
+      // The default the way a text field shows it: grey in the empty field and
+      // behind the label action. A values.yaml answer may arrive as text ("3"),
+      // and is inserted as the number it reads as, or not offered at all.
+      const n = typeof fallback === "number" ? fallback : fallback != null ? Number(fallback) : Number.NaN;
+      const numeric = Number.isFinite(n) && (s.type !== "integer" || Number.isInteger(n)) ? n : undefined;
       return (
         <NumberInput
           label={label}
@@ -794,11 +810,14 @@ function Field({
           isDisabled={locked}
           errorText={err}
           hideLabel={hideLabel}
+          labelAction={defaultActionWith(numeric)}
+          placeholder={fallback != null ? defaultPlaceholder(String(fallback)) : undefined}
           integer={s.type === "integer"}
           value={typeof value === "number" ? value : undefined}
           onChange={(v) => change(v)}
         />
       );
+    }
     case "array":
       return sub(
         <ArrayField
@@ -834,14 +853,7 @@ function Field({
       // A string, drawn on one line unless the view asks for a multi-line
       // field. The widget only picks the control: the value is the same
       // string, line breaks included, and empty still means "not set".
-      const action =
-        fallback != null && !locked ? (
-          <DefaultAction
-            filled={value != null && value !== ""}
-            onInsert={() => change(String(fallback))}
-            onReset={() => change(undefined)}
-          />
-        ) : undefined;
+      const action = defaultActionWith(fallback != null ? String(fallback) : undefined);
       if (s["ui:widget"] === "textarea")
         return (
           <TextArea
@@ -945,6 +957,8 @@ function NumberInput({
   hideLabel?: boolean;
   isRequired?: boolean;
   isDisabled?: boolean;
+  labelAction?: React.ReactNode;
+  placeholder?: string;
 }) {
   const [raw, setRaw] = useState(value !== undefined ? String(value) : "");
   // Adopt external model changes (YAML round-trip, defaults) unless the current
