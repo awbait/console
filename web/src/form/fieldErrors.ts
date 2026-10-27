@@ -66,9 +66,11 @@ export const fieldHint = {
 
 // What an empty field with a value of its own shows in grey. Named, because
 // grey text shaped like a value reads as a value already filled in, and the
-// person walks past a field they were meant to look at.
+// person walks past a field they were meant to look at. A value of several
+// lines (a config file) starts on the line below: run on after the words, its
+// first line reads as part of the label and no longer lines up with the rest.
 export function defaultPlaceholder(value: string): string {
-  return `по умолчанию ${value}`;
+  return value.includes("\n") ? `по умолчанию\n${value}` : `по умолчанию ${value}`;
 }
 
 // The two actions beside the label of a text field with a default: take the
