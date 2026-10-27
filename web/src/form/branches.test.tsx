@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { activeBranches, branchesBelow, itemBranches, matchedThens } from "./fieldPath";
+import { activeBranches, branchesBelow, itemBranches, matchedThens, type Schema } from "./fieldPath";
 import { collectErrors, fieldBranches, SchemaForm } from "./SchemaForm";
 
 // The shape the egress-gateway chart declares at its root: one rule, written
@@ -244,5 +244,45 @@ describe("a condition on a field left at its default", () => {
       renderToStaticMarkup(<SchemaForm schema={valkey} value={value} onChange={() => {}} chartDefaults={chartDefaults} />).split(" *</span>").length - 1;
     expect(stars({}, { valkey: { storage: { enabled: true } } })).toBe(2);
     expect(stars({ valkey: { storage: { enabled: false } } }, { valkey: { storage: { enabled: true } } })).toBe(0);
+  });
+});
+
+// A condition is written with whatever keyword says it best, and one the form
+// skipped counted as satisfied: the branch then held for every value.
+describe("a condition written with other keywords", () => {
+  const storage = (cond: Schema) => ({
+    ...valkey,
+    allOf: [{ ...valkey.allOf[0], if: { properties: { valkey: { properties: { storage: cond } } } } }],
+  });
+  const required = (schema: Schema, storageValue: Record<string, unknown>) =>
+    collectErrors(schema, { valkey: { storage: storageValue } }).has("/valkey/storage/size");
+
+  it("reads not", () => {
+    const s = storage({ properties: { enabled: { not: { const: false } } }, required: ["enabled"] });
+    expect(required(s, { enabled: true })).toBe(true);
+    expect(required(s, { enabled: false })).toBe(false);
+  });
+
+  it("reads anyOf, allOf and oneOf", () => {
+    const on = { properties: { enabled: { const: true } }, required: ["enabled"] };
+    expect(required(storage({ anyOf: [on, { required: ["class"] }] }), { enabled: true })).toBe(true);
+    expect(required(storage({ anyOf: [on, { required: ["class"] }] }), { enabled: false })).toBe(false);
+    expect(required(storage({ allOf: [on, { properties: { enabled: { type: "boolean" } } }] }), { enabled: false })).toBe(false);
+    expect(required(storage({ oneOf: [on, { properties: { enabled: { const: false } } }] }), { enabled: true })).toBe(true);
+  });
+
+  it("reads the length and pattern of a string", () => {
+    const named = storage({ properties: { class: { minLength: 1 } }, required: ["class"] });
+    expect(collectErrors(named, { valkey: { storage: { class: "fast" } } }).has("/valkey/storage/size")).toBe(true);
+    expect(collectErrors(named, { valkey: { storage: { class: "" } } }).has("/valkey/storage/size")).toBe(false);
+    const fast = storage({ properties: { class: { pattern: "^fast" } }, required: ["class"] });
+    expect(collectErrors(fast, { valkey: { storage: { class: "slow" } } }).has("/valkey/storage/size")).toBe(false);
+  });
+
+  it("reads the type and range of a number", () => {
+    const big = storage({ properties: { enabled: { type: "integer", minimum: 3 } }, required: ["enabled"] });
+    expect(required(big, { enabled: 5 })).toBe(true);
+    expect(required(big, { enabled: 2 })).toBe(false);
+    expect(required(big, { enabled: true })).toBe(false);
   });
 });
