@@ -1,5 +1,6 @@
 import type { ViewDocument } from "@/api/types";
 import { Button, Select, TextField } from "@/components/ui";
+import { CardDesigner } from "./CardDesigner";
 import {
 	definitionIssues,
 	object,
@@ -212,6 +213,13 @@ export function GraphDesigner({
 										change(group, key, { form: form || undefined })
 									}
 								/>
+								{group === "nodes" && (
+									<CardDesigner
+										readOnly={readOnly}
+										value={object(spec.display) ? spec.display : undefined}
+										onChange={(display) => change(group, key, { display })}
+									/>
+								)}
 								{group === "relations" &&
 									(["from", "to"] as const).map((side) => {
 										const endpoint = (item as unknown as Relation)[side] ?? {
@@ -229,7 +237,7 @@ export function GraphDesigner({
 													options={nodeOptions}
 													onSelectionChange={(node) =>
 														change(group, key, {
-															[side]: { ...endpoint, node },
+															[side]: { ...endpoint, node, row: undefined },
 														})
 													}
 												/>
@@ -239,6 +247,34 @@ export function GraphDesigner({
 													onChange={(field) =>
 														change(group, key, {
 															[side]: { ...endpoint, field },
+														})
+													}
+												/>
+												<Select
+													label="Точка подключения"
+													selectedKey={endpoint.row ?? ""}
+													options={[
+														{ id: "", label: "Карточка целиком" },
+														...(Array.isArray(
+															def.nodes[endpoint.node]?.display?.rows,
+														)
+															? def.nodes[endpoint.node].display!.rows!
+															: []
+														)
+															.filter(
+																(row) =>
+																	object(row) &&
+																	typeof row.id === "string" &&
+																	typeof row.label === "string",
+															)
+															.map((row) => ({
+																id: row.id,
+																label: row.label || row.id,
+															})),
+													]}
+													onSelectionChange={(row) =>
+														change(group, key, {
+															[side]: { ...endpoint, row: row || undefined },
 														})
 													}
 												/>

@@ -14,8 +14,10 @@ export function FlowEdge({
   style,
   markerStart,
   markerEnd,
+  label,
+  selected,
 }: EdgeProps) {
-  const [path] = getBezierPath({
+  const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -25,7 +27,10 @@ export function FlowEdge({
   });
   return (
     <>
-      <BaseEdge id={id} path={path} style={style} markerStart={markerStart} markerEnd={markerEnd} />
+      <BaseEdge id={id} path={path} style={{ ...style, ...(selected ? { stroke: "rgb(var(--c-brand-500))", strokeWidth: 2 } : {}) }} markerStart={markerStart} markerEnd={markerEnd}
+        label={label} labelX={labelX} labelY={labelY}
+        labelStyle={{ fill: "rgb(var(--c-neutral-800))", fontSize: 11 }}
+        labelBgStyle={{ fill: "rgb(var(--c-surface))" }} />
       <circle r="3" className="rf-flow-dot rf-flow-dot--fwd">
         <animateMotion dur="2.4s" repeatCount="indefinite" path={path} />
       </circle>

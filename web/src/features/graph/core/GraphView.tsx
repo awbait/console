@@ -7,11 +7,16 @@ import {
   type Node,
   ReactFlow,
   ReactFlowProvider,
+  useNodesState,
+  useNodesInitialized,
+  useReactFlow,
+  useStore,
+  type Connection,
 } from "@xyflow/react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import "@xyflow/react/dist/style.css";
 import "./graph.css";
-import { bodyHandle, CardNode, rowHandleId } from "./CardNode";
+import { bodyHandle, CardNode, rowHandleId, sourceRowHandleId } from "./CardNode";
 import { FlowEdge } from "./FlowEdge";
 import type { GraphData, GraphLink, GraphNode, GraphProfile, XY } from "./model";
 import { DEFAULT_LAYOUT } from "./model";
@@ -89,7 +94,7 @@ function columns(nodes: GraphNode[], links: GraphLink[]): GraphNode[][] {
 // build places the boxes the way the profile asked (a row or a column, unless
 // saved positions say otherwise) and fills each one either as a plain stack or
 // as columns following the arrows.
-function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: Edge[] } {
+export function buildGraph(data: GraphData, profile: GraphProfile, editable = false): { nodes: Node[]; edges: Edge[] } {
   const anchored = new Map<string, Set<string>>();
   const mark = (nodeId: string, row: string) => {
     const s = anchored.get(nodeId) ?? new Set<string>();
@@ -136,9 +141,9 @@ function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: 
           type: "card",
           parentId: g.id,
           extent: "parent",
-          position: { x: PAD + i * (CARD_W + COL_GAP), y },
-          draggable: false,
-          data: { node: n, profile, anchored: [...(anchored.get(n.id) ?? [])] },
+          position: data.positions?.[n.id] ?? { x: PAD + i * (CARD_W + COL_GAP), y },
+          draggable: editable,
+          data: { node: n, profile, editable, anchored: [...(anchored.get(n.id) ?? [])] },
           style: { width: CARD_W },
         });
         y += cardHeight(n) + CARD_GAP;
@@ -150,7 +155,7 @@ function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: 
     id: l.id,
     source: l.from,
     target: l.to,
-    sourceHandle: l.fromRow ? rowHandleId(l.fromRow) : bodyHandle,
+    sourceHandle: l.fromRow ? sourceRowHandleId(l.fromRow) : bodyHandle,
     targetHandle: l.toRow ? rowHandleId(l.toRow) : `${bodyHandle}-in`,
     type: "flow",
     label: l.label,
@@ -163,28 +168,50 @@ function build(data: GraphData, profile: GraphProfile): { nodes: Node[]; edges: 
 export interface GraphViewProps {
   data: GraphData;
   profile: GraphProfile;
+  editable?: boolean;
+  selectedId?: string;
+  onNodeClick?: (id: string) => void;
+  onLinkClick?: (id: string) => void;
+  onConnect?: (connection: Connection) => void;
+  onPositions?: (positions: Record<string, XY>) => void;
 }
 
-// GraphView renders any profile's graph read-only: pan, zoom and drag the boxes
-// around, nothing else. Editing lives in the profile that owns it (today the
-// policies editor); everything that only needs to SHOW a graph uses this.
-export function GraphView({ data, profile }: GraphViewProps) {
-  const { nodes, edges } = useMemo(() => build(data, profile), [data, profile]);
+function FitCanvas({ count }: { count: number }) {
+  const { fitView } = useReactFlow();
+  const ready = useNodesInitialized();
+  const width = useStore(s => s.width);
+  const height = useStore(s => s.height);
+  useEffect(() => { if (ready && width && height) void fitView({ padding: 0.15 }); }, [ready, width, height, count, fitView]);
+  return null;
+}
+
+// The host owns semantic edits. The shared canvas only renders and reports intent.
+export function GraphView({ data, profile, editable = false, selectedId, onNodeClick, onLinkClick, onConnect, onPositions }: GraphViewProps) {
+  const built = useMemo(() => buildGraph(data, profile, editable), [data, profile, editable]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(built.nodes);
+  useEffect(() => setNodes(built.nodes), [built.nodes, setNodes]);
   const empty = data.nodes.length === 0;
 
   return (
     <div className="rf-wrap relative h-full w-full">
       <ReactFlowProvider>
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={nodes.map(n => ({ ...n, selected: n.id === selectedId }))}
+          edges={built.edges.map(e => ({ ...e, selected: e.id === selectedId }))}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          nodesConnectable={false}
-          elementsSelectable={false}
+          nodesConnectable={editable}
+          elementsSelectable={!!onNodeClick || !!onLinkClick}
+          deleteKeyCode={null}
+          onNodesChange={onNodesChange}
+          onNodeClick={(_, node) => { if (node.type === "card") onNodeClick?.(node.id); }}
+          onEdgeClick={(_, edge) => onLinkClick?.(edge.id)}
+          onConnect={onConnect}
+          onNodeDragStop={(_, node) => onPositions?.({ ...data.positions, ...Object.fromEntries(nodes.map(n => [n.id, n.position])), [node.id]: node.position })}
           fitView
           proOptions={{ hideAttribution: true }}
         >
+          <FitCanvas count={data.nodes.length} />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls showInteractive={false} />
         </ReactFlow>

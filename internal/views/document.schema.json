@@ -140,9 +140,25 @@
     }
   },
   "definitions": {
+    "graphDisplay": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "tone": { "enum": ["neutral", "accent", "warn", "muted"] },
+        "subtitle": { "type": "string", "pattern": "^/" },
+        "group": { "type": "string", "pattern": "^/" },
+        "rows": { "type": "array", "items": {
+          "type": "object", "required": ["id", "label", "field"], "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+            "label": { "type": "string" }, "field": { "type": "string", "pattern": "^/" }
+          }
+        } }
+      }
+    },
     "graphCollection": {
       "type": "object", "required": ["collection", "key"], "additionalProperties": false,
       "properties": {
+        "display": { "$ref": "#/definitions/graphDisplay" },
         "collection": { "type": "string", "pattern": "^/", "minLength": 2 },
         "key": { "type": "string", "pattern": "^/", "minLength": 2 },
         "title": { "type": "string" }, "label": { "type": "string", "pattern": "^/" }, "form": { "type": "string", "minLength": 1 }
@@ -150,7 +166,7 @@
     },
     "graphEndpoint": {
       "type": "object", "required": ["node", "field"], "additionalProperties": false,
-      "properties": { "node": { "type": "string", "minLength": 1 }, "field": { "type": "string", "pattern": "^/", "minLength": 2 } }
+      "properties": { "node": { "type": "string", "minLength": 1 }, "field": { "type": "string", "pattern": "^/", "minLength": 2 }, "row": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" } }
     },
     "graphRelation": {
       "type": "object", "required": ["collection", "key", "from", "to"], "additionalProperties": false,

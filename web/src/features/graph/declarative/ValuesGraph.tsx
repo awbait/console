@@ -1,17 +1,8 @@
-import {
-	Background,
-	Controls,
-	Handle,
-	MarkerType,
-	Position,
-	ReactFlow,
-	useNodesInitialized,
-	useReactFlow,
-	useStore,
-	type Connection,
-	type NodeProps,
-} from "@xyflow/react";
-import { useEffect, useMemo, useState } from "react";
+import type { Connection } from "@xyflow/react";
+import { useMemo, useState } from "react";
+import { GraphView } from "../core/GraphView";
+import { bodyHandle, rowHandleId, sourceRowHandleId } from "../core/CardNode";
+import { presentation } from "./presentation";
 import { Button, Select } from "@/components/ui";
 import { collectErrors, SchemaForm, seedDefaults } from "@/form/SchemaForm";
 import type { ValuesEditorProps } from "@/features/orders/valuesEditors";
@@ -29,44 +20,6 @@ import { itemSchema } from "./schema";
 import "@xyflow/react/dist/style.css";
 import "../core/graph.css";
 
-function ValueNode({ data, selected, isConnectable }: NodeProps) {
-	return (
-		<div
-			className={`rf-card ${selected ? "ring-2 ring-brand-500" : ""}`}
-			style={{ width: 200 }}
-		>
-			<Handle
-				type="target"
-				position={Position.Left}
-				isConnectable={isConnectable}
-				className="!h-3 !w-3 !border-2 !border-surface !bg-brand-500"
-			/>
-			<div className="rf-card__head">
-				<div className="rf-card__title">
-					<span className="rf-card__name">{String(data.label)}</span>
-				</div>
-				<div className="rf-card__sub">{String(data.kindLabel)}</div>
-			</div>
-			<Handle
-				type="source"
-				position={Position.Right}
-				isConnectable={isConnectable}
-				className="!h-3 !w-3 !border-2 !border-surface !bg-brand-500"
-			/>
-		</div>
-	);
-}
-const nodeTypes = { value: ValueNode };
-function FitCanvas({ count }: { count: number }) {
-	const { fitView } = useReactFlow();
-	const ready = useNodesInitialized();
-	const width = useStore((state) => state.width);
-	const height = useStore((state) => state.height);
-	useEffect(() => {
-		if (ready && width && height && count) void fitView({ padding: 0.2 });
-	}, [ready, width, height, count, fitView]);
-	return null;
-}
 type Edit = {
 	kind: string;
 	relation: boolean;
@@ -97,7 +50,7 @@ export function ValuesGraph({
 	const saved =
 		object(editorState) &&
 		editorState.profile === "declarative" &&
-		editorState.version === 1 &&
+		editorState.version === 2 &&
 		editorState.definition === fingerprint &&
 		editorState.chartVersion === chartVersion &&
 		object(editorState.positions)
@@ -117,12 +70,13 @@ export function ValuesGraph({
 	const [edit, setEdit] = useState<Edit | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [relationKind, setRelationKind] = useState("");
-	const [measurements, setMeasurements] = useState<
-		Record<string, { width: number; height: number }>
-	>({});
 	const projection = useMemo(
 		() => (def ? project(values, def) : { nodes: [], links: [], issues: [] }),
 		[values, def],
+	);
+	const visual = useMemo(
+		() => (def ? presentation(projection, def) : null),
+		[projection, def],
 	);
 	if (!def) return <p>Настройте граф в конструкторе версии.</p>;
 	const kinds = Object.keys(def.nodes);
@@ -203,6 +157,21 @@ export function ValuesGraph({
 			setError("Для выбранного типа связи нужны другие типы узлов.");
 			return;
 		}
+		const sourceHandle = rel.from.row
+			? sourceRowHandleId(rel.from.row)
+			: bodyHandle;
+		const targetHandle = rel.to.row
+			? rowHandleId(rel.to.row)
+			: `${bodyHandle}-in`;
+		if (
+			connection.sourceHandle !== sourceHandle ||
+			connection.targetHandle !== targetHandle
+		) {
+			setError(
+				"Соедините точки, указанные в настройках выбранного типа связи.",
+			);
+			return;
+		}
 		start(
 			activeRelation,
 			true,
@@ -265,28 +234,6 @@ export function ValuesGraph({
 			setError((e as Error).message);
 		}
 	}
-	const nodes = projection.nodes.map((n) => ({
-		id: n.id,
-		type: "value",
-		data: { label: n.title, kindLabel: def.nodes[n.kind].title || n.kind },
-		position: positions[n.id] ?? {
-			x: kinds.indexOf(n.kind) * 280 + 30,
-			y: n.index * 130 + 40,
-		},
-		measured: measurements[n.id],
-		selected:
-			!edit?.relation && edit?.kind === n.kind && edit.previous === n.key,
-	}));
-	const edges = projection.links.map((l) => ({
-		id: l.id,
-		source: l.source,
-		target: l.target,
-		label: l.title,
-		labelStyle: { fill: "rgb(var(--c-neutral-800))" },
-		labelBgStyle: { fill: "rgb(var(--c-surface))" },
-		markerEnd: { type: MarkerType.ArrowClosed },
-		selected: edit?.relation && edit.previous === l.key && edit.kind === l.kind,
-	}));
 	return (
 		<div className={`flex flex-col gap-3 ${fill ? "h-full" : "min-h-[540px]"}`}>
 			<div className="flex flex-wrap items-end gap-2">
@@ -319,7 +266,7 @@ export function ValuesGraph({
 					</Button>
 				)}
 				<span className="ml-auto text-xs text-slate-500">
-					Узлы: {nodes.length} · связи: {edges.length}
+					Узлы: {projection.nodes.length} · связи: {projection.links.length}
 				</span>
 			</div>
 			<p className="text-xs text-slate-500">
@@ -342,60 +289,33 @@ export function ValuesGraph({
 					style={{ height: fill ? "100%" : 440 }}
 				>
 					<div className="absolute inset-0">
-						<ReactFlow
-							className="rf-wrap"
-							proOptions={{ hideAttribution: true }}
-							key={fingerprint}
-							nodes={nodes}
-							edges={edges}
-							nodeTypes={nodeTypes}
-							fitView
-							nodesConnectable={!blocked}
-							deleteKeyCode={null}
-							onConnect={connect}
-							onNodeClick={(_, node) => {
-								const entity = projection.nodes.find((n) => n.id === node.id);
-								if (entity) start(entity.kind, false, entity);
-							}}
-							onEdgeClick={(_, edge) => {
-								const entity = projection.links.find((l) => l.id === edge.id);
-								if (entity) start(entity.kind, true, entity);
-							}}
-							onNodesChange={(changes) => {
-								const resized = changes.filter((c) => c.type === "dimensions");
-								if (resized.length)
-									setMeasurements((old) => {
-										const next = { ...old };
-										for (const change of resized)
-											if (change.dimensions)
-												next[change.id] = change.dimensions;
-										return next;
+						{visual && (
+							<GraphView
+								data={{ ...visual.data, positions }}
+								profile={visual.profile}
+								editable={!blocked}
+								selectedId={selectedEntity?.id}
+								onConnect={connect}
+								onNodeClick={(id) => {
+									const entity = projection.nodes.find((n) => n.id === id);
+									if (entity) start(entity.kind, false, entity);
+								}}
+								onLinkClick={(id) => {
+									const entity = projection.links.find((n) => n.id === id);
+									if (entity) start(entity.kind, true, entity);
+								}}
+								onPositions={(next) => {
+									setLayout({ fingerprint, positions: next });
+									onEditorState?.({
+										profile: "declarative",
+										version: 2,
+										definition: fingerprint,
+										chartVersion,
+										positions: next,
 									});
-								const moved = changes.filter((c) => c.type === "position");
-								if (!moved.length) return;
-								setLayout((old) => {
-									const next = {
-										...(old.fingerprint === fingerprint ? old.positions : {}),
-									};
-									for (const change of moved)
-										if (change.position) next[change.id] = change.position;
-									return { fingerprint, positions: next };
-								});
-							}}
-							onNodeDragStop={(_, node) =>
-								onEditorState?.({
-									profile: "declarative",
-									version: 1,
-									definition: fingerprint,
-									chartVersion,
-									positions: { ...positions, [node.id]: node.position },
-								})
-							}
-						>
-							<FitCanvas count={nodes.length} />
-							<Background />
-							<Controls showInteractive={false} />
-						</ReactFlow>
+								}}
+							/>
+						)}
 					</div>
 				</div>
 				{edit && spec && (

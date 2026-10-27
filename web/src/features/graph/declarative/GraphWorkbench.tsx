@@ -8,16 +8,31 @@ import { ValuesGraph } from "./ValuesGraph";
 import { exampleDocument, exampleSchema, exampleValues } from "./example";
 import { object, type Values } from "./model";
 import { readGraphMapping } from "../mapping";
+import { topologyExample } from "./topologyExample";
 
 const storageKey = "console-graph-workbench-v1";
-const initial = () => ({
-	document: JSON.stringify(exampleDocument, null, 2),
-	schema: JSON.stringify(exampleSchema, null, 2),
-	values: yaml.dump(exampleValues),
+const initial = (preset = "mesh") => ({
+	document: JSON.stringify(
+		preset === "topology" ? topologyExample.document : exampleDocument,
+		null,
+		2,
+	),
+	schema: JSON.stringify(
+		preset === "topology" ? topologyExample.schema : exampleSchema,
+		null,
+		2,
+	),
+	values: yaml.dump(
+		preset === "topology" ? topologyExample.values : exampleValues,
+	),
 });
-function load() {
+function load(preset: string) {
 	try {
-		const value = JSON.parse(localStorage.getItem(storageKey) ?? "null");
+		const value = JSON.parse(
+			localStorage.getItem(`${storageKey}-${preset}`) ??
+				(preset === "mesh" ? localStorage.getItem(storageKey) : null) ??
+				"null",
+		);
 		if (
 			object(value) &&
 			["document", "schema", "values"].every(
@@ -28,7 +43,7 @@ function load() {
 	} catch {
 		/* Unavailable storage must not prevent the local example opening. */
 	}
-	return initial();
+	return initial(preset);
 }
 function parse(text: string, format: "json" | "yaml") {
 	try {
@@ -40,18 +55,25 @@ function parse(text: string, format: "json" | "yaml") {
 	}
 }
 
-export function GraphWorkbench() {
-	const [state, setState] = useState(load);
+export function GraphWorkbench({
+	preset = "mesh",
+	onClose,
+}: {
+	preset?: "mesh" | "topology";
+	onClose?: () => void;
+}) {
+	const [state, setState] = useState(() => load(preset));
 	const [tab, setTab] = useState("graph");
-	const [reset, setReset] = useState(false);
+	const [reset, setReset] = useState<"mesh" | "topology" | null>(null);
 	const [layout, setLayout] = useState<unknown>(null);
+	const [showDesigner, setShowDesigner] = useState(true);
 	useEffect(() => {
 		try {
-			localStorage.setItem(storageKey, JSON.stringify(state));
+			localStorage.setItem(`${storageKey}-${preset}`, JSON.stringify(state));
 		} catch {
 			/* Work remains available in this tab. */
 		}
-	}, [state]);
+	}, [state, preset]);
 	const doc = useMemo(() => parse(state.document, "json"), [state.document]);
 	const schema = useMemo(() => parse(state.schema, "json"), [state.schema]);
 	const values = useMemo(() => parse(state.values, "yaml"), [state.values]);
@@ -74,8 +96,15 @@ export function GraphWorkbench() {
 					console
 				</a>
 				<h1 className="mr-auto text-base font-semibold">Конструктор графа</h1>
-				<Button onPress={() => setReset(true)}>
+				<Button onPress={() => setShowDesigner(!showDesigner)}>
+					{showDesigner ? "Скрыть настройки" : "Показать настройки"}
+				</Button>
+				{onClose && <Button onPress={onClose}>Вернуться к топологии</Button>}
+				<Button onPress={() => setReset("mesh")}>
 					Загрузить пример Event Mesh
+				</Button>
+				<Button onPress={() => setReset("topology")}>
+					Загрузить пример Kubernetes
 				</Button>
 				<ThemeMenu />
 			</header>
@@ -85,22 +114,26 @@ export function GraphWorkbench() {
 					и проверьте результат во вкладке Values YAML. Данные сохраняются
 					только в этом браузере.
 				</p>
-				<div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-					<Card className="max-h-[78vh] overflow-y-auto">
-						{doc.value ? (
-							<GraphDesigner
-								document={doc.value}
-								onChange={(document) =>
-									setState((old) => ({
-										...old,
-										document: JSON.stringify(document, null, 2),
-									}))
-								}
-							/>
-						) : (
-							<p role="alert">Исправьте View JSON: {doc.error}</p>
-						)}
-					</Card>
+				<div
+					className={`grid gap-4 ${showDesigner ? "lg:grid-cols-[320px_minmax(0,1fr)]" : ""}`}
+				>
+					{showDesigner && (
+						<Card className="max-h-[78vh] overflow-y-auto">
+							{doc.value ? (
+								<GraphDesigner
+									document={doc.value}
+									onChange={(document) =>
+										setState((old) => ({
+											...old,
+											document: JSON.stringify(document, null, 2),
+										}))
+									}
+								/>
+							) : (
+								<p role="alert">Исправьте View JSON: {doc.error}</p>
+							)}
+						</Card>
+					)}
 					<Card className="min-w-0">
 						<div
 							className="mb-4 flex flex-wrap gap-2"
@@ -166,13 +199,15 @@ export function GraphWorkbench() {
 				</div>
 			</main>
 			<ConfirmDialog
-				isOpen={reset}
-				onOpenChange={setReset}
+				isOpen={reset !== null}
+				onOpenChange={(open) => {
+					if (!open) setReset(null);
+				}}
 				title="Загрузить пример?"
-				message="Текущие настройки и values в песочнице будут заменены примером Event Mesh."
+				message={`Текущие настройки и values в песочнице будут заменены примером ${reset === "topology" ? "Kubernetes" : "Event Mesh"}.`}
 				confirmLabel="Загрузить"
 				onConfirm={() => {
-					setState(initial());
+					setState(initial(reset ?? preset));
 					setLayout(null);
 					setTab("graph");
 				}}

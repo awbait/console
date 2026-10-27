@@ -94,12 +94,48 @@ func checkDeclarativeGraph(graph, schema, forms map[string]any) []Issue {
 				}
 			}
 			pointers := map[string]string{"collection": collection, "key": key}
+			displayPointers := map[string]string{}
+			display := graphObject(spec["display"])
+			for _, name := range []string{"subtitle", "group"} {
+				if p := graphString(display[name]); p != "" {
+					displayPointers["display/"+name] = p
+				}
+			}
+			rows, _ := display["rows"].([]any)
+			seenRows := map[string]bool{}
+			for i, rawRow := range rows {
+				row := graphObject(rawRow)
+				id := graphString(row["id"])
+				if seenRows[id] {
+					issues = append(issues, Issue{base + "/display/rows", "Идентификаторы строк должны быть уникальными."})
+				}
+				seenRows[id] = true
+				displayPointers[fmt.Sprintf("display/rows/%d/field", i)] = graphString(row["field"])
+			}
+			for name, pointer := range displayPointers {
+				if !graphPointer(pointer) {
+					issues = append(issues, Issue{base + "/" + name, "Укажите путь к полю объекта."})
+				}
+			}
 			if label := graphString(spec["label"]); label != "" {
 				pointers["label"] = label
 			}
 			if group == "relations" {
 				for _, side := range []string{"from", "to"} {
 					endpoint := graphObject(spec[side])
+					if rowID := graphString(endpoint["row"]); rowID != "" {
+						target := graphObject(nodes[graphString(endpoint["node"])])
+						targetRows, _ := graphObject(target["display"])["rows"].([]any)
+						found := false
+						for _, row := range targetRows {
+							if graphString(graphObject(row)["id"]) == rowID {
+								found = true
+							}
+						}
+						if !found {
+							issues = append(issues, Issue{base + "/" + side + "/row", "Строка карточки не найдена."})
+						}
+					}
 					if _, ok := nodes[graphString(endpoint["node"])]; !ok {
 						issues = append(issues, Issue{base + "/" + side + "/node", "Тип узла не найден."})
 					}
@@ -134,6 +170,11 @@ func checkDeclarativeGraph(graph, schema, forms map[string]any) []Issue {
 			if form := graphString(spec["form"]); form != "" && form != "order" {
 				if vm := graphObject(forms[form]); vm != nil {
 					issues = append(issues, checkView("/views/"+form, vm, item, schema)...)
+				}
+			}
+			for name, pointer := range displayPointers {
+				if graphPointer(pointer) && graphSchemaNode(pointer, item, schema) == nil {
+					issues = append(issues, Issue{base + "/" + name, "Поле отображения не найдено в схеме."})
 				}
 			}
 			for name, pointer := range pointers {

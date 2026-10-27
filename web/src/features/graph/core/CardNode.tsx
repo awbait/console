@@ -2,18 +2,19 @@ import { Handle, type NodeProps, Position } from "@xyflow/react";
 import type { GraphNode, GraphProfile } from "./model";
 import { kindLabel, kindTone } from "./model";
 
-// Data a core card carries. Rows that anchor an arrow keep their handle
-// visible; the rest have no handle at all (the read-only canvas never
-// starts a connection).
+// Read-only cards expose only anchors used by links. Editable cards expose
+// all body and row anchors so the host can validate a new connection.
 export interface CardNodeData {
   node: GraphNode;
   profile: GraphProfile;
   // Row ids that an arrow attaches to, plus "" for the card body.
   anchored?: string[];
+  editable?: boolean;
   [key: string]: unknown;
 }
 
 export const rowHandleId = (rowId: string) => `r-${rowId}`;
+export const sourceRowHandleId = (rowId: string) => `${rowHandleId(rowId)}-out`;
 export const bodyHandle = "card";
 
 const TONE_CLASS: Record<string, string> = {
@@ -23,30 +24,28 @@ const TONE_CLASS: Record<string, string> = {
   muted: " rf-card__badge--muted",
 };
 
-// CardNode is the read-only card of the core canvas: a header with the title,
-// the kind badge and an optional secondary line, then the rows. It mirrors the
-// policies workload card so both profiles read as one product.
-export function CardNode({ data }: NodeProps) {
-  const { node, profile, anchored } = data as CardNodeData;
+// Shared card: title, kind badge, optional secondary line and field rows.
+export function CardNode({ data, selected }: NodeProps) {
+  const { node, profile, anchored, editable = false } = data as CardNodeData;
   const invalid = node.invalid != null;
   const anchors = new Set(anchored ?? []);
 
   return (
-    <div className={`rf-card${invalid ? " rf-card--invalid" : ""}`} title={node.invalid ?? undefined}>
+    <div className={`rf-card${invalid ? " rf-card--invalid" : ""}${selected ? " ring-2 ring-brand-500" : ""}`} title={node.invalid ?? undefined}>
       <div className="rf-card__head">
         <Handle
           id={bodyHandle}
           type="source"
           position={Position.Right}
-          isConnectable={false}
-          className={`rf-port rf-port--src${anchors.has(bodyHandle) ? " rf-port--on" : " rf-port--off"}`}
+          isConnectable={editable}
+          className={`rf-port rf-port--src${editable || anchors.has(bodyHandle) ? " rf-port--on" : " rf-port--off"}`}
         />
         <Handle
           id={`${bodyHandle}-in`}
           type="target"
           position={Position.Left}
-          isConnectable={false}
-          className="rf-port rf-port--off"
+          isConnectable={editable}
+          className={`rf-port${editable ? " rf-port--on" : " rf-port--off"}`}
         />
         <div className="rf-card__title">
           <span className="rf-card__name" title={node.title}>
@@ -78,9 +77,12 @@ export function CardNode({ data }: NodeProps) {
                 id={rowHandleId(r.id)}
                 type="target"
                 position={Position.Left}
-                isConnectable={false}
-                className={`rf-port${anchors.has(r.id) ? " rf-port--on" : " rf-port--off"}`}
+                isConnectable={editable}
+                className={`rf-port${editable || anchors.has(r.id) ? " rf-port--on" : " rf-port--off"}`}
               />
+              <Handle id={sourceRowHandleId(r.id)} type="source" position={Position.Right}
+                isConnectable={editable}
+                className={`rf-port rf-port--src${editable || anchors.has(r.id) ? " rf-port--on" : " rf-port--off"}`} />
             </div>
           ))
         )}

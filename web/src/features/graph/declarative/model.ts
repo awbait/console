@@ -1,16 +1,23 @@
 // The graph is a projection of the document. Commands edit original records;
 // opening or arranging the canvas never serializes values back to the caller.
 export type Values = Record<string, unknown>;
+export interface CardDisplay {
+	tone?: "neutral" | "accent" | "warn" | "muted";
+	subtitle?: string;
+	group?: string;
+	rows?: { id: string; label: string; field: string }[];
+}
 export interface Collection {
 	collection: string;
 	key: string;
 	title?: string;
 	label?: string;
 	form?: string;
+	display?: CardDisplay;
 }
 export interface Relation extends Collection {
-	from: { node: string; field: string };
-	to: { node: string; field: string };
+	from: { node: string; field: string; row?: string };
+	to: { node: string; field: string; row?: string };
 }
 export interface Definition {
 	profile: "declarative";
@@ -119,6 +126,7 @@ export function definitionIssues(raw: unknown): string[] {
 				"title",
 				"label",
 				"form",
+				...(group === "nodes" ? ["display"] : []),
 				...(group === "relations" ? ["from", "to"] : []),
 			]);
 			if (Object.keys(item).some((key) => !fields.has(key)))
@@ -139,6 +147,48 @@ export function definitionIssues(raw: unknown): string[] {
 				}
 				if (item.label !== undefined) tokens(item.label as string);
 				if (item.form !== undefined && !item.form) throw new Error();
+				if (item.display !== undefined) {
+					const display = item.display;
+					if (
+						!object(display) ||
+						Object.keys(display).some(
+							(k) => !["tone", "subtitle", "group", "rows"].includes(k),
+						)
+					)
+						throw new Error();
+					if (
+						display.tone !== undefined &&
+						(typeof display.tone !== "string" ||
+							!["neutral", "accent", "warn", "muted"].includes(display.tone))
+					)
+						throw new Error();
+					for (const field of ["subtitle", "group"]) {
+						if (display[field] !== undefined) {
+							if (typeof display[field] !== "string") throw new Error();
+							tokens(display[field]);
+						}
+					}
+					if (display.rows !== undefined) {
+						if (!Array.isArray(display.rows)) throw new Error();
+						const ids = new Set<string>();
+						for (const row of display.rows) {
+							if (
+								!object(row) ||
+								Object.keys(row).some(
+									(k) => !["id", "label", "field"].includes(k),
+								) ||
+								typeof row.id !== "string" ||
+								!/^[a-z][a-z0-9-]*$/.test(row.id) ||
+								ids.has(row.id) ||
+								typeof row.label !== "string" ||
+								typeof row.field !== "string"
+							)
+								throw new Error();
+							ids.add(row.id);
+							tokens(row.field);
+						}
+					}
+				}
 				if (group === "relations") {
 					for (const side of ["from", "to"]) {
 						const ref = item[side];
@@ -150,10 +200,21 @@ export function definitionIssues(raw: unknown): string[] {
 						)
 							throw new Error();
 						if (
-							Object.keys(ref).some((key) => key !== "node" && key !== "field")
+							Object.keys(ref).some(
+								(key) => !["node", "field", "row"].includes(key),
+							)
 						)
 							throw new Error();
 						tokens(ref.field);
+						if (ref.row !== undefined) {
+							const node = raw.nodes[ref.node] as Collection;
+							if (
+								typeof ref.row !== "string" ||
+								!Array.isArray(node?.display?.rows) ||
+								!node.display.rows.some((r) => r?.id === ref.row)
+							)
+								throw new Error();
+						}
 						if (overlaps(item.key, ref.field)) throw new Error();
 					}
 					if (

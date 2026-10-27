@@ -43,6 +43,25 @@ func TestDeclarativeGraphEscapedPaths(t *testing.T) {
 	}
 }
 
+func TestDeclarativeGraphDisplay(t *testing.T) {
+	doc := strings.Replace(declarativeDocument, `"form":"node"`, `"form":"node","display":{"tone":"accent","group":"/name","subtitle":"/name","rows":[{"id":"port","label":"Port","field":"/name"}]}`, 1)
+	doc = strings.Replace(doc, `"field":"/from"`, `"field":"/from","row":"port"`, 1)
+	if issues := views.Validate([]byte(doc), []byte(declarativeSchema)); len(issues) != 0 {
+		t.Fatalf("valid display: %+v", issues)
+	}
+	for _, pair := range [][2]string{
+		{`"row":"port"`, `"row":"missing"`},
+		{`"group":"/name"`, `"group":"/__proto__/name"`},
+		{`"subtitle":"/name"`, `"subtitle":"/missing"`},
+		{`"tone":"accent"`, `"tone":"unknown"`},
+		{`{"id":"port","label":"Port","field":"/name"}`, `{"id":"port","label":"Port","field":"/name"},{"id":"port","label":"Port","field":"/name"}`},
+	} {
+		if issues := views.Validate([]byte(strings.Replace(doc, pair[0], pair[1], 1)), []byte(declarativeSchema)); len(issues) == 0 {
+			t.Fatalf("invalid display accepted: %s", pair[1])
+		}
+	}
+}
+
 func TestDeclarativeGraphValues(t *testing.T) {
 	for _, tc := range []struct {
 		name, values string
