@@ -8,6 +8,7 @@ import {
 } from "react-aria-components";
 import { Button, Checkbox, Hint, Select, TextArea, TextField } from "../components/ui";
 import {
+  defaultAction,
   defaultPlaceholder,
   type FieldRequirement,
   fieldHint,
@@ -829,10 +830,18 @@ function Field({
       if (mapValueSchema(s))
         return sub(<MapField name={name} schema={s} root={root} value={value} onChange={onChange} path={path} />);
       return null;
-    default:
+    default: {
       // A string, drawn on one line unless the view asks for a multi-line
       // field. The widget only picks the control: the value is the same
       // string, line breaks included, and empty still means "not set".
+      const action =
+        fallback != null && !locked ? (
+          <DefaultAction
+            filled={value != null && value !== ""}
+            onInsert={() => change(String(fallback))}
+            onReset={() => change(undefined)}
+          />
+        ) : undefined;
       if (s["ui:widget"] === "textarea")
         return (
           <TextArea
@@ -843,6 +852,7 @@ function Field({
             isDisabled={locked}
             errorText={err}
             hideLabel={hideLabel}
+            labelAction={action}
             placeholder={fallback != null ? defaultPlaceholder(String(fallback)) : undefined}
             value={value != null ? String(value) : ""}
             onChange={(v) => change(v === "" ? undefined : v)}
@@ -857,12 +867,33 @@ function Field({
           isDisabled={locked}
           errorText={err}
           hideLabel={hideLabel}
+          labelAction={action}
           placeholder={fallback != null ? defaultPlaceholder(String(fallback)) : undefined}
           value={value != null ? String(value) : ""}
           onChange={(v) => change(v === "" ? undefined : v)}
         />
       );
+    }
   }
+}
+
+// DefaultAction is the control beside the label of a text field the chart has a
+// default for. Empty, the field shows the default in grey and the order stores
+// nothing, so the chart's own default applies and a newer version brings its
+// newer one; "insert" takes the default in as text, for a person who wants to
+// change a few lines of it rather than retype it. Filled, "reset" lets go of the
+// typed value and the field is back to following the chart.
+function DefaultAction({ filled, onInsert, onReset }: { filled: boolean; onInsert: () => void; onReset: () => void }) {
+  return (
+    <Hint text={filled ? defaultAction.resetHint : defaultAction.insertHint} placement="top end">
+      <AriaButton
+        onPress={filled ? onReset : onInsert}
+        className="shrink-0 rounded text-xs font-medium text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500"
+      >
+        {filled ? defaultAction.reset : defaultAction.insert}
+      </AriaButton>
+    </Hint>
+  );
 }
 
 function coerceEnum(values: unknown[], key: string): unknown {
