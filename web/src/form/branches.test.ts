@@ -147,3 +147,69 @@ describe("handing a branch down the tree", () => {
     expect(collectErrors(schema, { flag: false, rows: [{}] }).get("/rows/0/extra")).toBeString();
   });
 });
+
+// A chart that switches on a nested flag: the condition names the flag three
+// levels down, and the levels above it carry no const of their own.
+const valkey = {
+  type: "object",
+  properties: {
+    valkey: {
+      type: "object",
+      properties: {
+        storage: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            size: { type: "string" },
+            class: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+  allOf: [
+    {
+      if: { properties: { valkey: { properties: { storage: { properties: { enabled: { const: true } } } } } } },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+      then: {
+        properties: {
+          valkey: {
+            properties: {
+              storage: {
+                required: ["size", "class"],
+                properties: { size: { minLength: 1 }, class: { minLength: 1 } },
+              },
+            },
+          },
+        },
+      },
+    },
+  ],
+};
+
+describe("a condition on a nested field", () => {
+  it("holds only when the nested field matches", () => {
+    expect(matchedThens(valkey, { valkey: { storage: { enabled: true } } }, valkey)).toHaveLength(1);
+    expect(matchedThens(valkey, { valkey: { storage: { enabled: false } } }, valkey)).toHaveLength(0);
+    expect(matchedThens(valkey, { valkey: {} }, valkey)).toHaveLength(0);
+    expect(matchedThens(valkey, {}, valkey)).toHaveLength(0);
+  });
+
+  it("requires the fields only while the flag is on", () => {
+    const on = collectErrors(valkey, { valkey: { storage: { enabled: true } } });
+    expect(on.get("/valkey/storage/size")).toBeString();
+    expect(on.get("/valkey/storage/class")).toBeString();
+    const off = collectErrors(valkey, { valkey: { storage: { enabled: false } } });
+    expect(off.has("/valkey/storage/size")).toBe(false);
+    expect(off.has("/valkey/storage/class")).toBe(false);
+  });
+
+  it("reads a required list inside the nested condition", () => {
+    const schema = {
+      ...valkey,
+      allOf: [{ ...valkey.allOf[0], if: { properties: { valkey: { properties: { storage: { required: ["enabled"] } } } } } }],
+    };
+    expect(matchedThens(schema, { valkey: { storage: { enabled: false } } }, schema)).toHaveLength(1);
+    expect(matchedThens(schema, { valkey: { storage: {} } }, schema)).toHaveLength(0);
+  });
+});
