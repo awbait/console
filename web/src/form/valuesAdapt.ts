@@ -24,6 +24,7 @@
 
 import { deref, escapeToken, fieldBreadcrumb, mapValueSchema, type Schema } from "./fieldPath";
 import { mergeUnder } from "./valuesMerge";
+import { variantsOf } from "./variants";
 
 type Values = Record<string, unknown>;
 
@@ -42,7 +43,7 @@ const isIndex = (k: string) => /^\d+$/.test(k);
 
 // adaptToSchema fits values to the schema and returns them with a note per
 // change. Values the schema accepts as they are come back untouched, and so does
-// everything the walk cannot judge: a variant (oneOf), a map of free-form keys,
+// everything the walk cannot judge: a variant (oneOf, anyOf), a map of free-form keys,
 // a field the schema says nothing about. Being too careful here costs a person
 // one confusing field; being too eager costs them a value they meant to keep.
 export function adaptToSchema(schema: Schema, values: Values, view?: Schema): Adapted {
@@ -68,7 +69,7 @@ function adapt(
   // A variant node decides which branch it is by the value it holds, and that
   // decision is the form's (matchVariant). Fitting the value to the branch this
   // walk guessed would change the variant under the person.
-  if (Array.isArray(s.oneOf)) return { value };
+  if (variantsOf(s, root)) return { value };
   if (s.type === "object" && s.properties) return adaptObject(s, value, root, label, path, notes);
   if (s.type === "object" && mapValueSchema(s)) return adaptMap(s, value, root, label, path, notes);
   if (s.type === "array") return adaptArray(s, value, root, label, path, notes);
