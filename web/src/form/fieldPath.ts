@@ -93,15 +93,24 @@ export function nodeAt(pointer: string, root: Schema): Schema | undefined {
 }
 
 // ifMatches evaluates a JSON Schema "if" against a value for the subset charts
-// use: properties with const/enum, plus the if's own required (presence) list.
-export function ifMatches(ifSchema: Schema, value: Record<string, unknown>, root: Schema): boolean {
-  for (const [k, cond] of Object.entries(ifSchema.properties ?? {})) {
-    const c = deref(cond as Schema, root);
-    const v = value?.[k];
+// use: properties with const/enum, plus the if's own required (presence) list,
+// at any depth. A chart that switches on a nested flag writes the condition as
+// nested properties ({valkey: {storage: {enabled: {const: true}}}}), and a level
+// with no const of its own must not count as satisfied: then the branch held for
+// every value and its required fields stayed required with the flag off.
+// A missing field never matches a const, unlike in JSON Schema proper, where an
+// absent property passes "properties": the form reads "not set" as "not chosen".
+export function ifMatches(ifSchema: Schema, value: unknown, root: Schema): boolean {
+  const cond = deref(ifSchema, root);
+  const obj = value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  for (const [k, node] of Object.entries(cond.properties ?? {})) {
+    const c = deref(node as Schema, root);
+    const v = obj[k];
     if ("const" in c && v !== c.const) return false;
     if (Array.isArray(c.enum) && !c.enum.includes(v)) return false;
+    if ((c.properties || c.required) && !ifMatches(c, v, root)) return false;
   }
-  for (const k of ifSchema.required ?? []) if (value?.[k] === undefined) return false;
+  for (const k of cond.required ?? []) if (obj[k] === undefined) return false;
   return true;
 }
 
