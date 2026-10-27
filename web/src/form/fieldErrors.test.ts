@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "bun:test";
 import {
+  defaultPlaceholder,
   dnsLabelError,
   dnsLabelRequirements,
   dnsSubdomainError,
@@ -304,5 +305,15 @@ describe("patternError for a DNS subdomain", () => {
 
   it("states the rule when no value is at hand", () => {
     expect(patternError(pattern)).toBe(fieldMsg.charsetDots);
+  });
+});
+
+describe("defaultPlaceholder", () => {
+  test("a one-line value follows the words on the same line", () => {
+    expect(defaultPlaceholder("localhost")).toBe("по умолчанию localhost");
+  });
+
+  test("a value of several lines starts on the line below", () => {
+    expect(defaultPlaceholder("a = 1\nb = 2")).toBe("по умолчанию\na = 1\nb = 2");
   });
 });

@@ -408,8 +408,12 @@ export function TextArea({
           }}
           // Same box as TextField's Input. resize-y: taller when the text wants
           // it, never wider than the form. field-sizing grows it with the
-          // content where supported; rows is the floor everywhere.
-          className={`w-full resize-y rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none [field-sizing:content] placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+          // content where supported; rows is the floor everywhere. max-h is the
+          // ceiling: a config of a hundred lines (or a default that long shown
+          // as the placeholder) scrolls inside the field instead of pushing the
+          // rest of the form a few screens down. Dragging the corner stops there
+          // too.
+          className={`max-h-80 w-full resize-y overflow-y-auto rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none [field-sizing:content] placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
             hasRules ? "pr-8" : "pr-2"
           } ${
             invalid
