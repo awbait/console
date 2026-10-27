@@ -92,26 +92,89 @@ export function nodeAt(pointer: string, root: Schema): Schema | undefined {
   return node;
 }
 
-// ifMatches evaluates a JSON Schema "if" against a value for the subset charts
-// use: properties with const/enum, plus the if's own required (presence) list,
-// at any depth. A chart that switches on a nested flag writes the condition as
-// nested properties ({valkey: {storage: {enabled: {const: true}}}}), and a level
-// with no const of its own must not count as satisfied: then the branch held for
-// every value and its required fields stayed required with the flag off.
-// A missing field never matches a const, unlike in JSON Schema proper, where an
-// absent property passes "properties": the form reads "not set" as "not chosen".
+// ifMatches evaluates a JSON Schema "if" against a value, at any depth. A chart
+// that switches on a nested flag writes the condition as nested properties
+// ({valkey: {storage: {enabled: {const: true}}}}), and a level with no const of
+// its own must not count as satisfied: then the branch held for every value and
+// its required fields stayed required with the flag off.
+//
+// Every keyword a condition is written with is read: a keyword skipped counts
+// as satisfied, and a condition such as "the name is not empty" then held for
+// every value, which is the same bug again. Keywords that do not decide a
+// condition (title, description, default) are left alone.
+//
+// A missing field never matches a const or an enum, unlike in JSON Schema
+// proper, where an absent property passes "properties": the form reads "not
+// set" as "not chosen". Other keywords about a value say nothing of a value that
+// is not there, as in JSON Schema.
 export function ifMatches(ifSchema: Schema, value: unknown, root: Schema): boolean {
-  const cond = deref(ifSchema, root);
-  const obj = value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  for (const [k, node] of Object.entries(cond.properties ?? {})) {
-    const c = deref(node as Schema, root);
-    const v = obj[k];
-    if ("const" in c && v !== c.const) return false;
-    if (Array.isArray(c.enum) && !c.enum.includes(v)) return false;
-    if ((c.properties || c.required) && !ifMatches(c, v, root)) return false;
+  if (typeof ifSchema === "boolean") return ifSchema;
+  const c = deref(ifSchema, root);
+  const v = value;
+  if ("const" in c && !sameValue(v, c.const)) return false;
+  if (Array.isArray(c.enum) && !c.enum.some((e: unknown) => sameValue(v, e))) return false;
+  if (c.not !== undefined && ifMatches(c.not, v, root)) return false;
+  if (Array.isArray(c.allOf) && !c.allOf.every((s: Schema) => ifMatches(s, v, root))) return false;
+  if (Array.isArray(c.anyOf) && !c.anyOf.some((s: Schema) => ifMatches(s, v, root))) return false;
+  if (Array.isArray(c.oneOf) && c.oneOf.filter((s: Schema) => ifMatches(s, v, root)).length !== 1) return false;
+  if (c.properties || c.required) {
+    const obj = isObject(v) ? v : {};
+    for (const [k, node] of Object.entries(c.properties ?? {})) if (!ifMatches(node as Schema, obj[k], root)) return false;
+    for (const k of c.required ?? []) if (obj[k] === undefined) return false;
   }
-  for (const k of cond.required ?? []) if (obj[k] === undefined) return false;
+  if (v === undefined) return true;
+  if (c.type !== undefined && !(Array.isArray(c.type) ? c.type : [c.type]).some((t: string) => hasType(v, t))) return false;
+  if (typeof v === "string") {
+    const len = [...v].length;
+    if (typeof c.minLength === "number" && len < c.minLength) return false;
+    if (typeof c.maxLength === "number" && len > c.maxLength) return false;
+    if (typeof c.pattern === "string" && !testPattern(c.pattern, v)) return false;
+  }
+  if (typeof v === "number") {
+    if (typeof c.minimum === "number" && v < c.minimum) return false;
+    if (typeof c.maximum === "number" && v > c.maximum) return false;
+    if (typeof c.exclusiveMinimum === "number" && v <= c.exclusiveMinimum) return false;
+    if (typeof c.exclusiveMaximum === "number" && v >= c.exclusiveMaximum) return false;
+  }
+  if (Array.isArray(v)) {
+    if (typeof c.minItems === "number" && v.length < c.minItems) return false;
+    if (typeof c.maxItems === "number" && v.length > c.maxItems) return false;
+    if (c.contains !== undefined && !v.some((it) => ifMatches(c.contains, it, root))) return false;
+  }
   return true;
+}
+
+// sameValue compares the way const and enum do: by value, objects and lists too.
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function hasType(v: unknown, t: string): boolean {
+  switch (t) {
+    case "null":
+      return v === null;
+    case "array":
+      return Array.isArray(v);
+    case "object":
+      return isObject(v);
+    case "integer":
+      return Number.isInteger(v);
+    default:
+      return typeof v === t;
+  }
+}
+
+// testPattern runs a chart's pattern, as the server does. A pattern this engine
+// cannot compile decides nothing, and a very long value is not run through one.
+function testPattern(pattern: string, v: string): boolean {
+  if (v.length > 10_000) return true;
+  try {
+    return new RegExp(pattern, "u").test(v);
+  } catch {
+    return true;
+  }
 }
 
 // matchedThens returns the branch schemas that apply to the current value: the
@@ -119,16 +182,63 @@ export function ifMatches(ifSchema: Schema, value: unknown, root: Schema): boole
 // and the "else" of every one whose condition does not. A chart that hides the
 // fields of one mode in "then" and the fields of the other in "else" is read
 // whole, not half.
-export function matchedThens(schema: Schema, value: Record<string, unknown>, root: Schema): Schema[] {
+//
+// The condition is read off what the form shows (see shownValues), so answer is
+// the chart's values.yaml at this object, when the caller knows it.
+//
+// A dependency is a branch too, one whose condition is "this field is set":
+// dependentRequired and the list form of dependencies make the listed fields
+// required, dependentSchemas and the schema form of dependencies apply their
+// schema, read the same way as a then.
+export function matchedThens(schema: Schema, value: Record<string, unknown>, root: Schema, answer?: unknown): Schema[] {
   const branches: Schema[] = [];
   if (schema.if) branches.push(schema);
   for (const a of (schema.allOf as Schema[]) ?? []) if (a.if) branches.push(a);
+  const deps: [string, unknown][] = [
+    ...Object.entries((schema.dependencies as Schema) ?? {}),
+    ...Object.entries((schema.dependentRequired as Schema) ?? {}),
+    ...Object.entries((schema.dependentSchemas as Schema) ?? {}),
+  ];
+  if (branches.length === 0 && deps.length === 0) return [];
+  const shown = shownValues(schema, value ?? {}, root, answer);
+  const own = isObject(shown) ? shown : {};
   const out: Schema[] = [];
   for (const b of branches) {
-    const taken = ifMatches(b.if, value ?? {}, root) ? b.then : b.else;
+    const taken = ifMatches(b.if, shown, root) ? b.then : b.else;
     if (taken) out.push(deref(taken as Schema, root));
   }
+  for (const [key, dep] of deps) {
+    if (own[key] === undefined) continue;
+    if (Array.isArray(dep)) out.push({ required: dep });
+    else if (isObject(dep)) out.push(deref(dep, root));
+  }
   return out;
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+// shownValues is what the form shows for a value: the order's own values and,
+// where a field is not set, the default the form draws in it (the schema's
+// default, else the chart's answer in values.yaml). A condition is read off
+// this rather than the bare values: a box drawn ticked by default is ticked for
+// the chart too, since Helm lays values.yaml under the order, so the fields it
+// makes required must show as required before anyone touches the box.
+export function shownValues(node: Schema, value: unknown, root: Schema, answer?: unknown): unknown {
+  const s = deref(node, root);
+  if (s.properties && (value === undefined || isObject(value))) {
+    const own = isObject(value) ? value : {};
+    const chart = isObject(answer) ? answer : {};
+    const out: Record<string, unknown> = { ...chart, ...own };
+    for (const [k, child] of Object.entries(s.properties)) {
+      const v = shownValues(child as Schema, own[k], root, chart[k]);
+      if (v !== undefined) out[k] = v;
+    }
+    return value === undefined && Object.keys(out).length === 0 ? undefined : out;
+  }
+  if (value !== undefined) return value;
+  if (s.default !== undefined) return s.default;
+  return answer;
 }
 
 // activeBranches returns the branch fragments that apply to an object right
@@ -145,8 +255,9 @@ export function activeBranches(
   value: Record<string, unknown>,
   root: Schema,
   inherited: Schema[] = [],
+  answer?: unknown,
 ): Schema[] {
-  return [...inherited, ...matchedThens(schema, value ?? {}, root)];
+  return [...inherited, ...matchedThens(schema, value ?? {}, root, answer)];
 }
 
 // branchesBelow narrows branch fragments to what they say about one child key:

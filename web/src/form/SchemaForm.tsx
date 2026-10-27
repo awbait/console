@@ -166,7 +166,7 @@ function walkErrors(
       // object, not the form's root, is what says whether it is required and
       // whether the current values hide it: its own branches plus what the
       // branches above handed down about it.
-      const branches = fieldBranches(k, s, (value as Values) ?? {}, root, inherited);
+      const branches = fieldBranches(k, s, (value as Values) ?? {}, root, inherited, defaultAt(defaults, base));
       const required = new Set<string>([...(field.owner.required ?? []), ...requiredBy(branches)]);
       const hidden = new Set<string>(hiddenBy(branches, root));
       const childNode = view?.overrides?.[k] ? { ...field.node, ...view.overrides[k] } : field.node;
@@ -454,24 +454,28 @@ function hiddenBy(branches: Schema[], root: Schema): string[] {
 // field named by key or path (see resolveField): the fragments handed down to
 // this level, narrowed to each segment of the path, plus the own branches of
 // every object along the way. The caller reads required and hidden off them
-// and hands branchesBelow(..., label) to the field's own subtree.
+// and hands branchesBelow(..., label) to the field's own subtree. answer is the
+// chart's values.yaml at schema, which a condition reads where a field is unset.
 export function fieldBranches(
   key: string,
   schema: Schema,
   value: Values,
   root: Schema,
   inherited: Schema[] = [],
+  answer?: unknown,
 ): Schema[] {
   const segments = key.split("/");
   let node = deref(schema, root);
   let v: Values = value ?? {};
-  let branches = activeBranches(node, v, root, inherited);
+  let a = answer;
+  let branches = activeBranches(node, v, root, inherited, a);
   for (let i = 0; i < segments.length - 1; i++) {
     const next = node.properties?.[segments[i]];
     if (!next) return branches;
     node = deref(next, root);
     v = (v?.[segments[i]] as Values) ?? {};
-    branches = activeBranches(node, v, root, branchesBelow(branches, segments[i], root));
+    a = a !== null && typeof a === "object" && !Array.isArray(a) ? (a as Values)[segments[i]] : undefined;
+    branches = activeBranches(node, v, root, branchesBelow(branches, segments[i], root), a);
   }
   return branches;
 }
@@ -641,6 +645,8 @@ function ObjectFields({
   // Fields the view forces to be filled in, on top of what the schema requires.
   // Written the way the view names them, so a path ("pooler/poolMode") counts.
   const viewRequired = new Set<string>(view?.required ?? []);
+  // What the chart answers at this object, for conditions on unset fields.
+  const answer = defaultAt(useContext(ChartDefaultsCtx), path);
   return (
     <div className="flex flex-col gap-4">
       {viewKeys(schema, view, root).map((k) => {
@@ -651,7 +657,7 @@ function ObjectFields({
         // hostname/tlsMode become required once protocol is HTTPS/TLS). Read off
         // the object that declares the field: for a path it is one level down,
         // and the branches above may have something to say about it too.
-        const branches = fieldBranches(k, schema, value, root, inherited);
+        const branches = fieldBranches(k, schema, value, root, inherited, answer);
         const required = new Set<string>([...(field.owner.required ?? []), ...requiredBy(branches)]);
         // Fields the current value hides (e.g. the domain of a TCP entry point):
         // the chart marks them ui:widget "hidden" inside the matching if/then branch.

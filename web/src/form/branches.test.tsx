@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { activeBranches, branchesBelow, itemBranches, matchedThens } from "./fieldPath";
-import { collectErrors, fieldBranches } from "./SchemaForm";
+import { renderToStaticMarkup } from "react-dom/server";
+import { activeBranches, branchesBelow, itemBranches, matchedThens, type Schema } from "./fieldPath";
+import { collectErrors, fieldBranches, SchemaForm } from "./SchemaForm";
 
 // The shape the egress-gateway chart declares at its root: one rule, written
 // where both modes are visible, says what each mode has no use for. The mesh
@@ -211,5 +212,126 @@ describe("a condition on a nested field", () => {
     };
     expect(matchedThens(schema, { valkey: { storage: { enabled: false } } }, schema)).toHaveLength(1);
     expect(matchedThens(schema, { valkey: { storage: {} } }, schema)).toHaveLength(0);
+  });
+});
+
+// The flag a person sees ticked is ticked for the chart too: Helm lays
+// values.yaml under the order, and the form draws the schema's default in an
+// unset box. So the fields the flag makes required are required before anyone
+// touches the box, and stop being so once it is cleared.
+describe("a condition on a field left at its default", () => {
+  const withDefault = structuredClone(valkey);
+  withDefault.properties.valkey.properties.storage.properties.enabled = { type: "boolean", default: true } as never;
+
+  it("reads the schema's default", () => {
+    const errs = collectErrors(withDefault, { valkey: { storage: {} } });
+    expect(errs.get("/valkey/storage/size")).toBeString();
+    expect(errs.get("/valkey/storage/class")).toBeString();
+  });
+
+  it("reads the chart's answer in values.yaml", () => {
+    const errs = collectErrors(valkey, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } });
+    expect(errs.get("/valkey/storage/size")).toBeString();
+  });
+
+  it("gives way to the order's own value", () => {
+    expect(collectErrors(withDefault, { valkey: { storage: { enabled: false } } }).size).toBe(0);
+    expect(collectErrors(valkey, { valkey: { storage: { enabled: false } } }, undefined, { valkey: { storage: { enabled: true } } }).size).toBe(0);
+  });
+
+  it("marks the fields required on the form", () => {
+    const stars = (value: Record<string, unknown>, chartDefaults?: Record<string, unknown>) =>
+      renderToStaticMarkup(<SchemaForm schema={valkey} value={value} onChange={() => {}} chartDefaults={chartDefaults} />).split(" *</span>").length - 1;
+    expect(stars({}, { valkey: { storage: { enabled: true } } })).toBe(2);
+    expect(stars({ valkey: { storage: { enabled: false } } }, { valkey: { storage: { enabled: true } } })).toBe(0);
+  });
+});
+
+// A condition is written with whatever keyword says it best, and one the form
+// skipped counted as satisfied: the branch then held for every value.
+describe("a condition written with other keywords", () => {
+  const storage = (cond: Schema) => ({
+    ...valkey,
+    allOf: [{ ...valkey.allOf[0], if: { properties: { valkey: { properties: { storage: cond } } } } }],
+  });
+  const required = (schema: Schema, storageValue: Record<string, unknown>) =>
+    collectErrors(schema, { valkey: { storage: storageValue } }).has("/valkey/storage/size");
+
+  it("reads not", () => {
+    const s = storage({ properties: { enabled: { not: { const: false } } }, required: ["enabled"] });
+    expect(required(s, { enabled: true })).toBe(true);
+    expect(required(s, { enabled: false })).toBe(false);
+  });
+
+  it("reads anyOf, allOf and oneOf", () => {
+    const on = { properties: { enabled: { const: true } }, required: ["enabled"] };
+    expect(required(storage({ anyOf: [on, { required: ["class"] }] }), { enabled: true })).toBe(true);
+    expect(required(storage({ anyOf: [on, { required: ["class"] }] }), { enabled: false })).toBe(false);
+    expect(required(storage({ allOf: [on, { properties: { enabled: { type: "boolean" } } }] }), { enabled: false })).toBe(false);
+    expect(required(storage({ oneOf: [on, { properties: { enabled: { const: false } } }] }), { enabled: true })).toBe(true);
+  });
+
+  it("reads the length and pattern of a string", () => {
+    const named = storage({ properties: { class: { minLength: 1 } }, required: ["class"] });
+    expect(collectErrors(named, { valkey: { storage: { class: "fast" } } }).has("/valkey/storage/size")).toBe(true);
+    expect(collectErrors(named, { valkey: { storage: { class: "" } } }).has("/valkey/storage/size")).toBe(false);
+    const fast = storage({ properties: { class: { pattern: "^fast" } }, required: ["class"] });
+    expect(collectErrors(fast, { valkey: { storage: { class: "slow" } } }).has("/valkey/storage/size")).toBe(false);
+  });
+
+  it("reads the type and range of a number", () => {
+    const big = storage({ properties: { enabled: { type: "integer", minimum: 3 } }, required: ["enabled"] });
+    expect(required(big, { enabled: 5 })).toBe(true);
+    expect(required(big, { enabled: 2 })).toBe(false);
+    expect(required(big, { enabled: true })).toBe(false);
+  });
+});
+
+// "If this field is set, those are needed too", said without an if: the
+// dependency is a branch whose condition is the field being set.
+describe("a dependency between fields", () => {
+  const withDeps = (deps: Record<string, unknown>) => {
+    const s = structuredClone(valkey) as Schema;
+    s.allOf = [];
+    Object.assign(s.properties.valkey.properties.storage, deps);
+    return s;
+  };
+  const missing = (schema: Schema, storageValue: Record<string, unknown>) =>
+    [...collectErrors(schema, { valkey: { storage: storageValue } }).keys()].sort();
+
+  it("reads dependentRequired", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size", "class"] } });
+    expect(missing(s, { enabled: true })).toEqual(["/valkey/storage/class", "/valkey/storage/size"]);
+    expect(missing(s, {})).toEqual([]);
+  });
+
+  it("reads the list form of dependencies", () => {
+    const s = withDeps({ dependencies: { enabled: ["size"] } });
+    expect(missing(s, { enabled: false })).toEqual(["/valkey/storage/size"]);
+    expect(missing(s, {})).toEqual([]);
+  });
+
+  it("reads the schema form of dependencies and dependentSchemas", () => {
+    const hide = { properties: { class: { "ui:widget": "hidden" } }, required: ["size"] };
+    for (const key of ["dependencies", "dependentSchemas"]) {
+      const s = withDeps({ [key]: { enabled: hide }, required: ["class"] });
+      expect(missing(s, { enabled: true })).toEqual(["/valkey/storage/size"]);
+      expect(missing(s, {})).toEqual(["/valkey/storage/class"]);
+    }
+  });
+
+  it("counts a field the chart sets by default", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size"] } });
+    expect([...collectErrors(s, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } }).keys()]).toEqual([
+      "/valkey/storage/size",
+    ]);
+  });
+
+  it("marks the fields required on the form", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size", "class"] } });
+    const stars = (v: Record<string, unknown>) =>
+      renderToStaticMarkup(<SchemaForm schema={s} value={v} onChange={() => {}} />).split(" *</span>").length - 1;
+    expect(stars({ valkey: { storage: { enabled: true } } })).toBe(2);
+    expect(stars({ valkey: { storage: {} } })).toBe(0);
   });
 });
