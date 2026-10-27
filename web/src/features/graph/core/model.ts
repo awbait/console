@@ -62,6 +62,7 @@ export interface GraphData {
   links: GraphLink[];
   // Remembered box positions; missing entries are laid out automatically.
   positions?: Record<string, XY>;
+  groupSizes?: Record<string, { width: number; height: number }>;
 }
 
 export interface LegendEntry {

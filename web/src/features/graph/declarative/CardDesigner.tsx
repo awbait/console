@@ -5,10 +5,12 @@ export function CardDesigner({
 	value: input = {},
 	onChange,
 	readOnly,
+	grouped = false,
 }: {
 	value?: CardDisplay;
 	onChange: (display: CardDisplay) => void;
 	readOnly: boolean;
+	grouped?: boolean;
 }) {
 	if (
 		!object(input) ||
@@ -56,14 +58,16 @@ export function CardDesigner({
 						onChange({ ...value, subtitle: subtitle || undefined })
 					}
 				/>
-				<TextField
-					label="Поле группы"
-					description="Одинаковые значения, например /namespace, объединяют узлы в рамку."
-					value={value.group ?? ""}
-					onChange={(group) =>
-						onChange({ ...value, group: group || undefined })
-					}
-				/>
+				{!grouped && (
+					<TextField
+						label="Поле группы"
+						description="Одинаковые значения, например /namespace, объединяют узлы в рамку."
+						value={value.group ?? ""}
+						onChange={(group) =>
+							onChange({ ...value, group: group || undefined })
+						}
+					/>
+				)}
 				<p className="text-xs text-slate-500">
 					Строки показывают поля записи. К каждой строке можно подключить связь.
 				</p>

@@ -1,6 +1,7 @@
 import type { ViewDocument } from "@/api/types";
 import { Button, Select, TextField } from "@/components/ui";
 import { CardDesigner } from "./CardDesigner";
+import { GroupsDesigner } from "./GroupsDesigner";
 import {
 	definitionIssues,
 	object,
@@ -51,7 +52,11 @@ export function GraphDesigner({
 				)}
 			</div>
 		);
-	if (!object(raw.nodes) || !object(raw.relations))
+	if (
+		!object(raw.nodes) ||
+		!object(raw.relations) ||
+		(raw.groups !== undefined && !object(raw.groups))
+	)
 		return (
 			<p role="alert">
 				Исправьте nodes и relations в документе: оба должны быть объектами.
@@ -127,6 +132,12 @@ export function GraphDesigner({
 					{issues[0]}
 				</p>
 			)}
+			<GroupsDesigner
+				definition={def}
+				onChange={write}
+				forms={forms}
+				readOnly={readOnly}
+			/>
 			{(["nodes", "relations"] as const).map((group) => (
 				<section key={group} className="flex flex-col gap-3">
 					<div className="flex items-center justify-between">
@@ -145,6 +156,7 @@ export function GraphDesigner({
 					{Object.entries(def[group]).map(([key, item]) => {
 						if (
 							!object(item) ||
+							(item.group !== undefined && (!object(item.group) || typeof item.group.type !== "string" || typeof item.group.field !== "string")) ||
 							["collection", "key", "title", "label", "form"].some(
 								(field) =>
 									item[field] !== undefined && typeof item[field] !== "string",
@@ -154,9 +166,12 @@ export function GraphDesigner({
 						const spec = item as unknown as Collection;
 						const linked =
 							group === "nodes" &&
-							Object.values(def.relations).some(
+							(Object.values(def.relations).some(
 								(r) => r?.from?.node === key || r?.to?.node === key,
-							);
+							) ||
+								Object.values(def.groups ?? {}).some(
+									(g) => Array.isArray(g?.accepts) && g.accepts.includes(key),
+								));
 						return (
 							<fieldset
 								key={key}
@@ -176,8 +191,8 @@ export function GraphDesigner({
 								</div>
 								{linked && (
 									<p className="text-xs text-slate-500">
-										Тип используется связями. Сначала перенастройте или удалите
-										их.
+										Тип используется связями или областями. Сначала измените их
+										настройки.
 									</p>
 								)}
 								<TextField
@@ -214,11 +229,44 @@ export function GraphDesigner({
 									}
 								/>
 								{group === "nodes" && (
-									<CardDesigner
-										readOnly={readOnly}
-										value={object(spec.display) ? spec.display : undefined}
-										onChange={(display) => change(group, key, { display })}
-									/>
+									<>
+										<Select
+											label="Тип области узла"
+											selectedKey={spec.group?.type ?? ""}
+											options={[
+												{ id: "", label: "Без отдельной записи области" },
+												...Object.entries(def.groups ?? {}).map(([id, g]) => ({
+													id,
+													label: typeof g?.title === "string" ? g.title : id,
+												})),
+											]}
+											onSelectionChange={(type) =>
+												change(group, key, {
+													group: type
+														? { type, field: spec.group?.field ?? "/namespace" }
+														: undefined,
+													display: { ...spec.display, group: undefined },
+												})
+											}
+										/>
+										{spec.group && (
+											<TextField
+												label="Поле ссылки на область"
+												value={spec.group.field}
+												onChange={(field) =>
+													change(group, key, {
+														group: { ...spec.group!, field },
+													})
+												}
+											/>
+										)}
+										<CardDesigner
+											readOnly={readOnly}
+											value={object(spec.display) ? spec.display : undefined}
+											grouped={!!spec.group}
+											onChange={(display) => change(group, key, { display })}
+										/>
+									</>
 								)}
 								{group === "relations" &&
 									(["from", "to"] as const).map((side) => {

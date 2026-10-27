@@ -17,7 +17,11 @@ test("topology fixture projects to shared cards, groups and row anchors without 
 	const visual = presentation(projection, graph);
 	expect(visual.data.nodes).toHaveLength(8);
 	expect(visual.data.links).toHaveLength(7);
-	expect(visual.data.groups.map((g) => g.title)).toEqual(["shop-core"]);
+	expect(visual.data.groups.map((g) => g.title)).toEqual([
+		"shop-core",
+		"shop-staging",
+		"data-only",
+	]);
 	const built = buildGraph(visual.data, visual.profile, true);
 	const link = visual.data.links[0];
 	expect(built.edges[0].sourceHandle).toBe(sourceRowHandleId(link.fromRow!));

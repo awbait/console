@@ -27,9 +27,9 @@ for (const [kind, style] of Object.entries(resourceTopologyProfile.kinds)) {
 		label: "/name",
 		title: style.label,
 		form: kind,
+		group: { type: "namespace", field: "/namespace" },
 		display: {
 			tone: style.tone,
-			group: "/namespace",
 			subtitle: "/detail",
 			rows: rows.map((id) => ({
 				id: ids.get(id)!,
@@ -67,6 +67,56 @@ for (const [kind, style] of Object.entries(resourceTopologyProfile.kinds)) {
 	};
 	views[kind] = {};
 }
+graph.groups = {
+	namespace: {
+		collection: "/namespaces",
+		key: "/name",
+		label: "/name",
+		title: "Namespace",
+		form: "namespace",
+		accepts: Object.keys(graph.nodes),
+		acceptsField: "/allowedKinds",
+	},
+};
+values.namespaces = [
+	{
+		name: "shop-core",
+		owner: "shop-team",
+		description: "Основное приложение",
+		allowedKinds: Object.keys(graph.nodes),
+	},
+	{
+		name: "shop-staging",
+		owner: "shop-team",
+		description: "Тестовая среда",
+		allowedKinds: Object.keys(graph.nodes),
+	},
+	{
+		name: "data-only",
+		owner: "platform",
+		description: "Только данные и конфигурация",
+		allowedKinds: ["configmap", "secret", "pvc"],
+	},
+];
+properties.namespaces = {
+	type: "array",
+	items: {
+		type: "object",
+		required: ["name"],
+		properties: {
+			name: { ...string, title: "Название области" },
+			owner: { ...string, title: "Владелец" },
+			description: { ...string, title: "Описание" },
+			allowedKinds: {
+				type: "array",
+				title: "Разрешённые типы узлов",
+				uniqueItems: true,
+				items: { type: "string", enum: Object.keys(graph.nodes) },
+			},
+		},
+	},
+};
+views.namespace = {};
 resourceTopologyDemo.links.forEach((link, index) => {
 	const from = resourceTopologyDemo.nodes.find((n) => n.id === link.from)!;
 	const to = resourceTopologyDemo.nodes.find((n) => n.id === link.to)!;

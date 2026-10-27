@@ -14,6 +14,11 @@ export interface Collection {
 	label?: string;
 	form?: string;
 	display?: CardDisplay;
+	group?: { type: string; field: string };
+}
+export interface GroupCollection extends Collection {
+	accepts: string[];
+	acceptsField?: string;
 }
 export interface Relation extends Collection {
 	from: { node: string; field: string; row?: string };
@@ -25,6 +30,8 @@ export interface Definition {
 	enabled?: boolean;
 	nodes: Record<string, Collection>;
 	relations: Record<string, Relation>;
+	groups?: Record<string, GroupCollection>;
+	ungroupedTitle?: string;
 }
 export interface Entity {
 	id: string;
@@ -39,6 +46,7 @@ export interface Link extends Entity {
 	target: string;
 }
 export interface Projection {
+	groups: Entity[];
 	nodes: Entity[];
 	links: Link[];
 	issues: string[];
@@ -94,6 +102,13 @@ export function definitionIssues(raw: unknown): string[] {
 		return ["Укажите профиль declarative, версию 1, типы узлов и связей."];
 	}
 	const issues: string[] = [];
+	if (raw.groups !== undefined && !object(raw.groups))
+		return ["Типы областей должны быть объектом."];
+	if (
+		raw.ungroupedTitle !== undefined &&
+		typeof raw.ungroupedTitle !== "string"
+	)
+		issues.push("Название общей области должно быть строкой.");
 	if (raw.enabled !== undefined && typeof raw.enabled !== "boolean")
 		issues.push("Поле enabled должно быть true или false.");
 	const allowed = new Set([
@@ -102,6 +117,8 @@ export function definitionIssues(raw: unknown): string[] {
 		"enabled",
 		"nodes",
 		"relations",
+		"groups",
+		"ungroupedTitle",
 		"$comment",
 	]);
 	if (Object.keys(raw).some((key) => !allowed.has(key)))
@@ -110,6 +127,7 @@ export function definitionIssues(raw: unknown): string[] {
 		issues.push("Добавьте хотя бы один тип узла.");
 	const paths: string[] = [];
 	for (const [group, entries] of [
+		["groups", raw.groups ?? {}],
 		["nodes", raw.nodes],
 		["relations", raw.relations],
 	] as const) {
@@ -126,7 +144,8 @@ export function definitionIssues(raw: unknown): string[] {
 				"title",
 				"label",
 				"form",
-				...(group === "nodes" ? ["display"] : []),
+				...(group === "nodes" ? ["display", "group"] : []),
+				...(group === "groups" ? ["accepts", "acceptsField"] : []),
 				...(group === "relations" ? ["from", "to"] : []),
 			]);
 			if (Object.keys(item).some((key) => !fields.has(key)))
@@ -147,6 +166,42 @@ export function definitionIssues(raw: unknown): string[] {
 				}
 				if (item.label !== undefined) tokens(item.label as string);
 				if (item.form !== undefined && !item.form) throw new Error();
+				if (group === "groups") {
+					if (
+						!Array.isArray(item.accepts) ||
+						item.accepts.some(
+							(k) =>
+								typeof k !== "string" || !Object.hasOwn(raw.nodes as Values, k),
+						) ||
+						new Set(item.accepts).size !== item.accepts.length
+					)
+						throw new Error();
+					if (item.acceptsField !== undefined) {
+						if (typeof item.acceptsField !== "string") throw new Error();
+						tokens(item.acceptsField);
+						if (overlaps(item.acceptsField, item.key)) throw new Error();
+					}
+				}
+				if (item.group !== undefined) {
+					const membership = item.group;
+					if (
+						!object(membership) ||
+						Object.keys(membership).some(
+							(k) => !["type", "field"].includes(k),
+						) ||
+						typeof membership.type !== "string" ||
+						!object(raw.groups) ||
+						!Object.hasOwn(raw.groups, membership.type) ||
+						typeof membership.field !== "string"
+					)
+						throw new Error();
+					tokens(membership.field);
+					if (
+						overlaps(item.key, membership.field) ||
+						(object(item.display) && item.display.group !== undefined)
+					)
+						throw new Error();
+				}
 				if (item.display !== undefined) {
 					const display = item.display;
 					if (
@@ -240,6 +295,31 @@ export function readDefinition(raw: unknown): Definition | null {
 // React Flow interpolates ids in attribute selectors while connecting handles.
 export const entityId = (kind: string, key: string) =>
 	encodeURIComponent(JSON.stringify([kind, key]));
+export const areaId = (kind: string, key: string) =>
+	`area:${entityId(kind, key)}`;
+export function membershipError(
+	def: Definition,
+	nodeKind: string,
+	group: Entity,
+): string | null {
+	const membership = def.nodes[nodeKind]?.group;
+	const spec = def.groups?.[group.kind];
+	if (
+		!membership ||
+		membership.type !== group.kind ||
+		!spec?.accepts.includes(nodeKind)
+	)
+		return "Этот тип узла нельзя размещать в выбранной области.";
+	if (spec.acceptsField) {
+		const allowed = get(group.item, spec.acceptsField);
+		if (
+			allowed !== undefined &&
+			(!Array.isArray(allowed) || !allowed.includes(nodeKind))
+		)
+			return "Настройки этой области запрещают выбранный тип узла.";
+	}
+	return null;
+}
 function records(values: Values, spec: Collection): Values[] {
 	const list = get(values, spec.collection);
 	if (list === undefined) return [];
@@ -249,6 +329,7 @@ function records(values: Values, spec: Collection): Values[] {
 }
 export function project(values: Values, def: Definition): Projection {
 	const result: Projection = {
+		groups: [],
 		nodes: [],
 		links: [],
 		issues: definitionIssues(def),
@@ -284,8 +365,43 @@ export function project(values: Values, def: Definition): Projection {
 			return [];
 		}
 	};
+	for (const [kind, spec] of Object.entries(def.groups ?? {})) {
+		result.groups.push(
+			...scan(kind, spec).map((g) => ({ ...g, id: areaId(kind, g.key) })),
+		);
+		for (const group of result.groups.filter((g) => g.kind === kind)) {
+			const allowed = spec.acceptsField
+				? get(group.item, spec.acceptsField)
+				: undefined;
+			if (
+				allowed !== undefined &&
+				(!Array.isArray(allowed) ||
+					allowed.some(
+						(k) => typeof k !== "string" || !spec.accepts.includes(k),
+					))
+			)
+				result.issues.push(
+					`${spec.collection}/${group.index}: список разрешённых типов некорректен.`,
+				);
+		}
+	}
 	for (const [kind, spec] of Object.entries(def.nodes))
 		result.nodes.push(...scan(kind, spec));
+	for (const node of result.nodes) {
+		const membership = def.nodes[node.kind].group;
+		if (!membership) continue;
+		const key = get(node.item, membership.field);
+		const group = result.groups.find(
+			(g) => g.kind === membership.type && g.key === key,
+		);
+		const error = group
+			? membershipError(def, node.kind, group)
+			: "Область узла не найдена.";
+		if (error)
+			result.issues.push(
+				`${def.nodes[node.kind].collection}/${node.index}: ${error}`,
+			);
+	}
 	const ids = new Set(result.nodes.map((n) => n.id));
 	for (const [kind, spec] of Object.entries(def.relations)) {
 		for (const entity of scan(kind, spec)) {
@@ -315,10 +431,18 @@ export type Command =
 			type: "save";
 			kind: string;
 			relation: boolean;
+			group?: boolean;
 			previous?: string;
 			item: Values;
 	  }
-	| { type: "delete"; kind: string; relation: boolean; key: string };
+	| {
+			type: "delete";
+			kind: string;
+			relation: boolean;
+			group?: boolean;
+			key: string;
+	  }
+	| { type: "move"; kind: string; key: string; target: string };
 
 export function execute(
 	values: Values,
@@ -327,7 +451,30 @@ export function execute(
 ): Values {
 	const before = project(values, def);
 	if (before.issues.length) throw new Error(before.issues[0]);
-	const spec = (command.relation ? def.relations : def.nodes)[command.kind];
+	if (command.type === "move") {
+		const node = before.nodes.find(
+			(n) => n.kind === command.kind && n.key === command.key,
+		);
+		const target = before.groups.find((g) => g.id === command.target);
+		if (!node || !target)
+			throw new Error("Узел или область изменились. Выберите их снова.");
+		const error = membershipError(def, node.kind, target);
+		if (error) throw new Error(error);
+		return execute(values, def, {
+			type: "save",
+			kind: node.kind,
+			relation: false,
+			previous: node.key,
+			item: set(node.item, def.nodes[node.kind].group!.field, target.key),
+		});
+	}
+	const spec = (
+		command.group
+			? (def.groups ?? {})
+			: command.relation
+				? def.relations
+				: def.nodes
+	)[command.kind];
 	if (!spec) throw new Error("Тип не найден. Проверьте настройку графа.");
 	const list = records(values, spec);
 	const oldKey = command.type === "delete" ? command.key : command.previous;
@@ -340,6 +487,16 @@ export function execute(
 	let next = values;
 	if (command.type === "delete") {
 		if (
+			command.group &&
+			before.nodes.some(
+				(n) =>
+					def.nodes[n.kind].group?.type === command.kind &&
+					get(n.item, def.nodes[n.kind].group!.field) === command.key,
+			)
+		)
+			throw new Error("Сначала переместите или удалите узлы этой области.");
+		if (
+			!command.group &&
 			!command.relation &&
 			before.links.some(
 				(l) =>
@@ -367,7 +524,27 @@ export function execute(
 				? [...list, command.item]
 				: list.map((item, i) => (i === index ? command.item : item)),
 		);
-		if (!command.relation && oldKey !== undefined && oldKey !== key) {
+		if (command.group && oldKey !== undefined && oldKey !== key) {
+			for (const node of Object.values(def.nodes)) {
+				if (node.group?.type !== command.kind) continue;
+				const field = node.group.field;
+				const list = records(next, node);
+				if (list.some((item) => get(item, field) === oldKey))
+					next = set(
+						next,
+						node.collection,
+						list.map((item) =>
+							get(item, field) === oldKey ? set(item, field, key) : item,
+						),
+					);
+			}
+		}
+		if (
+			!command.group &&
+			!command.relation &&
+			oldKey !== undefined &&
+			oldKey !== key
+		) {
 			for (const relation of Object.values(def.relations)) {
 				let changed = false;
 				const updated = records(next, relation).map((item) => {

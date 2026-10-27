@@ -1,5 +1,5 @@
 import type { GraphData, GraphProfile } from "../core/model";
-import { get, type Definition, type Projection } from "./model";
+import { areaId, get, type Definition, type Projection } from "./model";
 
 // Display bindings are a one-way projection. They never create values.
 export function presentation(
@@ -12,12 +12,33 @@ export function presentation(
 			: typeof value === "object"
 				? JSON.stringify(value)
 				: String(value);
-	const groups = new Map<string, string>();
+	const groups = new Map(
+		projection.groups.map((group) => [
+			group.id,
+			{
+				id: group.id,
+				title: group.title,
+				note: def.groups?.[group.kind].title || group.kind,
+			},
+		]),
+	);
 	const nodes = projection.nodes.map((entity) => {
 		const display = def.nodes[entity.kind].display;
 		const group = display?.group ? text(get(entity.item, display.group)) : "";
-		const groupId = `group:${encodeURIComponent(group)}`;
-		groups.set(groupId, group || "Ресурсы");
+		const membership = def.nodes[entity.kind].group;
+		const targetId = membership
+			? areaId(membership.type, String(get(entity.item, membership.field)))
+			: undefined;
+		const groupId =
+			targetId && groups.has(targetId)
+				? targetId
+				: `group:${encodeURIComponent(group)}`;
+		if (!groups.has(groupId))
+			groups.set(groupId, {
+				id: groupId,
+				title: group || def.ungroupedTitle || "Ресурсы",
+				note: "",
+			});
 		return {
 			id: entity.id,
 			groupId,
@@ -36,7 +57,7 @@ export function presentation(
 	});
 	return {
 		data: {
-			groups: [...groups].map(([id, title]) => ({ id, title })),
+			groups: [...groups.values()],
 			nodes,
 			links: projection.links.map((link) => ({
 				id: link.id,

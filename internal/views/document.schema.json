@@ -75,13 +75,15 @@
       "errorMessage": "Блок \"graph\" должен быть объектом: {\"profile\": \"policies\"}",
       "required": ["profile"],
       "propertyNames": {
-        "enum": ["$comment", "profile", "enabled", "entries", "entry", "rule", "peer", "version", "nodes", "relations"],
+        "enum": ["$comment", "profile", "enabled", "entries", "entry", "rule", "peer", "version", "nodes", "relations", "groups", "ungroupedTitle"],
         "errorMessage": "Укажите поля выбранного профиля графа",
         "x-extraMessage": "Лишнее поле {key}: не используется в описании графа"
       },
       "properties": {
         "$comment": { "$ref": "#/definitions/comment" },
         "version": { "const": 1 },
+        "ungroupedTitle": { "type": "string" },
+        "groups": { "type": "object", "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": { "$ref": "#/definitions/graphArea" } },
         "nodes": { "type": "object", "minProperties": 1, "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": { "$ref": "#/definitions/graphCollection" } },
         "relations": { "type": "object", "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": { "$ref": "#/definitions/graphRelation" } },
         "profile": {
@@ -117,7 +119,7 @@
       "allOf": [{
         "if": { "properties": { "profile": { "const": "declarative" } }, "required": ["profile"] },
         "then": { "required": ["version", "nodes", "relations"], "not": { "anyOf": [{ "required": ["entries"] }, { "required": ["entry"] }, { "required": ["rule"] }, { "required": ["peer"] }] } },
-        "else": { "not": { "anyOf": [{ "required": ["version"] }, { "required": ["nodes"] }, { "required": ["relations"] }] } }
+        "else": { "not": { "anyOf": [{ "required": ["version"] }, { "required": ["nodes"] }, { "required": ["relations"] }, { "required": ["groups"] }, { "required": ["ungroupedTitle"] }] } }
       }]
     },
     "approval": {
@@ -140,6 +142,16 @@
     }
   },
   "definitions": {
+    "graphArea": {
+      "type": "object", "required": ["collection", "key", "accepts"], "additionalProperties": false,
+      "properties": {
+        "collection": { "type": "string", "pattern": "^/", "minLength": 2 },
+        "key": { "type": "string", "pattern": "^/", "minLength": 2 },
+        "title": { "type": "string" }, "label": { "type": "string", "pattern": "^/" }, "form": { "type": "string", "minLength": 1 },
+        "accepts": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "acceptsField": { "type": "string", "pattern": "^/", "minLength": 2 }
+      }
+    },
     "graphDisplay": {
       "type": "object", "additionalProperties": false,
       "properties": {
@@ -158,6 +170,8 @@
     "graphCollection": {
       "type": "object", "required": ["collection", "key"], "additionalProperties": false,
       "properties": {
+        "group": { "type": "object", "required": ["type", "field"], "additionalProperties": false,
+          "properties": { "type": { "type": "string", "minLength": 1 }, "field": { "type": "string", "pattern": "^/", "minLength": 2 } } },
         "display": { "$ref": "#/definitions/graphDisplay" },
         "collection": { "type": "string", "pattern": "^/", "minLength": 2 },
         "key": { "type": "string", "pattern": "^/", "minLength": 2 },

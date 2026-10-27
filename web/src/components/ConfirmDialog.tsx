@@ -90,7 +90,7 @@ export function ConfirmDialog({
               <div className={`px-4 pb-4 text-sm text-gray-600 ${danger ? "pl-16" : ""}`}>
                 {message}
                 {err && (
-                  <div className="mt-3">
+                  <div className="mt-3" role="alert">
                     <FormErrors message={err} />
                   </div>
                 )}
