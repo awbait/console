@@ -71,6 +71,16 @@ export function defaultPlaceholder(value: string): string {
   return `по умолчанию ${value}`;
 }
 
+// The two actions beside the label of a text field with a default: take the
+// default in as text to edit, or let go of the typed value so the default
+// applies again (and follows the chart from then on).
+export const defaultAction = {
+  insert: "Скопировать значение",
+  insertHint: "После копирования текст станет частью заказа и перестанет обновляться при изменении значения по умолчанию.",
+  reset: "Сбросить значение",
+  resetHint: "Текст в поле удалится, а значение будет браться по умолчанию и обновляться при его изменении.",
+};
+
 // withField prefixes a canonical message with a field label for error lists
 // where several fields report at once ("projectTag: не короче 2 символов.").
 export function withField(label: string, msg: string): string {
