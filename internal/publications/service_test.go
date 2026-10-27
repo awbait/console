@@ -223,13 +223,10 @@ func TestOwnerTeamHandoff(t *testing.T) {
 		t.Fatalf("non-owner propose: want forbidden, got %v", err)
 	}
 
-	// can propose only to your own team; an admin, to any
+	// can propose only to your own team
 	payments := "payments"
 	if _, err := svc.Update(ctx, member("core"), p.ID, publications.UpdateInput{OwnerTeam: &payments}); !errors.Is(err, publications.ErrForbidden) {
 		t.Fatalf("propose to foreign team: want forbidden, got %v", err)
-	}
-	if _, err := svc.Update(ctx, admin(), p.ID, publications.UpdateInput{OwnerTeam: &payments}); err != nil {
-		t.Fatalf("admin propose anywhere: %v", err)
 	}
 
 	// owner proposes a transfer to their second team: this is only a draft,
@@ -252,6 +249,15 @@ func TestOwnerTeamHandoff(t *testing.T) {
 	}
 	if p.OwnerTeam != "dbaas" || p.DraftOwnerTeam != "" {
 		t.Fatalf("handoff must apply on approve: owner=%s draft=%q", p.OwnerTeam, p.DraftOwnerTeam)
+	}
+
+	// an admin hands the service to any team, and does so at once
+	p, err = svc.Update(ctx, admin(), p.ID, publications.UpdateInput{OwnerTeam: &payments})
+	if err != nil {
+		t.Fatalf("admin handoff anywhere: %v", err)
+	}
+	if p.OwnerTeam != "payments" || p.DraftOwnerTeam != "" {
+		t.Fatalf("admin handoff must apply at once: owner=%s draft=%q", p.OwnerTeam, p.DraftOwnerTeam)
 	}
 }
 
@@ -303,6 +309,87 @@ func TestMetadataApproval(t *testing.T) {
 	}
 	if p.CategoryID != "databases" || p.DraftCategoryID != "" {
 		t.Fatalf("category must apply on approve: live=%s draft=%q", p.CategoryID, p.DraftCategoryID)
+	}
+}
+
+// The admin would be the one approving a category or owner change, so their
+// own change skips the proposal: it lands on the publication at once, settles
+// whatever a team had proposed for the same field, and is journaled as an
+// approval under the admin's name.
+func TestAdminAppliesMetadataWithoutApproval(t *testing.T) {
+	ctx := context.Background()
+	svc, st := setup(t)
+	if err := st.CreateCategory(ctx, &models.Category{ID: "databases", Label: "Базы"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TouchUser(ctx, &models.PlatformUser{Subject: "u-admin", Name: "Платформа Админ", Role: models.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	owner := member("core")
+	p, err := svc.Create(ctx, owner, publications.CreateInput{
+		ChartProject: "platform", ChartName: "pg", CategoryID: "network", OwnerTeam: "core",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The team proposes a category; the admin names a different owner directly.
+	to := "databases"
+	if _, err := svc.Update(ctx, owner, p.ID, publications.UpdateInput{CategoryID: &to}); err != nil {
+		t.Fatal(err)
+	}
+	team := "dbaas"
+	p, err = svc.Update(ctx, admin(), p.ID, publications.UpdateInput{OwnerTeam: &team})
+	if err != nil {
+		t.Fatalf("admin owner: %v", err)
+	}
+	if p.OwnerTeam != "dbaas" || p.DraftOwnerTeam != "" {
+		t.Fatalf("owner must apply at once: live=%s draft=%q", p.OwnerTeam, p.DraftOwnerTeam)
+	}
+	if p.DraftCategoryID != "databases" {
+		t.Fatalf("the team's category proposal must survive an owner change, got draft %q", p.DraftCategoryID)
+	}
+
+	// The admin's category settles the team's proposal of the same field.
+	p, err = svc.Update(ctx, admin(), p.ID, publications.UpdateInput{CategoryID: &to})
+	if err != nil {
+		t.Fatalf("admin category: %v", err)
+	}
+	if p.CategoryID != "databases" || p.DraftCategoryID != "" || p.Status != models.PubDraft {
+		t.Fatalf("category must apply and clear the draft: live=%s draft=%q status=%s", p.CategoryID, p.DraftCategoryID, p.Status)
+	}
+	if _, err := svc.Submit(ctx, owner, p.ID); err == nil {
+		t.Fatal("nothing should be left to submit after the admin applied the change")
+	}
+
+	// An unknown category is refused before anything is written.
+	bad := "nope"
+	if _, err := svc.Update(ctx, admin(), p.ID, publications.UpdateInput{CategoryID: &bad}); err == nil {
+		t.Fatal("unknown category must be refused")
+	}
+
+	events, err := svc.ListEvents(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applied []*models.PublicationEvent
+	for _, e := range events {
+		if e.EventType == "approved" {
+			applied = append(applied, e)
+		}
+	}
+	if len(applied) != 2 {
+		t.Fatalf("want two applied events, got %d of %d", len(applied), len(events))
+	}
+	last := applied[len(applied)-1]
+	if last.Actor != "u-admin" || last.ActorName != "Платформа Админ" || last.Payload["category_id"] != "databases" {
+		t.Fatalf("applied event = %+v", last)
+	}
+	// The team's own proposal is named too, from the same directory.
+	for _, e := range events {
+		if e.Actor == owner.Subject && e.ActorName != "" {
+			t.Fatalf("a subject without a directory record must stay unnamed, got %q", e.ActorName)
+		}
 	}
 }
 
@@ -491,20 +578,14 @@ func TestAdoptClosesOnceInUse(t *testing.T) {
 	}
 
 	// The admin still names the owning team, which is the deliberate way out of
-	// the parking lot: the metadata FSM, approved by the admin themselves.
+	// the parking lot, and their word needs no approval round.
 	abc := "abc"
-	if _, err := svc.Update(ctx, a, p.ID, publications.UpdateInput{OwnerTeam: &abc}); err != nil {
-		t.Fatalf("admin proposes an owner: %v", err)
-	}
-	if _, err := svc.Submit(ctx, a, p.ID); err != nil {
-		t.Fatalf("submit: %v", err)
-	}
-	p, err = svc.Approve(ctx, a, p.ID)
+	p, err = svc.Update(ctx, a, p.ID, publications.UpdateInput{OwnerTeam: &abc})
 	if err != nil {
-		t.Fatalf("approve: %v", err)
+		t.Fatalf("admin names an owner: %v", err)
 	}
-	if p.OwnerTeam != "abc" {
-		t.Fatalf("owner = %s, want abc", p.OwnerTeam)
+	if p.OwnerTeam != "abc" || p.DraftOwnerTeam != "" {
+		t.Fatalf("owner = %s (draft %q), want abc applied", p.OwnerTeam, p.DraftOwnerTeam)
 	}
 }
 

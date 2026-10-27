@@ -1,11 +1,9 @@
-import { IconAlertTriangle, IconArrowRight, IconArrowsSort, IconArrowUpCircle, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPackages, IconPlus, IconSearch, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowRight, IconArrowsSort, IconArrowUpCircle, IconCheck, IconChevronDown, IconDots, IconGitFork, IconPackages, IconPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Cell,
   Column,
-  Dialog,
-  DialogTrigger,
   Menu,
   MenuItem,
   MenuTrigger,
@@ -15,7 +13,7 @@ import {
   TableBody,
   TableHeader,
 } from "react-aria-components";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, errorMessage, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { isLive } from "@/api/orderStatus";
@@ -27,7 +25,9 @@ import { useToast } from "@/app/ToastContext";
 import { canModify, useUser } from "@/auth/UserContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProductIcon } from "@/components/icons";
+import { Page } from "@/components/Page";
 import { PageHeader } from "@/components/PageHeader";
+import { SearchFilter } from "@/components/SearchFilter";
 import {
   STATUS_GROUPS,
   StatusBadge,
@@ -76,7 +76,7 @@ const ALL_GROUPS = STATUS_GROUPS.map((g) => g.key);
 // its width, which is why that column is pinned to a fixed 4rem (w-16): its
 // content is a single icon button, well inside those bounds, so the column
 // cannot grow and leave a gap between the two.
-const PINNED_HEAD = "sticky z-10 bg-slate-50";
+const PINNED_HEAD = "sticky z-30 bg-slate-50";
 const PINNED_CELL = "sticky z-10 bg-surface group-hover:bg-slate-50 group-focus-visible:bg-slate-50";
 const ACTIONS_W = "w-16";
 const AT_ACTIONS = "right-0";
@@ -110,7 +110,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   useEffect(() => {
     return subscribe("/api/v1/requests/events", { status_changed: () => reload() }, "orders");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reload]);
 
   const { team } = useTeam();
   const { user } = useUser();
@@ -138,7 +138,14 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const [newestFirst, setNewestFirst] = useState(true);
   // Cross-team facet filters (only used when allTeams). Empty set = no filter.
   const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
-  const [productFilter, setProductFilter] = useState<Set<string>>(new Set());
+  // The product facet can be set from the address (?product=<chart name>): the
+  // publications registry links here to "the orders on this service", and a
+  // link that lands on the full list leaves the reader to find the filter.
+  const [params] = useSearchParams();
+  const [productFilter, setProductFilter] = useState<Set<string>>(() => {
+    const product = params.get("product");
+    return new Set(product ? [product] : []);
+  });
   const [namespaceFilter, setNamespaceFilter] = useState<Set<string>>(new Set());
   const [standFilter, setStandFilter] = useState<Set<string>>(new Set());
   // The order pending delete confirmation (null = dialog closed).
@@ -172,7 +179,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const standOptions = useMemo(
     () => [...new Set(scoped.map(standName))].filter(Boolean).sort(),
     // biome-ignore lint/correctness/useExhaustiveDependencies: standName reads stands, which is the dependency
-    [scoped, stands],
+    [scoped, standName],
   );
 
   const rows = useMemo(() => {
@@ -195,7 +202,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       if (ad !== bd) return ad - bd;
       return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
-  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, stands]);
+  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, standName]);
 
   // Is anything still hidden to the right of the pinned pair? That is the only
   // moment their edge means something, so it is drawn only then.
@@ -234,7 +241,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       el.removeEventListener("wheel", onWheel);
       ro.disconnect();
     };
-  }, [rows.length, loading, allTeams]);
+  }, []);
 
   if (loading) return <SkeletonRows rows={6} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -279,9 +286,12 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   };
 
   return (
-    <div>
+    // The header and the filters stay put; the table is the one box that
+    // scrolls, both ways. It is as tall as its rows until they outgrow the
+    // page, then it shrinks to the room left (min-h-0 + overflow on a flex
+    // child) and its header pins to the top of the box.
+    <Page>
       <PageHeader
-        className="mb-4"
         title={title}
         actions={
           orderTo ? (
@@ -302,7 +312,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
         }
       />
 
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+      <div className="-mt-1 flex shrink-0 flex-wrap items-center gap-1.5">
         {allTeams && (
           <>
             <SearchFilter
@@ -367,7 +377,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           not fit slides under the pinned status and actions. */}
       <div
         ref={scroller}
-        className="overflow-x-auto rounded-lg border border-slate-200 bg-surface shadow-sm"
+        className="scroll-lane relative min-h-0 overflow-auto rounded-lg border border-slate-200 bg-surface shadow-sm"
       >
         {/* Separated borders, not collapsed ones: with collapsed borders a
             browser paints neither the border nor the shadow of a cell, and the
@@ -377,7 +387,11 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           aria-label={title}
           className="w-full min-w-max border-separate border-spacing-0 whitespace-nowrap text-sm"
         >
-          <TableHeader className="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 [&_th]:border-b [&_th]:border-slate-200">
+          {/* Every header cell pins to the top of the scroll box on its own:
+              a sticky thead does nothing with separated borders, and a cell
+              paints no background unless given one. The pinned pair sits
+              above the rest (z-30 in PINNED_HEAD) where the two overlap. */}
+          <TableHeader className="text-xs font-medium uppercase tracking-wide text-slate-500 [&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:border-b [&_th]:border-slate-200 [&_th]:bg-slate-50">
             <Column className="px-4 py-2.5 text-left">Категория</Column>
             {allTeams && <Column className="px-4 py-2.5 text-left">Команда</Column>}
             <Column className="px-4 py-2.5 text-left">Продукт</Column>
@@ -559,7 +573,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
           navigate(`/requests/${draft.id}/edit`);
         }}
       />
-    </div>
+    </Page>
   );
 }
 
@@ -626,105 +640,6 @@ function StatusFilter({
   );
 }
 
-// SearchFilter is a chip that opens a popover with a search box and a checkbox
-// list - for facets with many values (teams, products) where typing to narrow
-// down is faster than scanning. Empty selection means "no filter" (show all).
-function SearchFilter({
-  label,
-  searchPlaceholder,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  searchPlaceholder: string;
-  options: string[];
-  selected: Set<string>;
-  onChange: (s: Set<string>) => void;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = q
-    ? options.filter((o) => o.toLowerCase().includes(q.toLowerCase()))
-    : options;
-  const toggle = (v: string) => {
-    const next = new Set(selected);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    onChange(next);
-  };
-  const active = selected.size > 0;
-  return (
-    <DialogTrigger>
-      <Button
-        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
-          active
-            ? "border-brand-200 bg-brand-50 text-brand-700"
-            : "border-slate-200 text-slate-600 hover:bg-slate-50"
-        }`}
-      >
-        {label}
-        {active && <span className="text-brand-500">{selected.size}</span>}
-        <IconChevronDown size={13} stroke={1.8} className={active ? "text-brand-400" : "text-slate-400"} />
-      </Button>
-      <Popover className="w-60 rounded-md border border-slate-200 bg-surface shadow-lg outline-none entering:animate-in entering:fade-in">
-        <Dialog className="outline-none">
-          <div className="border-b border-slate-100 p-2">
-            <div className="relative">
-              <IconSearch size={14} stroke={1.8} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                autoFocus
-                type="text"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="w-full rounded-md border border-slate-200 bg-surface py-1 pl-7 pr-2 text-sm outline-none focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
-              />
-            </div>
-          </div>
-          <ul className="max-h-64 overflow-auto p-1">
-            {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-xs text-slate-400">Ничего не найдено</li>
-            ) : (
-              filtered.map((o) => {
-                const isSelected = selected.has(o);
-                return (
-                  <li key={o}>
-                    <button
-                      type="button"
-                      onClick={() => toggle(o)}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-slate-50 focus-visible:bg-slate-50"
-                    >
-                      <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          isSelected ? "border-brand-600 bg-brand-600 text-on-accent" : "border-slate-300"
-                        }`}
-                      >
-                        {isSelected && <IconCheck size={12} stroke={3} />}
-                      </span>
-                      <span className="truncate text-slate-700">{o}</span>
-                    </button>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-          {active && (
-            <div className="border-t border-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => onChange(new Set())}
-                className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-500 outline-none hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                <IconX size={13} stroke={2} />
-                Сбросить ({selected.size})
-              </button>
-            </div>
-          )}
-        </Dialog>
-      </Popover>
-    </DialogTrigger>
-  );
-}
 
 function RowActions({
   isDraft,
