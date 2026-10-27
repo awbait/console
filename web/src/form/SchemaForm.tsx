@@ -25,6 +25,7 @@ import {
   pinnedAt,
 } from "./fieldPath";
 import { parseScalar, type ScalarType, scalarText, scalarTypesOf } from "./mapScalar";
+import { emptyOf, fitsType, variantsOf } from "./variants";
 
 type Schema = Record<string, any>;
 type Values = Record<string, unknown>;
@@ -143,9 +144,16 @@ function walkErrors(
 ) {
   const s = deref(node, root);
   if (isHidden(s)) return;
-  if (Array.isArray(s.oneOf)) {
-    const opts = s.oneOf.map((o: Schema) => deref(o, root));
-    walkErrors(opts[matchVariant(value, opts, root)], value, root, undefined, base, out, defaults, inherited);
+  const opts = variantsOf(s, root);
+  if (opts) {
+    const chosen = opts[matchVariant(value, opts, root)];
+    // A branch that is one value (a vhost given by its name) left empty is a
+    // value still to type, the same as the variant's input says.
+    if (!variantsOf(chosen, root) && chosen.type !== "object" && chosen.type !== "array" && emptyVal(value)) {
+      out.set(base, fieldMsg.required);
+      return;
+    }
+    walkErrors(chosen, value, root, undefined, base, out, defaults, inherited);
     return;
   }
   if (s.type === "object" && s.properties) {
@@ -369,7 +377,7 @@ function viewKeys(schema: Schema, view: View | undefined, root: Schema): string[
 
 // SchemaForm renders a JSON Schema (draft-07, editor flavour) as React Aria
 // inputs. Supports: $ref/definitions, propertyOrder, ui:widget:"hidden",
-// objects, arrays (add/remove), oneOf (variant picker), additionalProperties
+// objects, arrays (add/remove), oneOf/anyOf (variant picker), additionalProperties
 // maps, enum/const, defaults and defaultSnippets. if/then is used to surface
 // conditional required fields (see conditionalRequired) and to hide fields the
 // current value makes meaningless (see conditionalHidden), but not otherwise
@@ -472,7 +480,8 @@ export function seedDefaults(node: Schema, root: Schema): unknown {
   const s = deref(node, root);
   if ("const" in s) return s.const;
   if ("default" in s) return s.default;
-  if (s.oneOf?.length) return seedDefaults(s.oneOf[0], root);
+  const variants = variantsOf(s, root);
+  if (variants) return seedDefaults(variants[0], root);
   if (s.type === "object" && s.properties) {
     const obj: Values = {};
     for (const k of Object.keys(s.properties)) {
@@ -496,11 +505,13 @@ export function newArrayItem(arr: Schema, root: Schema): unknown {
   // number or enum row starts empty: an {} there reaches the text input as
   // String({}), and the new row reads "[object Object]" instead of blank.
   const holdsFields =
-    (items.type === "object" && items.properties) || Array.isArray(items.oneOf) || mapValueSchema(items) !== undefined;
+    (items.type === "object" && items.properties) ||
+    variantsOf(items, root) !== undefined ||
+    mapValueSchema(items) !== undefined;
   return holdsFields ? {} : undefined;
 }
 
-// matchVariant picks which oneOf option the current value corresponds to,
+// matchVariant picks which variant the current value corresponds to,
 // preferring const discriminators (e.g. filter "type"), then required keys.
 //
 // The discriminator decides on its own, before anything is said about required
@@ -510,8 +521,14 @@ export function newArrayItem(arr: Schema, root: Schema): unknown {
 // to the first variant on every keystroke, and the other variants could never
 // be chosen at all. Required keys are the fallback for a value that carries no
 // discriminator - an entry written before the field existed.
+//
+// Before either, the value's own type rules out the branches it cannot belong
+// to: a vhost written as a bare name is the string branch whatever its place in
+// the list, and an object is never the string one.
 function matchVariant(value: unknown, options: Schema[], root: Schema): number {
-  if (!value || typeof value !== "object") return 0;
+  const fit = options.flatMap((o, i) => (fitsType(o, value) ? [i] : []));
+  const first = fit[0] ?? 0;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return first;
   const v = value as Values;
   const constMatch = (o: Schema): "yes" | "no" | "silent" => {
     let seen = false;
@@ -523,13 +540,13 @@ function matchVariant(value: unknown, options: Schema[], root: Schema): number {
     }
     return seen ? "yes" : "silent";
   };
-  for (let i = 0; i < options.length; i++) if (constMatch(options[i]) === "yes") return i;
-  for (let i = 0; i < options.length; i++) {
+  for (const i of fit) if (constMatch(options[i]) === "yes") return i;
+  for (const i of fit) {
     const o = options[i];
     if (constMatch(o) === "no") continue;
     if ((o.required ?? []).every((k: string) => v[k] !== undefined)) return i;
   }
-  return 0;
+  return first;
 }
 
 export function SchemaForm({
@@ -575,7 +592,7 @@ export function SchemaForm({
   // from a store next to one that is already a Secret) arrives here as the
   // whole schema. collectErrors has always walked such a root; without this it
   // was the only thing the form itself sent to the YAML editor.
-  const isVariant = Array.isArray(s.oneOf);
+  const isVariant = variantsOf(s, root) !== undefined;
   if (!isVariant && (s.type !== "object" || !s.properties)) {
     return <p className="text-sm text-gray-500">Нет структурной схемы, используйте редактор YAML.</p>;
   }
@@ -730,7 +747,7 @@ function Field({
       />,
     );
 
-  if (s.oneOf)
+  if (variantsOf(s, root))
     return sub(
       <VariantField
         name={name}
@@ -1015,7 +1032,7 @@ function VariantBody({
   branches?: Schema[];
 }) {
   const locked = useContext(LockedCtx);
-  const options: Schema[] = schema.oneOf.map((o: Schema) => deref(o, root));
+  const options: Schema[] = variantsOf(schema, root) ?? [];
   const sel = matchVariant(value, options, root);
   const selected = options[sel];
   const name = text(schema.title) ?? "";
@@ -1026,7 +1043,10 @@ function VariantBody({
           label="Вариант"
           isDisabled={locked}
           selectedKey={String(sel)}
-          onSelectionChange={(k) => onChange(seedDefaults(options[Number(k)], root) ?? {})}
+          onSelectionChange={(k) => {
+            const o = options[Number(k)];
+            onChange(seedDefaults(o, root) ?? emptyOf(o));
+          }}
           options={options.map((o, i) => ({ id: String(i), label: text(o.title) ?? `Вариант ${i + 1}` }))}
         />
         {selected.type === "object" && selected.properties ? (
@@ -1039,7 +1059,18 @@ function VariantBody({
             branches={branches}
           />
         ) : (
-          <Field name={name} schema={selected} root={root} required value={value} onChange={onChange} path={path} />
+          // A text cleared to nothing would no longer say which branch it is,
+          // and the picker would snap back to the first: it stays the branch's
+          // empty value instead, and validation asks for it to be filled in.
+          <Field
+            name={name}
+            schema={selected}
+            root={root}
+            required
+            value={value}
+            onChange={(v) => onChange(v === undefined ? emptyOf(selected) : v)}
+            path={path}
+          />
         )}
       </div>
     </>
@@ -1396,7 +1427,7 @@ function mapKindOf(entry: Schema, root: Schema): MapKind {
   // Before the variant check: a oneOf of bare scalar types is a value to type,
   // not a variant to pick (a card with a picker over "string", "integer"...).
   if (scalarTypesOf(entry, root)) return "any";
-  if ((entry.type === "object" && entry.properties) || Array.isArray(entry.oneOf) || mapValueSchema(entry)) {
+  if ((entry.type === "object" && entry.properties) || variantsOf(entry, root) || mapValueSchema(entry)) {
     return "fields";
   }
   // "Any JSON" (a choice with an object or a list in it) stays a string the
@@ -1455,8 +1486,8 @@ function newMapEntry(entry: Schema, root: Schema, kind: MapKind): unknown {
 // mapEntrySummary is the one-line preview a collapsed entry card shows beside
 // its key, from the fields the value holds.
 function mapEntrySummary(entry: Schema, value: unknown, root: Schema): string {
-  if (Array.isArray(entry.oneOf)) {
-    const options: Schema[] = entry.oneOf.map((o: Schema) => deref(o, root));
+  const options = variantsOf(entry, root);
+  if (options) {
     return summarize(options[matchVariant(value, options, root)], value, root);
   }
   return entry.properties ? summarize(entry, value, root) : "";
