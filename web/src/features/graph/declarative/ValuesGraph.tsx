@@ -344,6 +344,7 @@ export function ValuesGraph({
 					<div className="absolute inset-0">
 						<ReactFlow
 							className="rf-wrap"
+							proOptions={{ hideAttribution: true }}
 							key={fingerprint}
 							nodes={nodes}
 							edges={edges}
