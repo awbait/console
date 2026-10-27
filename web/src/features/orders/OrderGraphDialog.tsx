@@ -66,8 +66,10 @@ export function OrderGraphDialog({
   openMR,
   reload,
   persist,
+  schema,
 }: {
   request: OrderRequest;
+  schema?: Record<string, any> | null;
   doc: ViewDocument;
   editor: ActiveValuesEditor;
   modifiable: boolean;
@@ -213,6 +215,9 @@ export function OrderGraphDialog({
                       }
                     >
                       <plugin.Component
+                        schema={schema}
+                        document={doc}
+                        lockReadOnly
                         key={`${r.namespace}:${generation}`}
                         values={values}
                         onValues={setDraft}

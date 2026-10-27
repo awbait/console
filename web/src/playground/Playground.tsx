@@ -42,6 +42,7 @@ import {
   saveState,
 } from "./state";
 import { playgroundText as t } from "./text";
+import { GraphDesigner } from "@/features/graph/declarative/GraphDesigner";
 
 // Model paths end the way monacoHints expects: the document's suffix binds the
 // format schema and the completions, the chart's suffix the $ref navigation.
@@ -203,6 +204,7 @@ export function Playground() {
             {t.share}
           </Button>
           <ThemeMenu />
+          <a href="?graph" className="text-sm text-brand-600 underline">Песочница графа</a>
         </div>
       </header>
 
@@ -236,6 +238,7 @@ export function Playground() {
               <TabList aria-label={t.pageTitle} className="flex gap-1 border-b border-gray-200">
                 <EditorTab id="view">view.schema.json</EditorTab>
                 <EditorTab id="schema">values.schema.json</EditorTab>
+                <EditorTab id="graph">Граф</EditorTab>
               </TabList>
               <TabPanel id="view" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
                 <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
@@ -264,6 +267,9 @@ export function Playground() {
                   />
                 </div>
                 <SyntaxNote error={schema.error} prefix={t.schemaSyntax} hint={t.schemaHint} />
+              </TabPanel>
+              <TabPanel id="graph" className="min-h-0 flex-1 overflow-y-auto pt-3 outline-none">
+                {view.value ? <GraphDesigner document={view.value} onChange={(doc) => setView(JSON.stringify(doc, null, 2))} /> : <p>Исправьте view.schema.json.</p>}
               </TabPanel>
             </Tabs>
           </Card>

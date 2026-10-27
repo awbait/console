@@ -242,6 +242,7 @@ export function PreviewPane({
   const [namespace, setNamespace] = useState("");
   const [mode, setMode] = useState<string>("form");
   const [raw, setRaw] = useState("");
+  const [graphInputError, setGraphInputError] = useState<string | null>(null);
 
   // The extra values editor the document under edit turns on. Reading it from
   // the draft means the author sees the tab appear as soon as the "graph" block
@@ -256,12 +257,15 @@ export function PreviewPane({
   function switchMode(next: string) {
     if (next === mode) return;
     if (next === "raw") {
-      setRaw(yaml.dump(pruneEmpty(values)));
+      if (!graphInputError) setRaw(yaml.dump(editor?.mapping.profile === "declarative" ? values : pruneEmpty(values)));
     } else if (mode === "raw") {
       try {
-        setValues((yaml.load(raw) as Values) ?? {});
-      } catch {
-        /* keep previous form values if YAML is invalid */
+        const parsed = yaml.load(raw) ?? {};
+        if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Values должны быть объектом.");
+        setValues(parsed as Values);
+        setGraphInputError(null);
+      } catch (e) {
+        setGraphInputError((e as Error).message);
       }
     }
     setMode(next);
@@ -299,7 +303,7 @@ export function PreviewPane({
     stand_id: standId,
     cluster,
     namespace: namespace || svcName,
-    values_yaml: yaml.dump(pruneEmpty(values)),
+    values_yaml: yaml.dump(editor?.mapping.profile === "declarative" ? values : pruneEmpty(values)),
     status: "HEALTHY",
     argocd_app_name: `${team}-${svcName}`,
     version: 1,
@@ -363,6 +367,7 @@ export function PreviewPane({
               editor={editor}
               pluginNamespace={liveNamespace}
               pluginChartVersion={version}
+              pluginInputError={graphInputError}
               pluginState={editorStateRef.current}
               onPluginState={(st) => {
                 editorStateRef.current = st;

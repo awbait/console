@@ -14,9 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/santhosh-tekuri/jsonschema/v5"
-	"gopkg.in/yaml.v3"
 	"console/internal/argocd"
 	"console/internal/catalog"
 	"console/internal/checks"
@@ -26,6 +23,9 @@ import (
 	"console/internal/store"
 	"console/internal/views"
 	"console/pkg/models"
+	"github.com/google/uuid"
+	"github.com/santhosh-tekuri/jsonschema/v5"
+	"gopkg.in/yaml.v3"
 )
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
@@ -1242,6 +1242,7 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 		}
 		return string(out), nil
 	}
+	effectiveValues := s.catalog.ValuesForValidation(ctx, project, name, version, values)
 	if err == nil && len(schemaBytes) > 0 {
 		c := jsonschema.NewCompiler()
 		if aerr := c.AddResource("values.schema.json", bytes.NewReader(schemaBytes)); aerr == nil {
@@ -1255,7 +1256,7 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 				// below is the order's own, or every order would freeze today's
 				// chart defaults and an upgrade would stop moving what nobody
 				// touched.
-				if verr := sch.Validate(s.catalog.ValuesForValidation(ctx, project, name, version, values)); verr != nil {
+				if verr := sch.Validate(effectiveValues); verr != nil {
 					return "", schemaValidationError(verr)
 				}
 			}
@@ -1263,6 +1264,9 @@ func (s *Service) validateAndMarshal(ctx context.Context, project, name, version
 	}
 	if verr := s.checkGraphNotEmpty(ctx, project, name, version, values); verr != nil {
 		return "", verr
+	}
+	if issues := views.ValidateGraphValues(s.orderView(ctx, project, name, version), effectiveValues); len(issues) > 0 {
+		return "", &ValidationError{Message: issues[0].Path + ": " + issues[0].Message}
 	}
 	if verr := s.checkUniqueNames(ctx, project, name, version, values); verr != nil {
 		return "", verr
@@ -1632,9 +1636,9 @@ func commitTitle(action models.MRAction, chart, service string) string {
 // GitLab (what changed, which instance, which team/cluster).
 func mrTitle(action models.MRAction, r *models.Request) string {
 	verb := map[models.MRAction]string{
-		models.ActionCreate: "deploy",
-		models.ActionUpdate: "update",
-		models.ActionDelete:    "remove",
+		models.ActionCreate:     "deploy",
+		models.ActionUpdate:     "update",
+		models.ActionDelete:     "remove",
 		models.ActionPublish:    "publish",
 		models.ActionUnpublish:  "unpublish",
 		models.ActionRegenerate: "regenerate",

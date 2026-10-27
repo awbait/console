@@ -278,9 +278,9 @@ function walkErrors(
 // collectErrors returns invalid field paths (JSON pointer) -> message for the
 // given values, honoring the view. Empty map = valid. defaults are the chart's
 // answers (values.yaml) under the values, as Helm lays them.
-export function collectErrors(schema: Schema, value: Values, view?: View, defaults?: Values): Map<string, string> {
+export function collectErrors(schema: Schema, value: Values, view?: View, defaults?: Values, rootSchema?: Schema): Map<string, string> {
   const out = new Map<string, string>();
-  walkErrors(schema, value, schema, view, "", out, defaults);
+  walkErrors(schema, value, rootSchema ?? schema, view, "", out, defaults);
   return out;
 }
 
@@ -556,6 +556,7 @@ function matchVariant(value: unknown, options: Schema[], root: Schema): number {
 
 export function SchemaForm({
   schema,
+  rootSchema,
   value,
   onChange,
   view,
@@ -566,6 +567,7 @@ export function SchemaForm({
   chartDefaults,
 }: {
   schema: Schema;
+  rootSchema?: Schema;
   value: Values;
   onChange: (v: Values) => void;
   view?: View;
@@ -590,7 +592,7 @@ export function SchemaForm({
     () => ({ errors: errors ?? new Map(), touched, showAll: !!showErrors, mark }),
     [errors, touched, showErrors, mark],
   );
-  const root = schema;
+  const root = rootSchema ?? schema;
   const s = deref(schema, root);
   // A variant is a form on its own, not only a field inside one: the row of a
   // tab whose list holds entries of more than one shape (a certificate read

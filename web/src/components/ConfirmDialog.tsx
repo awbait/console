@@ -66,7 +66,7 @@ export function ConfirmDialog({
       className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in"
     >
       <Modal className="w-full max-w-md rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
-        <Dialog role="alertdialog" className="outline-none">
+        <Dialog role="alertdialog" aria-label={title} className="outline-none">
           {({ close }) => (
             <div className="flex flex-col">
               <header className="flex items-start justify-between gap-3 px-4 pb-2 pt-4">

@@ -90,6 +90,7 @@ func Validate(viewJSON, schemaJSON []byte, options ...Option) []Issue {
 	// the schema root, so their include/exclude are checked against element fields.
 	formNode := map[string]map[string]any{}
 	if schema != nil {
+		graphFormNodes(graphObject(doc["graph"]), schema, formNode)
 		for _, it := range tabsArr {
 			m, _ := it.(map[string]any)
 			form, _ := m["form"].(string)
@@ -148,7 +149,11 @@ func Validate(viewJSON, schemaJSON []byte, options ...Option) []Issue {
 	// graph: the visual values editor this version turns on, and where its
 	// fields live in the values.
 	if graph, ok := doc["graph"].(map[string]any); ok {
-		issues = append(issues, checkGraph(graph, schema)...)
+		if graphString(graph["profile"]) == "declarative" {
+			issues = append(issues, checkDeclarativeGraph(graph, schema, viewsMap)...)
+		} else {
+			issues = append(issues, checkGraph(graph, schema)...)
+		}
 	}
 	return issues
 }

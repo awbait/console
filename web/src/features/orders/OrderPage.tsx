@@ -527,13 +527,15 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       // plugin mode surfaces the error explicitly instead of showing a graph
       // built from stale values.
       try {
-        setValues((yaml.load(raw) as Values) ?? {});
+        const parsed = yaml.load(raw) ?? {};
+        if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Values должны быть объектом.");
+        setValues(parsed as Values);
       } catch (e) {
         parseError = (e as Error).message;
       }
     }
     if (next === "raw") {
-      setRaw(yaml.dump(pruneEmpty(values)));
+      if (!pluginInputError) setRaw(yaml.dump(editor?.mapping.profile === "declarative" ? values : pruneEmpty(values)));
     }
     setPluginInputError(next !== "form" && next !== "raw" ? parseError : null);
     setMode(next);
@@ -542,9 +544,14 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // collectValues resolves the values + deploy identity from the active editor
   // (form or raw YAML); returns null and sets an error when invalid.
   function collectValues(): { values: Values; svcName: string; destNamespace: string } | null {
+    if (mode === "graph" && pluginInputError) {
+      setSubmitErr({ message: "Исправьте YAML перед сохранением: " + pluginInputError });
+      return null;
+    }
     let finalValues: Values = {};
     try {
-      finalValues = mode === "raw" ? ((yaml.load(raw) as Values) ?? {}) : pruneEmpty(values);
+      finalValues = mode === "raw" ? ((yaml.load(raw) as Values) ?? {}) : editor?.mapping.profile === "declarative" ? values : pruneEmpty(values);
+      if (typeof finalValues !== "object" || Array.isArray(finalValues)) throw new Error("Values должны быть объектом.");
     } catch (e) {
       setSubmitErr({ message: "Невалидный YAML: " + (e as Error).message });
       return null;
@@ -674,7 +681,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     }
     // Nothing drawn means a service with no rules in it. The backend refuses the
     // same order; saying it here spares the person a round trip to find out.
-    if (editor && countGraphRules(c.values, editor.mapping) === 0) {
+    if (editor?.mapping.profile === "policies" && countGraphRules(c.values, editor.mapping) === 0) {
       setSubmitErr({ message: EMPTY_GRAPH });
       return;
     }
@@ -881,7 +888,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           on the product page, but into the same values and as a single MR. */}
       {upgrade && schema && viewDoc && draft && (
         <UpgradeExtras
-          request={{ ...draft, chart_version: targetVersion, values_yaml: yaml.dump(pruneEmpty(values)) }}
+          request={{ ...draft, chart_version: targetVersion, values_yaml: yaml.dump(editor?.mapping.profile === "declarative" ? values : pruneEmpty(values)) }}
           doc={viewDoc}
           schema={schema as Record<string, any>}
           onValues={setValues}

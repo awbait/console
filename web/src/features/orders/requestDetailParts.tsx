@@ -683,6 +683,7 @@ function InfoTab({
         <div className="flex shrink-0 items-center gap-2">
           {graph && (
             <OrderGraphDialog
+              schema={schema}
               request={r}
               doc={doc}
               editor={graph}

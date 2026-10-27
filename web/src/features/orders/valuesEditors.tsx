@@ -15,6 +15,10 @@ import { type GraphMapping, readGraphMapping } from "../graph/mapping";
 type Values = Record<string, unknown>;
 
 export interface ValuesEditorProps {
+  lockedPaths?: string[];
+  lockReadOnly?: boolean;
+  schema?: Record<string, any> | null;
+  document?: ViewDocument;
   values: Values;
   onValues: (v: Values) => void;
   // The order (destination) namespace; empty string until the user fills it.
@@ -59,14 +63,19 @@ const policiesGraph: ValuesEditorPlugin = {
   ),
 };
 
-// Domains the portal implements, keyed by profile id. This is the closed list:
-// the semantics of a domain are behaviour and live in code, while the field names
-// they read come from the chart.
+// Domain adapters and the declarative collection engine share the editor
+// contract. Their version-specific configuration lives in the view document.
 const PROFILES: Record<string, ValuesEditorPlugin> = {
   policies: policiesGraph,
+  declarative: {
+    id: "graph",
+    label: "Граф",
+    Component: lazy(() => import("../graph/declarative/ValuesGraph").then((m) => ({ default: m.ValuesGraph }))),
+  },
 };
 
 export interface ActiveValuesEditor {
+  document?: ViewDocument;
   plugin: ValuesEditorPlugin;
   mapping: GraphMapping;
 }
@@ -79,5 +88,5 @@ export function valuesEditorFor(doc: ViewDocument | null | undefined): ActiveVal
   const mapping = readGraphMapping(doc);
   if (!mapping) return null;
   const plugin = PROFILES[mapping.profile];
-  return plugin ? { plugin, mapping } : null;
+  return plugin ? { plugin, mapping, document: doc ?? undefined } : null;
 }

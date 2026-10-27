@@ -322,6 +322,10 @@ export function OrderValuesCard({
       {active ? (
         <Suspense fallback={<Loading label="Загружаем редактор" />}>
           <active.plugin.Component
+            schema={schema}
+            document={active.document}
+            lockedPaths={lockedPaths}
+            lockReadOnly={lockReadOnly}
             values={values}
             onValues={onValues}
             namespace={pluginNamespace}

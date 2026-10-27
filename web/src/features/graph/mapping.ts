@@ -1,4 +1,6 @@
-// Where a chart keeps the fields a graph profile reads and writes.
+// Where a chart keeps the fields a graph profile reads and writes. The
+// declarative profile carries its collection descriptor instead of fixed
+// policy field names; existing policies documents retain their old contract.
 //
 // The domain lives here in the portal as a profile: for policies, an arrow out of
 // the order namespace is an egress rule on its source, a sender needs a service
@@ -11,8 +13,10 @@
 // the convention needs nothing but {"graph": {"profile": "policies"}}.
 
 import type { ViewDocument } from "@/api/types";
+import { readDefinition, type Definition } from "./declarative/model";
 
 export interface GraphMapping {
+  definition?: Definition;
   profile: string;
   // JSON pointer to the list of entries in the values.
   entries: string;
@@ -71,6 +75,10 @@ export function readGraphMapping(doc: ViewDocument | null | undefined): GraphMap
   const raw = (doc as { graph?: unknown } | null | undefined)?.graph;
   if (!isObject(raw)) return null;
   if (raw.enabled === false) return null;
+  if (raw.profile === "declarative") {
+    const definition = readDefinition(raw);
+    return definition ? { profile: "declarative", definition, entries: "", entry: {}, rule: {}, peer: {} } : null;
+  }
   const base = typeof raw.profile === "string" ? PROFILE_DEFAULTS[raw.profile] : undefined;
   if (!base) return null;
   const entries = raw.entries;

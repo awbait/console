@@ -89,3 +89,26 @@ func TestOrderWithoutGraphIsNotChecked(t *testing.T) {
 		t.Fatalf("chart without a graph: %v", err)
 	}
 }
+
+func TestDeclarativeGraphOrderChecksReferencesAndAllowsUnlinkedNodes(t *testing.T) {
+	const doc = `{"views":{"order":{}},"graph":{"profile":"declarative","version":1,"nodes":{"broker":{"collection":"/brokers","key":"/name"}},"relations":{"link":{"collection":"/links","key":"/name","from":{"node":"broker","field":"/from"},"to":{"node":"broker","field":"/to"}}}}}`
+	for _, invalid := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unlinked", true: "dangling"}[invalid], func(t *testing.T) {
+			s := newStack(t)
+			seedVersionedPub(t, s, "platform", "postgres", "15.4.2", []byte(doc))
+			values := validValues()
+			values["brokers"] = []any{map[string]any{"name": "main"}}
+			if invalid {
+				values["links"] = []any{map[string]any{"name": "sub", "from": "missing", "to": "main"}}
+			}
+			_, err := s.prov.Create(context.Background(), member("core"), orderInput(values, false))
+			if !invalid && err != nil {
+				t.Fatal(err)
+			}
+			var ve *provisioning.ValidationError
+			if invalid && !errors.As(err, &ve) {
+				t.Fatalf("want ValidationError, got %v", err)
+			}
+		})
+	}
+}

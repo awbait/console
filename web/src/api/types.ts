@@ -726,6 +726,7 @@ export interface ViewTab {
 //   tabs    - product tabs (list tables), each referencing an array and a form.
 //   actions - placement of form views in the "Actions" button (info or tab:<id>).
 export interface ViewDocument {
+  graph?: unknown;
   views?: Record<string, any>;
   tabs?: ViewTab[];
   actions?: { view: string; in: string; label?: string }[];

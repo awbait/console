@@ -1,4 +1,5 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
+import { GraphDesigner } from "@/features/graph/declarative/GraphDesigner";
 import {
   IconAlertCircle,
   IconAlertTriangle,
@@ -820,6 +821,7 @@ function VersionEditor({
               <TabList aria-label="Документы" className="flex gap-1">
                 <EditorTab id="view">view.schema.json</EditorTab>
                 <EditorTab id="schema">values.schema.json</EditorTab>
+                <EditorTab id="graph">Граф</EditorTab>
                 {dependencies.length > 0 && (
                   <EditorTab
                     id="dependencies"
@@ -910,6 +912,9 @@ function VersionEditor({
               </div>
             </TabPanel>
             {/* Chart schema, the source of fields for include/exclude/overrides; read-only. */}
+            <TabPanel id="graph" className="min-h-0 flex-1 overflow-y-auto pt-3 outline-none">
+              {parsed ? <GraphDesigner document={parsed} readOnly={!editable} onChange={(doc) => setText(JSON.stringify(doc, null, 2))} /> : <p>Исправьте view.schema.json.</p>}
+            </TabPanel>
             <TabPanel id="schema" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
               {schema ? (
                 <>

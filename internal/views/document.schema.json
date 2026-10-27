@@ -75,14 +75,17 @@
       "errorMessage": "Блок \"graph\" должен быть объектом: {\"profile\": \"policies\"}",
       "required": ["profile"],
       "propertyNames": {
-        "enum": ["$comment", "profile", "enabled", "entries", "entry", "rule", "peer"],
-        "errorMessage": "В \"graph\" допустимы \"profile\", \"enabled\", \"entries\", \"entry\", \"rule\" и \"peer\"",
-        "x-extraMessage": "Лишнее поле {key}: допустимы \"profile\", \"enabled\", \"entries\", \"entry\", \"rule\" и \"peer\""
+        "enum": ["$comment", "profile", "enabled", "entries", "entry", "rule", "peer", "version", "nodes", "relations"],
+        "errorMessage": "Укажите поля выбранного профиля графа",
+        "x-extraMessage": "Лишнее поле {key}: не используется в описании графа"
       },
       "properties": {
         "$comment": { "$ref": "#/definitions/comment" },
+        "version": { "const": 1 },
+        "nodes": { "type": "object", "minProperties": 1, "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": { "$ref": "#/definitions/graphCollection" } },
+        "relations": { "type": "object", "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" }, "additionalProperties": { "$ref": "#/definitions/graphRelation" } },
         "profile": {
-          "description": "Какой редактор включаем. Портал знает профиль \"policies\" - сетевые политики",
+          "description": "Редактор: policies для сетевых политик, declarative для коллекций узлов и связей",
           "type": "string",
           "minLength": 1,
           "errorMessage": "Укажите \"profile\" - какой редактор включаем"
@@ -110,7 +113,12 @@
           "description": "Переименование полей собеседника: слева имя поля профиля, справа ключ в values",
           "$ref": "#/definitions/graphGroup"
         }
-      }
+      },
+      "allOf": [{
+        "if": { "properties": { "profile": { "const": "declarative" } }, "required": ["profile"] },
+        "then": { "required": ["version", "nodes", "relations"], "not": { "anyOf": [{ "required": ["entries"] }, { "required": ["entry"] }, { "required": ["rule"] }, { "required": ["peer"] }] } },
+        "else": { "not": { "anyOf": [{ "required": ["version"] }, { "required": ["nodes"] }, { "required": ["relations"] }] } }
+      }]
     },
     "approval": {
       "description": "Как изменения этой версии попадают в кластер",
@@ -132,6 +140,26 @@
     }
   },
   "definitions": {
+    "graphCollection": {
+      "type": "object", "required": ["collection", "key"], "additionalProperties": false,
+      "properties": {
+        "collection": { "type": "string", "pattern": "^/", "minLength": 2 },
+        "key": { "type": "string", "pattern": "^/", "minLength": 2 },
+        "title": { "type": "string" }, "label": { "type": "string", "pattern": "^/" }, "form": { "type": "string", "minLength": 1 }
+      }
+    },
+    "graphEndpoint": {
+      "type": "object", "required": ["node", "field"], "additionalProperties": false,
+      "properties": { "node": { "type": "string", "minLength": 1 }, "field": { "type": "string", "pattern": "^/", "minLength": 2 } }
+    },
+    "graphRelation": {
+      "type": "object", "required": ["collection", "key", "from", "to"], "additionalProperties": false,
+      "properties": {
+        "collection": { "type": "string", "pattern": "^/", "minLength": 2 }, "key": { "type": "string", "pattern": "^/", "minLength": 2 },
+        "title": { "type": "string" }, "label": { "type": "string", "pattern": "^/" }, "form": { "type": "string", "minLength": 1 },
+        "from": { "$ref": "#/definitions/graphEndpoint" }, "to": { "$ref": "#/definitions/graphEndpoint" }
+      }
+    },
     "comment": {
       "description": "Заметка автора документа. Портал её не читает",
       "type": "string"

@@ -1,7 +1,7 @@
 // Entry of the playground (playground.html): the portal's providers that the
 // editor and the preview read, and none of the ones that need a session.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "../index.css";
 import "../lib/monaco";
@@ -10,6 +10,7 @@ import type { Stand } from "@/api/types";
 import { ThemeProvider } from "@/app/ThemeContext";
 import { ToastProvider } from "@/app/ToastContext";
 import { Playground } from "./Playground";
+const GraphWorkbench = lazy(() => import("@/features/graph/declarative/GraphWorkbench").then((m) => ({ default: m.GraphWorkbench })));
 
 // The preview asks for the stands and the platform variables the way the
 // order form does, through the query cache. Seeding the cache with a stand
@@ -45,7 +46,9 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <ToastProvider>
-          <Playground />
+          <Suspense fallback={<p>Загружаем конструктор…</p>}>
+            {new URLSearchParams(location.search).has("graph") ? <GraphWorkbench /> : <Playground />}
+          </Suspense>
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
