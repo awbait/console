@@ -286,3 +286,52 @@ describe("a condition written with other keywords", () => {
     expect(required(big, { enabled: true })).toBe(false);
   });
 });
+
+// "If this field is set, those are needed too", said without an if: the
+// dependency is a branch whose condition is the field being set.
+describe("a dependency between fields", () => {
+  const withDeps = (deps: Record<string, unknown>) => {
+    const s = structuredClone(valkey) as Schema;
+    s.allOf = [];
+    Object.assign(s.properties.valkey.properties.storage, deps);
+    return s;
+  };
+  const missing = (schema: Schema, storageValue: Record<string, unknown>) =>
+    [...collectErrors(schema, { valkey: { storage: storageValue } }).keys()].sort();
+
+  it("reads dependentRequired", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size", "class"] } });
+    expect(missing(s, { enabled: true })).toEqual(["/valkey/storage/class", "/valkey/storage/size"]);
+    expect(missing(s, {})).toEqual([]);
+  });
+
+  it("reads the list form of dependencies", () => {
+    const s = withDeps({ dependencies: { enabled: ["size"] } });
+    expect(missing(s, { enabled: false })).toEqual(["/valkey/storage/size"]);
+    expect(missing(s, {})).toEqual([]);
+  });
+
+  it("reads the schema form of dependencies and dependentSchemas", () => {
+    const hide = { properties: { class: { "ui:widget": "hidden" } }, required: ["size"] };
+    for (const key of ["dependencies", "dependentSchemas"]) {
+      const s = withDeps({ [key]: { enabled: hide }, required: ["class"] });
+      expect(missing(s, { enabled: true })).toEqual(["/valkey/storage/size"]);
+      expect(missing(s, {})).toEqual(["/valkey/storage/class"]);
+    }
+  });
+
+  it("counts a field the chart sets by default", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size"] } });
+    expect([...collectErrors(s, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } }).keys()]).toEqual([
+      "/valkey/storage/size",
+    ]);
+  });
+
+  it("marks the fields required on the form", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size", "class"] } });
+    const stars = (v: Record<string, unknown>) =>
+      renderToStaticMarkup(<SchemaForm schema={s} value={v} onChange={() => {}} />).split(" *</span>").length - 1;
+    expect(stars({ valkey: { storage: { enabled: true } } })).toBe(2);
+    expect(stars({ valkey: { storage: {} } })).toBe(0);
+  });
+});

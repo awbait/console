@@ -185,16 +185,32 @@ function testPattern(pattern: string, v: string): boolean {
 //
 // The condition is read off what the form shows (see shownValues), so answer is
 // the chart's values.yaml at this object, when the caller knows it.
+//
+// A dependency is a branch too, one whose condition is "this field is set":
+// dependentRequired and the list form of dependencies make the listed fields
+// required, dependentSchemas and the schema form of dependencies apply their
+// schema, read the same way as a then.
 export function matchedThens(schema: Schema, value: Record<string, unknown>, root: Schema, answer?: unknown): Schema[] {
   const branches: Schema[] = [];
   if (schema.if) branches.push(schema);
   for (const a of (schema.allOf as Schema[]) ?? []) if (a.if) branches.push(a);
-  if (branches.length === 0) return [];
+  const deps: [string, unknown][] = [
+    ...Object.entries((schema.dependencies as Schema) ?? {}),
+    ...Object.entries((schema.dependentRequired as Schema) ?? {}),
+    ...Object.entries((schema.dependentSchemas as Schema) ?? {}),
+  ];
+  if (branches.length === 0 && deps.length === 0) return [];
   const shown = shownValues(schema, value ?? {}, root, answer);
+  const own = isObject(shown) ? shown : {};
   const out: Schema[] = [];
   for (const b of branches) {
     const taken = ifMatches(b.if, shown, root) ? b.then : b.else;
     if (taken) out.push(deref(taken as Schema, root));
+  }
+  for (const [key, dep] of deps) {
+    if (own[key] === undefined) continue;
+    if (Array.isArray(dep)) out.push({ required: dep });
+    else if (isObject(dep)) out.push(deref(dep, root));
   }
   return out;
 }
