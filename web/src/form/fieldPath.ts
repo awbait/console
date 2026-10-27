@@ -119,16 +119,47 @@ export function ifMatches(ifSchema: Schema, value: unknown, root: Schema): boole
 // and the "else" of every one whose condition does not. A chart that hides the
 // fields of one mode in "then" and the fields of the other in "else" is read
 // whole, not half.
-export function matchedThens(schema: Schema, value: Record<string, unknown>, root: Schema): Schema[] {
+//
+// The condition is read off what the form shows (see shownValues), so answer is
+// the chart's values.yaml at this object, when the caller knows it.
+export function matchedThens(schema: Schema, value: Record<string, unknown>, root: Schema, answer?: unknown): Schema[] {
   const branches: Schema[] = [];
   if (schema.if) branches.push(schema);
   for (const a of (schema.allOf as Schema[]) ?? []) if (a.if) branches.push(a);
+  if (branches.length === 0) return [];
+  const shown = shownValues(schema, value ?? {}, root, answer);
   const out: Schema[] = [];
   for (const b of branches) {
-    const taken = ifMatches(b.if, value ?? {}, root) ? b.then : b.else;
+    const taken = ifMatches(b.if, shown, root) ? b.then : b.else;
     if (taken) out.push(deref(taken as Schema, root));
   }
   return out;
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+// shownValues is what the form shows for a value: the order's own values and,
+// where a field is not set, the default the form draws in it (the schema's
+// default, else the chart's answer in values.yaml). A condition is read off
+// this rather than the bare values: a box drawn ticked by default is ticked for
+// the chart too, since Helm lays values.yaml under the order, so the fields it
+// makes required must show as required before anyone touches the box.
+export function shownValues(node: Schema, value: unknown, root: Schema, answer?: unknown): unknown {
+  const s = deref(node, root);
+  if (s.properties && (value === undefined || isObject(value))) {
+    const own = isObject(value) ? value : {};
+    const chart = isObject(answer) ? answer : {};
+    const out: Record<string, unknown> = { ...chart, ...own };
+    for (const [k, child] of Object.entries(s.properties)) {
+      const v = shownValues(child as Schema, own[k], root, chart[k]);
+      if (v !== undefined) out[k] = v;
+    }
+    return value === undefined && Object.keys(out).length === 0 ? undefined : out;
+  }
+  if (value !== undefined) return value;
+  if (s.default !== undefined) return s.default;
+  return answer;
 }
 
 // activeBranches returns the branch fragments that apply to an object right
@@ -145,8 +176,9 @@ export function activeBranches(
   value: Record<string, unknown>,
   root: Schema,
   inherited: Schema[] = [],
+  answer?: unknown,
 ): Schema[] {
-  return [...inherited, ...matchedThens(schema, value ?? {}, root)];
+  return [...inherited, ...matchedThens(schema, value ?? {}, root, answer)];
 }
 
 // branchesBelow narrows branch fragments to what they say about one child key:

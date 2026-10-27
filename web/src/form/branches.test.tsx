@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { renderToStaticMarkup } from "react-dom/server";
 import { activeBranches, branchesBelow, itemBranches, matchedThens } from "./fieldPath";
-import { collectErrors, fieldBranches } from "./SchemaForm";
+import { collectErrors, fieldBranches, SchemaForm } from "./SchemaForm";
 
 // The shape the egress-gateway chart declares at its root: one rule, written
 // where both modes are visible, says what each mode has no use for. The mesh
@@ -211,5 +212,37 @@ describe("a condition on a nested field", () => {
     };
     expect(matchedThens(schema, { valkey: { storage: { enabled: false } } }, schema)).toHaveLength(1);
     expect(matchedThens(schema, { valkey: { storage: {} } }, schema)).toHaveLength(0);
+  });
+});
+
+// The flag a person sees ticked is ticked for the chart too: Helm lays
+// values.yaml under the order, and the form draws the schema's default in an
+// unset box. So the fields the flag makes required are required before anyone
+// touches the box, and stop being so once it is cleared.
+describe("a condition on a field left at its default", () => {
+  const withDefault = structuredClone(valkey);
+  withDefault.properties.valkey.properties.storage.properties.enabled = { type: "boolean", default: true } as never;
+
+  it("reads the schema's default", () => {
+    const errs = collectErrors(withDefault, { valkey: { storage: {} } });
+    expect(errs.get("/valkey/storage/size")).toBeString();
+    expect(errs.get("/valkey/storage/class")).toBeString();
+  });
+
+  it("reads the chart's answer in values.yaml", () => {
+    const errs = collectErrors(valkey, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } });
+    expect(errs.get("/valkey/storage/size")).toBeString();
+  });
+
+  it("gives way to the order's own value", () => {
+    expect(collectErrors(withDefault, { valkey: { storage: { enabled: false } } }).size).toBe(0);
+    expect(collectErrors(valkey, { valkey: { storage: { enabled: false } } }, undefined, { valkey: { storage: { enabled: true } } }).size).toBe(0);
+  });
+
+  it("marks the fields required on the form", () => {
+    const stars = (value: Record<string, unknown>, chartDefaults?: Record<string, unknown>) =>
+      renderToStaticMarkup(<SchemaForm schema={valkey} value={value} onChange={() => {}} chartDefaults={chartDefaults} />).split(" *</span>").length - 1;
+    expect(stars({}, { valkey: { storage: { enabled: true } } })).toBe(2);
+    expect(stars({ valkey: { storage: { enabled: false } } }, { valkey: { storage: { enabled: true } } })).toBe(0);
   });
 });
