@@ -1,0 +1,2275 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.com/ingress-gateway/values.schema.json",
+  "title": "Настройки точки входа",
+  "description": "Настройте приём внешнего трафика и его передачу в сервисы команды. Точки входа и маршруты задаются списками.",
+  "type": "object",
+  "additionalProperties": false,
+  "propertyOrder": [
+    "identity",
+    "generic",
+    "policies",
+    "gateways",
+    "xroutes",
+    "tls",
+    "oidcAuth",
+    "gatewayScheduling"
+  ],
+  "required": [
+    "identity"
+  ],
+  "properties": {
+    "gatewayScheduling": {
+      "title": "Размещение точек входа",
+      "description": "Платформа заполняет значения по умолчанию для всех точек входа заказа. Если у отдельной точки входа задано своё поле, оно целиком заменяет соответствующее значение по умолчанию без слияния.",
+      "ui:widget": "hidden",
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "nodeSelector",
+        "tolerations",
+        "affinity"
+      ],
+      "properties": {
+        "nodeSelector": {
+          "title": "Метки узлов размещения",
+          "description": "Метки узлов, на которых можно разместить под точки входа. Пустое поле не ограничивает выбор узла по меткам. Заполняет платформа.",
+          "$ref": "#/definitions/stringMap"
+        },
+        "tolerations": {
+          "title": "Допуски к ограничениям узлов",
+          "description": "Разрешают размещать под точки входа на узлах с указанными ограничениями. Задаются в формате Kubernetes. Заполняет платформа.",
+          "$ref": "#/definitions/podTolerations"
+        },
+        "affinity": {
+          "title": "Правила размещения пода",
+          "description": "Правила привязки подов точек входа к нодам. Их задаёт платформа, например чтобы исключить ноды, с которых внешний адрес точки входа не объявляется в сеть.",
+          "$ref": "#/definitions/podAffinity"
+        }
+      }
+    },
+    "identity": {
+      "title": "Окружение и проект",
+      "description": "Где будет работать сервис и к какому проекту он относится. Задаётся один раз на весь заказ.",
+      "$ref": "#/definitions/identity"
+    },
+    "generic": {
+      "title": "Общие настройки",
+      "description": "Метки и аннотации для всех ресурсов заказа.",
+      "$ref": "#/definitions/generic",
+      "ui:widget": "hidden"
+    },
+    "policies": {
+      "title": "Сетевые политики",
+      "description": "При включении заказ создаёт политики для точки входа и выводит правила исходящего трафика из сервисов назначения в маршрутах.",
+      "$ref": "#/definitions/policies"
+    },
+    "networkPolicy": {
+      "$comment": "Deprecated since 10.0.0, kept so an old value reaches the templates and stops there with a message that names policies.enabled instead of a schema error. Not read.",
+      "type": "object",
+      "ui:widget": "hidden"
+    },
+    "authorizationPolicy": {
+      "$comment": "Deprecated since 10.0.0, see networkPolicy above. Not read.",
+      "type": "object",
+      "ui:widget": "hidden"
+    },
+    "gateways": {
+      "title": "Точки входа",
+      "description": "Принимают внешний трафик. Нужна хотя бы одна точка входа.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/gateway"
+      },
+      "defaultSnippets": [
+        {
+          "label": "Gateway HTTP",
+          "body": [
+            {
+              "name": "main",
+              "enabled": true,
+              "listeners": [
+                {
+                  "name": "http",
+                  "port": 80,
+                  "protocol": "HTTP",
+                  "hostname": "example.test.ru",
+                  "allowedRoutes": {
+                    "namespaces": {
+                      "from": "Same"
+                    },
+                    "kinds": [
+                      {
+                        "kind": "HTTPRoute"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "xroutes": {
+      "title": "Маршруты",
+      "description": "Куда направлять запросы, пришедшие на точку входа. Можно оставить пустым: точка входа создастся и без маршрутов.",
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "$ref": "#/definitions/xroute"
+      },
+      "defaultSnippets": [
+        {
+          "label": "HTTPRoute",
+          "body": [
+            {
+              "name": "app",
+              "enabled": true,
+              "kind": "HTTPRoute",
+              "parentRefs": [
+                {
+                  "gateway": "main",
+                  "sectionName": "http"
+                }
+              ],
+              "hostnames": [
+                "example.test.ru"
+              ],
+              "rules": [
+                {
+                  "matches": [
+                    {
+                      "path": {
+                        "type": "PathPrefix",
+                        "value": "/"
+                      }
+                    }
+                  ],
+                  "backendRefs": [
+                    {
+                      "name": "nginx-service",
+                      "port": 80
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcAuth": {
+      "title": "Единая учётная запись",
+      "description": "Настройки входа по единой учётной записи через OIDC. Используются Keycloak, oauth2-proxy и AuthorizationPolicy в Istio.",
+      "ui:widget": "hidden",
+      "$ref": "#/definitions/oidcAuth"
+    },
+    "tls": {
+      "title": "Сертификаты",
+      "description": "Точка входа, которая расшифровывает TLS сама, получает сертификат автоматически. Заполните этот раздел, только если сертификат у вас уже есть.",
+      "$ref": "#/definitions/tls"
+    },
+    "global": {
+      "title": "Общие параметры Helm",
+      "description": "Helm подставляет эти параметры автоматически, когда чарт используется в составе другого чарта. На работу точки входа они не влияют.",
+      "type": "object",
+      "ui:widget": "hidden"
+    },
+    "enabled": {
+      "title": "Включено",
+      "description": "Включает создание ресурсов заказа. Выключите, если чарт используется в составе другого чарта и его ресурсы пока не нужны.",
+      "type": "boolean",
+      "default": true,
+      "ui:widget": "hidden"
+    }
+  },
+  "definitions": {
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "certificates",
+        "issuer",
+        "store",
+        "refreshInterval",
+        "crtProperty",
+        "keyProperty",
+        "apiVersion"
+      ],
+      "properties": {
+        "certificates": {
+          "title": "Сертификаты",
+          "description": "Заполняйте, только если сертификат у вас уже есть. По умолчанию сертификат для домена точки входа выпускается автоматически, и вводить здесь ничего не нужно.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/tlsCertificate"
+          },
+          "defaultSnippets": [
+            {
+              "label": "Сертификат из хранилища",
+              "body": [
+                {
+                  "name": "cert",
+                  "domain": "*.str.idp.ecpk.test",
+                  "source": "vault",
+                  "path": "teams/myteam/certs/str"
+                }
+              ]
+            }
+          ]
+        },
+        "issuer": {
+          "ui:widget": "hidden",
+          "title": "Издатель сертификатов",
+          "description": "Выпускает сертификаты для доменов, для которых вы не указали свой сертификат. Заполняет платформа.",
+          "$ref": "#/definitions/tlsIssuer"
+        },
+        "store": {
+          "ui:widget": "hidden",
+          "title": "Хранилище сертификатов",
+          "description": "Имя SecretStore в неймспейсе заказа. Используется для сертификатов, у которых не указано отдельное хранилище.",
+          "$ref": "#/definitions/storeName"
+        },
+        "refreshInterval": {
+          "ui:widget": "hidden",
+          "title": "Интервал обновления сертификатов",
+          "description": "Как часто ExternalSecret перечитывает сертификат из хранилища. Укажите длительность в формате Go, например 1h.",
+          "type": "string",
+          "minLength": 1
+        },
+        "crtProperty": {
+          "ui:widget": "hidden",
+          "title": "Ключ сертификата в записи",
+          "description": "Имя поля записи в хранилище, в котором находится сертификат.",
+          "type": "string",
+          "minLength": 1
+        },
+        "keyProperty": {
+          "ui:widget": "hidden",
+          "title": "Поле закрытого ключа",
+          "description": "Имя поля записи в хранилище, в котором находится закрытый ключ сертификата.",
+          "type": "string",
+          "minLength": 1
+        },
+        "apiVersion": {
+          "ui:widget": "hidden",
+          "title": "Версия API ExternalSecret",
+          "description": "Версия API ресурса ExternalSecret. Укажите совместимую версию, если в кластере установлен старый External Secrets Operator.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "tlsCertificate": {
+      "title": "Сертификат",
+      "description": "Откуда взять сертификат для домена, если он у вас уже есть.",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/tlsCertificateVault"
+        },
+        {
+          "$ref": "#/definitions/tlsCertificateExisting"
+        }
+      ]
+    },
+    "tlsCertificateVault": {
+      "title": "Из хранилища",
+      "description": "Сертификат лежит в Vault. Портал создаст секрет в вашем неймспейсе и будет поддерживать его в актуальном состоянии.",
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "name",
+        "domain",
+        "source",
+        "path",
+        "store",
+        "crtProperty",
+        "keyProperty"
+      ],
+      "properties": {
+        "name": {
+          "title": "Короткое имя",
+          "description": "По нему называется секрет с сертификатом в кластере.",
+          "$ref": "#/definitions/shortToken"
+        },
+        "domain": {
+          "title": "Домен сертификата",
+          "description": "Домен, который покрывает сертификат. Звёздочка заменяет один уровень: «*.example.ru» подходит для «app.example.ru».",
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "ui:widget": "hidden",
+          "title": "Источник сертификата",
+          "description": "Указывает, что сертификат нужно взять из хранилища. Если поле не задано, также используется хранилище, поэтому прежние заказы продолжают работать.",
+          "const": "vault"
+        },
+        "path": {
+          "title": "Путь в Vault",
+          "description": "Запись, в которой лежат сертификат и ключ.",
+          "type": "string",
+          "minLength": 1
+        },
+        "store": {
+          "title": "Хранилище сертификата",
+          "description": "Имя SecretStore, из которого читать этот сертификат. Оставьте пустым, чтобы использовать общее хранилище сертификатов заказа в вашем неймспейсе.",
+          "$ref": "#/definitions/storeName"
+        },
+        "crtProperty": {
+          "ui:widget": "hidden",
+          "title": "Ключ сертификата в записи",
+          "description": "Имя поля записи, в котором находится сертификат. Укажите, если оно отличается от общего значения для сертификатов заказа.",
+          "type": "string",
+          "minLength": 1
+        },
+        "keyProperty": {
+          "ui:widget": "hidden",
+          "title": "Поле закрытого ключа",
+          "description": "Имя поля записи, в котором находится закрытый ключ сертификата. Укажите, если оно отличается от общего значения для сертификатов заказа.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "domain",
+        "path"
+      ]
+    },
+    "tlsCertificateExisting": {
+      "title": "Готовый секрет",
+      "description": "Сертификат уже хранится в секрете в вашем неймспейсе. Портал использует этот секрет без создания нового.",
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "domain",
+        "source",
+        "secretName"
+      ],
+      "properties": {
+        "domain": {
+          "title": "Домен сертификата",
+          "description": "Домен, который покрывает сертификат. Звёздочка заменяет один уровень: «*.example.ru» подходит для «app.example.ru».",
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "ui:widget": "hidden",
+          "title": "Источник сертификата",
+          "description": "Указывает, что сертификат нужно взять из готового секрета в кластере.",
+          "const": "existing"
+        },
+        "secretName": {
+          "title": "Имя секрета",
+          "description": "Секрет типа kubernetes.io/tls в вашем неймспейсе.",
+          "$ref": "#/definitions/k8sName"
+        }
+      },
+      "required": [
+        "domain",
+        "source",
+        "secretName"
+      ]
+    },
+    "tlsIssuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "enabled",
+        "name",
+        "kind",
+        "group",
+        "domains",
+        "duration",
+        "renewBefore"
+      ],
+      "properties": {
+        "enabled": {
+          "title": "Автоматический выпуск",
+          "description": "Включает выпуск сертификатов для доменов, для которых вы не указали свой сертификат. Если выключить, такой домен остановит применение настроек с ошибкой. Заполняет платформа.",
+          "type": "boolean",
+          "default": true
+        },
+        "name": {
+          "title": "Имя издателя",
+          "description": "Имя издателя cert-manager в кластере. Заполняет платформа.",
+          "$ref": "#/definitions/k8sName"
+        },
+        "kind": {
+          "title": "Тип издателя",
+          "description": "По умолчанию используется ClusterIssuer, общий для кластера. Можно указать Issuer в неймспейсе заказа. Заполняет платформа.",
+          "type": "string",
+          "enum": [
+            "ClusterIssuer",
+            "Issuer"
+          ]
+        },
+        "group": {
+          "title": "Группа API издателя",
+          "description": "Группа API, к которой относится издатель сертификатов. Меняется для внешнего издателя. Заполняет платформа.",
+          "type": "string",
+          "minLength": 1
+        },
+        "domains": {
+          "title": "Разрешённые домены",
+          "description": "Домены и все их поддомены, для которых издатель может выпускать сертификаты. Домен вне списка остановит применение настроек с ошибкой, а пустой список отключит проверку. Заполняет платформа.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "duration": {
+          "title": "Срок действия сертификата",
+          "description": "Запрашиваемый срок действия в формате длительности Go, например 2160h. Фактический срок ограничен настройками роли Vault PKI. Заполняет платформа.",
+          "type": "string",
+          "minLength": 1
+        },
+        "renewBefore": {
+          "title": "Запас до истечения",
+          "description": "За сколько до окончания срока действия перевыпустить сертификат. Укажите длительность в формате Go, например 720h. Заполняет платформа.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "k8sName": {
+      "type": "string",
+      "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "podTolerations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "Equal",
+              "Exists"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "NoSchedule",
+              "PreferNoSchedule",
+              "NoExecute"
+            ]
+          },
+          "tolerationSeconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "podAffinity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nodeAffinity": {
+          "type": "object"
+        },
+        "podAffinity": {
+          "type": "object"
+        },
+        "podAntiAffinity": {
+          "type": "object"
+        }
+      }
+    },
+    "tplStringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "instance",
+        "cluster",
+        "project"
+      ],
+      "properties": {
+        "instance": {
+          "title": "Инстанс окружения",
+          "description": "Выбирайте вместе с кластером: пара инстанс и кластер задаёт окружение.",
+          "type": "string",
+          "enum": [
+            "in",
+            "id",
+            "ed",
+            "pr"
+          ],
+          "enumNames": [
+            "Окружение Infra-dev-ecpk (in)",
+            "Окружение dev-ecpk (id)",
+            "Окружения techsec-dev, dev-common, test-common (ed)",
+            "Окружения global, observability, techsec, int-common, ML, ext-common (pr)"
+          ]
+        },
+        "cluster": {
+          "title": "Кластер сервиса",
+          "description": "Кластер, в котором будет работать сервис. Выбирайте вместе с инстансом.",
+          "type": "string",
+          "enum": [
+            "inf",
+            "dev",
+            "tco",
+            "tst",
+            "gl",
+            "obs",
+            "tcc",
+            "cmi",
+            "ml",
+            "cme"
+          ],
+          "enumNames": [
+            "Окружение Infra-dev-ecpk (inf)",
+            "Окружения dev-ecpk и dev-common (dev)",
+            "Окружение techsec-dev (tco)",
+            "Окружение test-common (tst)",
+            "Окружение global (gl)",
+            "Окружение observability (obs)",
+            "Окружение techsec (tcc)",
+            "Окружение int-common (cmi)",
+            "Окружение ML (ml)",
+            "Окружение ext-common (cme)"
+          ]
+        },
+        "project": {
+          "title": "Код проекта",
+          "description": "Короткий код проекта в именах и метках ресурсов. Заполняет платформа по команде, от имени которой сделан заказ.",
+          "$ref": "#/definitions/projectToken"
+        }
+      },
+      "required": [
+        "instance",
+        "cluster",
+        "project"
+      ]
+    },
+    "shortToken": {
+      "type": "string",
+      "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$",
+      "minLength": 2,
+      "maxLength": 6
+    },
+    "gatewayToken": {
+      "type": "string",
+      "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$",
+      "minLength": 2,
+      "maxLength": 9
+    },
+    "listenerToken": {
+      "type": "string",
+      "pattern": "^[a-z]([a-z0-9-]*[a-z0-9])?$",
+      "minLength": 2,
+      "maxLength": 9
+    },
+    "projectToken": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+      "minLength": 2,
+      "maxLength": 9
+    },
+    "generic": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "labels",
+        "annotations"
+      ],
+      "properties": {
+        "labels": {
+          "title": "Общие метки",
+          "description": "Метки, которые будут добавлены ко всем ресурсам заказа.",
+          "$ref": "#/definitions/tplStringMap"
+        },
+        "annotations": {
+          "title": "Общие аннотации",
+          "description": "Аннотации, которые будут добавлены ко всем ресурсам заказа.",
+          "$ref": "#/definitions/tplStringMap"
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "enabled",
+        "trustDomain"
+      ],
+      "properties": {
+        "enabled": {
+          "title": "Включить сетевые политики",
+          "description": "Политики для сервисов в другом namespace создаются там и действуют на весь namespace. Они разрешают трафик точки входа к указанным сервисам.",
+          "type": "boolean",
+          "default": false
+        },
+        "trustDomain": {
+          "title": "Домен доверия сетки",
+          "description": "Из него собирается principal точки входа для политик в namespace сервиса. Заполняет платформа.",
+          "type": "string",
+          "default": "cluster.local",
+          "ui:widget": "hidden"
+        }
+      }
+    },
+    "labelSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchLabels": {
+          "title": "Метки для отбора",
+          "description": "Метки, по которым выбираются поды или неймспейсы.",
+          "$ref": "#/definitions/stringMap"
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "name",
+        "enabled",
+        "ipAddress",
+        "listeners",
+        "hpa",
+        "resources",
+        "proxy",
+        "nodeSelector",
+        "tolerations",
+        "affinity"
+      ],
+      "properties": {
+        "name": {
+          "title": "Имя точки входа",
+          "description": "Короткое имя, по которому вы отличите эту точку входа от других.",
+          "$ref": "#/definitions/gatewayToken"
+        },
+        "enabled": {
+          "title": "Включено",
+          "description": "Включает создание этой точки входа. Если выключить, она и её настройки не создаются.",
+          "type": "boolean",
+          "ui:widget": "hidden",
+          "default": true
+        },
+        "ipAddress": {
+          "title": "Постоянный адрес балансировщика",
+          "description": "Постоянный IP-адрес, который MetalLB назначит балансировщику этой точки входа.",
+          "type": "string",
+          "minLength": 1,
+          "ui:widget": "hidden"
+        },
+        "listeners": {
+          "title": "Слушатели",
+          "description": "Для каждого порта и домена нужен отдельный слушатель. Добавьте хотя бы один.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/gatewayListener"
+          }
+        },
+        "hpa": {
+          "title": "Автоматическое масштабирование",
+          "description": "Сколько экземпляров точки входа поддерживать под нагрузкой.",
+          "$ref": "#/definitions/gatewayHpa"
+        },
+        "resources": {
+          "title": "Ресурсы точки входа",
+          "description": "Процессор и память для обработки трафика. При заказе используются значения по умолчанию, затем их можно изменить в карточке сервиса.",
+          "ui:widget": "hidden",
+          "$ref": "#/definitions/containerResources",
+          "default": {
+            "requests": {
+              "cpu": "100m",
+              "memory": "128Mi"
+            },
+            "limits": {
+              "cpu": "2000m",
+              "memory": "1024Mi"
+            }
+          }
+        },
+        "proxy": {
+          "title": "Настройки прокси",
+          "description": "Настройки ожидания данных и размера заголовков запросов для точки входа. Доступны после создания заказа через пункт меню «Редактировать прокси».",
+          "ui:widget": "hidden",
+          "$ref": "#/definitions/gatewayProxy"
+        },
+        "nodeSelector": {
+          "title": "Метки узлов размещения",
+          "description": "Укажите метки нод, на которых можно разместить под этой точки входа. Значение целиком заменяет метки, заданные по умолчанию.",
+          "ui:widget": "hidden",
+          "$ref": "#/definitions/stringMap"
+        },
+        "tolerations": {
+          "title": "Допуски к ограничениям узлов",
+          "description": "Разрешают размещать под точки входа на узлах с указанными ограничениями. Задаются в формате Kubernetes. Заполняет платформа.",
+          "ui:widget": "hidden",
+          "$ref": "#/definitions/podTolerations"
+        },
+        "affinity": {
+          "title": "Правила размещения пода",
+          "description": "Укажите правила размещения пода этой точки входа, которые целиком заменят правила по умолчанию. Пустое значение отключает правила по умолчанию для этой точки входа.",
+          "ui:widget": "hidden",
+          "$ref": "#/definitions/podAffinity"
+        }
+      },
+      "required": [
+        "name",
+        "listeners"
+      ]
+    },
+    "gatewayHpa": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "enabled",
+        "minReplicas",
+        "maxReplicas",
+        "averageUtilization"
+      ],
+      "properties": {
+        "enabled": {
+          "title": "Включено",
+          "description": "Точка входа будет автоматически добавлять экземпляры под нагрузкой.",
+          "type": "boolean",
+          "default": false
+        },
+        "minReplicas": {
+          "title": "Минимум экземпляров",
+          "description": "Столько экземпляров поддерживается даже при низкой нагрузке.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "maxReplicas": {
+          "title": "Максимум экземпляров",
+          "description": "Число экземпляров не превысит это значение.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        },
+        "averageUtilization": {
+          "title": "Целевая загрузка процессора",
+          "description": "Процент загрузки процессора, выше которого добавляются экземпляры.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 80
+        }
+      }
+    },
+    "gatewayProxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "streamIdleTimeout",
+        "maxRequestHeadersKb"
+      ],
+      "properties": {
+        "streamIdleTimeout": {
+          "title": "Время ожидания данных",
+          "description": "Ограничивает ожидание следующих данных запроса или ответа до закрытия соединения. Если поле пустое, точка входа ждёт 5 минут, а при 0s ждёт без ограничения.",
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?s$"
+        },
+        "maxRequestHeadersKb": {
+          "title": "Предельный размер заголовков",
+          "description": "Ограничивает суммарный размер заголовков одного запроса в килобайтах. По умолчанию предел равен 60, при превышении клиент получает ошибку 431.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        }
+      }
+    },
+    "resourceQuantityMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "title": "Объём процессора",
+          "description": "Укажите объём процессора, например 100m, 500m или 1.",
+          "type": "string",
+          "minLength": 1
+        },
+        "memory": {
+          "title": "Объём памяти",
+          "description": "Укажите объём памяти, например 128Mi, 512Mi или 1Gi.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "containerResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "requests",
+        "limits"
+      ],
+      "properties": {
+        "requests": {
+          "title": "Запрашиваемые ресурсы",
+          "description": "Процессор и память, запрашиваемые для контейнера точки входа. Для автоматического масштабирования по загрузке процессора обязательно укажите запрашиваемый объём процессора.",
+          "$ref": "#/definitions/resourceQuantityMap"
+        },
+        "limits": {
+          "title": "Предельные ресурсы",
+          "description": "Максимальный объём процессора и памяти для контейнера точки входа.",
+          "$ref": "#/definitions/resourceQuantityMap"
+        }
+      }
+    },
+    "gatewayListener": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "name",
+        "port",
+        "protocol",
+        "hostname",
+        "tlsMode",
+        "certificateRefs",
+        "allowedRoutes"
+      ],
+      "properties": {
+        "name": {
+          "title": "Имя слушателя",
+          "description": "Короткое имя, от 2 до 9 символов. По нему маршрут выбирает слушателя, и оно используется в имени автоматически выпущенного сертификата.",
+          "$ref": "#/definitions/listenerToken"
+        },
+        "port": {
+          "title": "Порт слушателя",
+          "description": "Порт, на котором точка входа принимает трафик.",
+          "$ref": "#/definitions/port"
+        },
+        "protocol": {
+          "title": "Протокол слушателя",
+          "description": "HTTP и HTTPS используются для веб-трафика, TCP и UDP для произвольного трафика, TLS для передачи зашифрованного трафика до сервиса.",
+          "type": "string",
+          "enum": [
+            "HTTP",
+            "HTTPS",
+            "TCP",
+            "UDP",
+            "TLS"
+          ]
+        },
+        "hostname": {
+          "title": "Домен слушателя",
+          "description": "Домен, по которому к вам будут обращаться. Обязателен для HTTPS и TLS. У TCP и UDP домена нет, поле остаётся пустым.",
+          "type": "string",
+          "minLength": 1
+        },
+        "tlsMode": {
+          "title": "Режим обработки TLS",
+          "description": "Точке входа, которая расшифровывает трафик сама, нужен сертификат на этот домен. По умолчанию он выпустится автоматически. Если сертификат у вас уже есть, опишите его в разделе «Сертификаты».",
+          "type": "string",
+          "default": "Passthrough",
+          "enum": [
+            "Terminate",
+            "Passthrough"
+          ],
+          "enumNames": [
+            "Расшифровывать на точке входа",
+            "Передавать зашифрованный трафик до сервиса"
+          ]
+        },
+        "certificateRefs": {
+          "ui:widget": "hidden",
+          "title": "Секреты с сертификатами",
+          "description": "Ссылки на готовые секреты с сертификатами в кластере. Нужны, если слушатель расшифровывает TLS и сертификат уже хранится под своим именем. Для такого слушателя ExternalSecret не создаётся.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "allowedRoutes": {
+          "title": "Разрешённые маршруты",
+          "description": "Какие маршруты может принимать слушатель. Если оставить пустым, применяются правила Gateway API по умолчанию.",
+          "$ref": "#/definitions/allowedRoutes"
+        }
+      },
+      "required": [
+        "name",
+        "port",
+        "protocol"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "enum": [
+                  "HTTPS",
+                  "TLS"
+                ]
+              }
+            },
+            "required": [
+              "protocol"
+            ]
+          },
+          "then": {
+            "required": [
+              "hostname"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "enum": [
+                  "TCP",
+                  "UDP"
+                ]
+              }
+            },
+            "required": [
+              "protocol"
+            ]
+          },
+          "then": {
+            "properties": {
+              "hostname": {
+                "ui:widget": "hidden"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "HTTPS"
+              }
+            },
+            "required": [
+              "protocol"
+            ]
+          },
+          "then": {
+            "required": [
+              "tlsMode"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "TLS"
+              }
+            },
+            "required": [
+              "protocol"
+            ]
+          },
+          "then": {
+            "required": [
+              "tlsMode"
+            ]
+          }
+        }
+      ]
+    },
+    "allowedRoutes": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "namespaces",
+        "kinds"
+      ],
+      "properties": {
+        "namespaces": {
+          "title": "Неймспейсы маршрутов",
+          "description": "Поле сохранено для совместимости и не влияет на доступ. Подключить можно только маршруты из неймспейса точки входа.",
+          "ui:widget": "hidden",
+          "default": {
+            "from": "Same"
+          },
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "title": "Область выбора неймспейсов",
+              "description": "Значение Same обозначает неймспейс точки входа, All допускает любой неймспейс, Selector задаёт отбор по меткам. В этом сервисе всегда используется неймспейс точки входа независимо от выбранного значения.",
+              "type": "string",
+              "default": "Same",
+              "enum": [
+                "Same",
+                "All",
+                "Selector"
+              ]
+            },
+            "selector": {
+              "$ref": "#/definitions/labelSelector"
+            }
+          },
+          "required": [
+            "from"
+          ]
+        },
+        "kinds": {
+          "title": "Типы маршрутов",
+          "description": "Слушатель будет принимать только маршруты этих типов.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "title": "Тип маршрута",
+                "type": "string",
+                "enum": [
+                  "HTTPRoute",
+                  "GRPCRoute",
+                  "TLSRoute",
+                  "TCPRoute",
+                  "UDPRoute"
+                ],
+                "enumNames": [
+                  "Маршрут HTTP (HTTPRoute)",
+                  "Маршрут gRPC (GRPCRoute)",
+                  "Сквозной TLS (TLSRoute)",
+                  "Маршрут TCP (TCPRoute)",
+                  "Маршрут UDP (UDPRoute)"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      }
+    },
+    "xroute": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "name",
+        "enabled",
+        "kind",
+        "parentRefs",
+        "hostnames",
+        "rules"
+      ],
+      "properties": {
+        "name": {
+          "title": "Имя маршрута",
+          "description": "Короткое имя, по которому вы отличите этот маршрут от других.",
+          "$ref": "#/definitions/shortToken"
+        },
+        "enabled": {
+          "title": "Включено",
+          "description": "Включает создание маршрута. По умолчанию включено, в том числе когда поле не задано. Если выключить, маршрут не создаётся.",
+          "ui:widget": "hidden",
+          "type": "boolean",
+          "default": true
+        },
+        "kind": {
+          "title": "Тип трафика",
+          "description": "Трафик, который обрабатывает этот маршрут.",
+          "type": "string",
+          "enum": [
+            "HTTPRoute",
+            "GRPCRoute",
+            "TLSRoute",
+            "TCPRoute",
+            "UDPRoute"
+          ],
+          "enumNames": [
+            "Маршрут HTTP (HTTPRoute)",
+            "Маршрут gRPC (GRPCRoute)",
+            "Сквозной TLS (TLSRoute)",
+            "Маршрут TCP (TCPRoute)",
+            "Маршрут UDP (UDPRoute)"
+          ],
+          "default": "HTTPRoute"
+        },
+        "parentRefs": {
+          "title": "Привязка к слушателям",
+          "description": "Точки входа и их слушатели, от которых маршрут будет получать трафик.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/routeParentRef"
+          }
+        },
+        "hostnames": {
+          "title": "Домены маршрута",
+          "description": "Домены, для которых работает маршрут, а для TLSRoute это имена SNI. Если включена одна точка входа, незаданные домены берутся из выбранных слушателей. Для TCP и UDP поле не поддерживается.",
+          "ui:widget": "hidden",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": {
+          "title": "Правила маршрутизации",
+          "description": "Как обрабатывать запросы и куда их направлять.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/routeRule"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "parentRefs",
+        "rules"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "TLSRoute",
+                  "TCPRoute",
+                  "UDPRoute"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "rules": {
+                "items": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "matches"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "filters"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "TCPRoute",
+                  "UDPRoute"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "hostnames"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "routeParentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "gateway",
+        "sectionName"
+      ],
+      "properties": {
+        "gateway": {
+          "title": "Имя точки входа",
+          "description": "Имя точки входа из этого заказа. Если включена только одна точка входа, её имя подставится автоматически.",
+          "ui:widget": "hidden",
+          "$ref": "#/definitions/gatewayToken"
+        },
+        "sectionName": {
+          "title": "Имя слушателя",
+          "$ref": "#/definitions/k8sName"
+        }
+      },
+      "required": [
+        "sectionName"
+      ]
+    },
+    "routeRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "matches",
+        "filters",
+        "timeouts",
+        "backendRefs"
+      ],
+      "properties": {
+        "matches": {
+          "title": "Условия отбора",
+          "description": "Если список пуст, под правило попадает любой запрос. Условия работают только для HTTP и gRPC.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/routeMatch"
+          }
+        },
+        "filters": {
+          "title": "Обработка запроса",
+          "description": "Изменения запроса, перенаправления и настройки доступа из браузера. Работает только для HTTP и gRPC.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/routeFilter"
+          }
+        },
+        "timeouts": {
+          "title": "Ограничения времени",
+          "description": "Ограничивают время обработки запросов, которые попадают под это правило маршрута.",
+          "$ref": "#/definitions/routeTimeouts"
+        },
+        "backendRefs": {
+          "title": "Сервисы назначения",
+          "description": "Укажите сервисы, в которые точка входа передаст запрос. В правиле с перенаправлением оставьте поле пустым.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/backendRef"
+          }
+        }
+      }
+    },
+    "routeTimeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "request",
+        "backendRequest"
+      ],
+      "properties": {
+        "request": {
+          "title": "Время на запрос",
+          "description": "Ограничивает время от получения запроса точкой входа до отправки полного ответа клиенту. При превышении клиент получает ошибку 504, а пустое поле оставляет запрос без ограничения времени.",
+          "type": "string",
+          "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$"
+        },
+        "backendRequest": {
+          "title": "Время на попытку обращения",
+          "description": "Ограничивает время одной попытки обращения к сервису назначения и не может превышать «Время на запрос». Если поле пустое, действует ограничение на запрос целиком.",
+          "type": "string",
+          "pattern": "^([0-9]{1,5}(h|m|s|ms)){1,4}$"
+        }
+      }
+    },
+    "routeMatch": {
+      "title": "Предмет сравнения",
+      "description": "Выберите одно: путь, заголовки, параметры адреса или метод gRPC.",
+      "oneOf": [
+        {
+          "title": "Путь запроса",
+          "description": "Сравнение по пути запроса.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "$ref": "#/definitions/pathMatch"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "title": "Заголовки запроса",
+          "description": "Сравнение по заголовкам запроса.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "headers": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/nameValueMatch"
+              }
+            }
+          },
+          "required": [
+            "headers"
+          ]
+        },
+        {
+          "title": "Параметры адреса",
+          "description": "Сравнение по параметрам в адресе.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "queryParams": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/nameValueMatch"
+              }
+            }
+          },
+          "required": [
+            "queryParams"
+          ]
+        },
+        {
+          "title": "Метод gRPC",
+          "description": "Сравнение по методу gRPC.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "$ref": "#/definitions/grpcMethodMatch"
+            }
+          },
+          "required": [
+            "method"
+          ]
+        }
+      ]
+    },
+    "pathMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "title": "Способ сравнения",
+          "description": "Как путь запроса сверяется со значением.",
+          "type": "string",
+          "enum": [
+            "Exact",
+            "PathPrefix",
+            "RegularExpression"
+          ],
+          "enumNames": [
+            "Совпадает целиком",
+            "Начинается с указанного пути",
+            "Соответствует регулярному выражению"
+          ],
+          "default": "PathPrefix"
+        },
+        "value": {
+          "title": "Образец пути",
+          "description": "Укажите путь для сравнения, например /api.",
+          "type": "string",
+          "default": "/"
+        }
+      },
+      "required": [
+        "type",
+        "value"
+      ]
+    },
+    "nameValueMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "title": "Способ сравнения",
+          "description": "Как значение заголовка или параметра сверяется с образцом.",
+          "type": "string",
+          "enum": [
+            "Exact",
+            "RegularExpression"
+          ],
+          "enumNames": [
+            "Совпадает целиком",
+            "Соответствует регулярному выражению"
+          ],
+          "default": "Exact"
+        },
+        "name": {
+          "title": "Имя для сравнения",
+          "description": "Имя заголовка или параметра.",
+          "type": "string"
+        },
+        "value": {
+          "title": "Образец значения",
+          "description": "Значение, с которым сравнивается заголовок или параметр.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ]
+    },
+    "grpcMethodMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": {
+          "title": "Сервис gRPC",
+          "description": "Укажите имя сервиса, например users.UsersService.",
+          "type": "string"
+        },
+        "method": {
+          "title": "Метод gRPC",
+          "description": "Укажите имя метода, например GetUser.",
+          "type": "string"
+        }
+      },
+      "minProperties": 1
+    },
+    "routeFilter": {
+      "title": "Способ обработки",
+      "description": "Выберите одно: изменение заголовков запроса, перенаправление, подмена адреса или доступ с других доменов.",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/requestHeaderModifierFilter"
+        },
+        {
+          "$ref": "#/definitions/requestRedirectFilter"
+        },
+        {
+          "$ref": "#/definitions/urlRewriteFilter"
+        },
+        {
+          "$ref": "#/definitions/corsFilter"
+        }
+      ]
+    },
+    "requestHeaderModifierFilter": {
+      "title": "Изменение заголовков",
+      "description": "Меняет заголовки запроса перед отправкой в сервис.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "title": "Тип обработки",
+          "type": "string",
+          "const": "RequestHeaderModifier",
+          "default": "RequestHeaderModifier",
+          "ui:widget": "hidden"
+        },
+        "requestHeaderModifier": {
+          "title": "Действие с заголовками",
+          "description": "Выберите действие: перезаписать заголовок, дополнить его значение или удалить заголовок.",
+          "oneOf": [
+            {
+              "title": "Перезапись заголовков",
+              "description": "Записывает заголовок поверх того, что пришло.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "set": {
+                  "title": "Заголовки для перезаписи",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/definitions/httpHeader"
+                  }
+                }
+              },
+              "required": [
+                "set"
+              ]
+            },
+            {
+              "title": "Дополнение заголовков",
+              "description": "Дописывает значение к тому, что пришло.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "add": {
+                  "title": "Заголовки для дополнения",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/definitions/httpHeader"
+                  }
+                }
+              },
+              "required": [
+                "add"
+              ]
+            },
+            {
+              "title": "Удаление заголовков",
+              "description": "Убирает заголовок по имени.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "remove": {
+                  "title": "Заголовки для удаления",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "title": "Имя заголовка",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "remove"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "requestHeaderModifier"
+      ]
+    },
+    "httpHeader": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Имя заголовка",
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "title": "Значение заголовка",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ]
+    },
+    "requestRedirectFilter": {
+      "title": "Перенаправление запроса",
+      "description": "Точка входа отвечает перенаправлением, не отправляя запрос в сервис.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "title": "Тип обработки",
+          "type": "string",
+          "const": "RequestRedirect",
+          "default": "RequestRedirect",
+          "ui:widget": "hidden"
+        },
+        "requestRedirect": {
+          "title": "Параметры перенаправления",
+          "description": "Заполните хотя бы одно поле: незаполненные части адреса останутся как в запросе. В правиле с перенаправлением оставьте поле «Сервисы назначения» пустым.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "propertyOrder": [
+            "statusCode",
+            "scheme",
+            "hostname",
+            "port",
+            "path"
+          ],
+          "properties": {
+            "statusCode": {
+              "title": "Код ответа",
+              "type": "integer",
+              "enum": [
+                301,
+                302
+              ],
+              "enumNames": [
+                "Постоянное перенаправление (301)",
+                "Временное перенаправление (302)"
+              ],
+              "description": "Выберите код, которым точка входа ответит при перенаправлении. Если поле пустое, платформа отвечает кодом 302."
+            },
+            "scheme": {
+              "title": "Схема адреса",
+              "description": "Схема адреса перенаправления: http или https.",
+              "type": "string",
+              "enum": [
+                "http",
+                "https"
+              ]
+            },
+            "hostname": {
+              "title": "Новый домен",
+              "description": "Домен, на который будет перенаправлен запрос.",
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "title": "Новый порт",
+              "$ref": "#/definitions/port",
+              "description": "Порт, на который будет перенаправлен запрос."
+            },
+            "path": {
+              "title": "Новый путь",
+              "oneOf": [
+                {
+                  "title": "Заменить путь целиком",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "ReplaceFullPath",
+                      "default": "ReplaceFullPath",
+                      "ui:widget": "hidden"
+                    },
+                    "replaceFullPath": {
+                      "title": "Значение пути",
+                      "description": "Укажите новый путь, начиная со слеша.",
+                      "type": "string",
+                      "pattern": "^/",
+                      "default": "/"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "replaceFullPath"
+                  ]
+                },
+                {
+                  "title": "Заменить префикс пути",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "ReplacePrefixMatch",
+                      "default": "ReplacePrefixMatch",
+                      "ui:widget": "hidden"
+                    },
+                    "replacePrefixMatch": {
+                      "title": "Новый префикс",
+                      "description": "Заменяет совпавший PathPrefix, сохраняя остаток пути. Укажите / для удаления префикса.",
+                      "type": "string",
+                      "pattern": "^/",
+                      "default": "/"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "replacePrefixMatch"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "type",
+        "requestRedirect"
+      ]
+    },
+    "urlRewriteFilter": {
+      "title": "Подмена адреса",
+      "description": "Подменяет адрес перед отправкой в сервис.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "title": "Тип обработки",
+          "type": "string",
+          "const": "URLRewrite",
+          "default": "URLRewrite",
+          "ui:widget": "hidden"
+        },
+        "urlRewrite": {
+          "title": "Часть адреса",
+          "description": "Выберите одно: домен или путь.",
+          "oneOf": [
+            {
+              "title": "Подмена домена",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "hostname": {
+                  "title": "Новый домен",
+                  "description": "Домен, который увидит сервис.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "hostname"
+              ]
+            },
+            {
+              "title": "Подмена пути",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "title": "Новый путь",
+                  "oneOf": [
+                    {
+                      "title": "Заменить путь целиком",
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "ReplaceFullPath",
+                          "default": "ReplaceFullPath",
+                          "ui:widget": "hidden"
+                        },
+                        "replaceFullPath": {
+                          "title": "Значение пути",
+                          "description": "Заменяет весь путь запроса.",
+                          "type": "string",
+                          "pattern": "^/",
+                          "default": "/"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "replaceFullPath"
+                      ]
+                    },
+                    {
+                      "title": "Заменить префикс пути",
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "ReplacePrefixMatch",
+                          "default": "ReplacePrefixMatch",
+                          "ui:widget": "hidden"
+                        },
+                        "replacePrefixMatch": {
+                          "title": "Новый префикс",
+                          "description": "Заменяет совпавший PathPrefix, сохраняя остаток пути. Укажите / для удаления префикса.",
+                          "type": "string",
+                          "pattern": "^/",
+                          "default": "/"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "replacePrefixMatch"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "urlRewrite"
+      ]
+    },
+    "corsFilter": {
+      "title": "Доступ с других доменов",
+      "description": "Разрешает браузеру обращаться к сервису с другого домена.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "CORS",
+          "default": "CORS",
+          "ui:widget": "hidden"
+        },
+        "cors": {
+          "title": "Параметр доступа",
+          "description": "Выберите один параметр доступа с других доменов.",
+          "oneOf": [
+            {
+              "title": "Разрешённые источники",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowOrigins": {
+                  "title": "Разрешённые источники",
+                  "description": "Укажите источник, например https://example.ru, или * для любого источника.",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "title": "Адрес источника",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "allowOrigins"
+              ]
+            },
+            {
+              "title": "Передача данных авторизации",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowCredentials": {
+                  "title": "Передача данных авторизации",
+                  "description": "Разрешает передавать куки и заголовки авторизации. Для этого варианта всегда включено.",
+                  "type": "boolean",
+                  "const": true,
+                  "default": true
+                }
+              },
+              "required": [
+                "allowCredentials"
+              ]
+            },
+            {
+              "title": "Разрешённые методы",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowMethods": {
+                  "title": "Разрешённые методы",
+                  "description": "Значение * разрешает любой метод.",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "title": "Метод запроса",
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "HEAD",
+                      "POST",
+                      "PUT",
+                      "DELETE",
+                      "CONNECT",
+                      "OPTIONS",
+                      "TRACE",
+                      "PATCH",
+                      "*"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "allowMethods"
+              ]
+            },
+            {
+              "title": "Разрешённые заголовки",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allowHeaders": {
+                  "title": "Разрешённые заголовки",
+                  "description": "Заголовки, которые браузеру разрешено отправлять в запросе.",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "title": "Имя заголовка",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "allowHeaders"
+              ]
+            },
+            {
+              "title": "Доступные странице заголовки",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "exposeHeaders": {
+                  "title": "Доступные странице заголовки",
+                  "description": "Заголовки ответа, которые браузер позволит прочитать коду страницы.",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "title": "Имя заголовка",
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "exposeHeaders"
+              ]
+            },
+            {
+              "title": "Срок хранения разрешения",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxAge": {
+                  "title": "Срок хранения разрешения",
+                  "description": "Время в секундах, в течение которого браузер хранит разрешение и не запрашивает его повторно.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 600
+                }
+              },
+              "required": [
+                "maxAge"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "cors"
+      ]
+    },
+    "backendRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "name",
+        "namespace",
+        "referenceGrant",
+        "port",
+        "weight",
+        "sessionAffinity",
+        "h2UpgradePolicy"
+      ],
+      "properties": {
+        "name": {
+          "title": "Имя сервиса",
+          "description": "Имя сервиса, каким оно есть в кластере.",
+          "$ref": "#/definitions/k8sName"
+        },
+        "namespace": {
+          "title": "Неймспейс сервиса",
+          "description": "Если оставить пустым, используется неймспейс точки входа.",
+          "$ref": "#/definitions/k8sName"
+        },
+        "referenceGrant": {
+          "title": "Создавать разрешение автоматически",
+          "description": "По умолчанию чарт создаёт разрешение ReferenceGrant в namespace сервиса, если он отличается от namespace точки входа. Выключите, если у вас нет прав создавать объекты в том namespace и разрешение создадут его владельцы.",
+          "type": "boolean",
+          "default": true
+        },
+        "port": {
+          "title": "Порт сервиса",
+          "description": "Порт сервиса, на который нужно передавать трафик.",
+          "$ref": "#/definitions/port",
+          "default": 80
+        },
+        "weight": {
+          "title": "Вес сервиса",
+          "description": "Определяет долю запросов, если сервисов несколько.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 100
+        },
+        "sessionAffinity": {
+          "title": "Закрепление клиента",
+          "description": "Направляет запросы с одной и той же cookie в один экземпляр сервиса. Действует на весь трафик от этой точки входа к сервису во всех правилах, где он указан.",
+          "$ref": "#/definitions/sessionAffinity"
+        },
+        "h2UpgradePolicy": {
+          "title": "Переход на HTTP/2",
+          "description": "Определяет, переходит ли точка входа с HTTP/1.1 на HTTP/2 при обращении к сервису. Выберите «Использовать HTTP/1.1», если сервис не поддерживает HTTP/2. Если поле пустое, действует общая настройка платформы. Настройка действует на весь трафик от этой точки входа к сервису во всех правилах, где он указан.",
+          "type": "string",
+          "enum": [
+            "DO_NOT_UPGRADE",
+            "UPGRADE"
+          ],
+          "enumNames": [
+            "Использовать HTTP/1.1",
+            "Переходить на HTTP/2"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "port"
+      ]
+    },
+    "sessionAffinity": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyOrder": [
+        "cookieName",
+        "ttl"
+      ],
+      "properties": {
+        "cookieName": {
+          "title": "Имя cookie",
+          "description": "Имя cookie для закрепления клиента за экземпляром сервиса. Например, route. Чтобы точка входа выдавала cookie, также укажите срок её жизни.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "ttl": {
+          "title": "Срок жизни cookie",
+          "description": "Если задано, точка входа выдаёт cookie с этим сроком жизни. Значение 0s означает cookie до закрытия браузера. Без поля используется уже имеющаяся cookie клиента. Новая не выдаётся.",
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?s$"
+        }
+      },
+      "dependencies": {
+        "ttl": [
+          "cookieName"
+        ]
+      }
+    },
+    "oidcAuth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "application": {
+          "$ref": "#/definitions/oidcApplication"
+        },
+        "gateway": {
+          "$ref": "#/definitions/oidcGateway"
+        },
+        "oauth2Route": {
+          "$ref": "#/definitions/oidcOauth2Route"
+        },
+        "oauth2Proxy": {
+          "$ref": "#/definitions/oidcOauth2Proxy"
+        },
+        "referenceGrant": {
+          "$ref": "#/definitions/oidcReferenceGrant"
+        },
+        "externalAuthPolicy": {
+          "$ref": "#/definitions/oidcExternalAuthPolicy"
+        },
+        "groupsPolicy": {
+          "$ref": "#/definitions/oidcGroupsPolicy"
+        },
+        "requestAuthentication": {
+          "$ref": "#/definitions/oidcRequestAuthentication"
+        },
+        "keycloak": {
+          "$ref": "#/definitions/oidcKeycloak"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "required": [
+              "application",
+              "gateway",
+              "groupsPolicy",
+              "keycloak"
+            ]
+          }
+        }
+      ]
+    },
+    "oidcApplication": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "$ref": "#/definitions/k8sName"
+        },
+        "hostnames": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "hostnames"
+      ]
+    },
+    "oidcGateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "$ref": "#/definitions/k8sName"
+        },
+        "sectionName": {
+          "$ref": "#/definitions/k8sName"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "oidcOauth2Route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/k8sName"
+        },
+        "pathPrefix": {
+          "type": "string",
+          "pattern": "^/",
+          "default": "/oauth2"
+        }
+      }
+    },
+    "oidcOauth2Proxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "weight": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 100
+            }
+          }
+        }
+      }
+    },
+    "oidcReferenceGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/k8sName"
+        }
+      }
+    },
+    "oidcExternalAuthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/k8sName"
+        },
+        "notPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/oauth2/*"
+          ]
+        }
+      }
+    },
+    "oidcGroupsPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/k8sName"
+        },
+        "publicPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/oauth2/*"
+          ]
+        },
+        "claimKey": {
+          "type": "string",
+          "default": "request.auth.claims[groups]"
+        },
+        "allowedGroups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "allowedGroups"
+      ]
+    },
+    "oidcRequestAuthentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/k8sName"
+        },
+        "forwardOriginalToken": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "oidcKeycloak": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "issuer": {
+          "type": "string",
+          "format": "uri"
+        },
+        "jwksUri": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "issuer",
+        "jwksUri"
+      ]
+    },
+    "storeName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$",
+      "minLength": 1,
+      "maxLength": 63
+    }
+  }
+}

@@ -7,6 +7,12 @@
   height: 100%;
 }
 
+/* Grouped-node edges are elevated by React Flow. Keep their HTML labels
+   above the transparent SVG hit areas so labels remain readable/clickable. */
+.rf-wrap .react-flow__edgelabel-renderer {
+  z-index: 1002;
+}
+
 /* React Flow zoom controls ship hardcoded light styles (a bright square in
    the dark theme) - restyle them with the app's theme variables. */
 .rf-wrap .react-flow__controls {

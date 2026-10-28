@@ -1,5 +1,6 @@
 import {
 	Background,
+	applyNodeChanges,
 	BackgroundVariant,
 	Controls,
 	type Edge,
@@ -13,7 +14,7 @@ import {
 	useStore,
 	type Connection,
 } from "@xyflow/react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import "@xyflow/react/dist/style.css";
 import "./graph.css";
 import {
@@ -45,6 +46,54 @@ const COL_GAP = 150; // room for readable connection labels
 const CARD_GAP = 18; // between stacked cards
 const CARD_W = 230;
 const ROW_H = 26;
+
+// Tighten every occupied area without changing any child's world position.
+// Saved dimensions are a cache, never a lower bound for the next layout.
+export function fitGroups(nodes: Node[]): Node[] {
+	const result = nodes.map((node) => ({
+		...node,
+		position: { ...node.position },
+	}));
+	for (const group of result.filter((node) => node.type === "group")) {
+		const children = result.filter((node) => node.parentId === group.id);
+		if (!children.length) {
+			group.width = 300;
+			group.height = HEAD + 40 + PAD;
+			group.style = {
+				...group.style,
+				width: group.width,
+				height: group.height,
+			};
+			continue;
+		}
+		const left = Math.min(...children.map((node) => node.position.x)) - PAD;
+		const top = Math.min(...children.map((node) => node.position.y)) - HEAD;
+		const right =
+			Math.max(
+				...children.map(
+					(node) => node.position.x + (node.measured?.width ?? CARD_W),
+				),
+			) + PAD;
+		const bottom =
+			Math.max(
+				...children.map(
+					(node) =>
+						node.position.y +
+						(node.measured?.height ?? cardHeight(node.data.node as GraphNode)),
+				),
+			) + PAD;
+		group.position = { x: group.position.x + left, y: group.position.y + top };
+		group.width = Math.max(300, right - left);
+		group.height = bottom - top;
+		group.style = { ...group.style, width: group.width, height: group.height };
+		for (const child of children)
+			child.position = {
+				x: child.position.x - left,
+				y: child.position.y - top,
+			};
+	}
+	return result;
+}
 
 const ARROW = {
 	type: MarkerType.ArrowClosed,
@@ -170,7 +219,7 @@ export function buildGraph(
 					type: "card",
 					parentId: g.id,
 					extent: editable ? undefined : "parent",
-					expandParent: editable,
+					expandParent: false,
 					position: data.positions?.[n.id] ?? {
 						x: PAD + i * (CARD_W + COL_GAP),
 						y,
@@ -212,7 +261,7 @@ export function buildGraph(
 		markerEnd: ARROW,
 	}));
 
-	return { nodes, edges };
+	return { nodes: editable ? fitGroups(nodes) : nodes, edges };
 }
 
 export interface GraphViewProps {
@@ -232,12 +281,16 @@ export interface GraphViewProps {
 }
 
 function FitCanvas({ count }: { count: number }) {
+	const fitted = useRef(false);
 	const { fitView } = useReactFlow();
 	const ready = useNodesInitialized();
 	const width = useStore((s) => s.width);
 	const height = useStore((s) => s.height);
 	useEffect(() => {
-		if (ready && width && height) void fitView({ padding: 0.15 });
+		if (!fitted.current && ready && width && height && count) {
+			fitted.current = true;
+			void fitView({ padding: 0.15 });
+		}
 	}, [ready, width, height, count, fitView]);
 	return null;
 }
@@ -259,8 +312,12 @@ export function GraphView({
 		() => buildGraph(data, profile, editable),
 		[data, profile, editable],
 	);
-	const [nodes, setNodes, onNodesChange] = useNodesState(built.nodes);
-	useEffect(() => setNodes(built.nodes), [built.nodes, setNodes]);
+	const [nodes, setNodes] = useNodesState(built.nodes);
+	const currentNodes = useRef(built.nodes);
+	useEffect(() => {
+		currentNodes.current = built.nodes;
+		setNodes(built.nodes);
+	}, [built.nodes, setNodes]);
 	const empty = data.nodes.length === 0;
 
 	return (
@@ -278,7 +335,31 @@ export function GraphView({
 					nodesConnectable={editable}
 					elementsSelectable={!!onNodeClick || !!onLinkClick}
 					deleteKeyCode={null}
-					onNodesChange={onNodesChange}
+					onNodesChange={(changes) => {
+						// React Flow repeats the last relative position on mouseup.
+						// Our parent origin may have changed since that pointer event.
+						const normalized = changes.map((change) => {
+							if (
+								editable &&
+								change.type === "position" &&
+								change.dragging === false
+							) {
+								const current = currentNodes.current.find(
+									(node) => node.id === change.id,
+								);
+								if (current?.dragging)
+									return { ...change, position: current.position };
+							}
+							return change;
+						});
+						const changed = applyNodeChanges(normalized, currentNodes.current);
+						const next =
+							editable && changes.some((change) => change.type === "position")
+								? fitGroups(changed)
+								: changed;
+						currentNodes.current = next;
+						setNodes(next);
+					}}
 					onNodeClick={(_, node) => {
 						if (node.type === "card") onNodeClick?.(node.id);
 						else onGroupClick?.(node.id);
@@ -294,31 +375,25 @@ export function GraphView({
 					}}
 					onEdgeClick={(_, edge) => onLinkClick?.(edge.id)}
 					onConnect={onConnect}
-					onNodeDragStop={(_, node) =>
+					onNodeDragStop={() => {
+						// onNodesChange has already normalized the final drag position.
+						// The event node may still use the parent's previous origin.
+						const next = currentNodes.current;
 						onPositions?.(
-							{
-								...data.positions,
-								...Object.fromEntries(nodes.map((n) => [n.id, n.position])),
-								[node.id]: node.position,
-							},
+							Object.fromEntries(next.map((n) => [n.id, n.position])),
 							Object.fromEntries(
-								nodes
+								next
 									.filter((n) => n.type === "group")
 									.map((n) => [
 										n.id,
 										{
-											width:
-												n.width ?? n.measured?.width ?? Number(n.style?.width),
-											height:
-												n.height ??
-												n.measured?.height ??
-												Number(n.style?.height),
+											width: Number(n.style?.width),
+											height: Number(n.style?.height),
 										},
 									]),
 							),
-						)
-					}
-					fitView
+						);
+					}}
 					proOptions={{ hideAttribution: true }}
 				>
 					<FitCanvas count={data.nodes.length + data.groups.length} />

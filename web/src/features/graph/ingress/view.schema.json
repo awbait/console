@@ -1,0 +1,243 @@
+{
+  "tabs": [
+    {
+      "id": "listeners",
+      "form": "listeners",
+      "items": "/gateways/0/listeners",
+      "title": "Слушатели",
+      "addLabel": "Добавить слушателя",
+      "ui:table": [
+        {
+          "path": "name",
+          "label": "Имя"
+        },
+        {
+          "path": "protocol",
+          "label": "Протокол"
+        },
+        {
+          "path": "port",
+          "label": "Порт"
+        },
+        {
+          "path": "hostname",
+          "label": "Домен"
+        }
+      ],
+      "ui:uniqueBy": "name"
+    },
+    {
+      "id": "routes",
+      "form": "routes",
+      "enums": [
+        {
+          "at": "/parentRefs/0/sectionName",
+          "from": "/gateways/0/listeners",
+          "value": "name"
+        }
+      ],
+      "items": "/xroutes",
+      "title": "Маршруты",
+      "addLabel": "Добавить маршрут",
+      "ui:table": [
+        {
+          "path": "name",
+          "label": "Имя"
+        },
+        {
+          "label": "Hostnames",
+          "lookup": {
+            "in": "/gateways/0/listeners",
+            "get": "hostname",
+            "keys": "/parentRefs/*/sectionName",
+            "match": "name"
+          }
+        }
+      ],
+      "ui:uniqueBy": "name"
+    }
+  ],
+  "views": {
+    "hpa": {
+      "include": [
+        "gateways"
+      ],
+      "overrides": {
+        "gateways": {
+          "title": "Gateway",
+          "ui:view": {
+            "include": [
+              "hpa"
+            ],
+            "overrides": {
+              "hpa": {
+                "ui:widget": "edit"
+              }
+            }
+          },
+          "ui:widget": "single"
+        }
+      }
+    },
+    "order": {
+      "include": [
+        "identity/cluster",
+        "gateways",
+        "policies",
+        "tls"
+      ],
+      "$comment": "Первичный заказ: ровно один Gateway, без xroutes. Роуты добавляются позже в карточке заказа (вид routes) через PATCH того же values. Раздел tls показан пустым списком: сертификат по умолчанию выпускается сам, запись нужна только тому, у кого он уже есть. Секции identity в форме нет: теги окружения проставляет блок defaults, тег проекта берётся из команды заказа. Тег проекта едет в имя каждого ресурса и в метку ecpk/project, а схема принимает его как projectToken: от 2 до 9 символов, строчные латинские буквы, цифры и дефис. Имя команды, которое в это не укладывается, остановит заказ на проверке по схеме, и поправить его будет некому: поля в форме нет.",
+      "identity": "/gateways/0/name",
+      "overrides": {
+        "gateways": {
+          "title": "Gateway",
+          "ui:view": {
+            "exclude": [
+              "hpa"
+            ],
+            "overrides": {
+              "ipAddress": {
+                "ui:widget": "edit"
+              }
+            }
+          },
+          "ui:widget": "single"
+        }
+      }
+    },
+    "routes": {
+      "exclude": [
+        "enabled",
+        "hostnames"
+      ],
+      "$comment": "Редактор роутов в карточке уже созданного гейтвея. Показывает xroutes того же инстанса: enabled всегда true (скрыт), parentRefs[].gateway подставляется автоматически (скрыт), hostnames скрыт целиком. Hostname чарт выводит сам из listener'а, на который ссылается route через parentRefs[].sectionName: есть у listener'а hostname - подставит, нет - оставит пустым. Сам sectionName рендерится селектором, опции которого портал наполняет из listener'ов на лету.",
+      "overrides": {
+        "parentRefs": {
+          "ui:view": {
+            "exclude": [
+              "gateway"
+            ]
+          }
+        }
+      }
+    },
+    "policies": {
+      "include": [
+        "policies"
+      ]
+    },
+    "ipAddress": {
+      "include": [
+        "gateways"
+      ],
+      "overrides": {
+        "gateways": {
+          "title": "Gateway",
+          "ui:view": {
+            "include": [
+              "ipAddress"
+            ],
+            "overrides": {
+              "ipAddress": {
+                "ui:widget": "edit"
+              }
+            }
+          },
+          "ui:widget": "single"
+        }
+      }
+    },
+    "listeners": {
+      "$comment": "Редактор listener'ов Gateway (gateways[0].listeners) в карточке. Последний удалить нельзя (minItems:1 в схеме). Имя точки входа лучше не менять после выпуска: на него ссылается sectionName маршрутов, и по нему же назван автовыпущенный сертификат, который после переименования выпустится заново."
+    },
+    "resources": {
+      "include": [
+        "gateways"
+      ],
+      "$comment": "Правка ресурсов istio-proxy у Gateway (gateways[0].resources) из карточки заказа. Скрытое в форме заказа поле resources здесь раскрывается.",
+      "overrides": {
+        "gateways": {
+          "title": "Gateway",
+          "ui:view": {
+            "include": [
+              "resources"
+            ],
+            "overrides": {
+              "resources": {
+                "ui:widget": "edit"
+              }
+            }
+          },
+          "ui:widget": "single"
+        }
+      }
+    },
+    "proxy": {
+      "include": [
+        "gateways"
+      ],
+      "$comment": "Правка настроек прокси точки входа (gateways[0].proxy) из карточки заказа: idle-таймаут потока и предел на размер заголовков, оба уходят в EnvoyFilter на workload гейтвея. Скрытое в форме заказа поле proxy здесь раскрывается.",
+      "overrides": {
+        "gateways": {
+          "title": "Gateway",
+          "ui:view": {
+            "include": [
+              "proxy"
+            ],
+            "overrides": {
+              "proxy": {
+                "ui:widget": "edit"
+              }
+            }
+          },
+          "ui:widget": "single"
+        }
+      }
+    },
+    "certificates": {
+      "include": [
+        "tls/certificates"
+      ],
+      "$comment": "Сертификаты заказа (tls.certificates) из меню «Действия» на вкладке «Слушатели». Включён сам список, а не объект tls: у обоих заголовок «Сертификаты», и с объектом форма показывала его дважды. сертификат нужен точке входа с tlsMode Terminate, и правят его там же, где эти точки. Сюда добавляют сертификат, который у заказчика уже есть: в хранилище (вариант с путём в Vault) или готовым секретом в namespace. Домена, которого в списке нет, это не касается: его сертификат выпускается сам, поэтому пустой список - нормальное состояние заказа. Отсюда действие, а не своя вкладка: она стояла бы в ряду со «Слушателями» и «Маршрутами» и почти всегда была бы пуста. Остальные поля tls (хранилище по умолчанию, издатель, интервал) скрыты схемой чарта и в форму не попадают."
+    }
+  },
+  "actions": [
+    {
+      "in": "info",
+      "view": "resources",
+      "label": "Редактировать ресурсы"
+    },
+    {
+      "in": "info",
+      "view": "hpa",
+      "label": "Редактировать HPA"
+    },
+    {
+      "in": "info",
+      "view": "ipAddress",
+      "label": "Редактировать IP"
+    },
+    {
+      "in": "info",
+      "view": "proxy",
+      "label": "Редактировать таймаут и лимит заголовков"
+    },
+    {
+      "in": "info",
+      "view": "policies",
+      "label": "Вкл/Выкл сетевые политики"
+    },
+    {
+      "in": "tab:listeners",
+      "view": "certificates",
+      "label": "Редактировать сертификаты"
+    }
+  ],
+  "initial": {
+    "/identity/cluster": "tco"
+  },
+  "defaults": {
+    "/identity/project": "{{.Team}}",
+    "/identity/instance": "{{.Vars.INSTANCE}}"
+  }
+}

@@ -9,6 +9,13 @@ import { exampleDocument, exampleSchema, exampleValues } from "./example";
 import { object, type Values } from "./model";
 import { readGraphMapping } from "../mapping";
 import { topologyExample } from "./topologyExample";
+import { lazy, Suspense } from "react";
+
+const IngressWorkbench = lazy(() =>
+	import("../ingress/IngressWorkbench").then((module) => ({
+		default: module.IngressWorkbench,
+	})),
+);
 
 const storageKey = "console-graph-workbench-v1";
 const initial = (preset = "mesh") => ({
@@ -55,12 +62,35 @@ function parse(text: string, format: "json" | "yaml") {
 	}
 }
 
-export function GraphWorkbench({
+export function GraphWorkbench(props: {
+	preset?: "mesh" | "topology" | "ingress";
+	onClose?: () => void;
+}) {
+	const [preset, setPreset] = useState(props.preset ?? "mesh");
+	if (preset === "ingress")
+		return (
+			<Suspense fallback={<p>Загружаем Ingress Gateway…</p>}>
+				<IngressWorkbench onClose={props.onClose} onExample={setPreset} />
+			</Suspense>
+		);
+	return (
+		<DeclarativeWorkbench
+			key={preset}
+			preset={preset}
+			onClose={props.onClose}
+			onIngress={() => setPreset("ingress")}
+		/>
+	);
+}
+
+function DeclarativeWorkbench({
 	preset = "mesh",
 	onClose,
+	onIngress,
 }: {
 	preset?: "mesh" | "topology";
 	onClose?: () => void;
+	onIngress: () => void;
 }) {
 	const [state, setState] = useState(() => load(preset));
 	const [tab, setTab] = useState("graph");
@@ -106,6 +136,7 @@ export function GraphWorkbench({
 				<Button onPress={() => setReset("topology")}>
 					Загрузить пример Kubernetes
 				</Button>
+				<Button onPress={onIngress}>Ingress Gateway</Button>
 				<ThemeMenu />
 			</header>
 			<main className="mx-auto flex max-w-[1800px] flex-col gap-4 p-4">

@@ -34,7 +34,7 @@ test("areas have stable identities, parameters, empty instances and explicit mem
 	expect(
 		built.nodes
 			.filter((n) => n.type === "card")
-			.every((n) => n.expandParent && n.extent === undefined),
+			.every((n) => n.extent === undefined),
 	).toBe(true);
 });
 
@@ -144,7 +144,7 @@ test("invalid area descriptions and imported memberships are rejected", () => {
 	).toBeGreaterThan(0);
 });
 
-test("saved expanded bounds and node positions survive reconstruction", () => {
+test("reconstruction fits current children instead of retaining obsolete area sizes", () => {
 	const {
 		document: { graph },
 		values,
@@ -158,12 +158,11 @@ test("saved expanded bounds and node positions survive reconstruction", () => {
 	};
 	visual.data.groupSizes = { [groupId]: { width: 3000, height: 1200 } };
 	const built = buildGraph(visual.data, visual.profile, true);
-	expect(built.nodes.find((n) => n.id === id)?.position).toEqual({
-		x: 2500,
-		y: 800,
-	});
-	expect(built.nodes.find((n) => n.id === groupId)?.style).toEqual({
-		width: 3000,
-		height: 1200,
-	});
+	const group = built.nodes.find((n) => n.id === groupId)!;
+	const node = built.nodes.find((n) => n.id === id)!;
+	expect(group.position.x + node.position.x).toBe(2400);
+	expect(group.position.y + node.position.y).toBe(600);
+	expect(Number(group.style?.width)).toBeLessThan(3000);
+	expect(Number(group.style?.height)).toBeLessThan(1200);
+	expect(Number(group.style?.width)).toBeGreaterThan(node.position.x + 230);
 });

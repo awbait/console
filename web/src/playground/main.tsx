@@ -47,7 +47,7 @@ createRoot(document.getElementById("root")!).render(
       <ThemeProvider>
         <ToastProvider>
           <Suspense fallback={<p>Загружаем конструктор…</p>}>
-            {new URLSearchParams(location.search).has("graph") ? <GraphWorkbench preset={new URLSearchParams(location.search).get("graph") === "topology" ? "topology" : "mesh"} /> : <Playground />}
+            {new URLSearchParams(location.search).has("graph") ? <GraphWorkbench preset={new URLSearchParams(location.search).get("graph") === "ingress" ? "ingress" : new URLSearchParams(location.search).get("graph") === "topology" ? "topology" : "mesh"} /> : <Playground />}
           </Suspense>
         </ToastProvider>
       </ThemeProvider>
