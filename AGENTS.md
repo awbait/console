@@ -60,7 +60,8 @@ Console: внутренний портал разработчика для ко�
 - Чарты сервисов живут в отдельном репозитории `awbait/console-charts`
   со своими правилами; портал к чартам не привязан.
 - `docs/` в git почти не входит (черновики): отслеживаются только
-  `chart-convention.md`, `idp-spec.md` и `multi-version-publications.md`.
+  `chart-convention.md`, `idp-spec.md`, `multi-version-publications.md` и
+  `application-name-cluster-collision.md`.
 
 ## Инструменты
 
