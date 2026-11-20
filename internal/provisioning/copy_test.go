@@ -88,6 +88,7 @@ func TestCopyOrderToStand(t *testing.T) {
 func TestCopyNeedsAnotherNameOnTheSameCluster(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)
+	withDefaultAppName(s)
 	dev := mustStand(ctx, t, s, "dev", "in-cluster")
 	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID)))
 	if err != nil {

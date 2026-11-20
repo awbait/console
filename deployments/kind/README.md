@@ -276,7 +276,7 @@ MetalLB (LoadBalancer-IP), без них Gateway не станет `Programmed`,
 8. **Пустое `repo-*` остаётся после удаления заказа - так и задумано.**
    `repo-<chart>-<hash>` это не приложение заказа (те называются по
    `ARGOCD_APP_NAME_TEMPLATE`, по умолчанию
-   `{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}`),
+   `{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Cluster}}-{{.Cluster}}{{end}}{{if .Stand}}-{{.Stand}}{{end}}`),
    а directory-app
    репозитория, который заводит bootstrap-ApplicationSet (`applicationset.yaml`).
    Он привязан к репозиторию `managed-services/<team>/<chart>`: портал создаёт

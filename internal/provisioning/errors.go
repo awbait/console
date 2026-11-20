@@ -76,8 +76,9 @@ const (
 	MsgViewNamespace = "Портал не смог собрать имя неймспейса: "
 	// The template rendered, but not into a Kubernetes name. Argument: the name.
 	MsgViewNamespaceInvalid = "Имя неймспейса «%s», собранное из полей заказа, не подходит. Используйте строчные латинские буквы, цифры и дефис, не длиннее 63 символов. Первый и последний символ - буква или цифра. Имя не должно состоять только из цифр."
-	// Another stand's order already deploys under the same name through the
-	// same Argo CD. Arguments: the other order's display name, its stand.
+	// A live order already deploys under the same name through the same
+	// Argo CD, this stand's or another's. Arguments: the other order's
+	// display name, its stand.
 	MsgAppNameTaken = "Под этим именем уже развёрнут заказ «%s» на стенде «%s». Выберите другое имя сервиса, а если ошибка повторяется, обратитесь к администратору портала."
 )
 
