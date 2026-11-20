@@ -841,7 +841,7 @@ function VersionEditor({
               )}
             </div>
             <TabPanel id="view" className="flex min-h-0 flex-1 flex-col gap-2 pt-3 outline-none">
-              <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-0">
+              <div className="editor-frame min-h-[400px] flex-1 rounded-md border border-slate-200 lg:min-h-[140px]">
                 <Editor
                   height="100%"
                   defaultLanguage="json"
@@ -880,7 +880,10 @@ function VersionEditor({
                       <span>Синтаксис JSON: {syntaxErr}</span>
                     </div>
                   ) : issues.length > 0 ? (
-                    <ul className="flex flex-col gap-1.5 rounded-md border border-red-100 bg-red-50/50 p-2 text-xs">
+                    <ul
+                      aria-live="polite"
+                      className="flex max-h-36 flex-col gap-1.5 overflow-y-auto rounded-md border border-red-100 bg-red-50/50 p-2 text-xs lg:max-h-40"
+                    >
                       {issues.map((i, idx) => (
                         <li key={idx} className="flex items-start gap-1.5 text-red-700">
                           <IconAlertCircle
