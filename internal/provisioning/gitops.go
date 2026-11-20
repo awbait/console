@@ -2,6 +2,7 @@ package provisioning
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -87,8 +88,8 @@ type tmplData struct {
 	Team        string
 	ServiceName string
 	Chart       string
-	// Namespace and Cluster are the order's destination. The app-name template
-	// knows the namespace, the instance-folder template both.
+	// Namespace and Cluster are the order's destination. Both the app-name
+	// and instance-folder templates know these fields.
 	Namespace string
 	Cluster   string
 	// Stand is the stand's name as a Kubernetes name allows it, empty on the
@@ -189,8 +190,21 @@ func (g *GitOps) RepoPath(st *models.Stand, team, chart string) string {
 // cluster, so orders without those parts in the name could define one
 // Application from several app-of-apps repos. Mirrors the active-service key
 // (stand, team, chart, service, cluster, namespace).
+// Helm uses the Application name as its release name unless overridden, so
+// new names must fit Helm's 53-character limit. Hash the full rendered name
+// when shortening it, preserving differences beyond the readable prefix.
+// Existing orders render manifests from their stored names, bypassing this.
 func (g *GitOps) AppName(team, chart, namespace, service, cluster, stand string) string {
-	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service, Cluster: cluster, Stand: stand})
+	name := render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service, Cluster: cluster, Stand: stand})
+	const maxReleaseName = 53
+	if len(name) <= maxReleaseName {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	// Leave 16 hex characters (64 bits) plus a separator for the suffix.
+	// checkAppName still rejects any collision in the Argo CD namespace.
+	prefix := strings.TrimRight(name[:maxReleaseName-17], "-.")
+	return fmt.Sprintf("%s-%x", prefix, sum[:8])
 }
 
 // AppNamespaceOf is the namespace the stand's Argo CD reads Applications from:
