@@ -35,6 +35,7 @@ func makeRepoByID(ctx context.Context, t *testing.T, gl *gitlab.Fake, repo strin
 func TestImportFromGit(t *testing.T) {
 	ctx := context.Background()
 	s := newStack(t)
+	withDefaultAppName(s)
 
 	// A valid, conforming instance: the application.yaml is exactly what the portal
 	// would render (we render it the same way), plus an adjacent values.yaml.

@@ -305,7 +305,7 @@ CREATE UNIQUE INDEX uniq_active_service
 
 ### Идентификация ArgoCD Application
 
-**TBD** - конкретный шаблон решите позже. Заложено поле `argocd_app_name` в БД, формат именования - конфигурируемый шаблон (env-переменная). Дефолт: `{team}-{service_name}`.
+Имя задаёт `ARGOCD_APP_NAME_TEMPLATE`. Шаблон по умолчанию: `{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Cluster}}-{{.Cluster}}{{end}}{{if .Stand}}-{{.Stand}}{{end}}`. Кластер различает одинаковые сервисы в одном namespace на разных кластерах, стенд различает заказы стендов с общим namespace Argo CD. У стенда по умолчанию постфикс стенда пустой. Пользовательский шаблон должен различать кластеры. Портал отклоняет повтор имени Application в одном namespace Argo CD, в том числе внутри одного стенда.
 
 **Правило:** имя вычисляется **один раз при создании заказа** и сохраняется в `argocd_app_name`; дальше матчинг ArgoCD Application идёт по сохранённому значению, а не пересчитывается из шаблона. Так смена `ARGOCD_APP_NAME_TEMPLATE` не ломает уже существующие заказы.
 
@@ -637,7 +637,7 @@ ARGOCD_TOKEN=...
 ARGOCD_PROJECT=portal-managed
 ARGOCD_NAMESPACE=argocd                                # namespace, в котором работает Argo CD
 ARGOCD_DEFAULT_CLUSTER=in-cluster
-ARGOCD_APP_NAME_TEMPLATE={{.Team}}-{{.ServiceName}}    # TBD конкретный формат
+ARGOCD_APP_NAME_TEMPLATE={{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Cluster}}-{{.Cluster}}{{end}}{{if .Stand}}-{{.Stand}}{{end}}
 STATUS_UPDATE_MODE=polling                              # polling|webhook|stream
 STATUS_POLL_INTERVAL=15s
 ARGOCD_WEBHOOK_SECRET=...

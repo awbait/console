@@ -184,13 +184,13 @@ func (g *GitOps) RepoPath(st *models.Stand, team, chart string) string {
 // define the same-named Application CR (which would make their app-of-apps repos
 // fight over a single object). The namespace is part of it for the same reason,
 // from the other side: one team may order one chart under one name into two
-// namespaces, and those are two applications. The stand is part of it because
-// an order is unique only within its stand: two stands whose Argo CD reads
-// Applications from one namespace would otherwise get one Application from two
-// app-of-apps repos, each undoing the other. Mirrors the active-service key
+// namespaces, and those are two applications. The cluster and stand are parts
+// of it for the same reason: an order is unique only within its stand and
+// cluster, so orders without those parts in the name could define one
+// Application from several app-of-apps repos. Mirrors the active-service key
 // (stand, team, chart, service, cluster, namespace).
-func (g *GitOps) AppName(team, chart, namespace, service, stand string) string {
-	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service, Stand: stand})
+func (g *GitOps) AppName(team, chart, namespace, service, cluster, stand string) string {
+	return render(g.AppNameTmpl, tmplData{Team: team, Chart: chart, Namespace: namespace, ServiceName: service, Cluster: cluster, Stand: stand})
 }
 
 // AppNamespaceOf is the namespace the stand's Argo CD reads Applications from:

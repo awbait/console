@@ -143,12 +143,12 @@ type Config struct {
 	// Application CR. Argo CD reads Applications from its own namespace only, so
 	// this has to be the namespace Argo CD itself runs in, whatever it is called.
 	ArgoCDNamespace string `env:"ARGOCD_NAMESPACE" envDefault:"argocd" desc:"Namespace Argo CD runs in. The portal writes it into every application.yaml it commits, because Argo CD only picks up applications from its own namespace."`
-	ArgoCDCluster string `env:"ARGOCD_DEFAULT_CLUSTER" envDefault:"in-cluster" desc:"Cluster of the default stand, created on the first start. Stands are managed in the admin section afterwards; this only seeds the first one."`
+	ArgoCDCluster   string `env:"ARGOCD_DEFAULT_CLUSTER" envDefault:"in-cluster" desc:"Cluster of the default stand, created on the first start. Stands are managed in the admin section afterwards; this only seeds the first one."`
 	// Includes the chart so two different charts ordered under the same service
 	// name into one namespace do not collide on a single Application, and the
-	// namespace so one chart ordered under one name into two namespaces does not
-	// either - that is two services, and two applications.
-	ArgoCDAppNameTmpl string `env:"ARGOCD_APP_NAME_TEMPLATE" envDefault:"{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}" desc:"Template for the name of the generated Argo CD application. Knows the team, the chart, the namespace, the service name and the stand (its name as a Kubernetes name allows it, empty on the default stand). It has to give every service its own name, namespaces and stands included: one team may run one service of one chart in several namespaces or on several stands, and two of them under one name in one Argo CD means two applications fighting over the same objects. An order keeps the name it was created with, so changing this only affects new orders."`
+	// namespace, cluster and stand so one chart ordered under one name into
+	// different destinations does not either - those are separate applications.
+	ArgoCDAppNameTmpl string `env:"ARGOCD_APP_NAME_TEMPLATE" envDefault:"{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Cluster}}-{{.Cluster}}{{end}}{{if .Stand}}-{{.Stand}}{{end}}" desc:"Template for the name of the generated Argo CD application. Knows the team, the chart, the namespace, the service name, the cluster and the stand (its name as a Kubernetes name allows it, empty on the default stand). It has to give every service its own name, namespaces, clusters and stands included: one team may run one service of one chart in several namespaces, clusters or stands, and two of them under one name in one Argo CD means two applications fighting over the same objects. An order keeps the name it was created with, so changing this only affects new orders."`
 	// The chart repoURL in the committed application.yaml becomes
 	// "{ChartRegistry}/{chart_project}", so this must be a host both the portal
 	// and the Argo CD pods can resolve.

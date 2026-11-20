@@ -54,16 +54,18 @@ func TestAppNameTemplate(t *testing.T) {
 		want   Verdict
 		reason string
 	}{
-		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictSilent, reasonUnique},
+		{"the shipped default", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Cluster}}-{{.Cluster}}{{end}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictSilent, reasonUnique},
 		// An order is unique within its stand, and two stands may share one
 		// Argo CD namespace. The portal refuses such an order, so a warning.
-		{"no stand", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}", VerdictWarn, reasonStandCollision},
-		{"no service name", "{{.Team}}-{{.Chart}}-{{.Namespace}}", VerdictFail, reasonNotUnique},
+		{"no stand", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}-{{.Cluster}}", VerdictWarn, reasonStandCollision},
+		{"no service name", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.Cluster}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictFail, reasonNotUnique},
 		// One team may run one chart under one name in two namespaces. A template
 		// that leaves the namespace out names both of them the same.
-		{"no namespace", "{{.Team}}-{{.Chart}}-{{.ServiceName}}", VerdictFail, reasonNSCollision},
-		{"no team", "{{.Chart}}-{{.Namespace}}-{{.ServiceName}}", VerdictWarn, reasonTeamCollision},
-		{"no chart", "{{.Team}}-{{.Namespace}}-{{.ServiceName}}", VerdictWarn, reasonChartCollision},
+		{"no namespace", "{{.Team}}-{{.Chart}}-{{.ServiceName}}-{{.Cluster}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictFail, reasonNSCollision},
+		// The same service in two clusters of one stand is two Applications too.
+		{"no cluster", "{{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictFail, reasonClusterCollision},
+		{"no team", "{{.Chart}}-{{.Namespace}}-{{.ServiceName}}-{{.Cluster}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictWarn, reasonTeamCollision},
+		{"no chart", "{{.Team}}-{{.Namespace}}-{{.ServiceName}}-{{.Cluster}}{{if .Stand}}-{{.Stand}}{{end}}", VerdictWarn, reasonChartCollision},
 		{"broken template", "{{.Team", VerdictFail, reasonBadTemplate},
 	}
 	for _, tc := range cases {
