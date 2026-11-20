@@ -880,28 +880,34 @@ function VersionEditor({
                       <span>Синтаксис JSON: {syntaxErr}</span>
                     </div>
                   ) : issues.length > 0 ? (
-                    <ul
+                    <div
                       aria-live="polite"
-                      className="flex max-h-36 flex-col gap-1.5 overflow-y-auto rounded-md border border-red-100 bg-red-50/50 p-2 text-xs lg:max-h-40"
+                      className="overflow-hidden rounded-md border border-red-100 bg-red-50/50 text-xs"
                     >
-                      {issues.map((i, idx) => (
-                        <li key={idx} className="flex items-start gap-1.5 text-red-700">
-                          <IconAlertCircle
-                            size={14}
-                            stroke={1.8}
-                            className="mt-px shrink-0 text-red-500"
-                          />
-                          <span>
-                            {i.path && (
-                              <code className="mr-1 rounded bg-surface px-1 py-px font-mono text-[11px] text-red-600 ring-1 ring-red-200">
-                                {i.path}
-                              </code>
-                            )}
-                            {i.message}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+                      <div className="flex items-center gap-1.5 border-b border-red-100 px-2 py-1.5 font-medium text-red-700">
+                        <IconAlertCircle size={14} stroke={1.8} className="shrink-0 text-red-500" />
+                        <span>Ошибки в документе · {issues.length}</span>
+                      </div>
+                      <ul className="flex max-h-36 flex-col gap-1.5 overflow-y-auto p-2 lg:max-h-40">
+                        {issues.map((i, idx) => (
+                          <li key={idx} className="flex items-start gap-1.5 text-red-700">
+                            <IconAlertCircle
+                              size={14}
+                              stroke={1.8}
+                              className="mt-px shrink-0 text-red-500"
+                            />
+                            <span>
+                              {i.path && (
+                                <code className="mr-1 rounded bg-surface px-1 py-px font-mono text-[11px] text-red-600 ring-1 ring-red-200">
+                                  {i.path}
+                                </code>
+                              )}
+                              {i.message}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-1.5 rounded-md border border-emerald-100 bg-emerald-50/50 p-2 text-xs text-emerald-700">
                       <IconCheck size={14} stroke={2} className="shrink-0 text-emerald-500" />
