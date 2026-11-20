@@ -29,6 +29,7 @@ import type {
   PlatformUsers,
   PublicationDetail,
   PublicationVersion,
+  RegistryRow,
   RequestDetail,
   Stand,
   StandChecksRun,
@@ -407,6 +408,11 @@ export const api = {
   // squiggles). Ships with the portal, so it changes only with a release.
   getViewSchema: (signal?: AbortSignal) =>
     req<JSONSchema>("GET", "/view-schema", undefined, signal),
+
+  // The admin's registry of publications: one row per publication with its
+  // versions summarized, its orders counted and its problems named.
+  adminPublications: (signal?: AbortSignal) =>
+    req<RegistryRow[] | null>("GET", "/admin/publications", undefined, signal).then((r) => r ?? []),
 
   // publication versions (per-version view builder + approval FSM)
   pendingVersions: (signal?: AbortSignal) =>

@@ -38,5 +38,10 @@ export const qk = {
   stands: (): QueryKey => ["stands"],
   stand: (id: string): QueryKey => ["stands", id],
   requests: (): QueryKey => ["requests"],
+  // The admin's publications page: the registry rows and the queue of versions
+  // waiting for a decision. Keyed so a return from a decision page renders
+  // from cache and revalidates, instead of blanking to a spinner.
+  registry: (): QueryKey => ["admin-publications"],
+  pendingVersions: (): QueryKey => ["pending-versions"],
   platformHealth: (): QueryKey => ["platform-health"],
 };

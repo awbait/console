@@ -38,8 +38,10 @@ import { useToast } from "../app/ToastContext";
 import { canModify, useTeamLabel, useUser } from "../auth/UserContext";
 import type { Crumb } from "../components/Breadcrumbs";
 import { FormErrors } from "../components/FormErrors";
+import { adminPublicationText } from "../features/publications/adminPublicationText";
 import { editLeaseText } from "../features/publications/editLeaseText";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading, Select, TextField } from "../components/ui";
 import { ruPlural } from "../form/fieldErrors";
@@ -232,14 +234,34 @@ function RegisterCard({
   );
 }
 
-function PublicationOverview({
+// PublicationOverview is the publication as the people running it see it:
+// category and owner in the header, the versions below. The catalog's
+// management page is this alone; the admin's publication page (in the admin
+// section) wraps it with its own crumbs and title and adds its sections after.
+export function PublicationOverview({
   pub,
   reload,
   breadcrumbs,
+  title,
+  subtitle,
+  status,
+  actions,
+  decision,
+  after,
 }: {
   pub: ChartPublication;
   reload: () => void;
   breadcrumbs: Crumb[];
+  // The header's title; the management page's own wording by default.
+  title?: string;
+  subtitle?: React.ReactNode;
+  status?: React.ReactNode;
+  actions?: React.ReactNode;
+  // The decision on a proposed category and owner, drawn in place of the
+  // approval banners (the admin's publication page decides right here).
+  decision?: React.ReactNode;
+  // Sections drawn under the versions.
+  after?: React.ReactNode;
 }) {
   const { user } = useUser();
   const { categories, reload: reloadCatalog } = useCatalog();
@@ -459,24 +481,36 @@ function PublicationOverview({
   const liveRows = rows.filter((e) => !isRetired(e));
   const retiredRows = rows.filter(isRetired);
 
+  // The header stays put and the cards below it scroll, the way the other
+  // pages are framed: a long journal or version table must not carry the
+  // crumbs and the chips out of view.
   return (
-    <div className="flex flex-col gap-4">
+    <Page className="gap-4">
       <PageHeader
         breadcrumbs={breadcrumbs}
-        title={`Управление: ${chartLabel(name)}`}
+        title={title ?? `Управление: ${chartLabel(name)}`}
+        subtitle={subtitle}
+        status={status}
+        actions={actions}
         meta={
           <>
-          {metaEditable ? (
+          {/* An admin's change applies at once (the server decides so by
+              role), so their chip shows the live value and never a proposal;
+              a team's proposal is theirs to send and the admin's to decide
+              on the registry page. */}
+          {/* A chart nobody owns yet gets its category together with its owner
+              from the card below, so up here it is only read. */}
+          {metaEditable && !isUnclaimed(pub) ? (
             <ChipSelect
               label="Категория"
               icon={<IconCategory size={13} stroke={1.8} className="text-slate-400" />}
-              value={pub.draft_category_id || pub.category_id}
-              pending={!!pub.draft_category_id}
+              value={isAdmin ? pub.category_id : pub.draft_category_id || pub.category_id}
+              pending={!isAdmin && !!pub.draft_category_id}
               options={categories.map((c) => ({ id: c.id, label: c.label }))}
               onChange={(id) => onMetaChange({ category_id: id })}
               info="Категория изменится только после согласования"
             />
-          ) : pub.draft_category_id ? (
+          ) : pub.draft_category_id && !isAdmin ? (
             <ProposalChip
               label="Категория"
               from={categoryLabel}
@@ -496,13 +530,13 @@ function PublicationOverview({
             <ChipSelect
               label="Владелец"
               icon={<IconUsersGroup size={13} stroke={1.8} className="text-slate-400" />}
-              value={pub.draft_owner_team || pub.owner_team}
-              pending={!!pub.draft_owner_team}
+              value={isAdmin ? pub.owner_team : pub.draft_owner_team || pub.owner_team}
+              pending={!isAdmin && !!pub.draft_owner_team}
               options={ownerOptions.map((t) => ({ id: t, label: teamLabel(t) }))}
               onChange={(t) => onMetaChange({ owner_team: t })}
               info="Владелец изменится только после согласования"
             />
-          ) : pub.draft_owner_team ? (
+          ) : pub.draft_owner_team && !isAdmin ? (
             <ProposalChip
               label="Владелец"
               from={teamLabel(pub.owner_team)}
@@ -526,10 +560,24 @@ function PublicationOverview({
         }
       />
 
+      <PageBody gap="none" className="gap-4">
       {canAdopt && <AdoptCard pub={pub} teams={adoptTargets} onAdopted={reload} />}
 
-      {/* Metadata (category/owner) change has its own approval flow. */}
-      {metaPending ? (
+      {/* Metadata (category/owner) change has its own approval flow. The
+          admin is the one deciding it, and decides on the registry page. */}
+      {decision ? (
+        decision
+      ) : metaPending && isAdmin ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>{adminPublicationText.adminPendingHint}</span>
+          <Link
+            to={`/admin/approvals?meta=${encodeURIComponent(`${project}/${name}`)}`}
+            className="font-medium text-amber-900 underline-offset-2 hover:underline"
+          >
+            {adminPublicationText.adminPendingLink}
+          </Link>
+        </div>
+      ) : metaPending ? (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <span>Смена метаданных (категория/владелец) на согласовании у администратора.</span>
           {isOwner && (
@@ -540,7 +588,8 @@ function PublicationOverview({
         </div>
       ) : (
         hasMetaDraft &&
-        isOwner && (
+        isOwner &&
+        !isAdmin && (
           <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <span>Есть несогласованные изменения метаданных (категория/владелец).</span>
             <Button variant="primary" isDisabled={busy !== null} onPress={onSubmitMeta}>
@@ -651,6 +700,9 @@ function PublicationOverview({
         </div>
       )}
 
+      {after}
+      </PageBody>
+
       {/* A version leaves support with a reason attached: it is what the teams
           still running it are told, and what the chip explains months later. The
           field is optional, because a version can simply be old. */}
@@ -686,7 +738,7 @@ function PublicationOverview({
           return onDeprecate(row, note.trim());
         }}
       />
-    </div>
+    </Page>
   );
 }
 

@@ -277,9 +277,14 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		return nil, ErrPendingLocked
 	}
 	payload := map[string]any{}
-	// A category/owner change is not applied immediately: it accumulates in the
-	// draft fields and moves to live (CategoryID/OwnerTeam) only on approve.
-	// Reverting a value to the approved one clears the draft.
+	// The admin is the one who would approve the change, so for them it is
+	// applied to the live values right away and leaves no draft behind. Anyone
+	// else proposes: the change accumulates in the draft fields and moves to
+	// live (CategoryID/OwnerTeam) only on approve. Reverting a proposed value
+	// to the approved one clears the draft.
+	if u.IsAdmin() {
+		return s.applyMetadata(ctx, u, p, in)
+	}
 	if in.CategoryID != nil {
 		if *in.CategoryID == p.CategoryID {
 			if p.DraftCategoryID != "" {
@@ -323,6 +328,48 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		return nil, err
 	}
 	s.addEvent(ctx, p.ID, u, "updated", "", "", payload)
+	return p, nil
+}
+
+// applyMetadata is the admin's Update: the category and owner change on the
+// publication itself, and a draft of the same field, if a team had proposed
+// one, is dropped - the admin's word is the decision it was waiting for. The
+// journal records the applied values under the same event the approval of a
+// proposal writes, so the history reads the same whichever way a value got
+// there.
+func (s *Service) applyMetadata(ctx context.Context, u *models.User, p *models.ChartPublication, in UpdateInput) (*models.ChartPublication, error) {
+	applied := map[string]any{}
+	if in.CategoryID != nil && (*in.CategoryID != p.CategoryID || p.DraftCategoryID != "") {
+		if err := s.checkCategory(ctx, *in.CategoryID); err != nil {
+			return nil, err
+		}
+		p.CategoryID = *in.CategoryID
+		p.DraftCategoryID = ""
+		applied["category_id"] = p.CategoryID
+	}
+	if in.OwnerTeam != nil {
+		if *in.OwnerTeam == "" {
+			return nil, invalid("owner_team must not be empty")
+		}
+		if *in.OwnerTeam != p.OwnerTeam || p.DraftOwnerTeam != "" {
+			p.OwnerTeam = *in.OwnerTeam
+			p.DraftOwnerTeam = ""
+			applied["owner_team"] = p.OwnerTeam
+		}
+	}
+	if len(applied) == 0 {
+		return p, nil // no-op
+	}
+	// A rejected proposal is settled by the admin's own value: back to work.
+	if p.Status == models.PubRejected {
+		p.Status = models.PubDraft
+	}
+	if err := s.store.UpdatePublication(ctx, p); err != nil {
+		return nil, err
+	}
+	s.addEvent(ctx, p.ID, u, "approved", "", "", applied)
+	s.logger().Info("publication metadata applied",
+		"publication_id", p.ID, "chart", p.ChartProject+"/"+p.ChartName, "actor", u.Subject)
 	return p, nil
 }
 
@@ -783,8 +830,19 @@ func (s *Service) List(ctx context.Context, f store.PublicationFilter) ([]*model
 	return pubs, nil
 }
 
+// ListEvents is the publication's journal with the actors named: the rows hold
+// OIDC subjects, the user directory knows who they are. A subject the
+// directory has no record of stays as it is.
 func (s *Service) ListEvents(ctx context.Context, id string) ([]*models.PublicationEvent, error) {
-	return s.store.ListPublicationEvents(ctx, id)
+	events, err := s.store.ListPublicationEvents(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	names := s.userNames(ctx)
+	for _, e := range events {
+		e.ActorName = names[e.Actor]
+	}
+	return events, nil
 }
 
 func (s *Service) checkCategory(ctx context.Context, id string) error {
