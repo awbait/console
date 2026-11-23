@@ -40,14 +40,17 @@ interface Draft {
   selector: Record<string, string>;
   nameHint: string | null;
   serviceAccount: string | null;
-  ports: Map<number, TopoPort>;
+  ports: Map<string, TopoPort>;
 }
 
 interface DirectedLink {
   from: Draft;
   to: Draft;
   port: number;
+  protocol: PortProtocol;
 }
+
+const portKey = (port: number, protocol: PortProtocol) => `${port}/${protocol}`;
 
 const GROUP_W = 250;
 const GROUP_GAP = 80;
@@ -61,11 +64,20 @@ function isStringMap(v: unknown): v is Record<string, string> {
 }
 
 // Normalized chart port entry: a bare number or { port, protocol }.
+// Unknown protocols (e.g. SCTP) return null so the parser refuses graph editing
+// instead of silently rewriting them to TCP.
 function parseRulePort(v: unknown): TopoPort | null {
   if (typeof v === "number" && Number.isInteger(v)) return { port: v, protocol: "TCP" };
   if (isPlainObject(v) && typeof v.port === "number" && Number.isInteger(v.port)) {
-    const proto: PortProtocol = v.protocol === "UDP" ? "UDP" : "TCP";
-    return { port: v.port, protocol: proto };
+    if (v.protocol === undefined || v.protocol === "") {
+      return { port: v.port, protocol: "TCP" };
+    }
+    if (typeof v.protocol !== "string") return null;
+    const upper = v.protocol.toUpperCase();
+    if (upper === "TCP" || upper === "UDP") {
+      return { port: v.port, protocol: upper };
+    }
+    return null;
   }
   return null;
 }
@@ -173,7 +185,9 @@ export function parseValues(
         const portsRaw = ruleRaw[R.ports];
         const ports = Array.isArray(portsRaw) ? portsRaw.map(parseRulePort) : [];
         if (ports.length === 0 || ports.some((p) => p === null)) {
-          errors.push(`${ruleAt}: правило без конкретных ${R.ports} не отображается на графе.`);
+          errors.push(
+            `${ruleAt}: правило без конкретных ${R.ports} или с неподдерживаемым протоколом не отображается на графе.`,
+          );
           return;
         }
         const peersRaw = ruleRaw[peersKey];
@@ -207,20 +221,26 @@ export function parseValues(
             serviceAccount: typeof peerSa === "string" ? peerSa : undefined,
           });
           for (const p of ports as TopoPort[]) {
+            const pk = portKey(p.port, p.protocol);
             if (dir === "ingress") {
               // The rule port lives on the owner; the peer is the sender.
-              if (!owner.ports.has(p.port)) owner.ports.set(p.port, p);
-              links.push({ from: peer, to: owner, port: p.port });
+              if (!owner.ports.has(pk)) owner.ports.set(pk, p);
+              links.push({ from: peer, to: owner, port: p.port, protocol: p.protocol });
             } else {
-              if (!peer.ports.has(p.port)) peer.ports.set(p.port, p);
-              links.push({ from: owner, to: peer, port: p.port });
+              if (!peer.ports.has(pk)) peer.ports.set(pk, p);
+              links.push({ from: owner, to: peer, port: p.port, protocol: p.protocol });
             }
           }
         }
       });
     };
+    const linksBefore = links.length;
+    const errorsBefore = errors.length;
     walkRules("ingress");
     walkRules("egress");
+    if (links.length === linksBefore && errors.length === errorsBefore) {
+      errors.push(`${label}: запись без правил ingress/egress не отображается на графе.`);
+    }
   });
 
   // --- finalize workloads: names, ids, topology ---------------------------
@@ -248,7 +268,9 @@ export function parseValues(
         kind: "Deployment",
         serviceAccount: d.serviceAccount,
         selector: d.selector,
-        ports: [...d.ports.values()].sort((a, b) => a.port - b.port),
+        ports: [...d.ports.values()].sort(
+          (a, b) => a.port - b.port || a.protocol.localeCompare(b.protocol),
+        ),
       };
       workloadOf.set(d, w);
       return w;
@@ -265,7 +287,7 @@ export function parseValues(
   // is no bidirectional edge on the canvas.
   const seenLinks = new Set<string>();
   const uniqueLinks = links.filter((l) => {
-    const key = `${selectorKey(l.from.ns, l.from.selector)}>${selectorKey(l.to.ns, l.to.selector)}:${l.port}`;
+    const key = `${selectorKey(l.from.ns, l.from.selector)}>${selectorKey(l.to.ns, l.to.selector)}:${l.port}/${l.protocol}`;
     if (seenLinks.has(key)) return false;
     seenLinks.add(key);
     return true;
@@ -282,7 +304,7 @@ export function parseValues(
       target: to.id,
       // The source port does not exist in the model: anchor at the body dot.
       sourceHandle: bodyHandleId("r"),
-      targetHandle: portHandleId(link.port, "l"),
+      targetHandle: portHandleId(link.port, "l", link.protocol),
       reconnectable: true,
     });
   });
@@ -330,9 +352,9 @@ export function mergeWithSaved(parsed: ParsedGraph, saved: SavedGraphState | nul
       if (!s) return w;
       const ports = [...w.ports];
       for (const p of s.ports) {
-        if (!ports.some((x) => x.port === p.port)) ports.push(p);
+        if (!ports.some((x) => x.port === p.port && x.protocol === p.protocol)) ports.push(p);
       }
-      ports.sort((a, b) => a.port - b.port);
+      ports.sort((a, b) => a.port - b.port || a.protocol.localeCompare(b.protocol));
       const merged: TopoWorkload = {
         id: workloadId(ns.name, s.name),
         name: s.name,

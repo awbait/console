@@ -70,7 +70,21 @@ export function OrderGraphDialog({
 }) {
   const { plugin, mapping } = editor;
   const toast = useToast();
-  const saved = useMemo(() => parseSavedValues(r.values_yaml), [r.values_yaml]);
+  // Hold the freshly returned server snapshot across the gap between save()
+  // resolving and reload() updating props, so remounting the canvas never
+  // flashes stale pre-save r.values_yaml / r.editor_state.
+  const [justSaved, setJustSaved] = useState<{
+    baseYaml: string;
+    valuesYaml: string;
+    editorState: unknown;
+  } | null>(null);
+  const effectiveYaml =
+    justSaved && justSaved.baseYaml === r.values_yaml ? justSaved.valuesYaml : r.values_yaml;
+  const effectiveEditorState =
+    justSaved && justSaved.baseYaml === r.values_yaml ? justSaved.editorState : r.editor_state;
+  const saved = useMemo(() => parseSavedValues(effectiveYaml), [effectiveYaml]);
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
   const [draft, setDraft] = useState<Values | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<SubmitError | null>(null);
@@ -88,35 +102,35 @@ export function OrderGraphDialog({
   // tidying the canvas would submit an unfinished change.
   const layout = useRef<unknown>(undefined);
   const layoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (layoutTimer.current) clearTimeout(layoutTimer.current);
-    },
-    [],
-  );
+  const clearLayoutTimer = () => {
+    if (layoutTimer.current) {
+      clearTimeout(layoutTimer.current);
+      layoutTimer.current = null;
+    }
+  };
+  useEffect(() => () => clearLayoutTimer(), []);
 
   // Drop unsaved edits and pending layout saves if the dialog is reused for a
   // different order (e.g. navigating between orders in the same namespace).
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset local draft only when switching orders
   useEffect(() => {
     setDraft(null);
+    setJustSaved(null);
     setErr(null);
     layout.current = undefined;
-    if (layoutTimer.current) {
-      clearTimeout(layoutTimer.current);
-      layoutTimer.current = null;
-    }
+    clearLayoutTimer();
   }, [r.id]);
 
   function onEditorState(state: unknown) {
     layout.current = state;
     if (lock || persist) return; // nothing to store against, or a preview
-    if (layoutTimer.current) clearTimeout(layoutTimer.current);
+    clearLayoutTimer();
     layoutTimer.current = setTimeout(() => {
+      layoutTimer.current = null;
       // Failures here are deliberately silent: the arrangement is a convenience,
       // and an error for a node nobody asked to save would be noise. It travels
       // again with the next real change.
-      api.updateRequest(r.id, { values: saved, editor_state: layout.current }).catch(() => {});
+      api.updateRequest(r.id, { values: savedRef.current, editor_state: layout.current }).catch(() => {});
     }, LAYOUT_SAVE_DELAY);
   }
 
@@ -124,12 +138,20 @@ export function OrderGraphDialog({
     if (!draft) return;
     setSaving(true);
     setErr(null);
-    if (layoutTimer.current) clearTimeout(layoutTimer.current);
+    clearLayoutTimer();
     try {
       if (persist) {
         await persist(draft);
       } else {
-        await api.updateRequest(r.id, { values: draft, editor_state: layout.current });
+        const updated = await api.updateRequest(r.id, {
+          values: draft,
+          editor_state: layout.current,
+        });
+        setJustSaved({
+          baseYaml: r.values_yaml,
+          valuesYaml: updated.values_yaml,
+          editorState: updated.editor_state,
+        });
         reload();
       }
       setDraft(null);
@@ -143,6 +165,7 @@ export function OrderGraphDialog({
   }
 
   function discard() {
+    clearLayoutTimer();
     setDraft(null);
     setErr(null);
     setGeneration((g) => g + 1);
@@ -226,7 +249,7 @@ export function OrderGraphDialog({
                         mapping={mapping}
                         readOnly={lock !== null}
                         fill
-                        editorState={r.editor_state}
+                        editorState={effectiveEditorState}
                         onEditorState={onEditorState}
                       />
                     </Suspense>

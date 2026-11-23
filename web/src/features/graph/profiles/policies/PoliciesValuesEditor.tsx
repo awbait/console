@@ -50,6 +50,13 @@ export function PoliciesValuesEditor({
     return mergeWithSaved(p, saved && saved.orderNs === namespace ? saved : null);
   }, [namespace, inputError]);
 
+  // Track the last graph topology/edges seen for this namespace so dragging a
+  // box (positions-only change) updates editorState without rewriting values.
+  const prevGraph = useRef<{ ns: string; topology: unknown; edges: unknown } | null>(null);
+  if (parsed && parsed.errors.length === 0 && prevGraph.current?.ns !== namespace) {
+    prevGraph.current = { ns: namespace, topology: parsed.topology, edges: parsed.edges };
+  }
+
   if (inputError) {
     return (
       <FormErrors
@@ -93,7 +100,12 @@ export function PoliciesValuesEditor({
         chartVersion,
       ),
     );
-    if (readOnly) return;
+    const graphChanged =
+      !prevGraph.current ||
+      prevGraph.current.topology !== m.topology ||
+      prevGraph.current.edges !== m.edges;
+    prevGraph.current = { ns: namespace, topology: m.topology, edges: m.edges };
+    if (readOnly || !graphChanged) return;
     // The current values are also the previous generation: passing their
     // policies[] back in keeps entry names and any key the graph does not know
     // (a newer chart, another editing mode) instead of rewriting the section.

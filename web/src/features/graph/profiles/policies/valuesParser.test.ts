@@ -141,4 +141,76 @@ describe("values round trip", () => {
     expect(parsed.errors).toHaveLength(1);
     expect(parsed.errors[0]).toContain("policies[0]");
   });
+
+  test("same port with both TCP and UDP stays two distinct ports and arrows across round trip", () => {
+    const values = {
+      policies: [
+        {
+          name: "api",
+          enabled: true,
+          serviceAccount: "api-sa",
+          selector: { "app.kubernetes.io/name": "api" },
+          egress: [
+            {
+              to: [{ namespace: "dns", selector: { "app.kubernetes.io/name": "coredns" } }],
+              ports: [
+                { port: 53, protocol: "TCP" },
+                { port: 53, protocol: "udp" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const parsed = parseValues(values, "ns1", M);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.edges).toHaveLength(2);
+    const dnsWl = parsed.topology.find((n) => n.name === "dns")?.workloads[0];
+    expect(dnsWl?.ports).toEqual([
+      { port: 53, protocol: "TCP" },
+      { port: 53, protocol: "UDP" },
+    ]);
+
+    const rebuilt = buildPolicies(parsed.topology, parsed.edges, "ns1", M, values.policies) as {
+      egress: { ports: { port: number; protocol: string }[] }[];
+    }[];
+    const protocols = rebuilt[0].egress.flatMap((r) => r.ports.map((p) => `${p.port}/${p.protocol}`));
+    expect(protocols.sort()).toEqual(["53/TCP", "53/UDP"]);
+  });
+
+  test("unsupported protocol (SCTP) is refused instead of silently rewritten to TCP", () => {
+    const values = {
+      policies: [
+        {
+          name: "api",
+          enabled: true,
+          serviceAccount: "api-sa",
+          selector: { "app.kubernetes.io/name": "api" },
+          egress: [
+            {
+              to: [{ namespace: "ns2", selector: { "app.kubernetes.io/name": "db" } }],
+              ports: [{ port: 9000, protocol: "SCTP" }],
+            },
+          ],
+        },
+      ],
+    };
+    const parsed = parseValues(values, "ns1", M);
+    expect(parsed.errors.length).toBeGreaterThan(0);
+  });
+
+  test("rule-less policy entry (e.g. default-deny) is refused so graph cannot delete it", () => {
+    const values = {
+      policies: [
+        {
+          name: "deny-all",
+          enabled: true,
+          selector: { "app.kubernetes.io/name": "api" },
+          ingress: [],
+        },
+      ],
+    };
+    const parsed = parseValues(values, "ns1", M);
+    expect(parsed.errors.length).toBeGreaterThan(0);
+  });
 });
