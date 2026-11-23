@@ -135,7 +135,7 @@ const ACTIONS: Record<string, string> = {
   "app_name_template.chart_collision": "Добавьте в шаблон {{.Chart}}.",
   "app_name_template.stand_collision": "Добавьте в шаблон {{if .Stand}}-{{.Stand}}{{end}}.",
   "app_name_template.bad_template":
-    "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}.",
+    "Проверьте шаблон: он должен быть шаблоном Go, например {{.Team}}-{{.Chart}}-{{.Namespace}}-{{.ServiceName}}{{if .Cluster}}-{{.Cluster}}{{end}}{{if .Stand}}-{{.Stand}}{{end}}.",
 
   "gitlab_token.missing_scope": "Выпустите токен с правами api и пропишите его заново.",
   "gitlab_token.expired": "Выпустите новый токен и пропишите его заново.",

@@ -496,6 +496,9 @@ func (s *Service) checkAppName(ctx context.Context, r *models.Request, st *model
 		if ex.ID == r.ID || ex.DeletedAt != nil || ex.ArgoCDAppName != r.ArgoCDAppName {
 			continue
 		}
+		if ex.Status == models.StatusDeleted || ex.Status == models.StatusMRClosed || ex.Status == models.StatusConsoleSaved {
+			continue
+		}
 		other := s.standOf(ctx, ex)
 		if other.WritesGit() && s.gitops.AppNamespaceOf(other) == ns {
 			return conflict(MsgAppNameTaken, ex.DisplayName, other.Name)
@@ -778,6 +781,9 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 			return r, err
 		}
 		return r, nil
+	}
+	if err := s.checkAppName(ctx, r, stand); err != nil {
+		return nil, err
 	}
 	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {

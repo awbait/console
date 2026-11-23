@@ -41,6 +41,16 @@ func TestAppNameHelmLength(t *testing.T) {
 	if got := g.AppName("", "", "", boundary, "", ""); strings.Contains(got, "--") || !valid.MatchString(got) {
 		t.Fatalf("invalid prefix boundary: %q", got)
 	}
+	// A prefix made only of separators must not leave a leading hyphen.
+	if got := g.AppName("", "", "", strings.Repeat("-", 60), "", ""); len(got) > 53 || !valid.MatchString(got) {
+		t.Fatalf("all-separator prefix produced invalid name: %q", got)
+	}
+	// Dotted service names (DNS-1123 subdomains) stay valid Helm release names.
+	validSubdomain := regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	dotted := strings.Repeat("a", 20) + "." + strings.Repeat("b", 14) + "." + strings.Repeat("c", 30)
+	if got := g.AppName("", "", "", dotted, "", ""); len(got) > 53 || !validSubdomain.MatchString(got) {
+		t.Fatalf("dotted long name produced invalid release name: %q", got)
+	}
 }
 
 func TestStoredLongAppNameIsNotRenamed(t *testing.T) {

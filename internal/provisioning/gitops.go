@@ -204,6 +204,9 @@ func (g *GitOps) AppName(team, chart, namespace, service, cluster, stand string)
 	// Leave 16 hex characters (64 bits) plus a separator for the suffix.
 	// checkAppName still rejects any collision in the Argo CD namespace.
 	prefix := strings.TrimRight(name[:maxReleaseName-17], "-.")
+	if prefix == "" {
+		return fmt.Sprintf("%x", sum[:8])
+	}
 	return fmt.Sprintf("%s-%x", prefix, sum[:8])
 }
 
