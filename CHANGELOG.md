@@ -2,6 +2,110 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.27.0] - 2026-11-23
+
+### Added
+- Lists with chart defaults on the order form now show their default items in a
+  preview while untouched, without saving them into the order so chart updates
+  keep applying. Actions next to the section title let you copy the default list
+  into the order for editing or reset it back to the chart default. Pressing "+
+  Добавить" over defaults copies the default items first and adds a new row at
+  the end, so adding one entry no longer replaces the base list. Object sections
+  that define both named fields and open-ended parameters now show an extra
+  parameters area with "+ Добавить" below the named fields, check added entries,
+  and prevent duplicating a field already shown above.
+- You can now open "Service configuration" from the header of the "General
+  information" tab on an existing order and edit the full `values.yaml` file to
+  update several settings at once. The editor shows the line and column of YAML
+  syntax errors as you type, and the "Changes" tab lets you compare the current
+  and edited configuration line by line before submitting. Use "Check" to
+  validate the configuration against the service's schema and rules without
+  saving. Before saving, the portal checks that the service ID, namespace name
+  fields, and read-only fields are unchanged. The window opens in read-only mode
+  and explains why if you lack edit permissions, the order is a draft, a
+  previous change is still being applied, the configuration is out of sync with
+  Git, or the service is still deploying.
+
+### Fixed
+- Fixed starting a scheduled maintenance window immediately from the admin form,
+  prevented catalog category renames from reverting after changing an icon or
+  reordering, and ignored stale YAML validation responses when the editor text
+  changes mid-check.
+- With the default naming template, the same service for the same team and chart
+  can now be ordered into the same namespace on different clusters within one
+  stand without Argo CD Application name conflicts. Existing orders keep their
+  Application names.
+- Long names of new orders no longer prevent Helm charts from rendering in Argo
+  CD. Application names longer than 53 characters are shortened with a suffix
+  that distinguishes the full names. Existing orders keep their Application
+  names.
+- Fixed recovery from missing Argo CD application status, same-stand order
+  copying when a namespace uses a template or a newer chart version is absent
+  from the registry, concurrent publication version updates, and validation of
+  stand-only platform variables in typed fields.
+- After a new service version is published, the upgrade button on the order page
+  and the upgrade indicator in the order list now appear without reloading the
+  page. The portal refreshes the catalog in the background when you return to
+  the tab, go to your orders or the catalog, and periodically while the tab
+  stays open. If you open a direct upgrade link and the target version is
+  missing from the list, the portal checks the latest list of versions.
+- You can now choose a different available chart version before submitting a
+  draft order, including a draft created by copying an order to another stand.
+  On stands connected to an existing GitLab repository, you can now create,
+  update, and delete orders even if the repository’s default branch differs from
+  the portal-wide setting. The application manifest uses the repository’s
+  default branch. On stands in “Portal only” mode, you can now place and update
+  orders even when GitLab is unavailable.
+- The order form now checks required fields in nested sections before
+  submission, even when you leave those sections untouched and the fields are
+  required by chart defaults or conditional rules. When another field’s setting
+  allows only one value, the form flags a conflicting value and shows the exact
+  value required. This also applies to nested fields and when the restriction
+  comes from a chart default.
+- Fixed unexpected sign-outs when multiple browser requests arrived at the same
+  time after an access token expired.
+- Administrators and support staff who don’t belong to a team can now open the
+  form to upgrade an existing order or edit a draft. The upgrade form prefills
+  fields based on the order’s team and environment. When support staff edit
+  someone else’s draft, the form hides the button for submitting the order for
+  deployment.
+- Fixed several order editing issues where switching between orders could carry
+  over previous form state, upgrading an order could drop graph layout or extra
+  section edits in YAML mode, unquoted ISO dates in YAML were lost on save, and
+  live order modals could block on chart defaults or reset on background status
+  updates.
+- Fixed stale namespace and stand filters after switching teams or products,
+  prevented background refreshes from clearing fields in the copy order dialog,
+  and reset order detail UI state when navigating directly between orders.
+- Fixed policies graph data loss and spurious saves when opening or saving the
+  graph dialog, preserving multi-protocol entries on the same port and refusing
+  unsupported protocols or rule-less policies instead of silently rewriting or
+  deleting them.
+- Fixed order lifecycle bugs where closing a stand regeneration merge request
+  permanently locked a running order, a conflicted deletion merge request could
+  be rewritten as an update, and submitting a saved draft bypassed chart version
+  availability checks.
+- Fixed form rendering and validation edge cases for objects with both fixed and
+  additional properties, optional nested objects when adding list items,
+  optional or null variant choices, and fields that accept multiple JSON types.
+- Fixed switching the default stand failing with an internal error on
+  PostgreSQL, prevented stopped stand jobs from resuming or deleting a stand
+  after being stopped, and made upstream failure responses trigger immediate
+  health re-checks.
+- Fixed version editor loading stale cached drafts after leaving and returning,
+  prevented cold loads from acquiring edit locks on submitted or deprecated
+  versions, released locks immediately when editing becomes unavailable, and
+  isolated approval review state per publication.
+- In the chart version builder, long lists of document validation errors now
+  scroll within a limited height below the editor, keeping the total error count
+  visible above the list and leaving the editor tall enough to work in.
+
+### Security
+- Enforced chart team visibility restrictions when creating orders, checking
+  chart paths, reading active views, and loading initial order values.
+- Prevented taking over ownership of a live auto-discovered service while a new
+  view edit for its published version is under review or rejected.
+
 ## [0.26.0] - 2026-10-28
 
 ### Added
@@ -1119,6 +1223,7 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 
 [Unreleased]: https://github.com/awbait/console/compare/v0.18.0...HEAD
 
+[0.27.0]: https://github.com/awbait/console/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/awbait/console/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/awbait/console/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/awbait/console/compare/v0.23.0...v0.24.0
