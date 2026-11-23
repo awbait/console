@@ -833,14 +833,35 @@ export function AdminCategoriesPage() {
               }}
               onDragOver={() => setOverId(c.id)}
               onDrop={() => onDropOn(c.id)}
-              onRename={(label) => run(() => api.updateCategory({ ...c, label }))}
+              onRename={(label) =>
+                run(async () => {
+                  // Keep local order in sync with the renamed label (the resync
+                  // effect only fires when the id set changes), so a subsequent
+                  // icon change or drag-reorder sends the new label instead of
+                  // reverting it.
+                  const prev = order;
+                  setOrder((cur) => cur.map((o) => (o.id === c.id ? { ...o, label } : o)));
+                  try {
+                    await api.updateCategory({ ...c, label });
+                  } catch (e) {
+                    setOrder(prev);
+                    throw e;
+                  }
+                })
+              }
               onIcon={(icon) =>
                 run(async () => {
                   // Optimistic: the resync effect only fires when the id set
                   // changes, so push the new icon into local order ourselves -
                   // otherwise the row keeps rendering the stale icon until reload.
-                  setOrder((prev) => prev.map((o) => (o.id === c.id ? { ...o, icon } : o)));
-                  await api.updateCategory({ ...c, icon });
+                  const prev = order;
+                  setOrder((cur) => cur.map((o) => (o.id === c.id ? { ...o, icon } : o)));
+                  try {
+                    await api.updateCategory({ ...c, icon });
+                  } catch (e) {
+                    setOrder(prev);
+                    throw e;
+                  }
                 })
               }
               onDelete={() => run(() => api.deleteCategory(c.id))}
