@@ -21,6 +21,7 @@ func TestActivityIsAdminOnly(t *testing.T) {
 	srv, _, _ := newServer(t)
 	p, _ := srv.Cache.(cache.Presence)
 	srv.Activity = activity.New(srv.Store, srv.Cache, p, nil)
+	t.Cleanup(srv.Activity.Wait)
 	h := srv.Router()
 
 	for _, path := range []string{"/api/v1/admin/users", "/api/v1/admin/users/online", "/api/v1/admin/users/events"} {
@@ -55,11 +56,15 @@ func TestActivityPayload(t *testing.T) {
 	srv, _, _ := newServer(t)
 	p, _ := srv.Cache.(cache.Presence)
 	srv.Activity = activity.New(srv.Store, srv.Cache, p, nil)
+	t.Cleanup(srv.Activity.Wait)
 	ctx := context.Background()
 
+	// Use the same user for the seeded touch and the admin request below:
+	// Activity.Middleware touches the caller asynchronously, so a second
+	// subject would race with Overview and make totals fluctuate between 1 and 2.
 	srv.Activity.Touch(ctx, &models.User{
-		Subject: "u1", Name: "Ada", Email: "ada@example.org",
-		Teams: []string{"core"}, Role: models.RoleMember,
+		Subject: "u1", Name: "Ada", Username: "dev", Email: "dev@example.com",
+		Teams: []string{"core"}, Role: models.RoleAdmin,
 	})
 	r := &models.Request{ID: "55555555-5555-5555-5555-555555555555", Team: "core",
 		ChartName: "gateway", ServiceName: "edge", Status: models.StatusDraft}
@@ -77,8 +82,11 @@ func TestActivityPayload(t *testing.T) {
 		t.Fatalf("add system event: %v", err)
 	}
 
+	req := adminReq("GET", "/api/v1/admin/users", nil)
+	req.Header.Set("X-Dev-Sub", "u1")
+	req.Header.Set("X-Dev-Name", "Ada")
 	rec := httptest.NewRecorder()
-	srv.Router().ServeHTTP(rec, adminReq("GET", "/api/v1/admin/users", nil))
+	srv.Router().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("activity: %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -150,6 +158,7 @@ func TestUserEventsPaging(t *testing.T) {
 	srv, _, _ := newServer(t)
 	p, _ := srv.Cache.(cache.Presence)
 	srv.Activity = activity.New(srv.Store, srv.Cache, p, nil)
+	t.Cleanup(srv.Activity.Wait)
 	ctx := context.Background()
 
 	r := &models.Request{ID: "88888888-8888-8888-8888-888888888888", Team: "core",
