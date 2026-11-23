@@ -166,4 +166,22 @@ describe("adaptToSchema", () => {
     expect(out).toEqual({ source: { vault: "kv" } });
     expect(notes).toEqual([]);
   });
+
+  test("a hybrid object preserves numeric extra keys instead of dropping them as a spread list", () => {
+    const ports = {
+      type: "object",
+      properties: {
+        ports: {
+          type: "object",
+          properties: { default: { type: "string" } },
+          additionalProperties: { type: "string" },
+        },
+      },
+    };
+    const { values: out, notes } = adaptToSchema(ports, {
+      ports: { default: "http", "8080": "http", "8443": "https" },
+    });
+    expect(out).toEqual({ ports: { default: "http", "8080": "http", "8443": "https" } });
+    expect(notes).toEqual([]);
+  });
 });

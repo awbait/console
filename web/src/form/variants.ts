@@ -51,6 +51,7 @@ export function fitsType(branch: Schema, value: unknown): boolean {
 // schema names no default: an object to put the fields in, an empty string for
 // a string, so that the value already says which branch it is.
 export function emptyOf(branch: Schema): unknown {
+  if (branch.type === "null") return null;
   if (branch.type === "string") return "";
   if (branch.type === "array") return [];
   if (branch.type === "object" || branch.properties) return {};

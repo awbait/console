@@ -111,12 +111,29 @@ function matchesPattern(pattern: string, v: string): boolean {
   }
 }
 
+// primaryType resolves a JSON Schema type to a single type string: a plain
+// string stays as-is, a nullable pair like ["integer", "null"] resolves to
+// "integer", ["null"] resolves to "null", and multi-type unions like
+// ["string", "number"] return undefined (handled via scalarTypesOf).
+export function primaryType(t: unknown): string | undefined {
+  if (typeof t === "string") return t;
+  if (!Array.isArray(t)) return undefined;
+  const nonNull = t.filter((x): x is string => typeof x === "string" && x !== "null");
+  if (nonNull.length === 1) return nonNull[0];
+  if (nonNull.length === 0 && t.includes("null")) return "null";
+  return undefined;
+}
+
+function cloneVal<T>(v: T): T {
+  return v !== null && typeof v === "object" ? structuredClone(v) : v;
+}
+
 function leafErrors(s: Schema, v: unknown, path: string, out: Map<string, string>) {
   if (emptyVal(v)) return;
   if (typeof v === "number") {
     const min = typeof s.minimum === "number" ? s.minimum : undefined;
     const max = typeof s.maximum === "number" ? s.maximum : undefined;
-    if (s.type === "integer" && !Number.isInteger(v)) out.set(path, fieldMsg.integer);
+    if (primaryType(s.type) === "integer" && !Number.isInteger(v)) out.set(path, fieldMsg.integer);
     else if (min !== undefined && max !== undefined && (v < min || v > max))
       out.set(path, fieldMsg.range(min, max));
     else if (min !== undefined && v < min) out.set(path, fieldMsg.min(min));
@@ -144,22 +161,33 @@ function walkErrors(
   out: Map<string, string>,
   defaults?: Values,
   inherited: Schema[] = [],
+  isRequired = true,
 ) {
   const s = deref(node, root);
   if (isHidden(s)) return;
   const opts = variantsOf(s, root);
   if (opts) {
     const chosen = opts[matchVariant(value, opts, root)];
-    // A branch that is one value (a vhost given by its name) left empty is a
-    // value still to type, the same as the variant's input says.
-    if (!variantsOf(chosen, root) && chosen.type !== "object" && chosen.type !== "array" && emptyVal(value)) {
+    const chosenType = primaryType(chosen.type);
+    // A required branch that is one value (e.g. a vhost given by its name) left
+    // empty is a value still to type, the same as the variant's input says.
+    // Optional variants and explicit null branches may be left empty/null.
+    if (
+      isRequired &&
+      !variantsOf(chosen, root) &&
+      chosenType !== "object" &&
+      chosenType !== "array" &&
+      chosenType !== "null" &&
+      emptyVal(value)
+    ) {
       out.set(base, fieldMsg.required);
       return;
     }
-    walkErrors(chosen, value, root, undefined, base, out, defaults, inherited);
+    walkErrors(chosen, value, root, undefined, base, out, defaults, inherited, isRequired);
     return;
   }
-  if (s.type === "object" && s.properties) {
+  const sType = primaryType(s.type);
+  if (sType === "object" && s.properties) {
     const viewRequired = new Set<string>(view?.required ?? []);
     for (const k of viewKeys(s, view, root)) {
       const field = resolveField(k, s, root, (value as Values) ?? {});
@@ -176,14 +204,16 @@ function walkErrors(
       if (hidden.has(field.label) || isHidden(child)) continue;
       const cv = field.value;
       const cpath = `${base}/${k}`;
+      const childReq = required.has(field.label) || viewRequired.has(k);
+      const childType = primaryType(child.type);
       // A required field with a schema default/const isn't "missing input" - the
       // form shows the default selected and it's applied on submit, so don't flag.
       // Nor is one the chart answers in its values.yaml: Helm fills it in before
       // checking, and so does the server.
       const hasDefault = "default" in child || "const" in child || !emptyVal(defaultAt(defaults, cpath));
-      if ((required.has(field.label) || viewRequired.has(k)) && emptyVal(cv) && !hasDefault) {
+      if (childReq && emptyVal(cv) && !hasDefault) {
         // A required empty array needs an element added, not a value typed in.
-        out.set(cpath, child.type === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
+        out.set(cpath, childType === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
         continue;
       }
       const childBranches = branchesBelow(branches, field.label, root);
@@ -206,7 +236,7 @@ function walkErrors(
         const hasDefaultObject =
           childDefault !== null && typeof childDefault === "object" && !Array.isArray(childDefault);
         if (
-          child.type === "object" &&
+          childType === "object" &&
           child.properties &&
           (hasDefaultObject || branchRequires(child, root, childBranches, childDefault))
         ) {
@@ -219,6 +249,7 @@ function walkErrors(
             out,
             defaults,
             childBranches,
+            childReq,
           );
         }
         continue;
@@ -232,6 +263,7 @@ function walkErrors(
         out,
         defaults,
         childBranches,
+        childReq,
       );
     }
     // Hybrid object: properties alongside a schema for arbitrary extra keys
@@ -243,7 +275,9 @@ function walkErrors(
       if (typeof s.minProperties === "number" && keys.length < s.minProperties)
         out.set(base, fieldMsg.minItems(s.minProperties));
       const keyPattern = mapKeyPattern(s);
-      const entryView = (deref(extra, root)["ui:view"] ?? view) as View | undefined;
+      // For a hybrid object, the parent view targets s.properties, not extra
+      // entries: only a view declared on the extra schema itself applies here.
+      const entryView = deref(extra, root)["ui:view"] as View | undefined;
       for (const key of keys) {
         if (Object.prototype.hasOwnProperty.call(s.properties, key)) continue;
         const epath = `${base}/${escapeToken(key)}`;
@@ -256,7 +290,7 @@ function walkErrors(
     }
     return;
   }
-  if (s.type === "array") {
+  if (sType === "array") {
     const arr = Array.isArray(value) ? value : [];
     if (typeof s.minItems === "number" && arr.length < s.minItems)
       out.set(base, fieldMsg.minItems(s.minItems));
@@ -569,17 +603,17 @@ export function fieldBranches(
 // seedDefaults builds an initial value for a schema from const/default.
 export function seedDefaults(node: Schema, root: Schema): unknown {
   const s = deref(node, root);
-  if ("const" in s) return s.const;
-  if ("default" in s) return s.default;
+  if ("const" in s) return cloneVal(s.const);
+  if ("default" in s) return cloneVal(s.default);
   const variants = variantsOf(s, root);
   if (variants) return seedDefaults(variants[0], root);
-  if (s.type === "object" && s.properties) {
+  if (primaryType(s.type) === "object" && s.properties) {
     const obj: Values = {};
     for (const k of Object.keys(s.properties)) {
       const v = seedDefaults(s.properties[k], root);
       if (v !== undefined) obj[k] = v;
     }
-    return obj;
+    return Object.keys(obj).length > 0 ? obj : undefined;
   }
   return undefined;
 }
@@ -596,7 +630,7 @@ export function newArrayItem(arr: Schema, root: Schema): unknown {
   // number or enum row starts empty: an {} there reaches the text input as
   // String({}), and the new row reads "[object Object]" instead of blank.
   const holdsFields =
-    (items.type === "object" && items.properties) ||
+    (primaryType(items.type) === "object" && items.properties) ||
     variantsOf(items, root) !== undefined ||
     mapValueSchema(items) !== undefined;
   return holdsFields ? {} : undefined;
@@ -733,6 +767,11 @@ function ObjectFields({
   const viewRequired = new Set<string>(view?.required ?? []);
   // What the chart answers at this object, for conditions on unset fields.
   const answer = defaultAt(useContext(ChartDefaultsCtx), path);
+  const extra = schema.properties ? extraValueSchema(schema) : undefined;
+  const reservedKeys = useMemo(
+    () => (schema.properties ? new Set(Object.keys(schema.properties)) : undefined),
+    [schema.properties],
+  );
   return (
     <div className="flex flex-col gap-4">
       {viewKeys(schema, view, root).map((k) => {
@@ -773,6 +812,17 @@ function ObjectFields({
           </div>
         );
       })}
+      {extra && (
+        <MapField
+          name={text(schema.title) ?? ""}
+          schema={schema}
+          root={root}
+          value={value}
+          onChange={(v) => onChange(objectValue(v))}
+          path={path}
+          reservedKeys={reservedKeys}
+        />
+      )}
     </div>
   );
 }
@@ -837,7 +887,9 @@ function Field({
       />
     ) : undefined;
 
-  if (s["ui:widget"] === "single" && s.type === "array")
+  const fieldType = primaryType(s.type);
+
+  if (s["ui:widget"] === "single" && fieldType === "array")
     return sub(
       <SingleField
         name={name}
@@ -881,7 +933,9 @@ function Field({
     );
   }
 
-  switch (s.type) {
+  switch (fieldType) {
+    case "null":
+      return null;
     case "boolean":
       return (
         <Checkbox label={label} isRequired={required} isDisabled={locked} isSelected={Boolean(value ?? fallback ?? false)} onChange={(v) => change(v)} />
@@ -892,7 +946,7 @@ function Field({
       // behind the label action. A values.yaml answer may arrive as text ("3"),
       // and is inserted as the number it reads as, or not offered at all.
       const n = typeof fallback === "number" ? fallback : fallback != null ? Number(fallback) : Number.NaN;
-      const numeric = Number.isFinite(n) && (s.type !== "integer" || Number.isInteger(n)) ? n : undefined;
+      const numeric = Number.isFinite(n) && (fieldType !== "integer" || Number.isInteger(n)) ? n : undefined;
       return (
         <NumberInput
           label={label}
@@ -904,7 +958,7 @@ function Field({
           hideLabel={hideLabel}
           labelAction={defaultActionWith(numeric)}
           placeholder={fallback != null ? defaultPlaceholder(String(fallback)) : undefined}
-          integer={s.type === "integer"}
+          integer={fieldType === "integer"}
           value={typeof value === "number" ? value : undefined}
           onChange={(v) => change(v)}
         />
@@ -925,7 +979,6 @@ function Field({
       );
     case "object":
       if (s.properties) {
-        const extra = extraValueSchema(s);
         return sub(
           <Section label={label} desc={desc} required={required}>
             <ObjectFields
@@ -937,19 +990,6 @@ function Field({
               path={path}
               branches={branches}
             />
-            {extra && (
-              <div className="mt-4">
-                <MapField
-                  name={name}
-                  schema={s}
-                  root={root}
-                  value={value}
-                  onChange={onChange}
-                  path={path}
-                  reservedKeys={new Set(Object.keys(s.properties))}
-                />
-              </div>
-            )}
           </Section>,
         );
       }
@@ -957,6 +997,28 @@ function Field({
         return sub(<MapField name={name} schema={s} root={root} value={value} onChange={onChange} path={path} />);
       return null;
     default: {
+      // Multi-type scalar union such as type: ["string", "number"] (e.g. cpu
+      // quantities): parse typed input according to the admitted scalar types
+      // instead of always writing a string.
+      const multiTypes = Array.isArray(s.type) ? scalarTypesOf(s, root) : undefined;
+      if (multiTypes) {
+        const shownFallback = fallback != null ? scalarText(fallback, multiTypes) : undefined;
+        return (
+          <TextField
+            label={label}
+            description={desc}
+            requirements={requirements}
+            isRequired={required}
+            isDisabled={locked}
+            errorText={err}
+            hideLabel={hideLabel}
+            labelAction={defaultActionWith(fallback)}
+            placeholder={shownFallback ? defaultPlaceholder(shownFallback) : undefined}
+            value={scalarText(value, multiTypes)}
+            onChange={(v) => change(v === "" ? undefined : parseScalar(v, multiTypes))}
+          />
+        );
+      }
       // A string, drawn on one line unless the view asks for a multi-line
       // field. The widget only picks the control: the value is the same
       // string, line breaks included, and empty still means "not set".
@@ -1175,7 +1237,15 @@ function VariantField({
 }) {
   return (
     <Section label={text(schema.title) ?? name} desc={text(schema.description)} required={required}>
-      <VariantBody schema={schema} root={root} value={value} onChange={onChange} path={path} branches={branches} />
+      <VariantBody
+        schema={schema}
+        root={root}
+        required={required}
+        value={value}
+        onChange={onChange}
+        path={path}
+        branches={branches}
+      />
     </Section>
   );
 }
@@ -1187,6 +1257,7 @@ function VariantField({
 function VariantBody({
   schema,
   root,
+  required = true,
   value,
   onChange,
   path = "",
@@ -1194,6 +1265,7 @@ function VariantBody({
 }: {
   schema: Schema;
   root: Schema;
+  required?: boolean;
   value: unknown;
   onChange: (v: unknown) => void;
   path?: string;
@@ -1218,7 +1290,7 @@ function VariantBody({
           }}
           options={options.map((o, i) => ({ id: String(i), label: text(o.title) ?? `Вариант ${i + 1}` }))}
         />
-        {selected.type === "object" && selected.properties ? (
+        {primaryType(selected.type) === "object" && selected.properties ? (
           <ObjectFields
             schema={selected}
             root={root}
@@ -1228,16 +1300,16 @@ function VariantBody({
             branches={branches}
           />
         ) : (
-          // A text cleared to nothing would no longer say which branch it is,
-          // and the picker would snap back to the first: it stays the branch's
-          // empty value instead, and validation asks for it to be filled in.
+          // A required text cleared to nothing keeps the branch's empty value so
+          // the picker stays on this branch and validation asks for it; an
+          // optional variant returns to undefined so it can be submitted unset.
           <Field
             name={name}
             schema={selected}
             root={root}
-            required
+            required={required}
             value={value}
-            onChange={(v) => onChange(v === undefined ? emptyOf(selected) : v)}
+            onChange={(v) => onChange(v === undefined ? (required ? emptyOf(selected) : undefined) : v)}
             path={path}
           />
         )}
@@ -1304,7 +1376,7 @@ function ArrayField({
   // card uses this to flag that it hides invalid or unfilled required fields,
   // which the user otherwise cannot see until expanding.
   const itemErrorCount = (i: number): number => errorsUnder(validation, `${path}/${i}`);
-  const isObjectItem = itemSchema.type === "object" && itemSchema.properties;
+  const isObjectItem = primaryType(itemSchema.type) === "object" && itemSchema.properties;
   const minItems = typeof schema.minItems === "number" ? schema.minItems : 0;
   // Can't remove below the schema minimum, and not at all when the array is locked.
   const noRemove = items.length <= minItems || locked;
@@ -1597,7 +1669,7 @@ function SingleField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item]);
 
-  if (itemSchema.type === "object" && itemSchema.properties) {
+  if (primaryType(itemSchema.type) === "object" && itemSchema.properties) {
     return (
       <Section label={label} desc={desc} required={required}>
         <ObjectFields
@@ -1796,10 +1868,10 @@ function MapField({
   const kind = mapKindOf(entry, root);
   // The scalar types an "any" entry admits: what its typed text is read into.
   const anyTypes = kind === "any" ? scalarTypesOf(entry, root) : undefined;
-  // What an entry card draws inside: the value schema's own view, else the view
-  // written on the map node, which is where a view override lands (walkErrors
-  // and fieldBreadcrumb read it the same way).
-  const entryView = (entry["ui:view"] ?? schema["ui:view"]) as View | undefined;
+  // What an entry card draws inside: the value schema's own view; only a pure
+  // map inherits schema["ui:view"] (for a hybrid object with reservedKeys,
+  // schema["ui:view"] describes the fixed properties, not the extra entries).
+  const entryView = (entry["ui:view"] ?? (reservedKeys ? undefined : schema["ui:view"])) as View | undefined;
   const label = text(schema.title) ?? name;
   const desc = text(schema.description);
   const [rows, setRows] = useState<mapRow[]>(() =>
@@ -1969,7 +2041,7 @@ function MapField({
                 </div>
                 <DisclosurePanel>
                   <div className="border-t border-gray-100 px-3 py-3">
-                    {entry.type === "object" && entry.properties ? (
+                    {primaryType(entry.type) === "object" && entry.properties ? (
                       <ObjectFields
                         schema={entry}
                         root={root}
@@ -2086,13 +2158,14 @@ export function sameValues(a: unknown, b: unknown): boolean {
 }
 
 function prune(v: any): any {
+  if (v instanceof Date) return v;
   if (Array.isArray(v)) return v.map(prune).filter((x) => x !== undefined && x !== "");
   if (v && typeof v === "object") {
     const out: Values = {};
     for (const [k, val] of Object.entries(v)) {
       const p = prune(val);
       if (p === undefined || p === "") continue;
-      if (p && typeof p === "object" && !Array.isArray(p) && Object.keys(p).length === 0) continue;
+      if (p && typeof p === "object" && !Array.isArray(p) && !(p instanceof Date) && Object.keys(p).length === 0) continue;
       out[k] = p;
     }
     return out;

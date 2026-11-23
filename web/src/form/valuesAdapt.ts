@@ -154,6 +154,9 @@ function adaptObject(
 // already there, so anything typed since wins and the rest of the old element
 // comes back instead of staying out of reach.
 function recoverSpreadList(s: Schema, value: Values, name: string, notes: string[]): Values {
+  // Hybrid objects (properties + additionalProperties/patternProperties) admit
+  // arbitrary extra keys, including numeric ones like port numbers ("8080").
+  if (extraValueSchema(s)) return value;
   const spread = Object.keys(value).filter((k) => isIndex(k) && !s.properties?.[k]);
   if (spread.length === 0) return value;
   const kept: Values = {};

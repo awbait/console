@@ -356,12 +356,14 @@ export function fieldBreadcrumb(pointer: string, root?: Schema, view?: Schema): 
     // index rule, because a map may well have "0" for a key.
     const entry = node && root && !node.properties?.[seg] && !node.items ? extraValueSchema(node) : undefined;
     if (entry) {
+      const hybrid = Boolean(node?.properties);
       out = out ? `${out} › ${seg}` : seg;
       skipIndex = false;
       node = deref(entry, root!);
-      // Inside an entry the form draws the value schema's own view, else the
-      // view written on the map node (the one a view override handed down).
-      curView = (node["ui:view"] ?? curView) as Schema | undefined;
+      // Inside an entry the form draws the value schema's own view; only a pure
+      // map inherits curView written on the map node (for a hybrid object,
+      // curView describes node.properties, not the extra entries).
+      curView = (node["ui:view"] ?? (hybrid ? undefined : curView)) as Schema | undefined;
       continue;
     }
     if (/^\d+$/.test(seg)) {
