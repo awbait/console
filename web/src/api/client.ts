@@ -225,7 +225,7 @@ export const api = {
   // catalog
   listCharts: () => req<Chart[]>("GET", "/charts"),
   // Catalog in one request: Harbor charts + categories + publication overlay.
-  getCatalog: () => req<CatalogResponse>("GET", "/catalog"),
+  getCatalog: (signal?: AbortSignal) => req<CatalogResponse>("GET", "/catalog", undefined, signal),
   // Check a chart by arbitrary Harbor path (project/name) before publishing.
   checkChart: (path: string) => req<ChartCheckResult>("POST", "/charts/check", { path }),
   getChart: (project: string, name: string, signal?: AbortSignal) =>
