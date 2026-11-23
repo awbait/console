@@ -490,6 +490,43 @@ func TestAdoptClosesOnceInUse(t *testing.T) {
 		t.Fatalf("owner changed: owner=%s created_by=%s", p.OwnerTeam, p.CreatedBy)
 	}
 
+	// Re-opening the live version for a view edit (DRAFT -> PENDING -> REJECTED)
+	// must never re-open adoption: ApprovedViewJSON is still serving live orders.
+	if _, err := svc.SaveVersionView(ctx, a, p.ID, "1.0.0", viewV2); err != nil {
+		t.Fatalf("edit live version view: %v", err)
+	}
+	if _, err := svc.SubmitVersion(ctx, a, p.ID, "1.0.0"); err != nil {
+		t.Fatalf("resubmit live version: %v", err)
+	}
+	p, err = svc.Get(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Adoptable {
+		t.Fatal("a live service with a pending version edit must not read as adoptable")
+	}
+	if _, err := svc.Adopt(ctx, member("abc"), p.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "abc",
+	}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("adopt during pending version edit: want conflict, got %v", err)
+	}
+
+	if _, err := svc.RejectVersion(ctx, a, p.ID, "1.0.0", "needs tweak"); err != nil {
+		t.Fatalf("reject live version edit: %v", err)
+	}
+	p, err = svc.Get(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Adoptable {
+		t.Fatal("a live service with a rejected version edit must not read as adoptable")
+	}
+	if _, err := svc.Adopt(ctx, member("abc"), p.ID, publications.AdoptInput{
+		CategoryID: "network", OwnerTeam: "abc",
+	}); !errors.Is(err, models.ErrConflict) {
+		t.Fatalf("adopt after rejected version edit: want conflict, got %v", err)
+	}
+
 	// The admin still names the owning team, which is the deliberate way out of
 	// the parking lot: the metadata FSM, approved by the admin themselves.
 	abc := "abc"
