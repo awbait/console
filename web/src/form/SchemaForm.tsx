@@ -23,7 +23,6 @@ import {
   itemBranches,
   mapKeyPattern,
   mapValueSchema,
-  pinnedAt,
 } from "./fieldPath";
 import { parseScalar, type ScalarType, scalarText, scalarTypesOf } from "./mapScalar";
 import { emptyOf, fitsType, variantsOf } from "./variants";
@@ -184,16 +183,43 @@ function walkErrors(
         out.set(cpath, child.type === "array" ? fieldMsg.minItems(1) : fieldMsg.required);
         continue;
       }
+      const childBranches = branchesBelow(branches, field.label, root);
+      const childDefault = defaultAt(defaults, cpath);
       // A field another field decides: a chart declares the rule where both are
       // visible (usually the root), so nothing on this field's own node says it
-      // is pinned. Checked here rather than left to the server, because the
-      // person can put the field right while they are still looking at it.
-      const pinned = pinnedAt(k, s, value);
-      if (pinned !== undefined && cv !== undefined && cv !== pinned) {
+      // is pinned. Reading it off childBranches catches both top-level path
+      // views and nested sections, and honors defaults from values.yaml.
+      const pinned = childBranches.find((b) => "const" in b)?.const;
+      const effectiveVal = cv !== undefined ? cv : childDefault;
+      if (pinned !== undefined && effectiveVal !== undefined && effectiveVal !== pinned) {
         out.set(cpath, fieldMsg.pinned(pinned));
         continue;
       }
-      if (cv === undefined) continue;
+      if (cv === undefined) {
+        // An untouched nested object still needs checking when the chart's
+        // values.yaml provides it (so the server will validate its contents) or
+        // an active default-driven branch requires fields inside it - matching
+        // the "*" ObjectFields already renders on screen.
+        const hasDefaultObject =
+          childDefault !== null && typeof childDefault === "object" && !Array.isArray(childDefault);
+        if (
+          child.type === "object" &&
+          child.properties &&
+          (hasDefaultObject || branchRequires(child, root, childBranches, childDefault))
+        ) {
+          walkErrors(
+            childNode,
+            {},
+            root,
+            child["ui:view"] as View | undefined,
+            cpath,
+            out,
+            defaults,
+            childBranches,
+          );
+        }
+        continue;
+      }
       walkErrors(
         childNode,
         cv,
@@ -202,7 +228,7 @@ function walkErrors(
         cpath,
         out,
         defaults,
-        branchesBelow(branches, field.label, root),
+        childBranches,
       );
     }
     return;
@@ -448,6 +474,43 @@ function hiddenBy(branches: Schema[], root: Schema): string[] {
     }
   }
   return out;
+}
+
+// branchRequires answers whether any active conditional branch on an untouched
+// object (or its nested object children) marks a visible field required. Used
+// by walkErrors so optional untouched sections are skipped unless a branch
+// actually demands fields inside them.
+function branchRequires(
+  node: Schema,
+  root: Schema,
+  inherited: Schema[],
+  answer?: unknown,
+  depth = 0,
+): boolean {
+  if (depth > 20) return false;
+  const s = deref(node, root);
+  if (s.type !== "object" || !s.properties) return false;
+  const branches = activeBranches(s, {}, root, inherited, answer);
+  const hidden = new Set(hiddenBy(branches, root));
+  if (requiredBy(branches).some((k) => !hidden.has(k))) return true;
+  const chart = answer !== null && typeof answer === "object" && !Array.isArray(answer) ? (answer as Values) : undefined;
+  for (const [k, prop] of Object.entries(s.properties)) {
+    if (hidden.has(k)) continue;
+    const sub = branchesBelow(branches, k, root);
+    const child = deref(prop as Schema, root);
+    if (child.type !== "object" || !child.properties || isHidden(child)) continue;
+    if (
+      sub.length > 0 ||
+      child.if ||
+      child.allOf ||
+      child.dependencies ||
+      child.dependentRequired ||
+      child.dependentSchemas
+    ) {
+      if (branchRequires(child, root, sub, chart?.[k], depth + 1)) return true;
+    }
+  }
+  return false;
 }
 
 // fieldBranches answers which branch fragments apply to the object that owns a

@@ -229,6 +229,54 @@ describe("a condition on a field left at its default", () => {
     expect(errs.get("/valkey/storage/class")).toBeString();
   });
 
+  it("checks an untouched nested object when a default triggers a branch", () => {
+    const errs = collectErrors(withDefault, {});
+    expect(errs.get("/valkey/storage/size")).toBeString();
+    expect(errs.get("/valkey/storage/class")).toBeString();
+    const fromValues = collectErrors(valkey, {}, undefined, { valkey: { storage: { enabled: true } } });
+    expect(fromValues.get("/valkey/storage/size")).toBeString();
+    expect(fromValues.get("/valkey/storage/class")).toBeString();
+  });
+
+  it("checks an untouched nested object whose own if/then triggers on a default", () => {
+    const localIf = {
+      type: "object",
+      properties: {
+        storage: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean", default: true },
+            class: { type: "string" },
+          },
+          if: { properties: { enabled: { const: true } }, required: ["enabled"] },
+          // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+          then: { required: ["class"] },
+        },
+      },
+    };
+    expect(collectErrors(localIf, {}).get("/storage/class")).toBeString();
+    expect(collectErrors(localIf, { storage: { enabled: false } }).size).toBe(0);
+  });
+
+  it("leaves an optional untouched object alone when no branch requires fields inside it", () => {
+    const optionalProxy = {
+      type: "object",
+      properties: {
+        proxy: {
+          type: "object",
+          required: ["host"],
+          properties: {
+            host: { type: "string" },
+            port: { type: "integer", default: 8080 },
+          },
+        },
+      },
+    };
+    expect(collectErrors(optionalProxy, {}).size).toBe(0);
+    // In mesh mode else only hides senders.subnet and does not require senders.
+    expect(collectErrors(egress, { mode: "mesh" }).has("/senders/namespace")).toBe(false);
+  });
+
   it("reads the chart's answer in values.yaml", () => {
     const errs = collectErrors(valkey, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } });
     expect(errs.get("/valkey/storage/size")).toBeString();
