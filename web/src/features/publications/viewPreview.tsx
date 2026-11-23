@@ -33,6 +33,7 @@ import { pruneEmpty, type View } from "@/form/SchemaForm";
 import { useNamespaceVars } from "@/form/useNamespaceVars";
 import { useAsync } from "@/hooks/useAsync";
 import { OrderMetaCard, OrderValuesCard } from "../orders/OrderFormParts";
+import { parseYamlValues } from "../orders/orderYaml";
 import { Meta, ProductView } from "../orders/requestDetailParts";
 import { valuesEditorFor } from "../orders/valuesEditors";
 
@@ -259,7 +260,7 @@ export function PreviewPane({
       setRaw(yaml.dump(pruneEmpty(values)));
     } else if (mode === "raw") {
       try {
-        setValues((yaml.load(raw) as Values) ?? {});
+        setValues(parseYamlValues(raw));
       } catch {
         /* keep previous form values if YAML is invalid */
       }

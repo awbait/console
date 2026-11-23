@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { ViewDocument } from "@/api/types";
+import { pruneEmpty } from "@/form/SchemaForm";
 import {
   hasYamlChanges,
+  parseSavedValues,
   parseYamlDocument,
+  parseYamlValues,
   touchedStampedFields,
   yamlLock,
   yamlText,
@@ -129,5 +132,26 @@ describe("touchedStampedFields", () => {
     const saved = { auth: { creator: "console", replicas: 1 } };
     const next = { auth: { creator: "console", replicas: 3 } };
     expect(touchedStampedFields(doc, saved, next)).toEqual([]);
+  });
+});
+
+describe("parseYamlValues and parseSavedValues", () => {
+  it("keeps unquoted ISO dates as strings so pruneEmpty never drops them", () => {
+    const raw = "releaseDate: 2026-12-31\nupdatedAt: 2026-01-15T10:00:00Z\n";
+    const parsed = parseYamlValues(raw);
+    expect(parsed).toEqual({
+      releaseDate: "2026-12-31",
+      updatedAt: "2026-01-15T10:00:00Z",
+    });
+    expect(pruneEmpty(parsed)).toEqual(parsed);
+    expect(parseSavedValues(raw)).toEqual(parsed);
+  });
+
+  it("returns empty object on blank YAML and rejects scalar or array roots", () => {
+    expect(parseYamlValues("")).toEqual({});
+    expect(parseYamlValues("   \n")).toEqual({});
+    expect(() => parseYamlValues("hello")).toThrow(yamlText.notObject);
+    expect(() => parseYamlValues("- a\n- b\n")).toThrow(yamlText.notObject);
+    expect(parseSavedValues("- a\n- b\n")).toEqual({});
   });
 });

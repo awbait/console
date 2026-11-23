@@ -132,6 +132,18 @@ export function parseSavedValues(text: string): Values {
   }
 }
 
+// parseYamlValues parses user-edited YAML with JSON_SCHEMA (so ISO dates stay
+// strings). Empty YAML yields {}; non-object roots throw yamlText.notObject so
+// callers surface the error instead of spreading a scalar or array into keys.
+export function parseYamlValues(text: string): Values {
+  const parsed = yaml.load(text, { schema: yaml.JSON_SCHEMA });
+  if (parsed === null || parsed === undefined) return {};
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(yamlText.notObject);
+  }
+  return parsed as Values;
+}
+
 // normalizeSavedYaml returns the canonical YAML of the stored order values for
 // semantic diffing, falling back to the raw string if it cannot be parsed.
 export function normalizeSavedYaml(text: string): string {
