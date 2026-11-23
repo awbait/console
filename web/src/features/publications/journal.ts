@@ -30,12 +30,14 @@ export function describeEvent(e: PublicationEvent, labels: JournalLabels): strin
       return ev.discovered;
     case "updated": {
       // A proposal: the draft fields it set, or cleared (an empty value is
-      // the proposal taken back).
+      // the proposal taken back). Both category and owner may be proposed in
+      // one PATCH, so report every set field rather than returning on the first.
       const cat = p.draft_category_id;
       const owner = p.draft_owner_team;
-      if (typeof cat === "string" && cat !== "") return ev.proposedCategory(labels.category(cat));
-      if (typeof owner === "string" && owner !== "") return ev.proposedOwner(labels.team(owner));
-      return ev.proposalReverted;
+      const parts: string[] = [];
+      if (typeof cat === "string" && cat !== "") parts.push(ev.proposedCategory(labels.category(cat)));
+      if (typeof owner === "string" && owner !== "") parts.push(ev.proposedOwner(labels.team(owner)));
+      return parts.length ? parts.join(" ") : ev.proposalReverted;
     }
     case "submitted":
       return ev.submitted;

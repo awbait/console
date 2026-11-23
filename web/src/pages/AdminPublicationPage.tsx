@@ -41,6 +41,7 @@ export function AdminPublicationPage() {
   // The registry row carries the server's verdict on the publication (issue
   // codes, order counts); the list is shared with the registry page's cache.
   const { data: rows, reload: reloadRows } = useAsync((s) => api.adminPublications(s), [], qk.registry());
+  const [journalTick, setJournalTick] = useState(0);
   const row = rows?.find((r) => r.publication.id === pub?.id) ?? null;
 
   const parent = { label: registryText.title, to: "/admin/approvals" };
@@ -61,6 +62,7 @@ export function AdminPublicationPage() {
   const reload = () => {
     reloadPub();
     reloadRows();
+    setJournalTick((n) => n + 1);
   };
   const ordersTo = `/admin/requests?product=${encodeURIComponent(name)}`;
   // What a team proposed about the category and owner: decided here when it
@@ -99,7 +101,7 @@ export function AdminPublicationPage() {
           </>
         }
         decision={decision}
-        after={<JournalSection pub={pub} />}
+        after={<JournalSection pub={pub} refreshKey={journalTick} />}
       />
     </div>
   );
@@ -109,13 +111,16 @@ export function AdminPublicationPage() {
 // The publication's journal
 // ---------------------------------------------------------------------------
 
-function JournalSection({ pub }: { pub: ChartPublication }) {
+function JournalSection({ pub, refreshKey }: { pub: ChartPublication; refreshKey: number }) {
   const { categories } = useCatalog();
   const teamLabel = useTeamLabel();
   const [all, setAll] = useState(false);
-  // Re-read when the publication changes under it: every action on the page
-  // moves updated_at and writes a row here.
-  const { data, loading, error, reload } = useAsync(() => api.getPublication(pub.id), [pub.id, pub.updated_at]);
+  // Re-read when the publication changes or any version/refresh action runs
+  // (some actions write journal events without bumping publication.updated_at).
+  const { data, loading, error, reload } = useAsync(
+    () => api.getPublication(pub.id),
+    [pub.id, pub.updated_at, refreshKey],
+  );
   const labels = {
     category: (id: string) => categories.find((c) => c.id === id)?.label ?? id,
     team: (id: string) => (id ? teamLabel(id) : ""),

@@ -1,5 +1,5 @@
 import { IconArrowRight, IconClock, IconUser } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, errorMessage } from "@/api/client";
 import type { ChartPublication, Submission } from "@/api/types";
 import { useCatalog } from "@/app/CatalogContext";
@@ -32,6 +32,15 @@ export function useMetaDecision(pub: ChartPublication | null, onDecided: () => v
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Reset comment and error when the panel switches to another publication
+  // (e.g. ?meta= changes while the dialog stays mounted).
+  const pubId = pub?.id ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset form state when target publication changes
+  useEffect(() => {
+    setComment("");
+    setErr(null);
+  }, [pubId]);
 
   async function decide(action: "approve" | "reject") {
     if (!pub) return;

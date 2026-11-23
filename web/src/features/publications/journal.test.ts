@@ -29,6 +29,9 @@ describe("describeEvent", () => {
   test("a proposal says what was proposed, an empty one that it was taken back", () => {
     expect(describeEvent(ev("updated", { draft_category_id: "databases" }), labels)).toContain("Базы");
     expect(describeEvent(ev("updated", { draft_owner_team: "dbaas" }), labels)).toContain("DBaaS");
+    const both = describeEvent(ev("updated", { draft_category_id: "databases", draft_owner_team: "dbaas" }), labels);
+    expect(both).toContain("Базы");
+    expect(both).toContain("DBaaS");
     expect(describeEvent(ev("updated", { draft_category_id: "" }), labels)).toBe(
       "Предложение по категории или владельцу отменено. Действуют согласованные значения.",
     );

@@ -18,18 +18,16 @@ import {
   ModalOverlay,
   Popover,
 } from "react-aria-components";
-import { Outlet, } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { api, HttpError } from "../api/client";
-import type {
-  Category,
-} from "../api/types";
+import type { Category } from "../api/types";
 import { useCatalog } from "../app/CatalogContext";
 import { useUser } from "../auth/UserContext";
-import { CATEGORY_ICON_CHOICES, categoryIcon, categoryIconName, } from "../components/icons";
+import { CATEGORY_ICON_CHOICES, categoryIcon, categoryIconName } from "../components/icons";
 import { Page, PageBody } from "../components/Page";
 import { PageHeader } from "../components/PageHeader";
-import { Button, Card, ErrorBox, } from "../components/ui";
-import { fieldMsg, } from "../form/fieldErrors";
+import { Button, Card, ErrorBox } from "../components/ui";
+import { fieldMsg } from "../form/fieldErrors";
 
 // ---------------------------------------------------------------------------
 // shared visual bits (same language as the security section)

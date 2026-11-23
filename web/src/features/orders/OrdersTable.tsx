@@ -107,10 +107,11 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // Live updates: a global SSE stream pushes a "status_changed" signal on any
   // request status change; we re-fetch the (team-scoped) list. Browser handles
   // reconnect. One-way server->client - SSE, not WebSockets.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
   useEffect(() => {
-    return subscribe("/api/v1/requests/events", { status_changed: () => reload() }, "orders");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reload]);
+    return subscribe("/api/v1/requests/events", { status_changed: () => reloadRef.current() }, "orders");
+  }, []);
 
   const { team } = useTeam();
   const { user } = useUser();
@@ -143,10 +144,16 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   // publications registry links here to "the orders on this service", and a
   // link that lands on the full list leaves the reader to find the filter.
   const [params] = useSearchParams();
-  const [productFilter, setProductFilter] = useState<Set<string>>(() => {
-    const product = params.get("product");
-    return new Set(product ? [product] : []);
-  });
+  const productParam = params.get("product");
+  const [productFilter, setProductFilter] = useState<Set<string>>(() =>
+    new Set(productParam ? [productParam] : []),
+  );
+  const prevProductParam = useRef(productParam);
+  useEffect(() => {
+    if (prevProductParam.current === productParam) return;
+    prevProductParam.current = productParam;
+    setProductFilter(new Set(productParam ? [productParam] : []));
+  }, [productParam]);
   const [namespaceFilter, setNamespaceFilter] = useState<Set<string>>(new Set());
   const [standFilter, setStandFilter] = useState<Set<string>>(new Set());
   // The order pending delete confirmation (null = dialog closed).
@@ -180,7 +187,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
   const standOptions = useMemo(
     () => [...new Set(scoped.map(standName))].filter(Boolean).sort(),
     // biome-ignore lint/correctness/useExhaustiveDependencies: standName reads stands, which is the dependency
-    [scoped, standName],
+    [scoped, stands],
   );
 
   const rows = useMemo(() => {
@@ -203,7 +210,8 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       if (ad !== bd) return ad - bd;
       return dir * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
-  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, standName]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: standName reads stands, which is the dependency
+  }, [scoped, shown, newestFirst, teamFilter, productFilter, namespaceFilter, standFilter, stands]);
 
   // Is anything still hidden to the right of the pinned pair? That is the only
   // moment their edge means something, so it is drawn only then.
@@ -242,7 +250,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
       el.removeEventListener("wheel", onWheel);
       ro.disconnect();
     };
-  }, []);
+  }, [rows.length, loading, allTeams]);
 
   if (loading) return <SkeletonRows rows={6} />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;

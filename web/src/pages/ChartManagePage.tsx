@@ -367,6 +367,7 @@ export function PublicationOverview({
     setBusy(`orderable:${row.chart_version}`);
     try {
       await api.setVersionOrderable(pub.id, row.chart_version, !row.orderable);
+      reload();
       reloadVersions();
       reloadCatalog();
       success(row.orderable ? "Версия убрана из каталога" : "Версия доступна в каталоге");
@@ -401,6 +402,7 @@ export function PublicationOverview({
     setBusy(`support:${version}`);
     try {
       await api.deprecateVersion(pub.id, version, "");
+      reload();
       reloadVersions();
       success(`Версия ${version} скрыта`);
     } catch (e) {
@@ -414,6 +416,7 @@ export function PublicationOverview({
     setBusy(`support:${row.chart_version}`);
     try {
       await api.undeprecateVersion(pub.id, row.chart_version);
+      reload();
       reloadVersions();
       reloadCatalog();
       success(`Версия ${row.chart_version} вернулась в работу`);
@@ -433,6 +436,7 @@ export function PublicationOverview({
     setBusy("refresh");
     try {
       const { versions: n } = await api.refreshChart(pub.id);
+      reload();
       reloadChart();
       reloadVersions();
       reloadCatalog();
@@ -508,7 +512,7 @@ export function PublicationOverview({
               pending={!isAdmin && !!pub.draft_category_id}
               options={categories.map((c) => ({ id: c.id, label: c.label }))}
               onChange={(id) => onMetaChange({ category_id: id })}
-              info="Категория изменится только после согласования"
+              info={isAdmin ? undefined : "Категория изменится только после согласования"}
             />
           ) : pub.draft_category_id && !isAdmin ? (
             <ProposalChip
@@ -534,7 +538,7 @@ export function PublicationOverview({
               pending={!isAdmin && !!pub.draft_owner_team}
               options={ownerOptions.map((t) => ({ id: t, label: teamLabel(t) }))}
               onChange={(t) => onMetaChange({ owner_team: t })}
-              info="Владелец изменится только после согласования"
+              info={isAdmin ? undefined : "Владелец изменится только после согласования"}
             />
           ) : pub.draft_owner_team && !isAdmin ? (
             <ProposalChip

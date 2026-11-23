@@ -132,7 +132,11 @@ const fullDate = (iso: string) =>
 
 export function AdminPublicationsPage() {
   const { data: rows, error, loading, reload } = useAsync((s) => api.adminPublications(s), [], qk.registry());
-  const { data: pending, reload: reloadPending } = useAsync((s) => api.pendingVersions(s), [], qk.pendingVersions());
+  const {
+    data: pending,
+    error: pendingError,
+    reload: reloadPending,
+  } = useAsync((s) => api.pendingVersions(s), [], qk.pendingVersions());
   const { categories, reload: reloadCatalog } = useCatalog();
   const teamLabel = useTeamLabel();
   const navigate = useNavigate();
@@ -156,8 +160,18 @@ export function AdminPublicationsPage() {
   // publication, so a link from the board or a notification lands on it open.
   const metaParam = params.get("meta");
   const deciding = metaParam ? (all.find((r) => metaKey(r.publication) === metaParam) ?? null) : null;
-  const openMeta = (row: RegistryRow) => setParams({ meta: metaKey(row.publication) });
-  const closeMeta = () => setParams({});
+  const openMeta = (row: RegistryRow) =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("meta", metaKey(row.publication));
+      return next;
+    });
+  const closeMeta = () =>
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("meta");
+      return next;
+    });
 
   if (loading && !rows) return <SkeletonRows rows={5} />;
   if (error && !rows) return <ErrorBox error={error} hint={t.loadError} onRetry={reload} />;
@@ -216,7 +230,7 @@ export function AdminPublicationsPage() {
               <IconClock size={13} stroke={1.8} className="text-amber-500" />
               {t.queueWaiting(queue.length)}
             </Chip>
-          ) : (
+          ) : pendingError && !pending ? undefined : (
             <Chip className="bg-emerald-50 text-emerald-700">
               <IconCircleCheck size={13} stroke={1.8} className="text-emerald-500" />
               {t.queueEmpty}
@@ -224,6 +238,8 @@ export function AdminPublicationsPage() {
           )
         }
       />
+
+      {pendingError && !pending && <ErrorBox error={pendingError} onRetry={reloadPending} />}
 
       {/* The queue and the registry's toolbar stay put; only the registry's
           rows scroll (the PageBody inside the registry section). The chip in
@@ -611,6 +627,7 @@ function MetaDecisionPanel({
   onClose: () => void;
   onDecided: () => void;
 }) {
+  const navigate = useNavigate();
   const p = row?.publication ?? null;
   const pendingMeta = p?.status === "PENDING";
   const { comment, onComment, busy, err, decide } = useMetaDecision(p, onDecided);
@@ -633,7 +650,14 @@ function MetaDecisionPanel({
             </Button>
           </>
         ) : (
-          <Button onPress={close}>{t.panelOpenPublication}</Button>
+          <Button
+            onPress={() => {
+              close();
+              if (p) navigate(publicationPath(p));
+            }}
+          >
+            {t.panelOpenPublication}
+          </Button>
         )
       }
     >
