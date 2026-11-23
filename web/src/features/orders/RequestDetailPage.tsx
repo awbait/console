@@ -49,8 +49,15 @@ import { copyText } from "./copyText";
 import { pendingChangeNotice } from "./pendingChange";
 import { DetailActions, Meta, ProductView } from "./requestDetailParts";
 
+// Key the detail view by order id so navigating directly between /requests/:id
+// routes starts with clean local UI state (open dialogs, inline rename draft,
+// and per-order localStorage upgrade dismissal).
 export function RequestDetailPage() {
   const { id = "" } = useParams();
+  return <RequestDetail key={id} id={id} />;
+}
+
+function RequestDetail({ id }: { id: string }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useUser();

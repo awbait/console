@@ -1,5 +1,5 @@
 import { IconCopy, IconRestore } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorMessage } from "@/api/client";
 import { qk } from "@/api/queryKeys";
 import type { OrderRequest, Stand } from "@/api/types";
@@ -54,8 +54,19 @@ export function CopyOrderDialog({
   const restoring = order?.status === "DELETED";
   const standGone = restoring && !!stands && !stands.some((s) => s.id === order?.stand_id);
 
+  // Initialize form fields once per dialog open (keyed by order.id) so SSE or
+  // background query refetches updating order/stands references never wipe
+  // user input or clear busy while a copy request is in flight.
+  const initializedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!order || !stands?.length) return;
+    if (!order) {
+      initializedFor.current = null;
+      setBusy(false);
+      setErr(null);
+      return;
+    }
+    if (!stands?.length || initializedFor.current === order.id) return;
+    initializedFor.current = order.id;
     const own = stands.find((s) => s.id === order.stand_id);
     const pick = own ?? stands.find((s) => s.default) ?? stands[0];
     setStandId(pick.id);

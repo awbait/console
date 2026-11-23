@@ -176,6 +176,35 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
     [scoped, stands],
   );
 
+  // Drop facet selections that no longer belong to the active team or whose
+  // options disappeared (e.g. after switching team or deleting the last order
+  // in a namespace/stand, when the filter chip itself may be hidden).
+  useEffect(() => {
+    if (allTeams) return;
+    setNamespaceFilter((prev) => (prev.size > 0 ? new Set() : prev));
+    setStandFilter((prev) => (prev.size > 0 ? new Set() : prev));
+  }, [team, allTeams]);
+
+  useEffect(() => {
+    if (!data) return;
+    const allowed = new Set(namespaceOptions);
+    setNamespaceFilter((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((v) => allowed.has(v)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [data, namespaceOptions]);
+
+  useEffect(() => {
+    if (!data || !stands) return;
+    const allowed = new Set(standOptions);
+    setStandFilter((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((v) => allowed.has(v)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [data, stands, standOptions]);
+
   const rows = useMemo(() => {
     const base = scoped
       .filter((r) => teamFilter.size === 0 || teamFilter.has(r.team))
