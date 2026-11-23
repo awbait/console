@@ -185,7 +185,9 @@ function WindowForm({
     });
 
   const tooLong = message.length > MAX_MESSAGE;
-  const startNow = !w ? startMode === "now" : active;
+  // An active window keeps its original start; a new or scheduled window
+  // starts immediately whenever the admin selects "now".
+  const startNow = active || startMode === "now";
 
   async function submit() {
     setFailure(null);

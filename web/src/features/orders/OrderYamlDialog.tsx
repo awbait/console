@@ -87,6 +87,9 @@ export function OrderYamlDialog({
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
+  // Monotonic token invalidating in-flight validateRequest calls when the user
+  // edits, discards, reloads, or switches orders.
+  const checkSeq = useRef(0);
 
   // Keep baseYaml in sync with the live order while the user has no unsaved draft.
   useEffect(() => {
@@ -97,8 +100,10 @@ export function OrderYamlDialog({
 
   // Reset the active draft if the component moves to another order id.
   useEffect(() => {
+    checkSeq.current += 1;
     setDraft(null);
     setBaseYaml(r.values_yaml);
+    setChecking(false);
     setCheckResult(null);
     setErr(null);
     setViewMode("editor");
@@ -169,38 +174,47 @@ export function OrderYamlDialog({
 
   function handleChange(value: string | undefined) {
     const next = value ?? "";
+    checkSeq.current += 1;
     setDraft(next);
+    setChecking(false);
     setErr(null);
     setCheckResult(null);
   }
 
   function discard() {
+    checkSeq.current += 1;
     setDraft(null);
     setBaseYaml(r.values_yaml);
+    setChecking(false);
     setErr(null);
     setCheckResult(null);
     setViewMode("editor");
   }
 
   function acceptLatest() {
+    checkSeq.current += 1;
     setDraft(null);
     setBaseYaml(r.values_yaml);
+    setChecking(false);
     setErr(null);
     setCheckResult(null);
   }
 
   async function runCheck() {
     if (!parsed.ok || lock || persist) return;
+    const seq = ++checkSeq.current;
     setChecking(true);
     setErr(null);
     setCheckResult(null);
     try {
       const res = await api.validateRequest(r.id, { values: parsed.values });
+      if (checkSeq.current !== seq) return;
       setCheckResult({ changed: res.changed, valuesYaml: res.values_yaml });
     } catch (e) {
+      if (checkSeq.current !== seq) return;
       setErr(toSubmitError(e));
     } finally {
-      setChecking(false);
+      if (checkSeq.current === seq) setChecking(false);
     }
   }
 
