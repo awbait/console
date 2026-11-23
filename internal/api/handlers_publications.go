@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -740,6 +741,12 @@ func (s *Server) handleCheckChart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "upstream_unavailable", "upstream unavailable")
 		return
 	}
+	if res.Chart != nil && !catalog.VisibleTo(res.Chart, auth.UserFrom(r.Context())) {
+		writeJSON(w, http.StatusOK, &catalog.CheckResult{
+			Error: fmt.Sprintf("чарт %s/%s не найден в Harbor", project, name),
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -751,6 +758,9 @@ func (s *Server) handleCheckChart(w http.ResponseWriter, r *http.Request) {
 // ordering for. Best effort by design - a form that cannot get them is still a
 // form somebody can fill in by hand.
 func (s *Server) handleOrderInitial(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeChart(w, r) {
+		return
+	}
 	u := auth.UserFrom(r.Context())
 	project, name := chi.URLParam(r, "project"), chi.URLParam(r, "name")
 	q := r.URL.Query()
@@ -770,6 +780,9 @@ func (s *Server) handleOrderInitial(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetChartView(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeChart(w, r) {
+		return
+	}
 	project, name := chi.URLParam(r, "project"), chi.URLParam(r, "name")
 	view, err := s.Pubs.ActiveViewVersion(r.Context(), project, name, r.URL.Query().Get("version"))
 	if err != nil {

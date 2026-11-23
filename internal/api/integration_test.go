@@ -109,6 +109,8 @@ func TestHTTPChartAllowlistBypass(t *testing.T) {
 		"/api/v1/charts/platform/redis/7.2.0/dependencies",
 		"/api/v1/charts/platform/redis/7.2.0/changelog",
 		"/api/v1/charts/platform/redis/changelog/aggregated",
+		"/api/v1/charts/platform/redis/view",
+		"/api/v1/charts/platform/redis/initial",
 	}
 	for _, p := range outsider {
 		rec := httptest.NewRecorder()
@@ -118,8 +120,43 @@ func TestHTTPChartAllowlistBypass(t *testing.T) {
 		}
 	}
 
-	// A member of the allowed team still reaches the chart.
+	// POST /charts/check must not disclose a restricted chart's metadata.
 	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("POST", "/api/v1/charts/check", "payments", map[string]any{"path": "platform/redis"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("outsider POST /charts/check: want 200, got %d", rec.Code)
+	}
+	var chk struct {
+		OK    bool          `json:"ok"`
+		Chart *models.Chart `json:"chart"`
+		Error string        `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &chk); err != nil {
+		t.Fatal(err)
+	}
+	if chk.OK || chk.Chart != nil || chk.Error == "" {
+		t.Fatalf("POST /charts/check leaked restricted chart to outsider: %+v", chk)
+	}
+
+	// Ordering a restricted chart as an outsider team (or as a member of both
+	// core and payments ordering for payments) must be rejected.
+	orderBody := map[string]any{
+		"chart": "platform/redis", "version": "7.2.0", "team": "payments",
+		"service_name": "r1", "values": map[string]any{}, "draft": true,
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("POST", "/api/v1/requests", "payments", orderBody))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("outsider POST /requests on restricted chart: want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, devReq("POST", "/api/v1/requests", "core,payments", orderBody))
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("cross-team POST /requests on restricted chart: want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// A member of the allowed team still reaches the chart.
+	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, devReq("GET", "/api/v1/charts/platform/redis", "core", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("core GET redis: want 200, got %d body=%s", rec.Code, rec.Body.String())
