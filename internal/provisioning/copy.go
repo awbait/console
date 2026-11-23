@@ -122,12 +122,12 @@ func (s *Service) Copy(ctx context.Context, u *models.User, id string, in CopyIn
 	if displayName == src.ServiceName || beside {
 		displayName = ""
 	}
-	r, err := s.Create(ctx, u, CreateInput{
+	r, err := s.create(ctx, u, CreateInput{
 		ChartProject: src.ChartProject, ChartName: src.ChartName, Version: version,
 		Team: src.Team, ServiceName: name, DisplayName: displayName,
 		StandID: stand.ID, Cluster: cluster, Namespace: namespace,
 		Values: values, EditorState: src.EditorState, Draft: true,
-	})
+	}, beside)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func (s *Service) copyVersion(ctx context.Context, src *models.Request) (string,
 }
 
 // latestOrderable is the highest version of the chart's publication that can
-// be ordered, or "" when there is none.
+// be ordered and is still present in the chart registry, or "" when none.
 func (s *Service) latestOrderable(ctx context.Context, chartProject, chartName string) string {
 	pub, err := s.store.GetPublicationByChart(ctx, chartProject, chartName)
 	if err != nil || pub == nil {
@@ -167,9 +167,27 @@ func (s *Service) latestOrderable(ctx context.Context, chartProject, chartName s
 	if err != nil {
 		return ""
 	}
+	var inRegistry map[string]bool
+	if s.catalog != nil {
+		list, rerr := s.catalog.ListVersions(ctx, chartProject, chartName)
+		if rerr == nil {
+			inRegistry = make(map[string]bool, len(list))
+			for _, v := range list {
+				inRegistry[v.Version] = true
+			}
+		} else if errors.Is(rerr, models.ErrNotFound) {
+			return ""
+		}
+	}
 	best := ""
 	for _, v := range versions {
-		if v.Published() && (best == "" || models.CompareChartVersions(best, v.ChartVersion) < 0) {
+		if !v.Published() {
+			continue
+		}
+		if inRegistry != nil && !inRegistry[v.ChartVersion] {
+			continue
+		}
+		if best == "" || models.CompareChartVersions(best, v.ChartVersion) < 0 {
 			best = v.ChartVersion
 		}
 	}

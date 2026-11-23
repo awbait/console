@@ -45,13 +45,15 @@ func TestMemoryVersionUpsertAndGet(t *testing.T) {
 		t.Fatalf("new version want 1, got %d", v.Version)
 	}
 
-	// Upsert on the same (publication_id, chart_version) updates in place and bumps version.
+	// Upsert on the same (publication_id, chart_version) updates in place, bumps
+	// version, and leaves orderable untouched (owned by SetOrderable).
 	upd := &models.PublicationVersion{
 		ID:            "ignored-id", // keyed by (pub, chart_version), not ID
 		PublicationID: pub.ID,
 		ChartVersion:  "1.0.0",
 		Status:        models.PubApproved,
-		Orderable:     true,
+		Orderable:     true, // ignored on conflict update
+		Version:       v.Version,
 	}
 	if err := m.UpsertVersion(ctx, upd); err != nil {
 		t.Fatal(err)
@@ -67,8 +69,50 @@ func TestMemoryVersionUpsertAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != models.PubApproved || !got.Orderable {
-		t.Fatalf("unexpected stored version: %+v", got)
+	if got.Status != models.PubApproved || got.Orderable {
+		t.Fatalf("unexpected stored version (orderable must stay false): %+v", got)
+	}
+
+	// Stale version is rejected with ErrStaleVersion.
+	stale := &models.PublicationVersion{
+		ID:            "ver-1",
+		PublicationID: pub.ID,
+		ChartVersion:  "1.0.0",
+		Status:        models.PubDraft,
+		Version:       1, // stale (current is 2)
+	}
+	if err := m.UpsertVersion(ctx, stale); !errors.Is(err, models.ErrStaleVersion) {
+		t.Fatalf("stale upsert want ErrStaleVersion, got %v", err)
+	}
+
+	// SetOrderable is preserved across a subsequent UpsertVersion.
+	if err := m.SetOrderable(ctx, "ver-1", true); err != nil {
+		t.Fatal(err)
+	}
+	saveView := &models.PublicationVersion{
+		ID:            "ver-1",
+		PublicationID: pub.ID,
+		ChartVersion:  "1.0.0",
+		ViewJSON:      []byte(`{"a":2}`),
+		Status:        models.PubApproved,
+		Orderable:     false, // stale flag from caller must not clobber SetOrderable
+		Version:       upd.Version,
+	}
+	if err := m.UpsertVersion(ctx, saveView); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = m.GetVersion(ctx, pub.ID, "1.0.0")
+	if !got.Orderable {
+		t.Fatalf("UpsertVersion clobbered Orderable=true")
+	}
+
+	// SetDeprecated bumps Version so an in-flight UpsertVersion fails with ErrStaleVersion.
+	now := got.UpdatedAt
+	if err := m.SetDeprecated(ctx, "ver-1", &now, "admin", "eol"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpsertVersion(ctx, saveView); !errors.Is(err, models.ErrStaleVersion) {
+		t.Fatalf("upsert after SetDeprecated want ErrStaleVersion, got %v", err)
 	}
 
 	if _, err := m.GetVersion(ctx, pub.ID, "9.9.9"); !errors.Is(err, models.ErrNotFound) {

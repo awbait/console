@@ -267,8 +267,9 @@ func (p *Postgres) GetVersion(ctx context.Context, publicationID, chartVersion s
 // UpsertVersion requires v.ID set (the caller generates it, as for publications).
 func (p *Postgres) UpsertVersion(ctx context.Context, v *models.PublicationVersion) error {
 	// Insert the row, or update it in place keyed by (publication_id, chart_version);
-	// the optimistic-lock version is bumped on update. orderable is overwritten with
-	// the passed value, so callers load the current row before saving (the FSM does).
+	// the optimistic-lock version is checked and bumped on update. orderable is
+	// owned by SetOrderable and left untouched on conflict so concurrent catalog
+	// toggles are never clobbered by a view save or review.
 	stored, err := scanPublicationVersion(p.db.QueryRow(ctx, `
 		INSERT INTO publication_versions
 		  (id, publication_id, chart_version, view_json, approved_view_json, status,
@@ -276,14 +277,18 @@ func (p *Postgres) UpsertVersion(ctx context.Context, v *models.PublicationVersi
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1)
 		ON CONFLICT (publication_id, chart_version) DO UPDATE SET
 		  view_json=EXCLUDED.view_json, approved_view_json=EXCLUDED.approved_view_json,
-		  status=EXCLUDED.status, orderable=EXCLUDED.orderable,
+		  status=EXCLUDED.status,
 		  approved_description=EXCLUDED.approved_description, approved_icon_url=EXCLUDED.approved_icon_url,
 		  reviewed_by=EXCLUDED.reviewed_by, review_comment=EXCLUDED.review_comment,
 		  version=publication_versions.version+1, updated_at=NOW()
+		WHERE publication_versions.version=$12
 		RETURNING `+pubVersionCols,
 		v.ID, v.PublicationID, v.ChartVersion, nullJSON(v.ViewJSON), nullJSON(v.ApprovedViewJSON),
-		v.Status, v.Orderable, v.ApprovedDescription, v.ApprovedIconURL, v.ReviewedBy, v.ReviewComment))
+		v.Status, v.Orderable, v.ApprovedDescription, v.ApprovedIconURL, v.ReviewedBy, v.ReviewComment, v.Version))
 	if err != nil {
+		if errors.Is(err, models.ErrNotFound) {
+			return models.ErrStaleVersion
+		}
 		return err
 	}
 	*v = *stored
@@ -293,14 +298,16 @@ func (p *Postgres) UpsertVersion(ctx context.Context, v *models.PublicationVersi
 // SetDeprecated: at non-nil takes the version out of support, nil puts it back
 // and clears the reason with it - a note left behind would be read as the reason
 // for the next removal. UpsertVersion does not touch these columns, so the view
-// document can be saved without anything here being restated.
+// document can be saved without anything here being restated. Bumping version
+// ensures an in-flight UpsertVersion (such as a concurrent approve) fails with
+// ErrStaleVersion instead of overwriting a version that was just deprecated.
 func (p *Postgres) SetDeprecated(ctx context.Context, versionID string, at *time.Time, by, note string) error {
 	if at == nil {
 		by, note = "", ""
 	}
 	tag, err := p.db.Exec(ctx,
 		`UPDATE publication_versions
-		 SET deprecated_at=$1, deprecated_by=$2, deprecation_note=$3, updated_at=NOW()
+		 SET deprecated_at=$1, deprecated_by=$2, deprecation_note=$3, version=version+1, updated_at=NOW()
 		 WHERE id=$4`, at, by, note, versionID)
 	if err != nil {
 		return err
