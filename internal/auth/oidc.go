@@ -17,24 +17,26 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
+	"golang.org/x/sync/singleflight"
 	"console/pkg/models"
 )
 
 // OIDC authenticates via Keycloak Authorization Code flow (with PKCE) and keeps
 // server-side sessions in Redis. Access tokens are silently refreshed.
 type OIDC struct {
-	provider   *oidc.Provider
-	verifier   *oidc.IDTokenVerifier
-	oauth      oauth2.Config
-	sessions   *SessionStore
-	rbac       RBAC
-	cookieName string
-	secure     bool
-	sessionTTL time.Duration // session cookie MaxAge, aligned with the server session
-	postLogin  string
-	postLogout string
-	endSession string // Keycloak end_session_endpoint (RP-initiated logout)
-	log        *slog.Logger
+	provider     *oidc.Provider
+	verifier     *oidc.IDTokenVerifier
+	oauth        oauth2.Config
+	sessions     *SessionStore
+	rbac         RBAC
+	cookieName   string
+	secure       bool
+	sessionTTL   time.Duration // session cookie MaxAge, aligned with the server session
+	postLogin    string
+	postLogout   string
+	endSession   string // Keycloak end_session_endpoint (RP-initiated logout)
+	log          *slog.Logger
+	refreshGroup singleflight.Group // coalesces concurrent silent refreshes per session
 	// SignIns remembers what the last successful sign-in carried, so the status
 	// page can tell a realm that sends the group claim from one that does not.
 	// Optional: nil records nothing.
@@ -451,6 +453,8 @@ func (o *OIDC) Callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 
+const refreshTimeout = 15 * time.Second
+
 func (o *OIDC) Authenticate(r *http.Request) (*models.User, error) {
 	c, err := r.Cookie(o.cookieName)
 	if err != nil || c.Value == "" {
@@ -461,12 +465,51 @@ func (o *OIDC) Authenticate(r *http.Request) (*models.User, error) {
 		return nil, ErrUnauthenticated
 	}
 	// Silent refresh: if the access token expired and we have a refresh token,
-	// refresh and persist. On failure, force re-login.
+	// coalesce concurrent refreshes per session so parallel requests do not race
+	// on a rotating refresh token and destroy the newly refreshed session.
 	if !sess.Expiry.IsZero() && time.Now().After(sess.Expiry) && sess.RefreshToken != "" {
-		ts := o.oauth.TokenSource(r.Context(), &oauth2.Token{RefreshToken: sess.RefreshToken})
+		return o.refreshSession(r.Context(), c.Value)
+	}
+	return sess.User, nil
+}
+
+func (o *OIDC) refreshSession(reqCtx context.Context, sessionID string) (*models.User, error) {
+	ch := o.refreshGroup.DoChan(sessionID, func() (any, error) {
+		// Detach from the first caller's request cancellation so a single aborted
+		// XHR cannot cancel a shared refresh or wipe out a valid session.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(reqCtx), refreshTimeout)
+		defer cancel()
+
+		// Re-read inside the singleflight so callers queued behind an already-
+		// completed refresh (or another replica) reuse the fresh session directly.
+		sess, err := o.sessions.Get(ctx, sessionID)
+		if err != nil {
+			return nil, ErrUnauthenticated
+		}
+		if sess.Expiry.IsZero() || !time.Now().After(sess.Expiry) {
+			return sess.User, nil
+		}
+		if sess.RefreshToken == "" {
+			return sess.User, nil
+		}
+
+		attemptedRefresh := sess.RefreshToken
+		ts := o.oauth.TokenSource(ctx, &oauth2.Token{RefreshToken: attemptedRefresh})
 		newTok, err := ts.Token()
 		if err != nil {
-			_ = o.sessions.Delete(r.Context(), c.Value)
+			// Another replica may have rotated the refresh token while we called the
+			// IdP. Re-read before treating the session as dead.
+			if latest, gerr := o.sessions.Get(ctx, sessionID); gerr == nil &&
+				(latest.RefreshToken != attemptedRefresh || latest.Expiry.IsZero() || !time.Now().After(latest.Expiry)) {
+				return latest.User, nil
+			}
+			// Only drop the session when the IdP definitively rejected the refresh
+			// token (4xx). Transient 5xx or timeout/network errors leave the session
+			// intact for the next request.
+			var re *oauth2.RetrieveError
+			if errors.As(err, &re) && re.Response != nil && re.Response.StatusCode >= 400 && re.Response.StatusCode < 500 {
+				_ = o.sessions.Delete(ctx, sessionID)
+			}
 			return nil, ErrUnauthenticated
 		}
 		sess.AccessToken = newTok.AccessToken
@@ -480,11 +523,13 @@ func (o *OIDC) Authenticate(r *http.Request) (*models.User, error) {
 		// group or a disabled account takes effect at refresh time, not only at the
 		// next full login (otherwise stale privileges linger for the whole session).
 		if rawID, ok := newTok.Extra("id_token").(string); ok && rawID != "" {
-			idToken, verr := o.verifier.Verify(r.Context(), rawID)
+			idToken, verr := o.verifier.Verify(ctx, rawID)
 			if verr != nil {
 				// The IdP no longer vouches for this identity - force re-login
 				// rather than serving the stale user.
-				_ = o.sessions.Delete(r.Context(), c.Value)
+				if !errors.Is(verr, context.Canceled) && !errors.Is(verr, context.DeadlineExceeded) {
+					_ = o.sessions.Delete(ctx, sessionID)
+				}
 				return nil, ErrUnauthenticated
 			}
 			var cl claims
@@ -495,9 +540,19 @@ func (o *OIDC) Authenticate(r *http.Request) (*models.User, error) {
 		}
 		// Persist the rotated tokens and extend the session TTL. Best-effort: a
 		// store error must not fail an otherwise-authenticated request.
-		_ = o.sessions.Save(r.Context(), c.Value, sess)
+		_ = o.sessions.Save(ctx, sessionID, sess)
+		return sess.User, nil
+	})
+
+	select {
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		return res.Val.(*models.User), nil
+	case <-reqCtx.Done():
+		return nil, ErrUnauthenticated
 	}
-	return sess.User, nil
 }
 
 // Logout is a browser-navigated GET: it drops the local session and cookie,

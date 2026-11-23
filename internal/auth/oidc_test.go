@@ -1,13 +1,21 @@
 package auth
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"console/internal/cache"
+	"console/pkg/models"
 	"golang.org/x/oauth2"
 )
 
@@ -344,4 +352,296 @@ func TestWithParam(t *testing.T) {
 			t.Errorf("withParam(%q) = %q, want %q", c.dest, got, c.want)
 		}
 	}
+}
+
+func testSessionStore(t *testing.T) *SessionStore {
+	t.Helper()
+	return NewSessionStore(cache.NewMemory(), time.Hour, "test-secret-key-for-oidc-refresh-tests")
+}
+
+func TestOIDCAuthenticateCoalescesConcurrentRefresh(t *testing.T) {
+	var calls atomic.Int32
+	var mu sync.Mutex
+	activeRefresh := "refresh-1"
+
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse form: %v", err)
+		}
+		calls.Add(1)
+		// Slow down slightly so all concurrent Authenticate calls overlap.
+		time.Sleep(40 * time.Millisecond)
+
+		mu.Lock()
+		defer mu.Unlock()
+		if r.FormValue("refresh_token") != activeRefresh {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
+			return
+		}
+		activeRefresh = "refresh-2"
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "access-2",
+			"token_type":    "Bearer",
+			"refresh_token": activeRefresh,
+			"expires_in":    300,
+		})
+	}))
+	defer tokenSrv.Close()
+
+	store := testSessionStore(t)
+	user := &models.User{Subject: "u1", Username: "alice", Role: models.RoleMember}
+	sid, err := store.Create(context.Background(), &Session{
+		User:         user,
+		AccessToken:  "access-1",
+		RefreshToken: "refresh-1",
+		Expiry:       time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	o := &OIDC{
+		oauth: oauth2.Config{
+			ClientID: "portal",
+			Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL},
+		},
+		sessions:   store,
+		cookieName: "idp_session",
+		log:        slog.New(slog.DiscardHandler),
+	}
+
+	const n = 10
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+			req.AddCookie(&http.Cookie{Name: "idp_session", Value: sid})
+			got, aerr := o.Authenticate(req)
+			if aerr != nil {
+				errs[idx] = aerr
+				return
+			}
+			if got == nil || got.Subject != "u1" {
+				errs[idx] = errors.New("unexpected user")
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, aerr := range errs {
+		if aerr != nil {
+			t.Errorf("request %d failed: %v", i, aerr)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("token endpoint called %d times, want 1", got)
+	}
+	sess, err := store.Get(context.Background(), sid)
+	if err != nil {
+		t.Fatalf("session lost after concurrent refresh: %v", err)
+	}
+	if sess.RefreshToken != "refresh-2" || sess.AccessToken != "access-2" {
+		t.Errorf("session not updated: %+v", sess)
+	}
+}
+
+func TestOIDCAuthenticateSurvivesMultiReplicaRotation(t *testing.T) {
+	store := testSessionStore(t)
+	user := &models.User{Subject: "u1", Username: "alice", Role: models.RoleMember}
+	sid, err := store.Create(context.Background(), &Session{
+		User:         user,
+		AccessToken:  "access-1",
+		RefreshToken: "refresh-1",
+		Expiry:       time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate another replica rotating and saving the session in Redis while
+	// our request is in flight to Keycloak with the old refresh token.
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = store.Save(context.Background(), sid, &Session{
+			User:         user,
+			AccessToken:  "access-2",
+			RefreshToken: "refresh-2",
+			Expiry:       time.Now().Add(5 * time.Minute),
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
+	}))
+	defer tokenSrv.Close()
+
+	o := &OIDC{
+		oauth: oauth2.Config{
+			ClientID: "portal",
+			Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL},
+		},
+		sessions:   store,
+		cookieName: "idp_session",
+		log:        slog.New(slog.DiscardHandler),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.AddCookie(&http.Cookie{Name: "idp_session", Value: sid})
+	got, err := o.Authenticate(req)
+	if err != nil {
+		t.Fatalf("Authenticate failed despite peer rotation: %v", err)
+	}
+	if got.Subject != "u1" {
+		t.Fatalf("got user %+v, want u1", got)
+	}
+	sess, err := store.Get(context.Background(), sid)
+	if err != nil {
+		t.Fatalf("peer-rotated session was deleted: %v", err)
+	}
+	if sess.RefreshToken != "refresh-2" {
+		t.Errorf("RefreshToken = %q, want refresh-2", sess.RefreshToken)
+	}
+}
+
+func TestOIDCAuthenticateClientCancelDoesNotDeleteSession(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "access-2",
+			"token_type":    "Bearer",
+			"refresh_token": "refresh-2",
+			"expires_in":    300,
+		})
+	}))
+	defer tokenSrv.Close()
+
+	store := testSessionStore(t)
+	user := &models.User{Subject: "u1", Username: "alice", Role: models.RoleMember}
+	sid, err := store.Create(context.Background(), &Session{
+		User:         user,
+		AccessToken:  "access-1",
+		RefreshToken: "refresh-1",
+		Expiry:       time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	o := &OIDC{
+		oauth: oauth2.Config{
+			ClientID: "portal",
+			Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL},
+		},
+		sessions:   store,
+		cookieName: "idp_session",
+		log:        slog.New(slog.DiscardHandler),
+	}
+
+	ctxA, cancelA := context.WithCancel(context.Background())
+	reqA := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil).WithContext(ctxA)
+	reqA.AddCookie(&http.Cookie{Name: "idp_session", Value: sid})
+
+	errACh := make(chan error, 1)
+	go func() {
+		_, aerr := o.Authenticate(reqA)
+		errACh <- aerr
+	}()
+
+	<-started
+	// Start a second caller sharing the in-flight refresh, then abort caller A.
+	reqB := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	reqB.AddCookie(&http.Cookie{Name: "idp_session", Value: sid})
+	errBCh := make(chan error, 1)
+	go func() {
+		_, berr := o.Authenticate(reqB)
+		errBCh <- berr
+	}()
+
+	cancelA()
+	if err := <-errACh; !errors.Is(err, ErrUnauthenticated) {
+		t.Errorf("canceled request err = %v, want ErrUnauthenticated", err)
+	}
+	close(release)
+	if err := <-errBCh; err != nil {
+		t.Fatalf("second request failed after first canceled: %v", err)
+	}
+	sess, err := store.Get(context.Background(), sid)
+	if err != nil {
+		t.Fatalf("session deleted after client cancel: %v", err)
+	}
+	if sess.RefreshToken != "refresh-2" {
+		t.Errorf("RefreshToken = %q, want refresh-2", sess.RefreshToken)
+	}
+}
+
+func TestOIDCAuthenticateDeletesOnlyOnPermanentRejection(t *testing.T) {
+	t.Run("400 invalid_grant deletes session", func(t *testing.T) {
+		tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
+		}))
+		defer tokenSrv.Close()
+
+		store := testSessionStore(t)
+		sid, err := store.Create(context.Background(), &Session{
+			User:         &models.User{Subject: "u1"},
+			RefreshToken: "dead-refresh",
+			Expiry:       time.Now().Add(-time.Minute),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		o := &OIDC{
+			oauth:      oauth2.Config{ClientID: "portal", Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL}},
+			sessions:   store,
+			cookieName: "idp_session",
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+		req.AddCookie(&http.Cookie{Name: "idp_session", Value: sid})
+		if _, err := o.Authenticate(req); !errors.Is(err, ErrUnauthenticated) {
+			t.Fatalf("err = %v, want ErrUnauthenticated", err)
+		}
+		if _, err := store.Get(context.Background(), sid); !errors.Is(err, models.ErrNotFound) {
+			t.Fatalf("session should be deleted on 400 invalid_grant, got err=%v", err)
+		}
+	})
+
+	t.Run("503 upstream failure preserves session", func(t *testing.T) {
+		tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer tokenSrv.Close()
+
+		store := testSessionStore(t)
+		sid, err := store.Create(context.Background(), &Session{
+			User:         &models.User{Subject: "u1"},
+			RefreshToken: "valid-refresh",
+			Expiry:       time.Now().Add(-time.Minute),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		o := &OIDC{
+			oauth:      oauth2.Config{ClientID: "portal", Endpoint: oauth2.Endpoint{TokenURL: tokenSrv.URL}},
+			sessions:   store,
+			cookieName: "idp_session",
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+		req.AddCookie(&http.Cookie{Name: "idp_session", Value: sid})
+		if _, err := o.Authenticate(req); !errors.Is(err, ErrUnauthenticated) {
+			t.Fatalf("err = %v, want ErrUnauthenticated", err)
+		}
+		if _, err := store.Get(context.Background(), sid); err != nil {
+			t.Fatalf("session should be preserved on transient 503, got err=%v", err)
+		}
+	})
 }
