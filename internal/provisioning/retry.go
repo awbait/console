@@ -73,10 +73,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 			"order_id", r.ID, "mr_iid", rec.MRIID)
 		return retryNotDone
 	}
-	branch := proj.DefaultBranch
-	if branch == "" {
-		branch = s.defaultBranch
-	}
+	branch := s.projectBranch(proj)
 
 	valuesPath := s.gitops.ValuesPath(r)
 	base, err := s.readValues(ctx, proj.ID, valuesPath, mr.DiffRefs.BaseSHA)
@@ -136,7 +133,7 @@ func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec 
 
 	prevValues, prevVersion := r.ValuesYAML, r.ChartVersion
 	r.ValuesYAML, r.ChartVersion = valuesYAML, version
-	appYAML, err := s.renderApp(r, s.standOf(ctx, r), proj.PathWithNamespace, proj.WebURL)
+	appYAML, err := s.renderApp(r, s.standOf(ctx, r), proj.PathWithNamespace, proj.WebURL, branch)
 	if err != nil {
 		r.ValuesYAML, r.ChartVersion = prevValues, prevVersion
 		s.logger().Warn("merge retry refused: application.yaml did not render",

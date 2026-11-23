@@ -727,7 +727,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err != nil {
 		return r, err // DRAFT persists; caller sees upstream error
 	}
-	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -789,7 +789,7 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if err != nil {
 		return r, err
 	}
-	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -882,7 +882,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	r.ChartVersion = version
 	r.ValuesYAML = valuesYAML
 	r.EditorState = in.EditorState // nil keeps what the store already holds
-	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	actions := []gitlab.FileAction{
 		{Action: "update", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "update", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -1189,7 +1189,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		return nil, err
 	}
 	// delete every file in the instance folder
-	files, terr := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r))
+	files, terr := s.gl.ListTree(ctx, proj.ID, s.projectBranch(proj), s.gitops.InstanceDir(r))
 	if terr != nil {
 		return nil, gitopsErr("list tree", terr)
 	}
@@ -1728,15 +1728,16 @@ func mrTitle(action models.MRAction, r *models.Request) string {
 func (s *Service) openChange(ctx context.Context, r *models.Request, proj *gitlab.Project,
 	action models.MRAction, actions []gitlab.FileAction) (*models.RequestMR, error) {
 
+	baseBranch := s.projectBranch(proj)
 	commitMsg := commitTitle(action, r.ChartName, r.ServiceName)
 	branch := fmt.Sprintf("portal/%s-%s-%s", action, r.ServiceName, shortID())
-	if err := s.gl.CreateBranch(ctx, proj.ID, branch, s.defaultBranch); err != nil {
+	if err := s.gl.CreateBranch(ctx, proj.ID, branch, baseBranch); err != nil {
 		return nil, gitopsErr("branch", err)
 	}
 	if err := s.gl.CommitFiles(ctx, proj.ID, branch, commitMsg, actions); err != nil {
 		return nil, gitopsErr("commit", err)
 	}
-	mr, err := s.gl.CreateMR(ctx, proj.ID, branch, s.defaultBranch, mrTitle(action, r))
+	mr, err := s.gl.CreateMR(ctx, proj.ID, branch, baseBranch, mrTitle(action, r))
 	if err != nil {
 		return nil, gitopsErr("mr", err)
 	}

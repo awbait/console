@@ -296,7 +296,7 @@ func (s *Service) publishOrder(ctx context.Context, r *models.Request, st *model
 	if err != nil {
 		return err
 	}
-	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL)
+	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	if err != nil {
 		return err
 	}
@@ -320,7 +320,7 @@ func (s *Service) unpublishOrder(ctx context.Context, r *models.Request, st *mod
 	if err != nil {
 		return gitopsErr("resolve repo", err)
 	}
-	files, err := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r))
+	files, err := s.gl.ListTree(ctx, proj.ID, s.projectBranch(proj), s.gitops.InstanceDir(r))
 	if err != nil {
 		return gitopsErr("list tree", err)
 	}

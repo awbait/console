@@ -102,7 +102,7 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if verr != nil {
 			continue // no values.yaml (or unreadable) - incomplete instance
 		}
-		expected, rerr := s.renderApp(r, dd.stand, d.ProjectPath, d.ProjectWebURL)
+		expected, rerr := s.renderApp(r, dd.stand, d.ProjectPath, d.ProjectWebURL, d.Branch)
 		if rerr != nil || !yamlEqual([]byte(expected), d.Content) {
 			continue // application.yaml is not identical to ours - skip
 		}

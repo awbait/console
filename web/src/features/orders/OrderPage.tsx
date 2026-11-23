@@ -32,6 +32,7 @@ import { countGraphRules } from "../graph/mapping";
 import { RestoreNotice } from "../maintenance/RestoreNotice";
 import { useFormStash } from "../maintenance/useFormStash";
 import { OrderMetaCard, OrderPageSkeleton, OrderValuesCard } from "./OrderFormParts";
+import { formVersionOptions, orderCapabilityForStand } from "./orderForm";
 import { DetailTab } from "./requestDetailParts";
 import { valuesEditorFor } from "./valuesEditors";
 
@@ -118,10 +119,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Team is chosen globally (topbar); the order form doesn't ask for it.
   const { team: activeTeam } = useTeam();
   const { charts, loading: catalogLoading } = useCatalog();
-  // Filing an order opens a merge request, so it needs the platform behind it.
-  // Saving a draft does not - it only writes to the portal's own storage - so
-  // the work already typed into the form is never lost to an outage.
-  const orderOutage = usePlatformHealth().blockedReason("ordering");
+  // Filing an order opens a merge request on git/deploy stands, so it needs the
+  // platform behind it. Console-only stands never touch GitLab and only need
+  // Harbor/store ("catalog"). Saving a draft writes to the portal's storage.
+  const { blockedReason } = usePlatformHealth();
 
   // In edit mode, load the draft we're continuing. Its chart coordinates and
   // pinned version drive the rest of the page.
@@ -167,9 +168,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setStandId(def.id);
     setCluster((c) => c || def.default_cluster);
   }, [editing, standId, stands]);
-  // The stand's name, for the read-only summary of an upgrade; the selector
-  // shows it on its own while the stand can still be picked.
-  const standName = stands?.find((s) => s.id === (draft?.stand_id || standId))?.name;
+  // The order's stand: its name for the upgrade summary, and its mode so a
+  // console-only stand is not blocked by a GitLab outage.
+  const activeStand = stands?.find((s) => s.id === (upgrade ? draft?.stand_id : standId) || (!upgrade && !standId && s.id === draft?.stand_id));
+  const standName = activeStand?.name;
+  const orderOutage = blockedReason(orderCapabilityForStand(activeStand?.mode));
   // New-order chart version: defaults to the recommended (or highest orderable)
   // version once the catalog loads; the user can switch it (initialized below).
   const [selectedVersion, setSelectedVersion] = useState("");
@@ -211,9 +214,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       : upgradeTargets(chart?.versions ?? [], draft?.chart_version ?? "", pub?.approved_view_version);
   const effectiveVersion = upgrade
     ? targetVersion || null
-    : editing
-      ? draft?.chart_version ?? null
-      : selectedVersion || null;
+    : selectedVersion || draft?.chart_version || null;
+  const formVersions = formVersionOptions(
+    orderableVersions,
+    editing && !upgrade ? draft?.chart_version : undefined,
+  );
 
   // Initialize the new-order version once the catalog/publication is known:
   // recommended, else the highest orderable, else the chart's latest version.
@@ -344,6 +349,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (!editing || hydrated.current || !draft) return;
     setServiceName(draft.service_name);
     setDisplayName(draft.display_name);
+    if (draft.chart_version) setSelectedVersion(draft.chart_version);
     if (draft.stand_id) setStandId(draft.stand_id);
     if (draft.cluster) setCluster(draft.cluster);
     if (draft.namespace) setNamespace(draft.namespace);
@@ -470,7 +476,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (s.standId) setStandId(s.standId);
     setCluster(s.cluster);
     setNamespace(s.namespace);
-    if (!editing && !upgrade && s.selectedVersion) setSelectedVersion(s.selectedVersion);
+    if (!upgrade && s.selectedVersion) setSelectedVersion(s.selectedVersion);
     pluginStateRef.current = s.editorState ?? pluginStateRef.current;
     setValues(s.values ?? {});
     setRaw(s.raw ?? "");
@@ -603,6 +609,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     try {
       if (editing) {
         await api.updateRequest(id!, {
+          version:
+            effectiveVersion && effectiveVersion !== draft?.chart_version
+              ? effectiveVersion
+              : undefined,
           service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           stand_id: standId || undefined,
@@ -684,6 +694,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       if (editing) {
         // Persist the latest edits, then finalise (opens the create MR).
         await api.updateRequest(id!, {
+          version:
+            effectiveVersion && effectiveVersion !== draft?.chart_version
+              ? effectiveVersion
+              : undefined,
           service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           stand_id: standId || undefined,
@@ -844,8 +858,8 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           team={editing ? draft?.team : activeTeam ?? undefined}
           version={effectiveVersion ?? undefined}
           latest={!editing && orderableVersions.length === 0}
-          versions={editing ? undefined : orderableVersions}
-          onVersion={editing ? undefined : setSelectedVersion}
+          versions={formVersions}
+          onVersion={setSelectedVersion}
           recommendedVersion={recommendedVersion}
           identityName={identityName}
           showErrors={showErrors}

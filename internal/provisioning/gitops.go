@@ -404,6 +404,7 @@ type AppTarget struct {
 	Registry     string
 	AppNamespace string
 	Project      string
+	Branch       string
 }
 
 // ArgoProjectOf is the Argo CD project the stand's applications belong to:
@@ -445,6 +446,10 @@ func (g *GitOps) RenderApplicationFor(r *models.Request, t AppTarget) (string, e
 	if project == "" {
 		project = g.ArgoProject
 	}
+	branch := t.Branch
+	if branch == "" {
+		branch = g.DefaultBranch
+	}
 	var b bytes.Buffer
 	// Quote every standalone scalar (yamlScalar) so a field with YAML-significant
 	// characters cannot break or inject structure. Path is exempt: it is embedded
@@ -461,7 +466,7 @@ func (g *GitOps) RenderApplicationFor(r *models.Request, t AppTarget) (string, e
 		"Cluster":      yamlScalar(r.Cluster),
 		"RepoURL":      yamlScalar(gitRepo),
 		"Path":         g.InstanceDir(r),
-		"Branch":       yamlScalar(g.DefaultBranch),
+		"Branch":       yamlScalar(branch),
 		"ChartRepo":    yamlScalar(chartRepo),
 		"ChartVersion": yamlScalar(r.ChartVersion),
 	})

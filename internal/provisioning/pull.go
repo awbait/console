@@ -31,10 +31,7 @@ func (s *Service) PullFromGit(ctx context.Context, u *models.User, id string) (*
 	if err != nil {
 		return nil, gitopsErr("resolve repo", err)
 	}
-	branch := proj.DefaultBranch
-	if branch == "" {
-		branch = s.defaultBranch
-	}
+	branch := s.projectBranch(proj)
 
 	vb, err := s.gl.GetFile(ctx, proj.ID, s.gitops.ValuesPath(r), branch)
 	if errors.Is(err, models.ErrNotFound) {
