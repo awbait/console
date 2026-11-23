@@ -39,6 +39,7 @@ import { RestoreNotice } from "../maintenance/RestoreNotice";
 import { useFormStash } from "../maintenance/useFormStash";
 import { OrderMetaCard, OrderPageSkeleton, OrderValuesCard } from "./OrderFormParts";
 import { formVersionOptions, orderCapabilityForStand } from "./orderForm";
+import { parseSavedValues, parseYamlValues } from "./orderYaml";
 import { DetailTab } from "./requestDetailParts";
 import { valuesEditorFor } from "./valuesEditors";
 
@@ -114,6 +115,19 @@ function writePointer(obj: Values, pointer: string, value: string): Values {
 // reuses the form at the target version (prefilled from the order) and opens an
 // update MR; identity/cluster/namespace are immutable once deployed.
 export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
+  const { project: pParam = "", name: nParam = "", id } = useParams();
+  const [searchParams] = useSearchParams();
+  const upgradeTo = upgrade ? (searchParams.get("to") ?? "") : "";
+  // Remount whenever the target order, chart, or upgrade version changes so
+  // refs (hydrated, adapted, seededFor, pluginStateRef) and form state never
+  // leak across routes.
+  const routeKey = id
+    ? `${upgrade ? "upgrade" : "edit"}:${id}:${upgradeTo}`
+    : `new:${pParam}/${nParam}`;
+  return <OrderPageInner key={routeKey} upgrade={upgrade} />;
+}
+
+function OrderPageInner({ upgrade = false }: { upgrade?: boolean }) {
   const { project: pParam = "", name: nParam = "", id } = useParams();
   const [searchParams] = useSearchParams();
   // Upgrade target version from ?to= (the approved version); fallback is the
@@ -384,11 +398,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (draft.stand_id) setStandId(draft.stand_id);
     if (draft.cluster) setCluster(draft.cluster);
     if (draft.namespace) setNamespace(draft.namespace);
-    try {
-      setValues((yaml.load(draft.values_yaml) as Values) ?? {});
-    } catch {
-      setValues({});
-    }
+    setValues(parseSavedValues(draft.values_yaml));
     // The canvas extras the values cannot express; the plugin reads them on mount.
     pluginStateRef.current = draft.editor_state ?? null;
     hydrated.current = true;
@@ -421,8 +431,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     // The first seed waits for the stand the order opens on, so it is rendered
     // for that stand rather than for the default and then again.
     if (standsLoading) return;
-    if (seededFor.current === seedStandId) return;
-    seededFor.current = seedStandId;
+    const seedKey = `${effectiveVersion}\0${orderTeam}\0${seedStandId}`;
+    if (seededFor.current === seedKey) return;
+    seededFor.current = seedKey;
     let alive = true;
     api
       .orderInitial(project, name, effectiveVersion, orderTeam, seedStandId)
@@ -566,7 +577,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       // plugin mode surfaces the error explicitly instead of showing a graph
       // built from stale values.
       try {
-        setValues((yaml.load(raw) as Values) ?? {});
+        setValues(parseYamlValues(raw));
       } catch (e) {
         parseError = (e as Error).message;
       }
@@ -583,7 +594,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   function collectValues(): { values: Values; svcName: string; destNamespace: string } | null {
     let finalValues: Values = {};
     try {
-      finalValues = mode === "raw" ? ((yaml.load(raw) as Values) ?? {}) : pruneEmpty(values);
+      finalValues = mode === "raw" ? parseYamlValues(raw) : pruneEmpty(values);
     } catch (e) {
       setSubmitErr({ message: "Невалидный YAML: " + (e as Error).message });
       return null;
@@ -779,7 +790,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (!c) return;
     setBusy("submit");
     try {
-      await api.updateRequest(id!, { version: targetVersion, values: c.values });
+      await api.updateRequest(id!, {
+        version: targetVersion,
+        values: c.values,
+        editor_state: editorState(),
+      });
       dropStash();
       navigate(`/requests/${id}`);
     } catch (e) {
@@ -928,10 +943,18 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           on the product page, but into the same values and as a single MR. */}
       {upgrade && schema && viewDoc && draft && (
         <UpgradeExtras
-          request={{ ...draft, chart_version: targetVersion, values_yaml: yaml.dump(pruneEmpty(values)) }}
+          request={{
+            ...draft,
+            chart_version: targetVersion,
+            values_yaml: mode === "raw" ? raw : yaml.dump(pruneEmpty(values)),
+          }}
           doc={viewDoc}
           schema={schema as Record<string, any>}
-          onValues={setValues}
+          chartDefaults={chartDefaults}
+          onValues={(next) => {
+            setValues(next);
+            if (mode === "raw") setRaw(yaml.dump(pruneEmpty(next)));
+          }}
         />
       )}
 
@@ -1016,11 +1039,13 @@ function UpgradeExtras({
   request,
   doc,
   schema,
+  chartDefaults,
   onValues,
 }: {
   request: OrderRequest;
   doc: ViewDocument;
   schema: Record<string, any>;
+  chartDefaults?: Values;
   onValues: (v: Values) => void;
 }) {
   const tabs = productTabs(doc);
@@ -1036,6 +1061,7 @@ function UpgradeExtras({
           doc={doc}
           onChanged={() => {}}
           schema={schema}
+          chartDefaults={chartDefaults}
           persist={persist}
         />
       </div>
@@ -1057,6 +1083,7 @@ function UpgradeExtras({
                 doc={doc}
                 tab={t}
                 schema={schema}
+                chartDefaults={chartDefaults}
                 persist={persist}
               />
             </TabPanel>
