@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -622,11 +623,15 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err := checkEditorState(in.EditorState); err != nil {
 		return nil, err
 	}
-	if _, err := s.catalog.GetChart(ctx, in.ChartProject, in.ChartName); err != nil {
+	chart, err := s.catalog.Authorize(ctx, u, in.ChartProject, in.ChartName)
+	if err != nil {
 		if errors.Is(err, models.ErrNotFound) {
 			return nil, &ValidationError{Message: MsgUnknownChart}
 		}
 		return nil, fmt.Errorf("%w: harbor: %v", ErrUpstream, err)
+	}
+	if len(chart.AllowedTeams) > 0 && !u.IsAdmin() && !slices.Contains(chart.AllowedTeams, in.Team) {
+		return nil, &ValidationError{Message: MsgUnknownChart}
 	}
 	// The version has to exist in the registry and be an orderable+APPROVED one
 	// (multi-version publications); the registry half applies to every chart, the
