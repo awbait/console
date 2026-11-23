@@ -246,4 +246,59 @@ describe("a hybrid object with properties and additionalProperties", () => {
     });
     expect(mergeExtraMapEntries({}, {}, reserved)).toBeUndefined();
   });
+
+  test("renders extra entries at root and inside array items too", () => {
+    const rootHybrid = {
+      type: "object",
+      properties: { host: { type: "string" } },
+      additionalProperties: { type: "string" },
+    };
+    const rootHtml = renderToStaticMarkup(
+      <SchemaForm schema={rootHybrid} value={{ host: "db", custom: "1" }} onChange={() => {}} />,
+    );
+    expect(rootHtml).toContain(extraEntries.heading);
+    expect(rootHtml).toContain('value="custom"');
+
+    const arrHybrid = {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: rootHybrid,
+        },
+      },
+    };
+    const arrHtml = renderToStaticMarkup(
+      <SchemaForm schema={arrHybrid} value={{ items: [{ host: "db", extra: "ok" }] }} onChange={() => {}} />,
+    );
+    expect(arrHtml).toContain(extraEntries.heading);
+    expect(arrHtml).toContain('value="extra"');
+  });
+
+  test("does not leak parent ui:view include into hybrid extra object entries", () => {
+    const hybridWithObjExtra = {
+      type: "object",
+      properties: {
+        backends: {
+          type: "object",
+          "ui:view": { include: ["primary"] },
+          properties: {
+            primary: { type: "string" },
+          },
+          additionalProperties: {
+            type: "object",
+            required: ["port"],
+            properties: {
+              port: { type: "integer" },
+            },
+          },
+        },
+      },
+    };
+    // Validation must still check required "port" inside extra object entries
+    // even though parent ui:view only includes "primary".
+    const errs = collectErrors(hybridWithObjExtra, { backends: { secondary: {} } });
+    expect(errs.get("/backends/secondary/port")).toBeString();
+    expect(collectErrors(hybridWithObjExtra, { backends: { secondary: { port: 8080 } } }).size).toBe(0);
+  });
 });

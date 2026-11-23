@@ -1,5 +1,15 @@
 import { describe, expect, it } from "bun:test";
-import { collectErrors, defaultAt, enumLabel, enumOptions, newArrayItem, setAt } from "./SchemaForm";
+import {
+  collectErrors,
+  defaultAt,
+  enumLabel,
+  enumOptions,
+  newArrayItem,
+  primaryType,
+  pruneEmpty,
+  seedDefaults,
+  setAt,
+} from "./SchemaForm";
 
 // A chart may hide a field for part of the values: the ingress-gateway schema
 // hides a listener's domain once the protocol is TCP or UDP. What the form does
@@ -309,5 +319,113 @@ describe("a list whose rows are told apart by a name", () => {
       },
     };
     expect(collectErrors(plain, { xroutes: [{ name: "app" }, { name: "app" }] }).size).toBe(0);
+  });
+});
+
+describe("seedDefaults", () => {
+  it("omits optional nested objects that have no defaults so collectErrors does not block submission", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        routes: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["name"],
+            properties: {
+              name: { type: "string" },
+              tls: {
+                type: "object",
+                required: ["secretName"],
+                properties: {
+                  secretName: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const row = newArrayItem(schema.properties.routes, schema) as Record<string, unknown>;
+    expect(row).toEqual({});
+    expect(row.tls).toBeUndefined();
+    const errs = collectErrors(schema, { routes: [{ ...row, name: "api" }] });
+    expect(errs.size).toBe(0);
+  });
+
+  it("clones object defaults so mutating the seeded value never mutates the schema", () => {
+    const schema = {
+      type: "object",
+      default: { host: "localhost", hidden: "secret" },
+    };
+    const seeded = seedDefaults(schema, schema) as Record<string, unknown>;
+    delete seeded.hidden;
+    expect(schema.default).toEqual({ host: "localhost", hidden: "secret" });
+  });
+});
+
+describe("optional and null oneOf/anyOf variants", () => {
+  const variantSchema = {
+    type: "object",
+    properties: {
+      optTarget: {
+        anyOf: [
+          { type: "string" },
+          { type: "object", required: ["host"], properties: { host: { type: "string" } } },
+        ],
+      },
+      nullableField: {
+        oneOf: [
+          { type: "null" },
+          { type: "object", required: ["host"], properties: { host: { type: "string" } } },
+        ],
+      },
+      reqTarget: {
+        anyOf: [
+          { type: "string" },
+          { type: "object", required: ["host"], properties: { host: { type: "string" } } },
+        ],
+      },
+    },
+    required: ["reqTarget"],
+  };
+
+  it("allows empty string on an optional primitive variant and null on a null branch", () => {
+    const errs = collectErrors(variantSchema, {
+      optTarget: "",
+      nullableField: null,
+      reqTarget: "db.local",
+    });
+    expect(errs.size).toBe(0);
+  });
+
+  it("still flags an empty required primitive variant", () => {
+    const errs = collectErrors(variantSchema, { reqTarget: "" });
+    expect(errs.get("/reqTarget")).toBeString();
+  });
+});
+
+describe("array type schemas and Date safety in pruneEmpty", () => {
+  it("resolves nullable single types and validates integer constraints", () => {
+    expect(primaryType(["integer", "null"])).toBe("integer");
+    expect(primaryType(["boolean", "null"])).toBe("boolean");
+    expect(primaryType(["null"])).toBe("null");
+    expect(primaryType(["string", "number"])).toBeUndefined();
+
+    const schema = {
+      type: "object",
+      properties: {
+        port: { type: ["integer", "null"], minimum: 1 },
+        cpu: { type: ["string", "number"] },
+      },
+    };
+    expect(collectErrors(schema, { port: 1.5 }).get("/port")).toBeString();
+    expect(collectErrors(schema, { port: 8080, cpu: 2 }).size).toBe(0);
+    expect(collectErrors(schema, { port: null, cpu: "500m" }).size).toBe(0);
+  });
+
+  it("keeps Date instances in pruneEmpty instead of turning them into empty objects", () => {
+    const d = new Date("2026-12-31T00:00:00Z");
+    expect(pruneEmpty({ releaseDate: d, empty: "" })).toEqual({ releaseDate: d });
   });
 });
