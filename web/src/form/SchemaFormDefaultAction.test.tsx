@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { defaultAction } from "./fieldErrors";
-import { SchemaForm } from "./SchemaForm";
+import { defaultAction, defaultListAction } from "./fieldErrors";
+import { arrayDefaultItems, nextArrayOnAdd, SchemaForm } from "./SchemaForm";
 
 // A text field the chart has a default for: empty, it shows the default in grey
 // and stores nothing; the action beside its label takes the default in as text
@@ -92,5 +92,76 @@ describe("a number field with a default", () => {
     const html = render({ replicas: 1 }, { ratio: "auto" });
     expect(html).toContain('placeholder="по умолчанию auto"');
     expect(html).not.toContain(defaultAction.insert);
+  });
+});
+
+describe("a list field with a default", () => {
+  const pgHba = {
+    type: "object",
+    properties: {
+      pg_hba: {
+        type: "array",
+        title: "Правила доступа pg_hba.conf",
+        items: { type: "string", minLength: 1 },
+        default: [
+          "local   all             all                             trust",
+          "hostssl all             all          all                md5",
+        ],
+      },
+      tolerations: {
+        type: "array",
+        title: "Правила допуска",
+        items: { type: "string" },
+        default: [],
+      },
+      extraRules: {
+        type: "array",
+        title: "Дополнительные правила",
+        items: { type: "string" },
+      },
+    },
+  };
+  const render = (value: Record<string, unknown>, props: { lockedPaths?: string[]; chartDefaults?: Record<string, unknown> } = {}) =>
+    renderToStaticMarkup(<SchemaForm schema={pgHba} value={value} onChange={() => {}} {...props} />);
+
+  test("shows default items in preview and offers to copy them without storing them", () => {
+    const html = render({});
+    expect(html).toContain(defaultListAction.label);
+    expect(html).toContain("local   all             all                             trust");
+    expect(html).toContain("hostssl all             all          all                md5");
+    expect(count(html, defaultAction.insert)).toBe(1);
+    expect(html).not.toContain(defaultAction.reset);
+  });
+
+  test("offers to reset once the order holds its own list", () => {
+    const html = render({ pg_hba: ["hostssl mydb myuser 10.0.0.0/8 md5"] });
+    expect(html).toContain(defaultAction.reset);
+    expect(html).not.toContain(defaultListAction.label);
+  });
+
+  test("reads a non-empty default list from values.yaml too", () => {
+    const html = render({}, { chartDefaults: { extraRules: ["host all all 127.0.0.1/32 md5"] } });
+    expect(html).toContain("host all all 127.0.0.1/32 md5");
+    expect(count(html, defaultAction.insert)).toBe(2);
+    expect(arrayDefaultItems(pgHba.properties.tolerations, undefined, "/tolerations")).toBeUndefined();
+  });
+
+  test("hides the copy action when the list is locked", () => {
+    const html = render({}, { lockedPaths: ["/pg_hba"] });
+    expect(html).not.toContain(defaultAction.insert);
+    expect(html).toContain("local   all             all                             trust");
+  });
+
+  test("adding an entry on top of defaults copies the defaults first so Helm never drops them", () => {
+    const defaults = arrayDefaultItems(pgHba.properties.pg_hba, undefined, "/pg_hba");
+    const firstAdd = nextArrayOnAdd([], defaults, pgHba.properties.pg_hba, pgHba);
+    expect(firstAdd).toEqual([
+      "local   all             all                             trust",
+      "hostssl all             all          all                md5",
+      undefined,
+    ]);
+    // Once the user has their own list, adding another row only appends one row.
+    const secondAdd = nextArrayOnAdd(["custom rule"], defaults, pgHba.properties.pg_hba, pgHba);
+    expect(secondAdd).toEqual(["custom rule", undefined]);
   });
 });

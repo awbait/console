@@ -22,7 +22,7 @@
 // "0" next to the new fields is a list that was spread, and the element inside
 // it is where the answers are.
 
-import { deref, escapeToken, fieldBreadcrumb, mapValueSchema, type Schema } from "./fieldPath";
+import { deref, escapeToken, extraValueSchema, fieldBreadcrumb, mapValueSchema, type Schema } from "./fieldPath";
 import { mergeUnder } from "./valuesMerge";
 import { variantsOf } from "./variants";
 
@@ -123,6 +123,12 @@ function adaptObject(
   for (const [key, child] of Object.entries(obj)) {
     const childSchema = s.properties?.[key];
     if (!childSchema) {
+      const extra = extraValueSchema(s);
+      if (extra) {
+        const fitted = adapt(extra, child, root, label, `${path}/${escapeToken(key)}`, notes);
+        if (fitted) out[key] = fitted.value;
+        continue;
+      }
       // A chart that accepts unknown keys keeps them: Helm will take them too,
       // and a subchart the portal never mounted answers for its own values.
       if (s.additionalProperties !== false) {
