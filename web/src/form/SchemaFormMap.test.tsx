@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { collectErrors, newArrayItem, SchemaForm } from "./SchemaForm";
+import { extraEntries } from "./fieldErrors";
+import {
+  collectErrors,
+  filterExtraEntries,
+  mergeExtraMapEntries,
+  newArrayItem,
+  SchemaForm,
+} from "./SchemaForm";
 
 // A map is an object the chart describes by its values, not by its keys. Charts
 // of other teams use one as a directory "name -> settings": RabbitMQ users are
@@ -172,5 +179,71 @@ describe("newArrayItem", () => {
   test("a row that is a single-template map starts as an empty block too", () => {
     const list = { type: "array", items: { type: "object", patternProperties: { "^/": { type: "string" } } } };
     expect(newArrayItem(list, list)).toEqual({});
+  });
+});
+
+describe("a hybrid object with properties and additionalProperties", () => {
+  const pgParams = {
+    type: "object",
+    properties: {
+      parameters: {
+        type: "object",
+        title: "Параметры postgresql.conf",
+        additionalProperties: { type: "string", minLength: 2 },
+        propertyNames: { pattern: "^[a-z_]+$" },
+        properties: {
+          idle_in_transaction_session_timeout: { type: "string", default: "90s" },
+          log_statement: { type: "string", default: "mod" },
+        },
+      },
+    },
+  };
+
+  test("renders both declared properties and extra entries with an add button", () => {
+    const html = renderToStaticMarkup(
+      <SchemaForm
+        schema={pgParams}
+        value={{ parameters: { log_statement: "all", work_mem: "64MB" } }}
+        onChange={() => {}}
+      />,
+    );
+    expect(html).toContain("Параметры postgresql.conf");
+    expect(html).toContain('placeholder="по умолчанию 90s"');
+    expect(html).toContain('value="all"');
+    expect(html).toContain(extraEntries.heading);
+    expect(html).toContain('value="work_mem"');
+    expect(html).toContain('value="64MB"');
+    expect(html).toContain("+ Добавить");
+    // Fixed property stays in ObjectFields and is not duplicated as an extra key row.
+    expect(html).not.toContain('value="log_statement"');
+  });
+
+  test("hides the empty extra entries subheading when locked", () => {
+    const html = renderToStaticMarkup(
+      <SchemaForm schema={pgParams} value={{}} onChange={() => {}} lockedPaths={["/parameters"]} />,
+    );
+    expect(html).not.toContain(extraEntries.heading);
+    expect(html).not.toContain("+ Добавить");
+  });
+
+  test("validates extra keys and values alongside declared properties", () => {
+    expect(collectErrors(pgParams, { parameters: { work_mem: "64MB" } }).size).toBe(0);
+    expect(collectErrors(pgParams, { parameters: { work_mem: "1" } }).get("/parameters/work_mem")).toBeString();
+    expect(collectErrors(pgParams, { parameters: { "Bad-Key": "64MB" } }).get("/parameters/Bad-Key")).toBeString();
+  });
+
+  test("keeps fixed properties intact when filtering and merging extra entries", () => {
+    const reserved = new Set(["idle_in_transaction_session_timeout", "log_statement"]);
+    expect(filterExtraEntries({ log_statement: "all", work_mem: "64MB" }, reserved)).toEqual({ work_mem: "64MB" });
+    expect(mergeExtraMapEntries({ log_statement: "all", work_mem: "64MB" }, {}, reserved)).toEqual({
+      log_statement: "all",
+    });
+    expect(
+      mergeExtraMapEntries({ log_statement: "all" }, { shared_buffers: "256MB" }, reserved),
+    ).toEqual({
+      log_statement: "all",
+      shared_buffers: "256MB",
+    });
+    expect(mergeExtraMapEntries({}, {}, reserved)).toBeUndefined();
   });
 });

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { escapeToken, fieldBreadcrumb, mapKeyPattern, mapValueSchema, nodeAt, unescapeToken } from "./fieldPath";
+import {
+  escapeToken,
+  extraValueSchema,
+  fieldBreadcrumb,
+  mapKeyPattern,
+  mapValueSchema,
+  nodeAt,
+  unescapeToken,
+} from "./fieldPath";
 
 // A map entry is addressed by its key, and the key may itself carry what a
 // pointer is made of: a RabbitMQ vhost is "/billing". The server escapes such
@@ -20,6 +28,14 @@ const schema = {
       patternProperties: { "^/": { type: "object", properties: { tracing: { type: "boolean" } } } },
     },
     named: { type: "object", propertyNames: { pattern: "^[a-z]+$" }, additionalProperties: { type: "string" } },
+    parameters: {
+      title: "Параметры postgresql.conf",
+      type: "object",
+      additionalProperties: { type: "string", minLength: 1 },
+      properties: {
+        log_statement: { title: "Логирование запросов", type: "string", default: "mod" },
+      },
+    },
   },
 };
 
@@ -74,5 +90,14 @@ describe("fieldBreadcrumb through a map", () => {
   test("a view on the map node names the fields inside an entry", () => {
     const view = { overrides: { users: { "ui:view": { overrides: { tags: { title: "Роли" } } } } } };
     expect(fieldBreadcrumb("/users/alice/tags", schema, view)).toBe("Пользователи › alice › Роли");
+  });
+
+  test("resolves declared properties and extra keys in a hybrid object", () => {
+    expect(extraValueSchema(schema.properties.parameters)).toEqual({ type: "string", minLength: 1 });
+    expect(mapValueSchema(schema.properties.parameters)).toBeUndefined();
+    expect(nodeAt("/parameters/log_statement", schema)?.default).toBe("mod");
+    expect(nodeAt("/parameters/work_mem", schema)?.minLength).toBe(1);
+    expect(fieldBreadcrumb("/parameters/log_statement", schema)).toBe("Параметры postgresql.conf › Логирование запросов");
+    expect(fieldBreadcrumb("/parameters/work_mem", schema)).toBe("Параметры postgresql.conf › work_mem");
   });
 });

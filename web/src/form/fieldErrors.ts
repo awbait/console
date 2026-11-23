@@ -41,6 +41,7 @@ export const fieldMsg = {
   max: (n: number) => `Не больше ${n}.`,
   range: (min: number, max: number) => `Значение от ${min} до ${max}.`,
   taken: (name: string) => `Имя «${name}» уже занято.`,
+  reserved: (name: string) => `Поле «${name}» уже есть выше.`,
   oneOf: (values: string[]) => `Допустимые значения: ${values.join(", ")}.`,
   minItems: (n: number) =>
     n <= 1
@@ -81,6 +82,22 @@ export const defaultAction = {
   insertHint: "После копирования текст станет частью заказа и перестанет обновляться при изменении значения по умолчанию.",
   reset: "Сбросить значение",
   resetHint: "Текст в поле удалится, а значение будет браться по умолчанию и обновляться при его изменении.",
+};
+
+// Same actions for a list field (e.g. pg_hba.conf rules): wording speaks about
+// a list rather than text, plus the muted caption above default preview rows.
+export const defaultListAction = {
+  label: "По умолчанию",
+  insertHint:
+    "После копирования список станет частью заказа и перестанет обновляться при изменении значения по умолчанию.",
+  resetHint:
+    "Ваш список удалится из заказа. Список по умолчанию снова будет браться из чарта и обновляться при смене его версии.",
+};
+
+// Subheading for extra arbitrary key-value entries inside an object section
+// that already declares named properties above.
+export const extraEntries = {
+  heading: "Дополнительные параметры",
 };
 
 // withField prefixes a canonical message with a field label for error lists

@@ -40,14 +40,10 @@ export function pointerTokens(pointer: string): string[] {
   return pointer.split("/").filter(Boolean).map(decodeURIComponent).map(unescapeToken);
 }
 
-// mapValueSchema answers the schema every entry of a map of free keys follows,
-// or undefined when the node is not such a map. A map is an object the chart
-// describes by its values rather than by its keys: "additionalProperties" with
-// a schema, or a single "patternProperties" template, whose pattern then
-// constrains the key (see mapKeyPattern). An object that declares properties is
-// a block of fields, not a map, whatever else it says.
-export function mapValueSchema(s: Schema): Schema | undefined {
-  if (s.properties) return undefined;
+// extraValueSchema answers the schema any key not listed in properties follows,
+// or undefined when the object takes no such entries: an object schema in
+// "additionalProperties", else a single "patternProperties" template.
+export function extraValueSchema(s: Schema): Schema | undefined {
   if (s.additionalProperties && typeof s.additionalProperties === "object") return s.additionalProperties;
   const patterns = s.patternProperties;
   if (patterns && typeof patterns === "object") {
@@ -55,6 +51,17 @@ export function mapValueSchema(s: Schema): Schema | undefined {
     if (keys.length === 1 && patterns[keys[0]] && typeof patterns[keys[0]] === "object") return patterns[keys[0]];
   }
   return undefined;
+}
+
+// mapValueSchema answers the schema every entry of a map of free keys follows,
+// or undefined when the node is not such a map. A map is an object the chart
+// describes by its values rather than by its keys: "additionalProperties" with
+// a schema, or a single "patternProperties" template, whose pattern then
+// constrains the key (see mapKeyPattern). An object that declares properties is
+// a block of fields, not a pure map (see extraValueSchema for hybrid objects).
+export function mapValueSchema(s: Schema): Schema | undefined {
+  if (s.properties) return undefined;
+  return extraValueSchema(s);
 }
 
 // mapKeyPattern is the regular expression a map's keys must match, if the chart
@@ -86,7 +93,7 @@ export function nodeAt(pointer: string, root: Schema): Schema | undefined {
       node = deref(node.properties[seg], root);
       continue;
     }
-    const entry = mapValueSchema(node);
+    const entry = extraValueSchema(node);
     node = entry ? deref(entry, root) : undefined;
   }
   return node;
@@ -347,7 +354,7 @@ export function fieldBreadcrumb(pointer: string, root?: Schema, view?: Schema): 
     // A map entry is called by its key: the key is the name the person typed
     // into the row, and the schema has no title for it. Decided before the
     // index rule, because a map may well have "0" for a key.
-    const entry = node && root && !node.properties?.[seg] && !node.items ? mapValueSchema(node) : undefined;
+    const entry = node && root && !node.properties?.[seg] && !node.items ? extraValueSchema(node) : undefined;
     if (entry) {
       out = out ? `${out} › ${seg}` : seg;
       skipIndex = false;
