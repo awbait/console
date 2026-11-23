@@ -661,7 +661,7 @@ func (s *Service) adoptable(p *models.ChartPublication, versions []*models.Publi
 		return false
 	}
 	for _, v := range versions {
-		if v.Status == models.PubApproved {
+		if v.Status == models.PubApproved || v.EverPublished() {
 			return false
 		}
 	}
