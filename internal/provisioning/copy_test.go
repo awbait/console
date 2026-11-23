@@ -318,8 +318,7 @@ func TestCopyFallsBackToTheLatestOrderableVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get version: %v", err)
 	}
-	old.Orderable = false
-	if err := s.st.UpsertVersion(ctx, old); err != nil {
+	if err := s.st.SetOrderable(ctx, old.ID, false); err != nil {
 		t.Fatalf("withdraw 15.4.1: %v", err)
 	}
 
@@ -352,8 +351,7 @@ func TestCopyToAnotherVersionKeepsTheOriginalsIdentityField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get version: %v", err)
 	}
-	old.Orderable = false
-	if err := s.st.UpsertVersion(ctx, old); err != nil {
+	if err := s.st.SetOrderable(ctx, old.ID, false); err != nil {
 		t.Fatalf("withdraw 15.4.1: %v", err)
 	}
 
@@ -363,5 +361,91 @@ func TestCopyToAnotherVersionKeepsTheOriginalsIdentityField(t *testing.T) {
 	}
 	if cp.ChartVersion != "15.4.2" || !strings.Contains(cp.ValuesYAML, "database: pg2") {
 		t.Fatalf("copy: version=%s\n%s", cp.ChartVersion, cp.ValuesYAML)
+	}
+}
+
+// When the highest allowlisted version has disappeared from Harbor, Copy picks
+// the highest orderable version that still exists in the registry.
+func TestCopySkipsOrderableVersionMissingFromRegistry(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	dev := mustStand(ctx, t, s, "dev", "in-cluster")
+	view := []byte(`{"views":{"order":{"identity":"/auth/database"}}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.1", view)
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID), func(in *provisioning.CreateInput) {
+		in.Version = "15.4.1"
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	seedVersion(t, s, "postgres", "15.4.2", view)
+	// Seed a higher version in the store that is absent from Harbor.
+	seedVersion(t, s, "postgres", "99.0.0", view)
+	old, err := s.st.GetVersion(ctx, "pub-postgres", "15.4.1")
+	if err != nil {
+		t.Fatalf("get version: %v", err)
+	}
+	if err := s.st.SetOrderable(ctx, old.ID, false); err != nil {
+		t.Fatalf("withdraw 15.4.1: %v", err)
+	}
+
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg2"})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+	if cp.ChartVersion != "15.4.2" {
+		t.Fatalf("copy version = %s, want 15.4.2 (skipping 99.0.0 missing from registry)", cp.ChartVersion)
+	}
+}
+
+// Same-stand copy clears an identity field that differs from service_name so
+// two live orders do not collide. When the namespace template reads that field,
+// Copy still creates the draft and Submit refuses until the field is filled.
+func TestCopySameStandWithNamespaceTemplate(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	dev := mustStand(ctx, t, s, "dev", "in-cluster")
+	view := []byte(`{"views":{"order":{"identity":"/auth/database","namespace":{"source":"template","template":"ns-{{.Values.auth.database}}"}}}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	src, err := s.prov.Create(ctx, member("core"), newOrder("pg1", onStand(dev.ID), func(in *provisioning.CreateInput) {
+		in.Values = draft("payments")
+	}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if src.Namespace != "ns-payments" {
+		t.Fatalf("src namespace = %s, want ns-payments", src.Namespace)
+	}
+
+	cp, err := s.prov.Copy(ctx, member("core"), src.ID, provisioning.CopyInput{StandID: dev.ID, ServiceName: "pg2"})
+	if err != nil {
+		t.Fatalf("same-stand copy with namespace template: %v", err)
+	}
+	if cp.Status != models.StatusDraft {
+		t.Fatalf("copy status = %s, want DRAFT", cp.Status)
+	}
+
+	// Submitting while the identity/template field is still empty must fail.
+	if _, err := s.prov.Submit(ctx, member("core"), cp.ID); err == nil {
+		t.Fatal("submit with empty namespace template field must be rejected")
+	}
+
+	// Filling the field updates the namespace and allows Submit to succeed.
+	cp, err = s.prov.Update(ctx, member("core"), cp.ID, provisioning.UpdateInput{
+		Values: draft("billing"),
+	})
+	if err != nil {
+		t.Fatalf("update draft: %v", err)
+	}
+	if cp.Namespace != "ns-billing" {
+		t.Fatalf("updated draft namespace = %s, want ns-billing", cp.Namespace)
+	}
+	sub, err := s.prov.Submit(ctx, member("core"), cp.ID)
+	if err != nil {
+		t.Fatalf("submit after filling field: %v", err)
+	}
+	if sub.Status != models.StatusMRCreated || sub.Namespace != "ns-billing" {
+		t.Fatalf("submitted: status=%s ns=%s", sub.Status, sub.Namespace)
 	}
 }

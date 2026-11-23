@@ -207,13 +207,18 @@ func (m *Memory) UpsertVersion(ctx context.Context, v *models.PublicationVersion
 	now := m.stamp()
 	for id, ex := range m.pubVersions {
 		if ex.PublicationID == v.PublicationID && ex.ChartVersion == v.ChartVersion {
+			if ex.Version != v.Version {
+				return models.ErrStaleVersion
+			}
 			v.ID = id
 			v.Version = ex.Version + 1
 			v.CreatedAt = ex.CreatedAt
 			v.UpdatedAt = now
-			// Support is changed by SetDeprecated alone, so saving a view document
-			// carries it over rather than restating it. Postgres does the same by
-			// leaving those columns out of the upsert.
+			// orderable and support are changed by SetOrderable / SetDeprecated
+			// alone, so saving a view document carries them over rather than
+			// restating them. Postgres does the same by leaving those columns
+			// out of the conflict update.
+			v.Orderable = ex.Orderable
 			v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = ex.DeprecatedAt, ex.DeprecatedBy, ex.DeprecationNote
 			m.pubVersions[id] = clone(v)
 			return nil
@@ -253,6 +258,7 @@ func (m *Memory) SetDeprecated(ctx context.Context, versionID string, at *time.T
 		by, note = "", ""
 	}
 	v.DeprecatedAt, v.DeprecatedBy, v.DeprecationNote = at, by, note
+	v.Version++
 	v.UpdatedAt = m.stamp()
 	return nil
 }

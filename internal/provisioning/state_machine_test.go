@@ -20,6 +20,13 @@ func TestCanTransition(t *testing.T) {
 		{models.StatusMRMerged, models.StatusDeleteRequested},
 		{models.StatusDeploying, models.StatusDeleteRequested},
 		{models.StatusArgoMissing, models.StatusDeleteRequested},
+		// ArgoCD health Missing can happen from any deployed state and recover directly
+		{models.StatusDeploying, models.StatusArgoMissing},
+		{models.StatusHealthy, models.StatusArgoMissing},
+		{models.StatusDegraded, models.StatusArgoMissing},
+		{models.StatusArgoMissing, models.StatusHealthy},
+		{models.StatusArgoMissing, models.StatusDegraded},
+		{models.StatusArgoMissing, models.StatusDeploying},
 		// edit (-> MR_CREATED) is allowed once the create MR is merged
 		{models.StatusMRMerged, models.StatusMRCreated},
 		{models.StatusDeploying, models.StatusMRCreated},

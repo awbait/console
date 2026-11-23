@@ -340,7 +340,7 @@ func (s *Service) resourceIdentity(ctx context.Context, chartProject, chartName,
 // values as the form sent them (source=values, source=template); sc is the
 // order a template reads its team, cluster, service name and the stand's
 // variables from.
-func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName, version, orderNamespace string, values map[string]any, sc stampContext) (string, error) {
+func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName, version, orderNamespace string, values map[string]any, sc stampContext, allowEmptyField bool) (string, error) {
 	view := s.orderView(ctx, chartProject, chartName, version)
 	rule := views.OrderNamespaceRule(view)
 	data := views.TemplateData{Team: sc.Team, ServiceName: sc.ServiceName, Cluster: sc.Cluster, Chart: chartName}
@@ -355,15 +355,21 @@ func (s *Service) resolveNamespace(ctx context.Context, chartProject, chartName,
 	if err != nil {
 		// A field left empty is the person's to fill in and a variable with no
 		// value the platform admin's; both messages say so on their own.
+		// Drafts may hold incomplete values (including a same-stand copy whose
+		// identity field was emptied), so an empty field falls back to the
+		// service name until Submit validates the order strictly.
 		// Anything else is a mistake in the document, like a broken "defaults".
 		var empty *views.VarEmptyError
 		var field *views.NamespaceValueError
-		if errors.As(err, &empty) || errors.As(err, &field) {
+		if errors.As(err, &field) && allowEmptyField {
+			ns = ""
+		} else if errors.As(err, &empty) || errors.As(err, &field) {
 			return "", &ValidationError{Message: err.Error()}
+		} else {
+			s.logger().Warn("view namespace template render failed",
+				"chart", chartName, "chart_project", chartProject, "chart_version", version, "err", err)
+			return "", &ValidationError{Message: MsgViewNamespace + err.Error() + " " + MsgViewDefaultsOwner}
 		}
-		s.logger().Warn("view namespace template render failed",
-			"chart", chartName, "chart_project", chartProject, "chart_version", version, "err", err)
-		return "", &ValidationError{Message: MsgViewNamespace + err.Error() + " " + MsgViewDefaultsOwner}
 	}
 	if ns == "" {
 		ns = sc.ServiceName
@@ -611,6 +617,10 @@ func (s *Service) ListEvents(ctx context.Context, id string) ([]*models.RequestE
 // Create validates input and persists a DRAFT. Unless in.Draft is set it then
 // opens the create MR and advances the order to MR_CREATED.
 func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*models.Request, error) {
+	return s.create(ctx, u, in, false)
+}
+
+func (s *Service) create(ctx context.Context, u *models.User, in CreateInput, allowEmptyNamespaceField bool) (*models.Request, error) {
 	if !canProvision(u, in.Team) {
 		return nil, ErrForbidden
 	}
@@ -657,7 +667,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	// (form field / values field / fixed / template). Falls back to service_name
 	// so it is never empty. Charts that self-provision or are cluster-scoped hide
 	// the form field and source it from the values or a constant instead.
-	namespace, err := s.resolveNamespace(ctx, in.ChartProject, in.ChartName, in.Version, in.Namespace, in.Values, sc)
+	namespace, err := s.resolveNamespace(ctx, in.ChartProject, in.ChartName, in.Version, in.Namespace, in.Values, sc, allowEmptyNamespaceField)
 	if err != nil {
 		return nil, err
 	}
@@ -774,16 +784,28 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if uerr := yaml.Unmarshal([]byte(r.ValuesYAML), &values); uerr != nil {
 		return nil, &ValidationError{Message: MsgBadValues + uerr.Error()}
 	}
+	stand := s.standOf(ctx, r)
+	if err := s.refuseDeleting(ctx, stand); err != nil {
+		return nil, err
+	}
+	ns, err := s.resolveNamespace(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, values, stampOf(r), false)
+	if err != nil {
+		return nil, err
+	}
+	if ns != r.Namespace {
+		r.Namespace = ns
+		r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, r.Cluster, StandKey(stand))
+		r.InstancePath = s.gitops.NewInstancePath(stand, r)
+		if err := s.checkNamespaceIdentity(ctx, r); err != nil {
+			return nil, err
+		}
+	}
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, values, true, stampOf(r))
 	if err != nil {
 		return nil, err
 	}
 	r.ValuesYAML = valuesYAML
 
-	stand := s.standOf(ctx, r)
-	if err := s.refuseDeleting(ctx, stand); err != nil {
-		return nil, err
-	}
 	if !stand.WritesGit() {
 		if err := s.transition(ctx, r, models.StatusConsoleSaved, byUser(u)); err != nil {
 			return r, err
@@ -1082,7 +1104,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	if orderNS == "" {
 		orderNS = r.Namespace
 	}
-	ns, err := s.resolveNamespace(ctx, r.ChartProject, r.ChartName, r.ChartVersion, orderNS, in.Values, stampOf(r))
+	ns, err := s.resolveNamespace(ctx, r.ChartProject, r.ChartName, r.ChartVersion, orderNS, in.Values, stampOf(r), true)
 	if err != nil {
 		return nil, err
 	}

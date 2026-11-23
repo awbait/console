@@ -124,7 +124,7 @@ func (s *Service) reconcileOne(ctx context.Context, r *models.Request) {
 				s.tryTransition(ctx, r, target)
 			}
 		}
-	case models.StatusHealthy, models.StatusDegraded:
+	case models.StatusHealthy, models.StatusDegraded, models.StatusArgoMissing:
 		// Already deployed: follow ArgoCD's reported health directly. Do NOT gate on
 		// sync status here. Instances of the same chart share one Git branch, so a
 		// sibling's create/update/delete MR advances the branch and briefly marks

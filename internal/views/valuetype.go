@@ -110,8 +110,8 @@ func checkValueType(val any, kind string, known KnownVars) error {
 				tmplOpen, refs[0].text, tmplClose, kindWord(kind))
 		}
 		value, ok := known[name]
-		if !ok {
-			return nil // no list at hand: the stamp will say it at order time
+		if !ok || value == "" {
+			return nil // no list at hand, or stand-only variable with empty shared value: checked at order time
 		}
 		if _, err := coerce(value, kind); err != nil {
 			return fmt.Errorf("переменная «%s» сейчас равна «%s», а здесь ждут %s", name, value, kindWord(kind))

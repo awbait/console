@@ -45,22 +45,27 @@ var transitions = map[models.RequestStatus]map[models.RequestStatus]bool{
 	models.StatusDeploying: {
 		models.StatusHealthy:         true,
 		models.StatusDegraded:        true,
+		models.StatusArgoMissing:     true,
 		models.StatusMRCreated:       true, // update mid-rollout opens a new MR
 		models.StatusDeleteRequested: true,
 	},
 	models.StatusHealthy: {
 		models.StatusDegraded:        true,
+		models.StatusArgoMissing:     true,
 		models.StatusDeploying:       true, // re-sync after update
 		models.StatusMRCreated:       true, // update opens a new MR
 		models.StatusDeleteRequested: true,
 	},
 	models.StatusDegraded: {
 		models.StatusHealthy:         true,
+		models.StatusArgoMissing:     true,
 		models.StatusDeploying:       true,
 		models.StatusMRCreated:       true,
 		models.StatusDeleteRequested: true,
 	},
 	models.StatusArgoMissing: {
+		models.StatusHealthy:         true,
+		models.StatusDegraded:        true,
 		models.StatusDeploying:       true, // app reappears in ArgoCD
 		models.StatusMRCreated:       true,
 		models.StatusDeleteRequested: true,

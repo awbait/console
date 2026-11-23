@@ -103,7 +103,7 @@ func TestRenderInitialConvertsToFieldType(t *testing.T) {
 // it says; what it cannot, it leaves alone rather than complaining about a
 // document that would work.
 func TestConstructorChecksValueTypes(t *testing.T) {
-	vars := map[string]string{"PORT": "8080", "NAME": "abc"}
+	vars := map[string]string{"PORT": "8080", "NAME": "abc", "STAND_PORT": ""}
 	cases := []struct {
 		name, value string
 		wantIssue   string // "" means the document must pass
@@ -111,6 +111,7 @@ func TestConstructorChecksValueTypes(t *testing.T) {
 		{"literal number as text", "3", ""},
 		{"literal text", "abc", "целое число"},
 		{"variable holding a number", "{{.Vars.PORT}}", ""},
+		{"stand-only variable with empty shared value", "{{.Vars.STAND_PORT}}", ""},
 		{"variable holding text", "{{.Vars.NAME}}", "«NAME» сейчас равна"},
 		{"reference that is always text", "{{.Team}}", "даёт текст"},
 		{"reference inside text", "port-{{.Vars.PORT}}", "всегда получается текст"},
