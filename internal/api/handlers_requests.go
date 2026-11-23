@@ -208,6 +208,28 @@ func (s *Server) handlePatchRequest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, req)
 }
 
+// handleValidateRequest is the dry run of a PATCH: the same checks against the
+// values, nothing written. Answers with the values as they would be stored.
+func (s *Server) handleValidateRequest(w http.ResponseWriter, r *http.Request) {
+	u := auth.UserFrom(r.Context())
+	var body struct {
+		Version string         `json:"version"`
+		Values  map[string]any `json:"values"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON")
+		return
+	}
+	res, err := s.Prov.ValidateUpdate(r.Context(), u, chi.URLParam(r, "id"), provisioning.UpdateInput{
+		Version: body.Version, Values: body.Values,
+	})
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 type renameReq struct {
 	DisplayName string `json:"display_name"`
 }

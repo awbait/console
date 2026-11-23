@@ -80,6 +80,9 @@ const (
 	// Argo CD, this stand's or another's. Arguments: the other order's
 	// display name, its stand.
 	MsgAppNameTaken = "Под этим именем уже развёрнут заказ «%s» на стенде «%s». Выберите другое имя сервиса, а если ошибка повторяется, обратитесь к администратору портала."
+	// An edit moved a field the order was created with and the view freezes.
+	// Argument: the field, dotted.
+	MsgImmutableField = "Поле «%s» нельзя менять после создания заказа. Верните прежнее значение."
 )
 
 // ValidationError is a 422 with a human-readable reason and, when it comes from

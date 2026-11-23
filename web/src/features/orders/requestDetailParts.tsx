@@ -1,8 +1,7 @@
 // Shared presentational pieces of the request (product) detail page (RequestDetailPage):
-// detail actions, tabs, fields, history, the raw-values modal and date formatting.
-// Kept as a separate module so the page component stays focused on data flow.
+// detail actions, tabs, fields, history and date formatting. Kept as a separate
+// module so the page component stays focused on data flow.
 
-import Editor from "@monaco-editor/react";
 import {
   IconAlertTriangle,
   IconArrowBackUp,
@@ -13,7 +12,6 @@ import {
   IconCopy,
   IconDotsVertical,
   IconExternalLink,
-  IconFileCode,
   IconForms,
   IconGitFork,
   IconGitMerge,
@@ -23,18 +21,13 @@ import {
   IconSparkles,
   IconTrash,
   IconUser,
-  IconX,
 } from "@tabler/icons-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Button as AriaButton,
-  Dialog,
-  DialogTrigger,
   Menu,
   MenuItem,
   MenuTrigger,
-  Modal,
-  ModalOverlay,
   Popover,
   Tab,
   TabList,
@@ -53,7 +46,6 @@ import {
   type ViewDocument,
 } from "@/api/types";
 import { chartLabel } from "@/app/CatalogContext";
-import { useTheme } from "@/app/ThemeContext";
 import { isPlatformStaff, useUser } from "@/auth/UserContext";
 import {
   GenericInfoActions,
@@ -62,7 +54,7 @@ import {
 } from "@/components/products/GenericProductTabs";
 import { productTabs } from "@/components/products/genericView";
 import { statusMeta, statusTitle } from "@/components/StatusBadge";
-import { buttonClass, Card, Checkbox } from "@/components/ui";
+import { Card, Checkbox } from "@/components/ui";
 import { orderNamespace } from "@/form/namespace";
 import { useAsync } from "@/hooks/useAsync";
 import { useMatchMedia } from "@/hooks/useMatchMedia";
@@ -72,6 +64,7 @@ import { standText } from "../stands/text";
 import { copyText } from "./copyText";
 import { mergeBlockReason } from "./mergeBlock";
 import { OrderGraphDialog } from "./OrderGraphDialog";
+import { OrderYamlDialog } from "./OrderYamlDialog";
 import { graphFor } from "./orderGraph";
 import { DAY_H, DAY_SEP, paginate, ROW_H } from "./timelineLayout";
 
@@ -265,61 +258,6 @@ export function DetailActions({
         </Menu>
       </Popover>
     </MenuTrigger>
-  );
-}
-
-// ValuesModalButton opens the order's configuration, read-only, in a centered
-// modal. One word on the trigger: a file name on a product page reads as a
-// debugging tool, and a verb ("Показать конфигурацию") made the button the widest
-// thing in the card. The word names what the button leads to, which is all a
-// button in a group of quiet fields has to do; the file name waits in the
-// dialog's own header, for the reader who is looking for exactly that.
-function ValuesModalButton({ request: r }: { request: RequestDetail["request"] }) {
-  const { theme } = useTheme();
-  return (
-    <DialogTrigger>
-      <AriaButton className={buttonClass("secondary", "shrink-0 cursor-pointer")}>
-        <IconFileCode size={16} stroke={1.8} className="text-slate-400" />
-        Конфигурация
-      </AriaButton>
-      <ModalOverlay className="fixed inset-0 z-50 flex items-center justify-center scrim p-4 entering:animate-in entering:fade-in">
-        <Modal className="w-full max-w-3xl rounded-lg bg-surface shadow-xl outline-none entering:animate-in entering:zoom-in-95">
-          <Dialog className="outline-none">
-            {({ close }) => (
-              <div className="flex flex-col">
-                <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-                  <div className="flex min-w-0 items-baseline gap-2">
-                    <h2 className="text-sm font-semibold text-gray-700">Конфигурация сервиса</h2>
-                    <span className="truncate text-xs text-slate-400">values.yaml</span>
-                  </div>
-                  <button
-                    onClick={close}
-                    aria-label="Закрыть"
-                    className="rounded-md p-1 text-gray-400 outline-none hover:bg-gray-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-brand-500"
-                  >
-                    <IconX size={18} stroke={2} />
-                  </button>
-                </header>
-                <div className="editor-frame rounded-b-lg">
-                  <Editor
-                    height="480px"
-                    defaultLanguage="yaml"
-                    theme={theme === "light" ? "light" : "vs-dark"}
-                    value={r.values_yaml}
-                    options={{
-                      readOnly: true,
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      automaticLayout: true,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
   );
 }
 
@@ -681,6 +619,16 @@ function InfoTab({
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-700">Общая информация</h2>
         <div className="flex shrink-0 items-center gap-2">
+          <OrderYamlDialog
+            request={r}
+            doc={doc}
+            stand={stand}
+            modifiable={modifiable}
+            openMR={openMR}
+            reload={onChanged}
+            schema={schema}
+            persist={persist}
+          />
           {graph && (
             <OrderGraphDialog
               request={r}
@@ -705,9 +653,9 @@ function InfoTab({
       </div>
       {/* Six facts about the service itself, in the order they are asked for:
           what it is, then where it runs. What is left over is the platform's own
-          bookkeeping - the chart it came from, the application that deploys it,
-          the values behind it - and it waits under "Подробнее" instead of sitting
-          between the service name and its namespace as an equal. */}
+          bookkeeping - the chart it came from, the application that deploys it -
+          and it waits under "Подробнее" instead of sitting between the service
+          name and its namespace as an equal. */}
       <Fields>
         <Field label="Имя сервиса" value={r.service_name} />
         <Field label="Продукт" value={chartLabel(r.chart_name)} />
@@ -723,7 +671,6 @@ function InfoTab({
             <Field label="Чарт" value={`${r.chart_project}/${r.chart_name}`} />
             {deploys(stand) && <Field label="Приложение в ArgoCD" value={r.argocd_app_name} href={argocdUrl} />}
           </Fields>
-          <ValuesModalButton request={r} />
         </div>
       </MoreDetails>
     </Card>

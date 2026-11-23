@@ -485,6 +485,10 @@ export const api = {
   createRequest: (body: CreateOrderBody) => req<OrderRequest>("POST", "/requests", body),
   updateRequest: (id: string, body: UpdateOrderBody) =>
     req<OrderRequest>("PATCH", `/requests/${enc(id)}`, body),
+  // Dry-run of updateRequest: checks schema, uniqueness and immutable fields
+  // without opening a merge request or writing to the store.
+  validateRequest: (id: string, body: { version?: string; values: Record<string, unknown> }) =>
+    req<{ values_yaml: string; changed: boolean }>("POST", `/requests/${enc(id)}/validate`, body),
   renameRequest: (id: string, display_name: string) =>
     req<OrderRequest>("POST", `/requests/${enc(id)}/rename`, { display_name }),
   submitRequest: (id: string) => req<OrderRequest>("POST", `/requests/${enc(id)}/submit`),
