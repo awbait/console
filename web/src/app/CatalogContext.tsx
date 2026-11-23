@@ -1,18 +1,72 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, type ReactNode, useCallback, useContext, useEffect } from "react";
 import { api } from "../api/client";
 import { qk } from "../api/queryKeys";
-import { useAsync } from "../hooks/useAsync";
 import type { CatalogChart, Category } from "../api/types";
+import { useUser } from "../auth/UserContext";
 
-// The catalog (categories + charts with a publication overlay) loads once and
-// is shared via context: it drives the left menu, the catalog page, and the
-// "Category" column in order lists.
+// How long a catalog snapshot counts as fresh before navigation or returning
+// focus revalidates it in the background. Short enough that a chart version
+// published in another tab shows up on the next visit to an order, long enough
+// that rapid clicks between pages do not hit Harbor on every transition.
+export const CATALOG_STALE_MS = 15_000;
+
+// Background refresh while the tab is visible, so an order page left open
+// notices newly published chart versions on its own. React Query pauses the
+// interval automatically while the tab is hidden.
+export const CATALOG_REFRESH_MS = 2 * 60 * 1000;
+
+export function catalogQueryOptions(signedIn: boolean) {
+  return {
+    queryKey: qk.catalog(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => api.getCatalog(signal),
+    staleTime: CATALOG_STALE_MS,
+    refetchOnWindowFocus: signedIn,
+    refetchInterval: signedIn ? CATALOG_REFRESH_MS : false,
+  } as const;
+}
+
+// Revalidate the catalog in the background only when it is already stale,
+// without cancelling a fetch that is already in flight.
+export function refetchStaleCatalog(queryClient: QueryClient): Promise<void> {
+  return queryClient.refetchQueries(
+    { queryKey: qk.catalog(), stale: true },
+    { cancelRefetch: false },
+  );
+}
+
+// Whether an upgrade page should force-reload the catalog once before calling
+// a target version unavailable: the version may have just been published while
+// this tab held an older catalog snapshot.
+export function shouldRecheckUpgrade(params: {
+  upgrade: boolean;
+  ready: boolean;
+  targetVersion: string;
+  catalogLoading: boolean;
+  allowedUpgrades: string[];
+  recheckedKey: string | null;
+  checkKey: string;
+}): boolean {
+  return (
+    params.upgrade &&
+    params.ready &&
+    !!params.targetVersion &&
+    !params.catalogLoading &&
+    !params.allowedUpgrades.includes(params.targetVersion) &&
+    params.recheckedKey !== params.checkKey
+  );
+}
+
+// The catalog (categories + charts with a publication overlay) is shared via
+// context: it drives the left menu, the catalog page, upgrade availability on
+// orders, and the "Category" column in order lists.
 interface CatalogState {
   categories: Category[];
   charts: CatalogChart[];
   loading: boolean;
   error: Error | null;
-  reload: () => void;
+  reload: () => Promise<void>;
+  refresh: () => void;
 }
 
 const CatalogCtx = createContext<CatalogState>({
@@ -20,19 +74,42 @@ const CatalogCtx = createContext<CatalogState>({
   charts: [],
   loading: true,
   error: null,
-  reload: () => {},
+  reload: async () => {},
+  refresh: () => {},
 });
 
 export function CatalogProvider({ children }: { children: ReactNode }) {
-  const { data, loading, error, reload } = useAsync(() => api.getCatalog(), [], qk.catalog());
+  const { user } = useUser();
+  const signedIn = !!user;
+  const queryClient = useQueryClient();
+  const query = useQuery(catalogQueryOptions(signedIn));
+
+  const reload = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: qk.catalog() });
+  }, [queryClient]);
+
+  const refresh = useCallback(() => {
+    if (!signedIn) return;
+    void refetchStaleCatalog(queryClient);
+  }, [queryClient, signedIn]);
+
+  // React Query's refetchOnWindowFocus covers tab switches (visibilitychange);
+  // listening to window focus also covers moving between side-by-side windows.
+  useEffect(() => {
+    if (!signedIn) return;
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [signedIn, refresh]);
+
   return (
     <CatalogCtx.Provider
       value={{
-        categories: data?.categories ?? [],
-        charts: data?.charts ?? [],
-        loading,
-        error,
+        categories: query.data?.categories ?? [],
+        charts: query.data?.charts ?? [],
+        loading: query.isPending,
+        error: (query.error as Error | null) ?? null,
         reload,
+        refresh,
       }}
     >
       {children}
@@ -42,6 +119,17 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
 export function useCatalog() {
   return useContext(CatalogCtx);
+}
+
+// useRefreshCatalog asks the catalog to revalidate in the background when a
+// screen that depends on available versions opens (or switches its target).
+// Within CATALOG_STALE_MS it is a no-op, and it never blanks the screen.
+export function useRefreshCatalog(dep?: unknown) {
+  const { refresh } = useCatalog();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dep is an explicit re-trigger key (e.g. route param)
+  useEffect(() => {
+    refresh();
+  }, [refresh, dep]);
 }
 
 // Catalog chart by coordinates (project/name).

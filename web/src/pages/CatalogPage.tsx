@@ -23,7 +23,7 @@ import {
 } from "react-aria-components";
 import { useSearchParams } from "react-router-dom";
 import type { CatalogChart, Category } from "../api/types";
-import { useCatalog } from "../app/CatalogContext";
+import { useCatalog, useRefreshCatalog } from "../app/CatalogContext";
 import { CAPABILITIES } from "../app/capabilities";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { useTeam } from "../app/TeamContext";
@@ -49,6 +49,7 @@ function matchesQuery(chart: CatalogChart, query: string): boolean {
 
 export function CatalogPage() {
   const { categories, charts, error, loading, reload } = useCatalog();
+  useRefreshCatalog();
   const { user } = useUser();
   const { team } = useTeam();
   const teamLabel = useTeamLabel();
