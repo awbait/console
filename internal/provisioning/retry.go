@@ -53,6 +53,12 @@ const (
 // Everything it needs comes from Git, so an attempt that gets nowhere leaves
 // nothing behind and the next tick tries again.
 func (s *Service) retryConflictedMR(ctx context.Context, r *models.Request, rec *models.RequestMR) retryOutcome {
+	// Only update MRs carry a three-way mergeable values/version diff. Running
+	// this on a delete, regenerate, or unpublish MR would reopen it as an
+	// ActionUpdate and overwrite files in Git.
+	if rec.Action != models.ActionUpdate {
+		return retryNotDone
+	}
 	if !s.takeMergeRetry(r.ID) {
 		return retryNotDone
 	}

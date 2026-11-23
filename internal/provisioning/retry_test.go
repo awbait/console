@@ -468,3 +468,43 @@ func TestPendingConflictClearedByPull(t *testing.T) {
 		t.Error("conflict still offered after the order was pulled from Git")
 	}
 }
+
+// A conflicted delete MR must never be rewritten by retryConflictedMR into an
+// ActionUpdate MR (which would read the deleted values.yaml as {} and overwrite
+// the service's values instead of deleting it).
+func TestConflictedDeleteMRIsNotRewrittenAsUpdate(t *testing.T) {
+	ctx := context.Background()
+	s := newAutoMergeStack(t)
+	r := liveOrder(ctx, t, s)
+
+	if _, err := s.prov.Delete(ctx, member("core"), r.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	mrs, err := s.st.ListMRs(ctx, r.ID)
+	if err != nil || len(mrs) != 2 {
+		t.Fatalf("expected create+delete MRs, got %+v (%v)", mrs, err)
+	}
+	delMR := mrs[1]
+	if delMR.Action != models.ActionDelete {
+		t.Fatalf("latest MR action = %s, want delete", delMR.Action)
+	}
+	if err := s.gl.SetDetailedMergeStatus(delMR.GitLabProjectID, delMR.MRIID, "conflict"); err != nil {
+		t.Fatalf("set merge status: %v", err)
+	}
+
+	s.tick(ctx)
+
+	afterMRs, err := s.st.ListMRs(ctx, r.ID)
+	if err != nil {
+		t.Fatalf("list MRs: %v", err)
+	}
+	if len(afterMRs) != 2 {
+		t.Fatalf("conflicted delete MR must not open a replacement MR, got %d MRs: %+v", len(afterMRs), afterMRs)
+	}
+	if afterMRs[1].Action != models.ActionDelete || afterMRs[1].Status != models.MROpened {
+		t.Fatalf("delete MR mutated unexpectedly: %+v", afterMRs[1])
+	}
+	if got := mustStatus(ctx, t, s.st, r.ID); got != models.StatusDeleteRequested {
+		t.Fatalf("status = %s, want DELETE_REQUESTED", got)
+	}
+}
