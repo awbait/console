@@ -236,7 +236,7 @@ export function WorkloadDialog({
       errors.push("Selector: нужен хотя бы один лейбл (по нему политика находит поды).");
     }
     const parsedPorts: { port: number; protocol: PortProtocol }[] = [];
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const row of ports) {
       const t = row.port.trim();
       if (!t) continue;
@@ -244,11 +244,12 @@ export function WorkloadDialog({
       // Out of range is the row's own complaint (PORT), shown under it as it is
       // typed; the row is skipped here rather than reported a second time.
       if (PORT.error(t)) continue;
-      if (seen.has(num)) {
-        errors.push(`Порт ${num} указан дважды.`);
+      const key = `${num}/${row.protocol}`;
+      if (seen.has(key)) {
+        errors.push(`Порт ${num}/${row.protocol} указан дважды.`);
         continue;
       }
-      seen.add(num);
+      seen.add(key);
       parsedPorts.push({ port: num, protocol: row.protocol });
     }
     if (errors.length) {

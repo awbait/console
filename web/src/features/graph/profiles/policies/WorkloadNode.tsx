@@ -1,6 +1,13 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { createContext, useContext } from "react";
-import { canSend, KIND_LABELS, nsOfWorkload, type TopoWorkload } from "./topology";
+import {
+  canSend,
+  KIND_LABELS,
+  nsOfWorkload,
+  type PortProtocol,
+  type TopoPort,
+  type TopoWorkload,
+} from "./topology";
 
 // Data carried by a workload node.
 export interface WorkloadNodeData {
@@ -19,15 +26,34 @@ export interface WorkloadNodeData {
 export type ConnectingFrom = { kind: "body" | "port"; ns: string } | null;
 export const ConnectingCtx = createContext<ConnectingFrom>(null);
 
-// Handle id encodes the port NUMBER (stable across workload edits, unlike an
-// index) plus the side. Ports render their circle on the LEFT border only:
-// the canvas flows left to right - incoming on the left, outgoing on the
-// right.
-export const portHandleId = (port: number, side: "l" | "r") => `p-${port}-${side}`;
+// Handle id encodes the port NUMBER (and optional protocol so TCP/UDP on the
+// same port stay distinct handles) plus the side. Ports render their circle on
+// the LEFT border only: the canvas flows left to right - incoming on the left,
+// outgoing on the right.
+export const portHandleId = (port: number, side: "l" | "r", protocol?: PortProtocol) =>
+  protocol ? `p-${port}-${protocol}-${side}` : `p-${port}-${side}`;
 export const portFromHandle = (handle: string | null | undefined): number | null => {
-  const m = handle?.match(/^p-(\d+)-[lr]$/);
+  const m = handle?.match(/^p-(\d+)(?:-[A-Z]+)?-[lr]$/);
   return m ? Number(m[1]) : null;
 };
+export const portSpecFromHandle = (
+  handle: string | null | undefined,
+): { port: number; protocol: PortProtocol | null } | null => {
+  const m = handle?.match(/^p-(\d+)(?:-([A-Z]+))?-[lr]$/);
+  if (!m) return null;
+  return { port: Number(m[1]), protocol: (m[2] as PortProtocol | undefined) ?? null };
+};
+export function matchWorkloadPort(
+  w: TopoWorkload,
+  handle: string | null | undefined,
+): TopoPort | undefined {
+  const spec = portSpecFromHandle(handle);
+  if (!spec) return undefined;
+  if (spec.protocol) {
+    return w.ports.find((p) => p.port === spec.port && p.protocol === spec.protocol);
+  }
+  return w.ports.find((p) => p.port === spec.port);
+}
 
 // The body handle sits at the card header (right side) and is THE source
 // anchor: an outgoing rule never records a source port (only the destination
@@ -109,12 +135,12 @@ export function WorkloadNode({ data }: NodeProps) {
                 <span className="rf-wl__port-proto">{p.protocol}</span>
               </span>
               <Handle
-                id={portHandleId(p.port, "l")}
+                id={portHandleId(p.port, "l", p.protocol)}
                 type="source"
                 position={Position.Left}
                 isConnectableStart
                 isConnectableEnd
-                className={portClass(portHandleId(p.port, "l"))}
+                className={portClass(portHandleId(p.port, "l", p.protocol))}
               />
             </div>
           ))

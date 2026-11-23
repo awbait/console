@@ -60,8 +60,10 @@ import {
   ConnectingCtx,
   type ConnectingFrom,
   isBodyHandle,
+  matchWorkloadPort,
   portFromHandle,
   portHandleId,
+  portSpecFromHandle,
   WorkloadNode,
   type WorkloadNodeData,
 } from "./WorkloadNode";
@@ -244,11 +246,24 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   );
   const [nsToDelete, setNsToDelete] = useState<string | null>(null);
 
-  // Report every model change to the host page. The callback lives in a ref so
-  // its identity does not retrigger the effect.
+  // Report every model change to the host page, skipping the initial mount when
+  // nothing has changed yet (so simply opening a graph view never overwrites
+  // values or triggers a background layout save). Comparing references makes
+  // this safe under React StrictMode double-effects too.
   const modelCb = useRef(onModelChange);
   modelCb.current = onModelChange;
+  const lastReported = useRef({ topology, edges, orderNs, positions });
   useEffect(() => {
+    const prev = lastReported.current;
+    if (
+      prev.topology === topology &&
+      prev.edges === edges &&
+      prev.orderNs === orderNs &&
+      prev.positions === positions
+    ) {
+      return;
+    }
+    lastReported.current = { topology, edges, orderNs, positions };
     modelCb.current?.({ topology, edges, orderNs, positions });
   }, [topology, edges, orderNs, positions]);
 
@@ -263,15 +278,13 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
       const kept = eds.filter((e) => {
         const s = findWorkload(topology, e.source);
         const t = findWorkload(topology, e.target);
-        const tp = portFromHandle(e.targetHandle);
         return (
           !!s &&
           !!t &&
           // The source anchors at the body dot (a rule has no source port);
           // the target is always a concrete port.
           isBodyHandle(e.sourceHandle) &&
-          tp !== null &&
-          t.ports.some((p) => p.port === tp) &&
+          matchWorkloadPort(t, e.targetHandle) !== undefined &&
           // A workload moved into the peer namespace turns the edge same-ns.
           nsOfWorkload(e.source) !== nsOfWorkload(e.target)
         );
@@ -456,25 +469,26 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   const onConnect = useCallback(
     (raw: Connection) => {
       if (readOnly) return;
-      const startPort = portFromHandle(raw.sourceHandle);
+      const startSpec = portSpecFromHandle(raw.sourceHandle);
       const c: Connection =
-        startPort !== null && isBodyHandle(raw.targetHandle)
+        startSpec !== null && isBodyHandle(raw.targetHandle)
           ? {
               source: raw.target,
               sourceHandle: bodyHandleId("r"),
               target: raw.source,
-              targetHandle: portHandleId(startPort, "l"),
+              targetHandle: portHandleId(startSpec.port, "l", startSpec.protocol ?? undefined),
             }
           : raw;
-      const tp = portFromHandle(c.targetHandle);
-      if (tp === null || !isBodyHandle(c.sourceHandle)) return;
-      // The same rule again (same source, target and destination port):
+      const targetSpec = portSpecFromHandle(c.targetHandle);
+      if (targetSpec === null || !isBodyHandle(c.sourceHandle)) return;
+      // The same rule again (same source, target and destination port+protocol):
       // nothing to add. An opposite arrow between the same pair is a separate
       // rule and stays a separate arrow - there are no two-way edges.
-      const dup = edges.some(
-        (e) =>
-          e.source === c.source && e.target === c.target && portFromHandle(e.targetHandle) === tp,
-      );
+      const dup = edges.some((e) => {
+        if (e.source !== c.source || e.target !== c.target) return false;
+        const es = portSpecFromHandle(e.targetHandle);
+        return es !== null && es.port === targetSpec.port && es.protocol === targetSpec.protocol;
+      });
       if (dup) return;
       setEdges((eds) => addEdge({ ...c, animated: true, reconnectable: true }, eds));
     },
@@ -738,20 +752,26 @@ const Canvas = forwardRef<PoliciesGraphHandle, PoliciesGraphProps>(function Canv
   const displayEdges = useMemo(
     () =>
       edges.map((e) => {
-        const tp = portFromHandle(e.targetHandle);
-        if (tp === null || !isBodyHandle(e.sourceHandle)) return e;
+        const spec = portSpecFromHandle(e.targetHandle);
+        if (spec === null || !isBodyHandle(e.sourceHandle)) return e;
+        const targetWl = findWorkload(topology, e.target);
+        const matched = targetWl ? matchWorkloadPort(targetWl, e.targetHandle) : undefined;
         return {
           ...e,
           // FlowEdge animates traffic with a travelling dot.
           type: "flow",
           sourceHandle: bodyHandleId("r"),
-          targetHandle: portHandleId(tp, "l"),
+          targetHandle: portHandleId(
+            matched ? matched.port : spec.port,
+            "l",
+            matched ? matched.protocol : (spec.protocol ?? undefined),
+          ),
           animated: false,
           style: { strokeWidth: 2 },
           markerEnd: ARROW,
         };
       }),
-    [edges],
+    [edges, topology],
   );
 
   // Port circles are hidden until used: mark the handles that carry an edge so

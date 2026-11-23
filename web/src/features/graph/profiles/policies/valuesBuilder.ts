@@ -21,7 +21,7 @@ import {
   type TopoPort,
   type TopoWorkload,
 } from "./topology";
-import { portFromHandle } from "./WorkloadNode";
+import { matchWorkloadPort } from "./WorkloadNode";
 
 // Identity tags required by the chart (resource name convention
 // {instance}-{cluster}-{kindShort}-{project}-{name}). instance/cluster come
@@ -58,19 +58,17 @@ function edgeLinks(
 ): { links: DirectedLink[]; outOfScope: string | null } {
   const src = findWorkload(topology, e.source);
   const dst = findWorkload(topology, e.target);
-  const tp = portFromHandle(e.targetHandle);
-  if (!src || !dst || tp === null) return { links: [], outOfScope: null };
+  if (!src || !dst) return { links: [], outOfScope: null };
+  const dstPort = matchWorkloadPort(dst, e.targetHandle);
+  if (!dstPort) return { links: [], outOfScope: null };
   const srcNs = nsOfWorkload(src.id);
   const dstNs = nsOfWorkload(dst.id);
   if (srcNs !== orderNs && dstNs !== orderNs) {
     return { links: [], outOfScope: `${src.name} (${srcNs}) -> ${dst.name} (${dstNs})` };
   }
   const links: DirectedLink[] = [];
-  const dstPort = dst.ports.find((p) => p.port === tp);
-  if (dstPort) {
-    if (srcNs === orderNs) links.push({ dir: "egress", owner: src, peer: dst, port: dstPort });
-    else links.push({ dir: "ingress", owner: dst, peer: src, port: dstPort });
-  }
+  if (srcNs === orderNs) links.push({ dir: "egress", owner: src, peer: dst, port: dstPort });
+  else links.push({ dir: "ingress", owner: dst, peer: src, port: dstPort });
   return { links, outOfScope: null };
 }
 
