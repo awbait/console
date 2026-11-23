@@ -142,6 +142,15 @@ export function useEditLease(
   // The latest state for callbacks that outlive a render (timers, cleanup).
   const stateRef = useRef(state);
   stateRef.current = state;
+  const wantedRef = useRef(wanted);
+  wantedRef.current = wanted;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const remoteSave = useRef(onRemoteSave);
   remoteSave.current = onRemoteSave;
 
@@ -149,9 +158,16 @@ export function useEditLease(
     async (force = false): Promise<boolean> => {
       try {
         const editor = await api.acquireEditLock(pubId, version, force);
+        if (!wantedRef.current || !mountedRef.current) {
+          // Wanted flipped false or the page unmounted while acquire was in
+          // flight: release immediately so the server does not hold an orphan.
+          api.releaseEditLock(pubId, version).catch(() => {});
+          return false;
+        }
         dispatch({ type: "acquired", editor });
         return true;
       } catch (e) {
+        if (!wantedRef.current || !mountedRef.current) return false;
         const holder = lockedBy(e);
         if (holder) {
           dispatch({ type: "refused", holder });
@@ -178,9 +194,18 @@ export function useEditLease(
 
   // Wanting the lease is decided by data that arrives after the first render
   // (who the person is, what state the version is in), so it is an event.
+  // Dropping from wanted=true to wanted=false while holding the lease releases
+  // it on the server instead of letting it linger until TTL expiry.
   useEffect(() => {
-    dispatch({ type: wanted ? "start" : "stop" });
-  }, [wanted]);
+    if (wanted) {
+      dispatch({ type: "start" });
+      return;
+    }
+    if (stateRef.current.kind === "mine") {
+      void release();
+    }
+    dispatch({ type: "stop" });
+  }, [wanted, release]);
 
   // Pending: ask once.
   useEffect(() => {

@@ -14,6 +14,7 @@ import {
   IconUserEdit,
   IconX,
 } from "@tabler/icons-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
@@ -250,6 +251,7 @@ function VersionEditor({
   breadcrumbs: Crumb[];
 }) {
   const { user } = useUser();
+  const qc = useQueryClient();
   const { reload: reloadCatalog } = useCatalog();
   const { theme } = useTheme();
   const publishOutage = usePlatformHealth().blockedReason("publishing");
@@ -260,7 +262,7 @@ function VersionEditor({
   const name = pub.chart_name;
 
   // Chart versions (Harbor) feed the switcher; stored rows carry per-version state.
-  const { data: chart } = useAsync(
+  const { data: chart, error: chartError } = useAsync(
     () => api.getChart(project, name),
     [project, name],
     qk.chart(project, name),
@@ -321,10 +323,14 @@ function VersionEditor({
   // The catalog is the source for "does it exist" - the stored row outlives the
   // artifact, which is the whole reason this state is possible.
   const inRegistry = !chart || (chart.versions ?? []).includes(version);
+  // Wait for both version state and chart metadata (or a chart error during a
+  // registry outage) before deciding editability so a cold load never acquires
+  // an edit lease on a PENDING, deprecated or missing version.
+  const ready = versions !== null && (chart !== null || chartError !== null);
   // Whether this person could edit the version at all. Whether they do is the
   // lease's answer: one person at a time holds the document, the others read
   // it and follow the holder's saves (features/publications/editLease.ts).
-  const mayEdit = isOwner && !pending && !deprecated && inRegistry;
+  const mayEdit = ready && isOwner && !pending && !deprecated && inRegistry;
   const lease = useEditLease(pub.id, version, mayEdit, () => reloadVersions());
   const editable = mayEdit && lease.state.kind === "mine";
   const isAdmin = user?.role === "admin";
@@ -353,18 +359,36 @@ function VersionEditor({
   // on the same closed door every two seconds.
   const [refused, setRefused] = useState<string | null>(null);
   const loaded = useRef(false);
+  const lastServerDoc = useRef<string | null>(null);
+  const textRef = useRef(text);
+  textRef.current = text;
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
   useEffect(() => {
-    if (loaded.current || versions === null) return;
+    if (versions === null) return;
     const row = versions.find((v) => v.chart_version === version) ?? null;
     const doc = row?.view_json ?? row?.approved_view_json ?? null;
-    const start = doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE;
-    setText(start);
-    // A version nobody has written yet starts from the template. Counting the
-    // template as the saved state is what keeps an untouched page from saving
-    // itself, while the first edit to it already counts as work.
-    setSaved(start);
+    const next = doc ? JSON.stringify(doc, null, 2) : VIEW_TEMPLATE;
+    if (!loaded.current) {
+      setText(next);
+      // A version nobody has written yet starts from the template. Counting the
+      // template as the saved state is what keeps an untouched page from saving
+      // itself, while the first edit to it already counts as work.
+      setSaved(next);
+      setStored(doc !== null);
+      loaded.current = true;
+      lastServerDoc.current = next;
+      return;
+    }
+    // Re-hydrate when fresh server data arrives after an initial stale cache
+    // hit, as long as the user has not made local unsaved edits yet.
+    if (next === lastServerDoc.current) return;
+    lastServerDoc.current = next;
+    const isClean = savedRef.current !== null && textRef.current === savedRef.current;
+    if (!isClean) return;
+    setText(next);
+    setSaved(next);
     setStored(doc !== null);
-    loaded.current = true;
   }, [versions, version]);
   const dirty = saved !== null && text !== saved;
 
@@ -503,10 +527,15 @@ function VersionEditor({
   useEffect(() => {
     return () => {
       const doc = pendingSave.current;
-      const saved = doc ? api.saveVersionView(pub.id, version, doc).catch(() => {}) : Promise.resolve();
-      void saved.then(() => release());
+      const flushed = doc
+        ? api
+            .saveVersionView(pub.id, version, doc)
+            .then(() => qc.invalidateQueries({ queryKey: qk.versions(pub.id) }))
+            .catch(() => {})
+        : Promise.resolve();
+      void flushed.then(() => release());
     };
-  }, [pub.id, version, release]);
+  }, [pub.id, version, release, qc]);
 
   // Closing the tab is the one exit the portal cannot save through, so it asks.
   useEffect(() => {
@@ -529,6 +558,7 @@ function VersionEditor({
     setErr(null);
     try {
       await api.saveVersionView(pub.id, version, parsed);
+      lastServerDoc.current = JSON.stringify(parsed, null, 2);
       setSaved(sent);
       setStored(true);
       setRefused(null);
