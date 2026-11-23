@@ -54,6 +54,7 @@ function expand(
   root?: Schema,
   view?: Schema,
   values?: unknown,
+  defaults?: unknown,
 ): { field: string; message: string; path?: string }[] {
   if (!d.path && !d.keyword) return [];
   const base = fieldBreadcrumb(d.path, root, view);
@@ -61,9 +62,10 @@ function expand(
   // A field pinned by another field ("in direct mode there is no waypoint
   // namespace") breaks a rule that is declared somewhere else entirely, so its
   // own node knows nothing about it and the row used to read "значение не
-  // подходит". Ask what pins it, with the values the order was sent with.
-  if (root && values !== undefined && node && !("const" in node)) {
-    const pinned = pinnedAt(d.path, root, values);
+  // подходит". Ask what pins it, with the values the order was sent with and
+  // the chart's defaults underneath them.
+  if (root && (values !== undefined || defaults !== undefined) && node && !("const" in node)) {
+    const pinned = pinnedAt(d.path, root, values, defaults);
     if (pinned !== undefined) node = { ...node, const: pinned };
   }
   return [
@@ -84,6 +86,7 @@ export function FormErrors({
   schema,
   view,
   values,
+  defaults,
 }: {
   message: string;
   details?: FieldError[];
@@ -95,11 +98,13 @@ export function FormErrors({
   // The values the order was sent with. Only a rule that depends on another
   // field needs them - what pins a field is decided by what its neighbour holds.
   values?: unknown;
+  // The chart's values.yaml underneath values, for conditions on unset fields.
+  defaults?: unknown;
 }) {
   // Every row carries the field's pointer path, so it becomes a button that
   // scrolls to and focuses the field it is about.
   const serverRows: { field: string; message: string; path?: string }[] = (details ?? []).flatMap((d) =>
-    expand(d, schema, view, values),
+    expand(d, schema, view, values, defaults),
   );
   const clientRows: { field: string; message: string; path?: string }[] = fieldErrors
     ? [...fieldErrors].map(([path, msg]) => ({

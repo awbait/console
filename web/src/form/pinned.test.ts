@@ -59,6 +59,20 @@ describe("a field another field pins", () => {
     expect(errors.size).toBe(0);
   });
 
+  test("also catches a pinned field inside a nested section without a path view", () => {
+    const errors = collectErrors(schema, { mode: "direct", waypointNamespace: { enabled: true } });
+    expect(errors.get("/waypointNamespace/enabled")).toBe("Выключите это поле.");
+  });
+
+  test("reads the deciding or pinned value from the chart's defaults", () => {
+    expect(pinnedAt("/waypointNamespace/enabled", schema, {}, { mode: "direct" })).toBe(false);
+    expect(pinnedAt("/waypointNamespace/enabled", schema, {}, { mode: "mesh" })).toBe(true);
+    const byDefaultMode = collectErrors(schema, { waypointNamespace: { enabled: true } }, view, { mode: "direct" });
+    expect(byDefaultMode.get("/waypointNamespace/enabled")).toBe("Выключите это поле.");
+    const byDefaultFlag = collectErrors(schema, { mode: "direct" }, undefined, { waypointNamespace: { enabled: true } });
+    expect(byDefaultFlag.get("/waypointNamespace/enabled")).toBe("Выключите это поле.");
+  });
+
   test("pinnedAt reads the rule off the branch that holds", () => {
     expect(pinnedAt("/waypointNamespace/enabled", schema, { mode: "direct" })).toBe(false);
     expect(pinnedAt("/waypointNamespace/enabled", schema, { mode: "mesh" })).toBe(true);

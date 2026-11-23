@@ -943,6 +943,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           schema={schema ?? undefined}
           view={orderView}
           values={effectiveValues}
+          defaults={chartDefaults}
         />
       )}
 

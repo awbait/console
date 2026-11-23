@@ -288,12 +288,13 @@ export function itemBranches(branches: Schema[], root: Schema): Schema[] {
 // and the field it pins lives another, and reading the field's own node says
 // nothing about it: that is why the portal used to answer "значение не
 // подходит" and leave the person to guess which value would.
-export function pinnedAt(pointer: string, root: Schema, values: unknown): unknown | undefined {
+export function pinnedAt(pointer: string, root: Schema, values: unknown, answer?: unknown): unknown | undefined {
   const segs = pointer.split("/").filter(Boolean).map(decodeURIComponent);
   let node: Schema = deref(root, root);
   let value: unknown = values;
+  let chart: unknown = answer;
   for (let i = 0; i < segs.length; i++) {
-    const branches = matchedThens(node, (value ?? {}) as Record<string, unknown>, root);
+    const branches = matchedThens(node, (value ?? {}) as Record<string, unknown>, root, chart);
     for (const then of branches) {
       const pinned = resolveConst(then, segs.slice(i), root);
       if (pinned !== undefined) return pinned;
@@ -302,6 +303,7 @@ export function pinnedAt(pointer: string, root: Schema, values: unknown): unknow
     if (!next) return undefined;
     node = deref(next, root);
     value = (value as Record<string, unknown> | undefined)?.[segs[i]];
+    chart = isObject(chart) ? chart[segs[i]] : undefined;
   }
   return undefined;
 }

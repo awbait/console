@@ -70,6 +70,13 @@ describe("collectErrors with the chart's defaults", () => {
     expect(errors.has("/subnet/gatewayType")).toBe(false);
   });
 
+  it("flags a required field inside an untouched object provided by values.yaml", () => {
+    const errors = collectErrors(subnet, {}, undefined, defaults);
+    expect(errors.get("/subnet/cidrBlock")).toBeString();
+    expect(errors.has("/subnet/gatewayType")).toBe(false);
+    expect(collectErrors(subnet, {}).size).toBe(0);
+  });
+
   it("checks without defaults as before", () => {
     const errors = collectErrors(subnet, { subnet: { cidrBlock: "10.0.0.0/24" } });
     expect(errors.get("/subnet/gatewayType")).toBeString();
