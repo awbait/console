@@ -50,9 +50,10 @@ func TestPostgresTxAtomicity(t *testing.T) {
 		t.Fatalf("rollback failed: status = %s, want DRAFT", got.Status)
 	}
 
-	// Commit: update + event persist together.
+	// Commit: update + event persist together, including updated instance_path.
 	r = got
 	r.Status = models.StatusMRCreated
+	r.InstancePath = "stage/svc/svc"
 	if err := pg.Tx(ctx, func(tx Store) error {
 		if err := tx.UpdateRequest(ctx, r); err != nil {
 			return err
@@ -62,8 +63,8 @@ func TestPostgresTxAtomicity(t *testing.T) {
 		t.Fatalf("commit Tx: %v", err)
 	}
 	got, _ = pg.GetRequest(ctx, r.ID)
-	if got.Status != models.StatusMRCreated {
-		t.Fatalf("commit failed: status = %s", got.Status)
+	if got.Status != models.StatusMRCreated || got.InstancePath != "stage/svc/svc" {
+		t.Fatalf("commit failed: status = %s, instance_path = %q", got.Status, got.InstancePath)
 	}
 	evs, _ := pg.ListEvents(ctx, r.ID)
 	if len(evs) == 0 {
