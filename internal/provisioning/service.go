@@ -839,23 +839,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		return nil, err
 	}
 
-	version := r.ChartVersion
-	if in.Version != "" {
-		version = in.Version
-	}
-	// Choosing a version and keeping the one you have are different questions,
-	// and only the first one the allowlist answers. A version can leave the
-	// catalog, or be taken out of support, long after somebody ordered it - and
-	// that must not freeze the values of what is already running on it. What
-	// still has to hold either way is that the registry has the chart.
-	if version != r.ChartVersion {
-		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-			return nil, err
-		}
-	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-		return nil, err
-	}
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	version, valuesYAML, err := s.prepareLiveValues(ctx, r, in)
 	if err != nil {
 		return nil, err
 	}
@@ -917,18 +901,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 // then written in place, with a row in the history, because there is no Git
 // for a merge request to go to.
 func (s *Service) updateInPortal(ctx context.Context, u *models.User, r *models.Request, in UpdateInput) (*models.Request, error) {
-	version := r.ChartVersion
-	if in.Version != "" {
-		version = in.Version
-	}
-	if version != r.ChartVersion {
-		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-			return nil, err
-		}
-	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-		return nil, err
-	}
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	version, valuesYAML, err := s.prepareLiveValues(ctx, r, in)
 	if err != nil {
 		return nil, err
 	}
@@ -948,6 +921,106 @@ func (s *Service) updateInPortal(ctx context.Context, u *models.User, r *models.
 		s.event(ctx, r, byUser(u), "updated", "", "")
 	}
 	return r, nil
+}
+
+// prepareLiveValues is what every edit of an existing (non-draft) order goes
+// through before anything is written: the version it lands on, the values as
+// they will be stored - stamped, checked against the chart's schema and the
+// view's rules - and the refusal to move a field the order was created with.
+// Update, the in-portal edit and the dry run (ValidateUpdate) share it, so a
+// check that passes is a save that passes.
+func (s *Service) prepareLiveValues(ctx context.Context, r *models.Request, in UpdateInput) (string, string, error) {
+	version := r.ChartVersion
+	if in.Version != "" {
+		version = in.Version
+	}
+	// Choosing a version and keeping the one you have are different questions,
+	// and only the first one the allowlist answers. A version can leave the
+	// catalog, or be taken out of support, long after somebody ordered it - and
+	// that must not freeze the values of what is already running on it. What
+	// still has to hold either way is that the registry has the chart.
+	if version != r.ChartVersion {
+		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+			return "", "", err
+		}
+	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+		return "", "", err
+	}
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	if err != nil {
+		return "", "", err
+	}
+	if err := s.checkImmutable(ctx, r, version, valuesYAML); err != nil {
+		return "", "", err
+	}
+	return version, valuesYAML, nil
+}
+
+// checkImmutable refuses a change to a field the version's view or schema
+// freezes once the order exists (see views.ImmutableRules). The forms never
+// let one through; the YAML editor and the API would, and the result is an
+// order whose values no longer match what was deployed under its name.
+//
+// Compared after the stamps, so a field the portal writes itself on every save
+// is never held against the person. Not on a drifted order: there the stored
+// values are not what Git has, and settling the disagreement is exactly the
+// edit that has to go through.
+func (s *Service) checkImmutable(ctx context.Context, r *models.Request, version, valuesYAML string) error {
+	if r.Drifted {
+		return nil
+	}
+	schemaBytes, _, _ := s.catalog.FormSchema(ctx, r.ChartProject, r.ChartName, version)
+	rules := views.ImmutableRules(s.orderView(ctx, r.ChartProject, r.ChartName, version), schemaBytes)
+	if len(rules) == 0 {
+		return nil
+	}
+	var before, after map[string]any
+	if yaml.Unmarshal([]byte(r.ValuesYAML), &before) != nil || yaml.Unmarshal([]byte(valuesYAML), &after) != nil {
+		return nil
+	}
+	if field, changed := views.FirstImmutableChange(before, after, rules, version != r.ChartVersion); changed {
+		return &ValidationError{Message: fmt.Sprintf(MsgImmutableField, field)}
+	}
+	return nil
+}
+
+// ValidateResult is the answer of a dry run: the values as the portal would
+// store them, and whether that is a change at all.
+type ValidateResult struct {
+	ValuesYAML string `json:"values_yaml"`
+	Changed    bool   `json:"changed"`
+}
+
+// ValidateUpdate runs an edit of an existing order through every check Update
+// applies to its values, and writes nothing: no merge request, no row, no
+// event. The YAML editor asks it before saving, so a mistake in a hundred
+// lines is found with the editor still open rather than in a refused save.
+//
+// The open change and the order's status are deliberately not asked: they
+// decide whether the edit can be sent now, not whether what was typed is
+// right, and the editor says those things itself.
+func (s *Service) ValidateUpdate(ctx context.Context, u *models.User, id string, in UpdateInput) (*ValidateResult, error) {
+	r, err := s.store.GetRequest(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit(u, r.Team) {
+		return nil, ErrForbidden
+	}
+	if r.DeletedAt != nil || r.Status == models.StatusDeleted {
+		return nil, models.ErrNotFound
+	}
+	if r.Status == models.StatusDraft {
+		return nil, &ValidationError{Message: MsgNotLiveEdit}
+	}
+	version, valuesYAML, err := s.prepareLiveValues(ctx, r, in)
+	if err != nil {
+		return nil, err
+	}
+	return &ValidateResult{
+		ValuesYAML: valuesYAML,
+		Changed:    valuesYAML != r.ValuesYAML || version != r.ChartVersion,
+	}, nil
 }
 
 // updateDraft persists draft edits (values, version, identity, display name)

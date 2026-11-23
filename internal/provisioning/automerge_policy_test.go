@@ -81,7 +81,8 @@ func TestReviewedServiceStillGetsItsChangeRewritten(t *testing.T) {
 	}
 
 	mr := openUpdateMR(ctx, t, s, live, map[string]any{
-		"auth": map[string]any{"database": "mine"},
+		"auth":    map[string]any{"database": "app"},
+		"primary": map[string]any{"replicas": 2},
 	})
 	editOnBranch(ctx, t, s, live, "auth:\n  database: app\n  username: theirs\n")
 	if err := s.gl.SetDetailedMergeStatus(mr.GitLabProjectID, mr.MRIID, "conflict"); err != nil {
@@ -106,7 +107,7 @@ func TestReviewedServiceStillGetsItsChangeRewritten(t *testing.T) {
 		t.Fatalf("get reopened mr: %v", err)
 	}
 	got := valuesOnRef(ctx, t, s, live, glMR.SourceBranch)
-	if !strings.Contains(got, "database: mine") || !strings.Contains(got, "username: theirs") {
+	if !strings.Contains(got, "replicas: 2") || !strings.Contains(got, "username: theirs") {
 		t.Fatalf("rewritten change lost one of the edits:\n%s", got)
 	}
 }

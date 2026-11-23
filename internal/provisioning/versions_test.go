@@ -104,7 +104,7 @@ func TestChangeValuesSurvivesTheVersionLeavingTheCatalog(t *testing.T) {
 	// Same version, new values: allowed. The allowlist decides what may be
 	// chosen, and this order chooses nothing.
 	values := validValues()
-	values["auth"].(map[string]any)["database"] = "app2"
+	values["auth"].(map[string]any)["username"] = "app2"
 	if _, err := s.prov.Update(ctx, u, req.ID, provisioning.UpdateInput{Values: values}); err != nil {
 		t.Fatalf("change values on a de-listed version: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestChangeValuesSurvivesTheVersionLeavingTheCatalog(t *testing.T) {
 	if err := s.st.SetOrderable(ctx, shelved.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	values["auth"].(map[string]any)["database"] = "app3"
+	values["auth"].(map[string]any)["username"] = "app3"
 	_, err = s.prov.Update(ctx, u, req.ID, provisioning.UpdateInput{Version: "15.4.0", Values: values})
 	var ve *provisioning.ValidationError
 	if !errors.As(err, &ve) {
