@@ -161,10 +161,22 @@ func (s *Service) advanceDeleteJob(ctx context.Context, j *models.StandJob, st *
 	j.Done = max(j.Total-remaining, 0)
 	j.Waiting = waiting
 	if remaining > len(failed) {
-		return s.store.UpdateStandJob(ctx, j)
+		if err := s.store.UpdateStandJob(ctx, j); err != nil && !errors.Is(err, models.ErrConflict) {
+			return err
+		}
+		return nil
 	}
 	now := time.Now()
 	j.Status, j.FinishedAt = models.StandJobDone, &now
+	// Claim the final transition before removing GitLab storage or the stand
+	// row: if an admin stopped the job while this pass was running, ErrConflict
+	// aborts deletion cleanly instead of destroying a stopped stand.
+	if err := s.store.UpdateStandJob(ctx, j); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			return nil
+		}
+		return err
+	}
 	if remaining == 0 {
 		s.removeStandStorage(ctx, st)
 		if err := s.store.DeleteStand(ctx, st.ID); err != nil {
@@ -174,7 +186,7 @@ func (s *Service) advanceDeleteJob(ctx context.Context, j *models.StandJob, st *
 	} else {
 		s.logger().Info("stand kept: some orders could not be deleted", "stand", st.ID, "job", j.ID, "failed", len(failed))
 	}
-	return s.store.UpdateStandJob(ctx, j)
+	return nil
 }
 
 // closeOutRejected marks a turned-down order deleted: there is nothing of it

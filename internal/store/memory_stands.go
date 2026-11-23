@@ -117,7 +117,7 @@ func (m *Memory) SetDefaultStand(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	target, ok := m.stands[id]
-	if !ok {
+	if !ok || target.DeletedAt != nil {
 		return models.ErrNotFound
 	}
 	now := m.stamp()

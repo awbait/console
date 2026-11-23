@@ -151,6 +151,9 @@ func (s *Service) StopStandJob(ctx context.Context, u *models.User, standID, job
 	now := time.Now()
 	j.Status, j.FinishedAt = models.StandJobStopped, &now
 	if err := s.store.UpdateStandJob(ctx, j); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			return nil, &ValidationError{Message: MsgStandJobNotRunning}
+		}
 		return nil, err
 	}
 	s.logger().Info("stand job stopped", "stand", standID, "job", j.ID, "actor", u.Subject)
@@ -266,7 +269,14 @@ func (s *Service) advanceJob(ctx context.Context, j *models.StandJob) error {
 		j.Status, j.FinishedAt = models.StandJobDone, &now
 		s.logger().Info("stand job done", "stand", st.ID, "job", j.ID, "moved", done, "failed", len(failed))
 	}
-	return s.store.UpdateStandJob(ctx, j)
+	if err := s.store.UpdateStandJob(ctx, j); err != nil {
+		if errors.Is(err, models.ErrConflict) {
+			// Stopped concurrently while this pass was running: keep it stopped.
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // moveOrder takes one order a step towards the stand's new mode. It reports

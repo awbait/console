@@ -72,6 +72,9 @@ type Monitor struct {
 	// lastTick is when the last probe round finished, the floor Run counts the
 	// next early probe from.
 	lastTick time.Time
+	// wake nudges Run out of its select when Trigger asks for an early probe
+	// while Run is sleeping on the full interval.
+	wake chan struct{}
 
 	now func() time.Time // clock, injectable in tests
 }
@@ -85,6 +88,7 @@ func NewMonitor(interval time.Duration, log *slog.Logger, probes ...Probe) *Moni
 		probes:   probes,
 		log:      log,
 		states:   make(map[string]ComponentState, len(probes)),
+		wake:     make(chan struct{}, 1),
 		now:      time.Now,
 	}
 	for _, p := range probes {
@@ -125,6 +129,12 @@ func (m *Monitor) Trigger(reason string) {
 	if !already {
 		m.log.Debug("health probe requested", "reason", reason)
 	}
+	if m.wake != nil {
+		select {
+		case m.wake <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // Run blocks, probing once immediately and then on every tick, until the context
@@ -156,6 +166,8 @@ func (m *Monitor) Run(ctx context.Context) {
 			m.tick(ctx)
 		case <-early:
 			m.tick(ctx)
+		case <-m.wake:
+			stop(timer)
 		}
 	}
 }

@@ -128,22 +128,38 @@ func (p *Postgres) UpdateStand(ctx context.Context, s *models.Stand) error {
 	return err
 }
 
-// SetDefaultStand moves the flag in one statement: the partial unique index
-// allows one default row, so clearing and setting have to land together or the
-// second write is refused by the index.
+// SetDefaultStand moves the default flag inside a transaction in two ordered
+// updates: clear the previous default first, then mark the target. A single
+// UPDATE violates the non-deferrable partial unique index uniq_default_stand
+// whenever PostgreSQL scans the target tuple before the old default tuple.
 func (p *Postgres) SetDefaultStand(ctx context.Context, id string) error {
-	// The target has to exist before anything is cleared: the statement below
-	// matches the row that only loses the flag too, so its row count cannot
-	// tell a missing target apart from a successful move.
-	if _, err := p.GetStand(ctx, id); err != nil {
-		return err
-	}
-	_, err := p.db.Exec(ctx, `
-		UPDATE stands
-		SET is_default = (id = $1),
-		    updated_at = CASE WHEN is_default <> (id = $1) THEN NOW() ELSE updated_at END
-		WHERE is_default OR id = $1`, id)
-	return err
+	return p.Tx(ctx, func(s Store) error {
+		tp := s.(*Postgres)
+		if _, err := tp.db.Exec(ctx, `
+			UPDATE stands
+			SET is_default = FALSE, updated_at = NOW()
+			WHERE is_default AND id <> $1`, id); err != nil {
+			if isInvalidUUID(err) {
+				return models.ErrNotFound
+			}
+			return err
+		}
+		tag, err := tp.db.Exec(ctx, `
+			UPDATE stands
+			SET is_default = TRUE,
+			    updated_at = CASE WHEN NOT is_default THEN NOW() ELSE updated_at END
+			WHERE id = $1 AND deleted_at IS NULL`, id)
+		if isInvalidUUID(err) {
+			return models.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return models.ErrNotFound
+		}
+		return nil
+	})
 }
 
 func (p *Postgres) AdoptOrphanRequests(ctx context.Context, standID string) (int, error) {

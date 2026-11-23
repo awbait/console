@@ -42,8 +42,12 @@ func (m *Memory) CreateStandJob(ctx context.Context, j *models.StandJob) error {
 func (m *Memory) UpdateStandJob(ctx context.Context, j *models.StandJob) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.standJobs[j.ID]; !ok {
+	cur, ok := m.standJobs[j.ID]
+	if !ok {
 		return models.ErrNotFound
+	}
+	if cur.Status != models.StandJobRunning {
+		return models.ErrConflict
 	}
 	m.standJobs[j.ID] = cloneJob(j)
 	return nil
