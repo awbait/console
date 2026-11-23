@@ -202,6 +202,18 @@ func TestRegenerateWaitsAndReportsClosedChanges(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 	s.tick(ctx)
+	// Closing a regeneration MR must leave the live order alive (MR_MERGED),
+	// never strand it in terminal MR_CLOSED.
+	pg1After, err := s.st.GetRequest(ctx, orders[0].ID)
+	if err != nil {
+		t.Fatalf("get pg1: %v", err)
+	}
+	if pg1After.Status == models.StatusMRClosed {
+		t.Fatalf("closing a regenerate MR killed live order pg1 into MR_CLOSED")
+	}
+	if pg1After.Status != models.StatusMRMerged && pg1After.Status != models.StatusDeploying && pg1After.Status != models.StatusHealthy {
+		t.Fatalf("pg1 status after closed regenerate MR = %s, want live status (MR_MERGED/DEPLOYING/HEALTHY)", pg1After.Status)
+	}
 	// The owner's edit of pg2 merges, written before the project changed, so
 	// pg2 is the job's to write now.
 	s.mergeLatestMR(ctx, t, orders[1].ID)

@@ -762,6 +762,9 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if !validServiceName(r.ServiceName) {
 		return nil, &ValidationError{Message: MsgServiceName}
 	}
+	if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, r.ChartVersion); err != nil {
+		return nil, err
+	}
 	var values map[string]any
 	if uerr := yaml.Unmarshal([]byte(r.ValuesYAML), &values); uerr != nil {
 		return nil, &ValidationError{Message: MsgBadValues + uerr.Error()}
