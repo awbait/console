@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Role, User } from "@/api/types";
-import { canOrder, noTeamNotice } from "./access";
+import { canOrder, noTeamNotice, orderFormBlocked, orderFormTeam } from "./access";
 
 function user(role: Role, teams: string[]): User {
   return { sub: "u1", email: "", preferred_username: "u1", name: "U", role, teams } as User;
@@ -38,5 +38,32 @@ describe("who may order a service", () => {
   test("nobody at all cannot order", () => {
     expect(canOrder(null)).toBe(false);
     expect(noTeamNotice(null)).not.toBeNull();
+  });
+});
+
+describe("orderFormBlocked", () => {
+  test("blocks a brand-new order for platform roles without teams", () => {
+    for (const role of ["admin", "support"] as Role[]) {
+      expect(orderFormBlocked(user(role, []), false)).not.toBeNull();
+    }
+  });
+
+  test("allows editing or upgrading an existing order without team membership", () => {
+    for (const role of ["admin", "support"] as Role[]) {
+      expect(orderFormBlocked(user(role, []), true)).toBeNull();
+    }
+  });
+});
+
+describe("orderFormTeam", () => {
+  test("uses the order's own team when editing or upgrading", () => {
+    expect(orderFormTeam(true, "core", null)).toBe("core");
+    expect(orderFormTeam(true, "core", "payments")).toBe("core");
+    expect(orderFormTeam(true, undefined, "payments")).toBe("");
+  });
+
+  test("uses the active team for a new order", () => {
+    expect(orderFormTeam(false, undefined, "payments")).toBe("payments");
+    expect(orderFormTeam(false, "core", null)).toBe("");
   });
 });

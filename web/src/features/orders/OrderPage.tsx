@@ -15,8 +15,8 @@ import {
 } from "@/app/CatalogContext";
 import { usePlatformHealth } from "@/app/PlatformHealthContext";
 import { useTeam } from "@/app/TeamContext";
-import { noTeamNotice } from "@/auth/access";
-import { useUser } from "@/auth/UserContext";
+import { orderFormBlocked, orderFormTeam } from "@/auth/access";
+import { canModify, useUser } from "@/auth/UserContext";
 import { FormErrors } from "@/components/FormErrors";
 import { NotFound } from "@/components/NotFound";
 import { PageHeader } from "@/components/PageHeader";
@@ -337,15 +337,16 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // What a namespace template reads besides the values: the same order context
   // the server renders it with on save.
   const nsVars = useNamespaceVars(ns, draft?.stand_id || standId);
+  const orderTeam = orderFormTeam(editing, draft?.team, activeTeam);
   const nsContext = useMemo(
     () => ({
-      team: (editing ? draft?.team : activeTeam) ?? undefined,
+      team: orderTeam || undefined,
       serviceName: identity ? identityName : serviceName,
       cluster,
       chart: name,
       vars: nsVars,
     }),
-    [editing, draft?.team, activeTeam, identity, identityName, serviceName, cluster, name, nsVars],
+    [orderTeam, identity, identityName, serviceName, cluster, name, nsVars],
   );
   const liveNamespace = resolveDestNamespace(ns, namespace, effectiveValues, nsContext);
 
@@ -402,8 +403,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // come back.
   const seededFor = useRef<string | null>(null);
   const lastSeed = useRef<Values>({});
+  const seedStandId = upgrade ? (draft?.stand_id ?? "") : standId;
   useEffect(() => {
-    if (!project || !name || !effectiveVersion || !activeTeam) return;
+    if (!project || !name || !effectiveVersion || !orderTeam) return;
     if (editing && !upgrade) return;
     // On an upgrade the order's own values have to be in the form first: they
     // arrive with the draft and replace the values wholesale, so a seed applied
@@ -413,11 +415,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     // The first seed waits for the stand the order opens on, so it is rendered
     // for that stand rather than for the default and then again.
     if (standsLoading) return;
-    if (seededFor.current === standId) return;
-    seededFor.current = standId;
+    if (seededFor.current === seedStandId) return;
+    seededFor.current = seedStandId;
     let alive = true;
     api
-      .orderInitial(project, name, effectiveVersion, activeTeam, standId)
+      .orderInitial(project, name, effectiveVersion, orderTeam, seedStandId)
       .then((r) => {
         if (!alive) return;
         const seed = (r.values ?? {}) as Values;
@@ -432,7 +434,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     return () => {
       alive = false;
     };
-  }, [editing, upgrade, draft, project, name, effectiveVersion, activeTeam, standId, standsLoading]);
+  }, [editing, upgrade, draft, project, name, effectiveVersion, orderTeam, seedStandId, standsLoading]);
 
   // Fit the order's values to the target version's schema (upgrade only).
   //
@@ -537,9 +539,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     }
   }
 
-  // The form is reachable by its address even where no button leads to it, so
-  // the same explanation the closed button carries is said here in full.
-  const noTeam = noTeamNotice(user);
+  // A brand-new order needs a team to own it; editing a draft or upgrading a
+  // live order keeps the team the order already belongs to, so platform roles
+  // (admin, support) without team membership are allowed through.
+  const noTeam = orderFormBlocked(user, editing);
   if (noTeam) {
     return (
       <Card>
@@ -871,7 +874,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           onNamespace={setNamespace}
           hideNamespace={ns.hideField}
           namespaceHint={ns.hideField ? liveNamespace : undefined}
-          team={editing ? draft?.team : activeTeam ?? undefined}
+          team={orderTeam || undefined}
           version={effectiveVersion ?? undefined}
           latest={!editing && orderableVersions.length === 0}
           versions={editing ? undefined : orderableVersions}
@@ -965,15 +968,17 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           </span>
         ) : (
           <>
-            <span title={orderOutage}>
-              <Button
-                variant="primary"
-                isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam) || !!orderOutage}
-                onPress={submit}
-              >
-                {busy === "submit" ? "Заказываем…" : "Заказать"}
-              </Button>
-            </span>
+            {(!editing || !draft || canModify(user, draft.team)) && (
+              <span title={orderOutage}>
+                <Button
+                  variant="primary"
+                  isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam) || !!orderOutage}
+                  onPress={submit}
+                >
+                  {busy === "submit" ? "Заказываем…" : "Заказать"}
+                </Button>
+              </span>
+            )}
             <Button variant="secondary" isDisabled={submitting || !effectiveVersion} onPress={saveDraft}>
               {busy === "draft" ? "Сохраняем…" : "Сохранить черновик"}
             </Button>
