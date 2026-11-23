@@ -25,7 +25,7 @@ import { changeInFlightText } from "@/api/errorText";
 import { isLive } from "@/api/orderStatus";
 import { qk } from "@/api/queryKeys";
 import { deploys, type ViewDocument } from "@/api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
+import { chartLabel, findCatalogChart, useCatalog, useRefreshCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
 import { canEditOrder, canModify, isPlatformStaff, useUser } from "@/auth/UserContext";
@@ -56,6 +56,7 @@ export function RequestDetailPage() {
   const { user } = useUser();
   const { team } = useTeam();
   const { charts } = useCatalog();
+  useRefreshCatalog(id);
   const toast = useToast();
   const { data, error, loading, reload } = useAsync(() => api.getRequest(id), [id]);
   // The approved view document of the version this order runs drives the product

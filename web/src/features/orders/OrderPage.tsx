@@ -6,7 +6,13 @@ import { api, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { qk } from "@/api/queryKeys";
 import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "@/api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
+import {
+  chartLabel,
+  findCatalogChart,
+  shouldRecheckUpgrade,
+  useCatalog,
+  useRefreshCatalog,
+} from "@/app/CatalogContext";
 import { usePlatformHealth } from "@/app/PlatformHealthContext";
 import { useTeam } from "@/app/TeamContext";
 import { noTeamNotice } from "@/auth/access";
@@ -117,7 +123,8 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const { user } = useUser();
   // Team is chosen globally (topbar); the order form doesn't ask for it.
   const { team: activeTeam } = useTeam();
-  const { charts, loading: catalogLoading } = useCatalog();
+  const { charts, loading: catalogLoading, reload: reloadCatalog } = useCatalog();
+  useRefreshCatalog(id ?? `${pParam}/${nParam}`);
   // Filing an order opens a merge request, so it needs the platform behind it.
   // Saving a draft does not - it only writes to the portal's own storage - so
   // the work already typed into the form is never lost to an outage.
@@ -209,6 +216,29 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     : orderableVersions.length > 0
       ? upgradeTargetsFromAllowlist(orderableVersions, draft?.chart_version ?? "")
       : upgradeTargets(chart?.versions ?? [], draft?.chart_version ?? "", pub?.approved_view_version);
+  // If an upgrade link names a version the cached catalog does not know yet,
+  // refresh the catalog once before calling the version unavailable.
+  const [upgradeRecheckedKey, setUpgradeRecheckedKey] = useState<string | null>(null);
+  const upgradeCheckKey = `${id ?? ""}:${draft?.chart_version ?? ""}:${targetVersion}`;
+  const needsUpgradeRecheck = shouldRecheckUpgrade({
+    upgrade,
+    ready: !!draft && !!chart,
+    targetVersion,
+    catalogLoading,
+    allowedUpgrades,
+    recheckedKey: upgradeRecheckedKey,
+    checkKey: upgradeCheckKey,
+  });
+  useEffect(() => {
+    if (!needsUpgradeRecheck) return;
+    let alive = true;
+    reloadCatalog().finally(() => {
+      if (alive) setUpgradeRecheckedKey(upgradeCheckKey);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [needsUpgradeRecheck, reloadCatalog, upgradeCheckKey]);
   const effectiveVersion = upgrade
     ? targetVersion || null
     : editing
@@ -494,7 +524,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Upgrade guard: wait for the catalog (source of allowed versions), then check
   // ?to=. A disallowed/missing target version won't open the upgrade form.
   if (upgrade) {
-    if (catalogLoading) return <OrderPageSkeleton />;
+    if (catalogLoading || needsUpgradeRecheck) return <OrderPageSkeleton />;
     if (!targetVersion || !allowedUpgrades.includes(targetVersion)) {
       return (
         <NotFound
