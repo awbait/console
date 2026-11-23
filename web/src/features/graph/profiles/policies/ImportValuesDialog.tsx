@@ -54,7 +54,7 @@ export function ImportValuesDialog({
     }
     let obj: Record<string, unknown> | null = null;
     try {
-      const loaded = yaml.load(text);
+      const loaded = yaml.load(text, { schema: yaml.JSON_SCHEMA });
       if (loaded == null) errors.push("Пустой YAML.");
       else if (typeof loaded !== "object" || Array.isArray(loaded))
         errors.push("YAML должен быть объектом values.");

@@ -1,0 +1,385 @@
+import { describe, expect, it } from "bun:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { activeBranches, branchesBelow, itemBranches, matchedThens, type Schema } from "./fieldPath";
+import { collectErrors, fieldBranches, SchemaForm } from "./SchemaForm";
+
+// The shape the egress-gateway chart declares at its root: one rule, written
+// where both modes are visible, says what each mode has no use for. The mesh
+// fields sit in "then", the direct fields in "else", and the fields themselves
+// live two or three levels down, some of them behind a $ref.
+const egress = {
+  type: "object",
+  definitions: {
+    senders: {
+      type: "object",
+      required: ["namespace", "subnet"],
+      properties: {
+        namespace: { type: "string" },
+        subnet: { type: "string", minLength: 3 },
+      },
+    },
+  },
+  properties: {
+    mode: { type: "string", enum: ["mesh", "direct"] },
+    senders: { $ref: "#/definitions/senders" },
+    serviceEntries: { type: "array", minItems: 1, items: { type: "string" } },
+    waypointNamespace: {
+      type: "object",
+      properties: {
+        enabled: { type: "boolean" },
+        waypoint: {
+          type: "object",
+          required: ["waypoints"],
+          properties: { waypoints: { type: "array", minItems: 1, items: { type: "string" } } },
+        },
+      },
+    },
+  },
+  allOf: [
+    {
+      if: { properties: { mode: { const: "direct" } }, required: ["mode"] },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+      then: {
+        properties: {
+          serviceEntries: { "ui:widget": "hidden" },
+          waypointNamespace: {
+            properties: {
+              enabled: { const: false },
+              waypoint: { properties: { waypoints: { "ui:widget": "hidden" } } },
+            },
+          },
+        },
+      },
+      else: {
+        properties: {
+          senders: { properties: { subnet: { "ui:widget": "hidden" } } },
+        },
+      },
+    },
+  ],
+};
+
+describe("a branch the chart writes as else", () => {
+  it("is read when the condition does not hold", () => {
+    const taken = matchedThens(egress, { mode: "mesh" }, egress);
+    expect(taken.length).toBe(1);
+    expect(taken[0].properties.senders).toBeDefined();
+  });
+
+  it("gives way to then when the condition holds", () => {
+    const taken = matchedThens(egress, { mode: "direct" }, egress);
+    expect(taken.length).toBe(1);
+    expect(taken[0].properties.serviceEntries).toBeDefined();
+  });
+
+  it("is not taken while the deciding field is still empty", () => {
+    // The if has mode in its required list: without a mode nothing is decided
+    // yet, and the person sees every field until they choose.
+    expect(matchedThens(egress, {}, egress)[0].properties.senders).toBeDefined();
+  });
+});
+
+describe("a hint the chart puts on a nested field", () => {
+  it("hides the field in the mode that has no use for it", () => {
+    // direct: the waypoint list is hidden, so it is not missing either.
+    const direct = collectErrors(egress, { mode: "direct", senders: { namespace: "ns", subnet: "10.0.0.0/24" } });
+    expect(direct.has("/waypointNamespace/waypoint/waypoints")).toBe(false);
+    expect(direct.has("/serviceEntries")).toBe(false);
+    // mesh: the subnet is hidden, so a missing one is not an error.
+    const mesh = collectErrors(egress, { mode: "mesh", senders: { namespace: "ns" }, waypointNamespace: { waypoint: {} } });
+    expect(mesh.has("/senders/subnet")).toBe(false);
+  });
+
+  it("keeps the field in the mode that needs it", () => {
+    const direct = collectErrors(egress, { mode: "direct", senders: { namespace: "ns" } });
+    expect(direct.get("/senders/subnet")).toBeString();
+    const mesh = collectErrors(egress, {
+      mode: "mesh",
+      senders: { namespace: "ns", subnet: "10.0.0.0/24" },
+      waypointNamespace: { waypoint: {} },
+    });
+    expect(mesh.get("/waypointNamespace/waypoint/waypoints")).toBeString();
+  });
+
+  it("reaches a field behind a $ref", () => {
+    const branches = fieldBranches("senders/subnet", egress, { mode: "mesh" }, egress);
+    expect(branches.some((b) => b.properties?.subnet?.["ui:widget"] === "hidden")).toBe(true);
+  });
+});
+
+describe("handing a branch down the tree", () => {
+  const root = { type: "object", properties: {} };
+
+  it("narrows a fragment to one child and drops the rest", () => {
+    const fragments = [{ properties: { a: { properties: { x: { const: 1 } } } } }, { properties: { b: {} } }];
+    const below = branchesBelow(fragments, "a", root);
+    expect(below.length).toBe(1);
+    expect(below[0].properties.x.const).toBe(1);
+  });
+
+  it("adds the object's own satisfied branches to what it inherited", () => {
+    const node = {
+      type: "object",
+      properties: { kind: { type: "string" } },
+      if: { properties: { kind: { const: "tcp" } } },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+      then: { required: ["port"] },
+    };
+    const own = activeBranches(node, { kind: "tcp" }, root, [{ required: ["name"] }]);
+    expect(own.map((b) => b.required)).toEqual([["name"], ["port"]]);
+  });
+
+  it("follows items into the rows of a list", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        flag: { type: "boolean" },
+        rows: {
+          type: "array",
+          items: { type: "object", required: ["extra"], properties: { extra: { type: "string" } } },
+        },
+      },
+      if: { properties: { flag: { const: true } } },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+      then: { properties: { rows: { items: { properties: { extra: { "ui:widget": "hidden" } } } } } },
+    };
+    expect(itemBranches(matchedThens(schema, { flag: true }, schema).map((b) => b.properties.rows), schema).length).toBe(1);
+    expect(collectErrors(schema, { flag: true, rows: [{}] }).has("/rows/0/extra")).toBe(false);
+    expect(collectErrors(schema, { flag: false, rows: [{}] }).get("/rows/0/extra")).toBeString();
+  });
+});
+
+// A chart that switches on a nested flag: the condition names the flag three
+// levels down, and the levels above it carry no const of their own.
+const valkey = {
+  type: "object",
+  properties: {
+    valkey: {
+      type: "object",
+      properties: {
+        storage: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            size: { type: "string" },
+            class: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+  allOf: [
+    {
+      if: { properties: { valkey: { properties: { storage: { properties: { enabled: { const: true } } } } } } },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+      then: {
+        properties: {
+          valkey: {
+            properties: {
+              storage: {
+                required: ["size", "class"],
+                properties: { size: { minLength: 1 }, class: { minLength: 1 } },
+              },
+            },
+          },
+        },
+      },
+    },
+  ],
+};
+
+describe("a condition on a nested field", () => {
+  it("holds only when the nested field matches", () => {
+    expect(matchedThens(valkey, { valkey: { storage: { enabled: true } } }, valkey)).toHaveLength(1);
+    expect(matchedThens(valkey, { valkey: { storage: { enabled: false } } }, valkey)).toHaveLength(0);
+    expect(matchedThens(valkey, { valkey: {} }, valkey)).toHaveLength(0);
+    expect(matchedThens(valkey, {}, valkey)).toHaveLength(0);
+  });
+
+  it("requires the fields only while the flag is on", () => {
+    const on = collectErrors(valkey, { valkey: { storage: { enabled: true } } });
+    expect(on.get("/valkey/storage/size")).toBeString();
+    expect(on.get("/valkey/storage/class")).toBeString();
+    const off = collectErrors(valkey, { valkey: { storage: { enabled: false } } });
+    expect(off.has("/valkey/storage/size")).toBe(false);
+    expect(off.has("/valkey/storage/class")).toBe(false);
+  });
+
+  it("reads a required list inside the nested condition", () => {
+    const schema = {
+      ...valkey,
+      allOf: [{ ...valkey.allOf[0], if: { properties: { valkey: { properties: { storage: { required: ["enabled"] } } } } } }],
+    };
+    expect(matchedThens(schema, { valkey: { storage: { enabled: false } } }, schema)).toHaveLength(1);
+    expect(matchedThens(schema, { valkey: { storage: {} } }, schema)).toHaveLength(0);
+  });
+});
+
+// The flag a person sees ticked is ticked for the chart too: Helm lays
+// values.yaml under the order, and the form draws the schema's default in an
+// unset box. So the fields the flag makes required are required before anyone
+// touches the box, and stop being so once it is cleared.
+describe("a condition on a field left at its default", () => {
+  const withDefault = structuredClone(valkey);
+  withDefault.properties.valkey.properties.storage.properties.enabled = { type: "boolean", default: true } as never;
+
+  it("reads the schema's default", () => {
+    const errs = collectErrors(withDefault, { valkey: { storage: {} } });
+    expect(errs.get("/valkey/storage/size")).toBeString();
+    expect(errs.get("/valkey/storage/class")).toBeString();
+  });
+
+  it("checks an untouched nested object when a default triggers a branch", () => {
+    const errs = collectErrors(withDefault, {});
+    expect(errs.get("/valkey/storage/size")).toBeString();
+    expect(errs.get("/valkey/storage/class")).toBeString();
+    const fromValues = collectErrors(valkey, {}, undefined, { valkey: { storage: { enabled: true } } });
+    expect(fromValues.get("/valkey/storage/size")).toBeString();
+    expect(fromValues.get("/valkey/storage/class")).toBeString();
+  });
+
+  it("checks an untouched nested object whose own if/then triggers on a default", () => {
+    const localIf = {
+      type: "object",
+      properties: {
+        storage: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean", default: true },
+            class: { type: "string" },
+          },
+          if: { properties: { enabled: { const: true } }, required: ["enabled"] },
+          // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a thenable
+          then: { required: ["class"] },
+        },
+      },
+    };
+    expect(collectErrors(localIf, {}).get("/storage/class")).toBeString();
+    expect(collectErrors(localIf, { storage: { enabled: false } }).size).toBe(0);
+  });
+
+  it("leaves an optional untouched object alone when no branch requires fields inside it", () => {
+    const optionalProxy = {
+      type: "object",
+      properties: {
+        proxy: {
+          type: "object",
+          required: ["host"],
+          properties: {
+            host: { type: "string" },
+            port: { type: "integer", default: 8080 },
+          },
+        },
+      },
+    };
+    expect(collectErrors(optionalProxy, {}).size).toBe(0);
+    // In mesh mode else only hides senders.subnet and does not require senders.
+    expect(collectErrors(egress, { mode: "mesh" }).has("/senders/namespace")).toBe(false);
+  });
+
+  it("reads the chart's answer in values.yaml", () => {
+    const errs = collectErrors(valkey, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } });
+    expect(errs.get("/valkey/storage/size")).toBeString();
+  });
+
+  it("gives way to the order's own value", () => {
+    expect(collectErrors(withDefault, { valkey: { storage: { enabled: false } } }).size).toBe(0);
+    expect(collectErrors(valkey, { valkey: { storage: { enabled: false } } }, undefined, { valkey: { storage: { enabled: true } } }).size).toBe(0);
+  });
+
+  it("marks the fields required on the form", () => {
+    const stars = (value: Record<string, unknown>, chartDefaults?: Record<string, unknown>) =>
+      renderToStaticMarkup(<SchemaForm schema={valkey} value={value} onChange={() => {}} chartDefaults={chartDefaults} />).split(" *</span>").length - 1;
+    expect(stars({}, { valkey: { storage: { enabled: true } } })).toBe(2);
+    expect(stars({ valkey: { storage: { enabled: false } } }, { valkey: { storage: { enabled: true } } })).toBe(0);
+  });
+});
+
+// A condition is written with whatever keyword says it best, and one the form
+// skipped counted as satisfied: the branch then held for every value.
+describe("a condition written with other keywords", () => {
+  const storage = (cond: Schema) => ({
+    ...valkey,
+    allOf: [{ ...valkey.allOf[0], if: { properties: { valkey: { properties: { storage: cond } } } } }],
+  });
+  const required = (schema: Schema, storageValue: Record<string, unknown>) =>
+    collectErrors(schema, { valkey: { storage: storageValue } }).has("/valkey/storage/size");
+
+  it("reads not", () => {
+    const s = storage({ properties: { enabled: { not: { const: false } } }, required: ["enabled"] });
+    expect(required(s, { enabled: true })).toBe(true);
+    expect(required(s, { enabled: false })).toBe(false);
+  });
+
+  it("reads anyOf, allOf and oneOf", () => {
+    const on = { properties: { enabled: { const: true } }, required: ["enabled"] };
+    expect(required(storage({ anyOf: [on, { required: ["class"] }] }), { enabled: true })).toBe(true);
+    expect(required(storage({ anyOf: [on, { required: ["class"] }] }), { enabled: false })).toBe(false);
+    expect(required(storage({ allOf: [on, { properties: { enabled: { type: "boolean" } } }] }), { enabled: false })).toBe(false);
+    expect(required(storage({ oneOf: [on, { properties: { enabled: { const: false } } }] }), { enabled: true })).toBe(true);
+  });
+
+  it("reads the length and pattern of a string", () => {
+    const named = storage({ properties: { class: { minLength: 1 } }, required: ["class"] });
+    expect(collectErrors(named, { valkey: { storage: { class: "fast" } } }).has("/valkey/storage/size")).toBe(true);
+    expect(collectErrors(named, { valkey: { storage: { class: "" } } }).has("/valkey/storage/size")).toBe(false);
+    const fast = storage({ properties: { class: { pattern: "^fast" } }, required: ["class"] });
+    expect(collectErrors(fast, { valkey: { storage: { class: "slow" } } }).has("/valkey/storage/size")).toBe(false);
+  });
+
+  it("reads the type and range of a number", () => {
+    const big = storage({ properties: { enabled: { type: "integer", minimum: 3 } }, required: ["enabled"] });
+    expect(required(big, { enabled: 5 })).toBe(true);
+    expect(required(big, { enabled: 2 })).toBe(false);
+    expect(required(big, { enabled: true })).toBe(false);
+  });
+});
+
+// "If this field is set, those are needed too", said without an if: the
+// dependency is a branch whose condition is the field being set.
+describe("a dependency between fields", () => {
+  const withDeps = (deps: Record<string, unknown>) => {
+    const s = structuredClone(valkey) as Schema;
+    s.allOf = [];
+    Object.assign(s.properties.valkey.properties.storage, deps);
+    return s;
+  };
+  const missing = (schema: Schema, storageValue: Record<string, unknown>) =>
+    [...collectErrors(schema, { valkey: { storage: storageValue } }).keys()].sort();
+
+  it("reads dependentRequired", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size", "class"] } });
+    expect(missing(s, { enabled: true })).toEqual(["/valkey/storage/class", "/valkey/storage/size"]);
+    expect(missing(s, {})).toEqual([]);
+  });
+
+  it("reads the list form of dependencies", () => {
+    const s = withDeps({ dependencies: { enabled: ["size"] } });
+    expect(missing(s, { enabled: false })).toEqual(["/valkey/storage/size"]);
+    expect(missing(s, {})).toEqual([]);
+  });
+
+  it("reads the schema form of dependencies and dependentSchemas", () => {
+    const hide = { properties: { class: { "ui:widget": "hidden" } }, required: ["size"] };
+    for (const key of ["dependencies", "dependentSchemas"]) {
+      const s = withDeps({ [key]: { enabled: hide }, required: ["class"] });
+      expect(missing(s, { enabled: true })).toEqual(["/valkey/storage/size"]);
+      expect(missing(s, {})).toEqual(["/valkey/storage/class"]);
+    }
+  });
+
+  it("counts a field the chart sets by default", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size"] } });
+    expect([...collectErrors(s, { valkey: { storage: {} } }, undefined, { valkey: { storage: { enabled: true } } }).keys()]).toEqual([
+      "/valkey/storage/size",
+    ]);
+  });
+
+  it("marks the fields required on the form", () => {
+    const s = withDeps({ dependentRequired: { enabled: ["size", "class"] } });
+    const stars = (v: Record<string, unknown>) =>
+      renderToStaticMarkup(<SchemaForm schema={s} value={v} onChange={() => {}} />).split(" *</span>").length - 1;
+    expect(stars({ valkey: { storage: { enabled: true } } })).toBe(2);
+    expect(stars({ valkey: { storage: {} } })).toBe(0);
+  });
+});

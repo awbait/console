@@ -317,6 +317,7 @@ func (s *Server) Router() http.Handler {
 			// version's place in the catalog (see handleGetRequestView).
 			r.Get("/requests/{id}/view", s.handleGetRequestView)
 			r.Patch("/requests/{id}", s.handlePatchRequest)
+			r.Post("/requests/{id}/validate", s.handleValidateRequest) // dry run of a PATCH: checks only, writes nothing
 			r.Delete("/requests/{id}", s.handleDeleteRequest)
 			r.Post("/requests/{id}/rename", s.handleRenameRequest)
 			r.Post("/requests/{id}/submit", s.handleSubmitRequest)

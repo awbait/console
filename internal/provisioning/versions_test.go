@@ -104,7 +104,7 @@ func TestChangeValuesSurvivesTheVersionLeavingTheCatalog(t *testing.T) {
 	// Same version, new values: allowed. The allowlist decides what may be
 	// chosen, and this order chooses nothing.
 	values := validValues()
-	values["auth"].(map[string]any)["database"] = "app2"
+	values["auth"].(map[string]any)["username"] = "app2"
 	if _, err := s.prov.Update(ctx, u, req.ID, provisioning.UpdateInput{Values: values}); err != nil {
 		t.Fatalf("change values on a de-listed version: %v", err)
 	}
@@ -122,11 +122,53 @@ func TestChangeValuesSurvivesTheVersionLeavingTheCatalog(t *testing.T) {
 	if err := s.st.SetOrderable(ctx, shelved.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	values["auth"].(map[string]any)["database"] = "app3"
+	values["auth"].(map[string]any)["username"] = "app3"
 	_, err = s.prov.Update(ctx, u, req.ID, provisioning.UpdateInput{Version: "15.4.0", Values: values})
 	var ve *provisioning.ValidationError
 	if !errors.As(err, &ve) {
 		t.Fatalf("moving onto a de-listed version: want ValidationError, got %v", err)
+	}
+}
+
+func TestSubmitRejectsDeListedDraftVersion(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+	view := []byte(`{"views":{"order":{"identity":"/auth/database","include":["auth"]}}}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.1", view)
+
+	req, err := s.prov.Create(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.1",
+		Team: "core", ServiceName: "pg-draft", Values: validValues(), Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create draft: %v", err)
+	}
+
+	// De-list 15.4.1 while a newer version 15.4.2 takes over the catalog.
+	pub, err := s.st.GetPublicationByChart(ctx, "platform", "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ver, err := s.st.GetVersion(ctx, pub.ID, "15.4.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.SetOrderable(ctx, ver.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	seedVersion(t, s, "postgres", "15.4.2", view)
+
+	_, err = s.prov.Submit(ctx, u, req.ID)
+	var ve *provisioning.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("submit de-listed draft: want ValidationError, got %v", err)
+	}
+	if got := mustStatus(ctx, t, s.st, req.ID); got != models.StatusDraft {
+		t.Fatalf("status after rejected submit = %s, want DRAFT", got)
+	}
+	if mrs, _ := s.st.ListMRs(ctx, req.ID); len(mrs) != 0 {
+		t.Fatalf("rejected submit must not open an MR, got %d", len(mrs))
 	}
 }
 

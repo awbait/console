@@ -41,6 +41,7 @@ export const fieldMsg = {
   max: (n: number) => `Не больше ${n}.`,
   range: (min: number, max: number) => `Значение от ${min} до ${max}.`,
   taken: (name: string) => `Имя «${name}» уже занято.`,
+  reserved: (name: string) => `Поле «${name}» уже есть выше.`,
   oneOf: (values: string[]) => `Допустимые значения: ${values.join(", ")}.`,
   minItems: (n: number) =>
     n <= 1
@@ -58,14 +59,46 @@ export const fieldHint = {
   charsetDots: "Строчные латинские буквы, цифры, точка и дефис.",
   integer: "Целое число.",
   pathSlash: "Путь начинается с косой черты.",
+  // Under a map whose entries may be any scalar (mapScalar.ts): how the typed
+  // text is read.
+  anyScalar:
+    'Числа, true, false и null сохраняются как значения своего типа. Значения в кавычках, например "5", и остальные сохраняются как текст.',
 };
 
 // What an empty field with a value of its own shows in grey. Named, because
 // grey text shaped like a value reads as a value already filled in, and the
-// person walks past a field they were meant to look at.
+// person walks past a field they were meant to look at. A value of several
+// lines (a config file) starts on the line below: run on after the words, its
+// first line reads as part of the label and no longer lines up with the rest.
 export function defaultPlaceholder(value: string): string {
-  return `по умолчанию ${value}`;
+  return value.includes("\n") ? `по умолчанию\n${value}` : `по умолчанию ${value}`;
 }
+
+// The two actions beside the label of a text field with a default: take the
+// default in as text to edit, or let go of the typed value so the default
+// applies again (and follows the chart from then on).
+export const defaultAction = {
+  insert: "Скопировать значение",
+  insertHint: "После копирования текст станет частью заказа и перестанет обновляться при изменении значения по умолчанию.",
+  reset: "Сбросить значение",
+  resetHint: "Текст в поле удалится, а значение будет браться по умолчанию и обновляться при его изменении.",
+};
+
+// Same actions for a list field (e.g. pg_hba.conf rules): wording speaks about
+// a list rather than text, plus the muted caption above default preview rows.
+export const defaultListAction = {
+  label: "По умолчанию",
+  insertHint:
+    "После копирования список станет частью заказа и перестанет обновляться при изменении значения по умолчанию.",
+  resetHint:
+    "Ваш список удалится из заказа. Список по умолчанию снова будет браться из чарта и обновляться при смене его версии.",
+};
+
+// Subheading for extra arbitrary key-value entries inside an object section
+// that already declares named properties above.
+export const extraEntries = {
+  heading: "Дополнительные параметры",
+};
 
 // withField prefixes a canonical message with a field label for error lists
 // where several fields report at once ("projectTag: не короче 2 символов.").

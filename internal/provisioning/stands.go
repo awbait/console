@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"console/internal/gitlab"
 	"console/internal/store"
 	"console/pkg/models"
 )
@@ -93,9 +94,22 @@ func appTarget(g *GitOps, st *models.Stand, projectPath, webURL, portalURL strin
 	return t
 }
 
+// projectBranch returns the repository's own default branch, falling back to
+// the portal's configured default branch when GitLab reports none (e.g. an
+// empty repo before its seed commit). A pre-existing repository on another
+// stand may use "master" while the portal defaults to "main".
+func (s *Service) projectBranch(proj *gitlab.Project) string {
+	if proj != nil && proj.DefaultBranch != "" {
+		return proj.DefaultBranch
+	}
+	return s.defaultBranch
+}
+
 // renderApp renders the application of an order on its stand.
-func (s *Service) renderApp(r *models.Request, st *models.Stand, projectPath, webURL string) (string, error) {
-	return s.gitops.RenderApplicationFor(r, appTarget(s.gitops, st, projectPath, webURL, s.GitLabURL))
+func (s *Service) renderApp(r *models.Request, st *models.Stand, projectPath, webURL, branch string) (string, error) {
+	t := appTarget(s.gitops, st, projectPath, webURL, s.GitLabURL)
+	t.Branch = branch
+	return s.gitops.RenderApplicationFor(r, t)
 }
 
 // repoPathOf is the full path of the repository an order's files are in.

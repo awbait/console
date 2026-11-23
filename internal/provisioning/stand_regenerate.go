@@ -231,11 +231,8 @@ func (s *Service) regenerateOrder(ctx context.Context, r *models.Request, st *mo
 	if err != nil {
 		return false, gitopsErr("resolve repo", err)
 	}
-	branch := proj.DefaultBranch
-	if branch == "" {
-		branch = s.defaultBranch
-	}
-	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL)
+	branch := s.projectBranch(proj)
+	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL, branch)
 	if err != nil {
 		return false, err
 	}

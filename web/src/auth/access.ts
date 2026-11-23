@@ -48,3 +48,21 @@ export function noTeamNotice(user: User | null): NoTeamNotice | null {
       "Вы не состоите ни в одной команде, поэтому заказать сервис нельзя. Попросите администратора платформы добавить вас в команду.",
   };
 }
+
+// OrderPage serves three flows: placing a new order (needs a team to own it),
+// editing an existing draft (already belongs to a team), and upgrading a live
+// order (same). Only a brand-new order requires team membership; platform roles
+// (admin, support) without teams can still edit drafts and upgrade orders.
+export function orderFormBlocked(user: User | null, editing: boolean): NoTeamNotice | null {
+  return editing ? null : noTeamNotice(user);
+}
+
+// Which team owns the order on OrderPage: the order's own team when editing or
+// upgrading an existing request, and the topbar active team for a new order.
+export function orderFormTeam(
+  editing: boolean,
+  draftTeam: string | undefined,
+  activeTeam: string | null,
+): string {
+  return (editing ? draftTeam : activeTeam) ?? "";
+}

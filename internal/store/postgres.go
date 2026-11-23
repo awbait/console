@@ -194,11 +194,12 @@ func (p *Postgres) UpdateRequest(ctx context.Context, r *models.Request) error {
 		UPDATE requests SET
 		  chart_version=$1, values_yaml=$2, status=$3, argocd_app_name=$4, display_name=$5,
 		  service_name=$6, cluster=$7, namespace=$8, resource_identity=$9, deleted_at=$10,
-		  editor_state=COALESCE($11::jsonb, editor_state), stand_id=$14, version=version+1, updated_at=NOW()
+		  editor_state=COALESCE($11::jsonb, editor_state), stand_id=$14, instance_path=$15,
+		  version=version+1, updated_at=NOW()
 		WHERE id=$12 AND version=$13`,
 		r.ChartVersion, r.ValuesYAML, r.Status, nullStr(r.ArgoCDAppName), r.DisplayName,
 		r.ServiceName, r.Cluster, r.Namespace, r.ResourceIdentity, r.DeletedAt,
-		nullJSON(r.EditorState), r.ID, r.Version, nullStr(r.StandID))
+		nullJSON(r.EditorState), r.ID, r.Version, nullStr(r.StandID), nullStr(r.InstancePath))
 	if isUniqueViolation(err) {
 		return models.ErrConflict // identity collides with another active order
 	}

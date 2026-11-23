@@ -202,6 +202,26 @@ export function LinkButton({
   );
 }
 
+// FieldLabel is the name above a text field, with room at the far end of the
+// line for an action that belongs to the field (take in the chart's default,
+// let go of it). The action sits on the label's line rather than under the
+// field, where the error and the description already take turns.
+function FieldLabel({ label, required, action }: { label: string; required?: boolean; action?: ReactNode }) {
+  const name = (
+    <Label className="text-sm font-medium text-gray-700">
+      {label}
+      {required && <span className="text-red-500"> *</span>}
+    </Label>
+  );
+  if (!action) return name;
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      {name}
+      {action}
+    </div>
+  );
+}
+
 export function TextField({
   label,
   description,
@@ -212,9 +232,13 @@ export function TextField({
   errorText,
   onBlur,
   hideLabel,
+  labelAction,
   ...rest
 }: {
   label: string;
+  // A control on the label's line, e.g. the default-value action of a schema
+  // field. Not drawn with hideLabel: there is no label line to put it on.
+  labelAction?: ReactNode;
   description?: string;
   // What kind of value this field takes (form/fieldErrors: a DNS label, a port,
   // a namespace). One prop instead of two: the field states the rules in its
@@ -266,12 +290,7 @@ export function TextField({
       aria-label={hideLabel ? label : undefined}
       className="flex flex-col gap-1"
     >
-      {!hideLabel && (
-        <Label className="text-sm font-medium text-gray-700">
-          {label}
-          {rest.isRequired && <span className="text-red-500"> *</span>}
-        </Label>
-      )}
+      {!hideLabel && <FieldLabel label={label} required={rest.isRequired} action={labelAction} />}
       <div className="relative">
         <Input
           type={rest.type}
@@ -342,10 +361,12 @@ export function TextArea({
   errorText,
   onBlur,
   hideLabel,
+  labelAction,
   rows = 4,
   ...rest
 }: {
   label: string;
+  labelAction?: ReactNode;
   description?: string;
   requirements?: FieldRequirement[];
   value: string;
@@ -375,12 +396,7 @@ export function TextArea({
       aria-label={hideLabel ? label : undefined}
       className="flex flex-col gap-1"
     >
-      {!hideLabel && (
-        <Label className="text-sm font-medium text-gray-700">
-          {label}
-          {rest.isRequired && <span className="text-red-500"> *</span>}
-        </Label>
-      )}
+      {!hideLabel && <FieldLabel label={label} required={rest.isRequired} action={labelAction} />}
       <div className="relative">
         <AriaTextArea
           rows={rows}
@@ -392,8 +408,12 @@ export function TextArea({
           }}
           // Same box as TextField's Input. resize-y: taller when the text wants
           // it, never wider than the form. field-sizing grows it with the
-          // content where supported; rows is the floor everywhere.
-          className={`w-full resize-y rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none [field-sizing:content] placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
+          // content where supported; rows is the floor everywhere. max-h is the
+          // ceiling: a config of a hundred lines (or a default that long shown
+          // as the placeholder) scrolls inside the field instead of pushing the
+          // rest of the form a few screens down. Dragging the corner stops there
+          // too.
+          className={`max-h-80 w-full resize-y overflow-y-auto rounded-md border bg-surface py-1.5 pl-2 text-sm outline-none [field-sizing:content] placeholder:text-slate-400 focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 ${
             hasRules ? "pr-8" : "pr-2"
           } ${
             invalid

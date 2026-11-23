@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
+
 	"console/internal/gitlab"
 	"console/internal/store"
 	"console/pkg/models"
@@ -101,7 +102,7 @@ func (s *Service) ImportFromGit(ctx context.Context) error {
 		if verr != nil {
 			continue // no values.yaml (or unreadable) - incomplete instance
 		}
-		expected, rerr := s.renderApp(r, dd.stand, d.ProjectPath, d.ProjectWebURL)
+		expected, rerr := s.renderApp(r, dd.stand, d.ProjectPath, d.ProjectWebURL, d.Branch)
 		if rerr != nil || !yamlEqual([]byte(expected), d.Content) {
 			continue // application.yaml is not identical to ours - skip
 		}
@@ -259,7 +260,7 @@ func (s *Service) parseDiscovered(st *models.Stand, d gitlab.DiscoveredApp) *mod
 
 	cluster := firstNonEmpty(m.Spec.Destination.Name, s.defaultCluster)
 	namespace := firstNonEmpty(m.Spec.Destination.Namespace, service)
-	appName := firstNonEmpty(m.Metadata.Name, s.gitops.AppName(team, chart, namespace, service, StandKey(st)))
+	appName := firstNonEmpty(m.Metadata.Name, s.gitops.AppName(team, chart, namespace, service, cluster, StandKey(st)))
 
 	return &models.Request{
 		ID:            uuid.NewString(),

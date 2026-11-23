@@ -194,7 +194,7 @@ func (s *Service) tendDelete(ctx context.Context, r *models.Request) {
 // it was given has been superseded by a rewritten one, in which case the caller
 // is holding a stale record.
 func (s *Service) tendOpenMR(ctx context.Context, r *models.Request, mr *models.RequestMR, detailed string) (superseded bool) {
-	if gitlab.ClassifyMerge(detailed) == gitlab.MergeBlocked && detailed == "conflict" {
+	if mr.Action == models.ActionUpdate && gitlab.ClassifyMerge(detailed) == gitlab.MergeBlocked && detailed == "conflict" {
 		// A conflict is the one blocked state the portal can clear by itself: the
 		// change is still good, it was written against a branch that has since
 		// moved. A field both changes moved is the one case it cannot, and there
@@ -646,7 +646,7 @@ func mapHealth(h argocd.HealthStatus) models.RequestStatus {
 // cannot classify is not one to declare a service alive on.
 func closedChangeTarget(action models.MRAction) models.RequestStatus {
 	switch action {
-	case models.ActionUpdate, models.ActionDelete:
+	case models.ActionUpdate, models.ActionDelete, models.ActionRegenerate:
 		return models.StatusMRMerged
 	case models.ActionPublish:
 		// The files never reached Git: the order is kept in the portal, as before.

@@ -245,6 +245,8 @@ func (s *Service) advanceJob(ctx context.Context, j *models.StandJob) error {
 			var verr *ValidationError
 			if errors.As(err, &verr) {
 				f.Reason, f.Detail = jobFailRejected, verr.Message
+			} else if errors.Is(err, models.ErrConflict) {
+				f.Reason, f.Detail = jobFailRejected, err.Error()
 			}
 			j.Failures = append(j.Failures, f)
 			failed[r.ID] = true
@@ -287,11 +289,14 @@ func (s *Service) moveOrder(ctx context.Context, r *models.Request, st *models.S
 // publishOrder writes the files of an order kept in the portal into Git, the
 // way placing it on the stand would have.
 func (s *Service) publishOrder(ctx context.Context, r *models.Request, st *models.Stand) error {
+	if err := s.checkAppName(ctx, r, st); err != nil {
+		return err
+	}
 	proj, err := s.ensureRepo(ctx, st, r.Team, r.ChartName)
 	if err != nil {
 		return err
 	}
-	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL)
+	appYAML, err := s.renderApp(r, st, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	if err != nil {
 		return err
 	}
@@ -315,7 +320,7 @@ func (s *Service) unpublishOrder(ctx context.Context, r *models.Request, st *mod
 	if err != nil {
 		return gitopsErr("resolve repo", err)
 	}
-	files, err := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r))
+	files, err := s.gl.ListTree(ctx, proj.ID, s.projectBranch(proj), s.gitops.InstanceDir(r))
 	if err != nil {
 		return gitopsErr("list tree", err)
 	}

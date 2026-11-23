@@ -6,11 +6,17 @@ import { api, HttpError } from "@/api/client";
 import { changeInFlightText } from "@/api/errorText";
 import { qk } from "@/api/queryKeys";
 import type { ChangelogEntry, FieldError, OrderRequest, ViewDocument } from "@/api/types";
-import { chartLabel, findCatalogChart, useCatalog } from "@/app/CatalogContext";
+import {
+  chartLabel,
+  findCatalogChart,
+  shouldRecheckUpgrade,
+  useCatalog,
+  useRefreshCatalog,
+} from "@/app/CatalogContext";
 import { usePlatformHealth } from "@/app/PlatformHealthContext";
 import { useTeam } from "@/app/TeamContext";
-import { noTeamNotice } from "@/auth/access";
-import { useUser } from "@/auth/UserContext";
+import { orderFormBlocked, orderFormTeam } from "@/auth/access";
+import { canModify, useUser } from "@/auth/UserContext";
 import { FormErrors } from "@/components/FormErrors";
 import { NotFound } from "@/components/NotFound";
 import { PageHeader } from "@/components/PageHeader";
@@ -32,6 +38,8 @@ import { countGraphRules } from "../graph/mapping";
 import { RestoreNotice } from "../maintenance/RestoreNotice";
 import { useFormStash } from "../maintenance/useFormStash";
 import { OrderMetaCard, OrderPageSkeleton, OrderValuesCard } from "./OrderFormParts";
+import { formVersionOptions, orderCapabilityForStand } from "./orderForm";
+import { parseSavedValues, parseYamlValues } from "./orderYaml";
 import { DetailTab } from "./requestDetailParts";
 import { valuesEditorFor } from "./valuesEditors";
 
@@ -109,6 +117,19 @@ function writePointer(obj: Values, pointer: string, value: string): Values {
 export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const { project: pParam = "", name: nParam = "", id } = useParams();
   const [searchParams] = useSearchParams();
+  const upgradeTo = upgrade ? (searchParams.get("to") ?? "") : "";
+  // Remount whenever the target order, chart, or upgrade version changes so
+  // refs (hydrated, adapted, seededFor, pluginStateRef) and form state never
+  // leak across routes.
+  const routeKey = id
+    ? `${upgrade ? "upgrade" : "edit"}:${id}:${upgradeTo}`
+    : `new:${pParam}/${nParam}`;
+  return <OrderPageInner key={routeKey} upgrade={upgrade} />;
+}
+
+function OrderPageInner({ upgrade = false }: { upgrade?: boolean }) {
+  const { project: pParam = "", name: nParam = "", id } = useParams();
+  const [searchParams] = useSearchParams();
   // Upgrade target version from ?to= (the approved version); fallback is the
   // chart's latest version.
   const upgradeToParam = searchParams.get("to") ?? "";
@@ -117,11 +138,12 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   const { user } = useUser();
   // Team is chosen globally (topbar); the order form doesn't ask for it.
   const { team: activeTeam } = useTeam();
-  const { charts, loading: catalogLoading } = useCatalog();
-  // Filing an order opens a merge request, so it needs the platform behind it.
-  // Saving a draft does not - it only writes to the portal's own storage - so
-  // the work already typed into the form is never lost to an outage.
-  const orderOutage = usePlatformHealth().blockedReason("ordering");
+  const { charts, loading: catalogLoading, reload: reloadCatalog } = useCatalog();
+  useRefreshCatalog(id ?? `${pParam}/${nParam}`);
+  // Filing an order opens a merge request on git/deploy stands, so it needs the
+  // platform behind it. Console-only stands never touch GitLab and only need
+  // Harbor/store ("catalog"). Saving a draft writes to the portal's storage.
+  const { blockedReason } = usePlatformHealth();
 
   // In edit mode, load the draft we're continuing. Its chart coordinates and
   // pinned version drive the rest of the page.
@@ -167,9 +189,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     setStandId(def.id);
     setCluster((c) => c || def.default_cluster);
   }, [editing, standId, stands]);
-  // The stand's name, for the read-only summary of an upgrade; the selector
-  // shows it on its own while the stand can still be picked.
-  const standName = stands?.find((s) => s.id === (draft?.stand_id || standId))?.name;
+  // The order's stand: its name for the upgrade summary, and its mode so a
+  // console-only stand is not blocked by a GitLab outage.
+  const activeStand = stands?.find((s) => s.id === (upgrade ? draft?.stand_id : standId) || (!upgrade && !standId && s.id === draft?.stand_id));
+  const standName = activeStand?.name;
+  const orderOutage = blockedReason(orderCapabilityForStand(activeStand?.mode));
   // New-order chart version: defaults to the recommended (or highest orderable)
   // version once the catalog loads; the user can switch it (initialized below).
   const [selectedVersion, setSelectedVersion] = useState("");
@@ -209,11 +233,36 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     : orderableVersions.length > 0
       ? upgradeTargetsFromAllowlist(orderableVersions, draft?.chart_version ?? "")
       : upgradeTargets(chart?.versions ?? [], draft?.chart_version ?? "", pub?.approved_view_version);
+  // If an upgrade link names a version the cached catalog does not know yet,
+  // refresh the catalog once before calling the version unavailable.
+  const [upgradeRecheckedKey, setUpgradeRecheckedKey] = useState<string | null>(null);
+  const upgradeCheckKey = `${id ?? ""}:${draft?.chart_version ?? ""}:${targetVersion}`;
+  const needsUpgradeRecheck = shouldRecheckUpgrade({
+    upgrade,
+    ready: !!draft && !!chart,
+    targetVersion,
+    catalogLoading,
+    allowedUpgrades,
+    recheckedKey: upgradeRecheckedKey,
+    checkKey: upgradeCheckKey,
+  });
+  useEffect(() => {
+    if (!needsUpgradeRecheck) return;
+    let alive = true;
+    reloadCatalog().finally(() => {
+      if (alive) setUpgradeRecheckedKey(upgradeCheckKey);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [needsUpgradeRecheck, reloadCatalog, upgradeCheckKey]);
   const effectiveVersion = upgrade
     ? targetVersion || null
-    : editing
-      ? draft?.chart_version ?? null
-      : selectedVersion || null;
+    : selectedVersion || draft?.chart_version || null;
+  const formVersions = formVersionOptions(
+    orderableVersions,
+    editing && !upgrade ? draft?.chart_version : undefined,
+  );
 
   // Initialize the new-order version once the catalog/publication is known:
   // recommended, else the highest orderable, else the chart's latest version.
@@ -307,15 +356,16 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // What a namespace template reads besides the values: the same order context
   // the server renders it with on save.
   const nsVars = useNamespaceVars(ns, draft?.stand_id || standId);
+  const orderTeam = orderFormTeam(editing, draft?.team, activeTeam);
   const nsContext = useMemo(
     () => ({
-      team: (editing ? draft?.team : activeTeam) ?? undefined,
+      team: orderTeam || undefined,
       serviceName: identity ? identityName : serviceName,
       cluster,
       chart: name,
       vars: nsVars,
     }),
-    [editing, draft?.team, activeTeam, identity, identityName, serviceName, cluster, name, nsVars],
+    [orderTeam, identity, identityName, serviceName, cluster, name, nsVars],
   );
   const liveNamespace = resolveDestNamespace(ns, namespace, effectiveValues, nsContext);
 
@@ -344,14 +394,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (!editing || hydrated.current || !draft) return;
     setServiceName(draft.service_name);
     setDisplayName(draft.display_name);
+    if (draft.chart_version) setSelectedVersion(draft.chart_version);
     if (draft.stand_id) setStandId(draft.stand_id);
     if (draft.cluster) setCluster(draft.cluster);
     if (draft.namespace) setNamespace(draft.namespace);
-    try {
-      setValues((yaml.load(draft.values_yaml) as Values) ?? {});
-    } catch {
-      setValues({});
-    }
+    setValues(parseSavedValues(draft.values_yaml));
     // The canvas extras the values cannot express; the plugin reads them on mount.
     pluginStateRef.current = draft.editor_state ?? null;
     hydrated.current = true;
@@ -372,8 +419,9 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // come back.
   const seededFor = useRef<string | null>(null);
   const lastSeed = useRef<Values>({});
+  const seedStandId = upgrade ? (draft?.stand_id ?? "") : standId;
   useEffect(() => {
-    if (!project || !name || !effectiveVersion || !activeTeam) return;
+    if (!project || !name || !effectiveVersion || !orderTeam) return;
     if (editing && !upgrade) return;
     // On an upgrade the order's own values have to be in the form first: they
     // arrive with the draft and replace the values wholesale, so a seed applied
@@ -383,11 +431,12 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     // The first seed waits for the stand the order opens on, so it is rendered
     // for that stand rather than for the default and then again.
     if (standsLoading) return;
-    if (seededFor.current === standId) return;
-    seededFor.current = standId;
+    const seedKey = `${effectiveVersion}\0${orderTeam}\0${seedStandId}`;
+    if (seededFor.current === seedKey) return;
+    seededFor.current = seedKey;
     let alive = true;
     api
-      .orderInitial(project, name, effectiveVersion, activeTeam, standId)
+      .orderInitial(project, name, effectiveVersion, orderTeam, seedStandId)
       .then((r) => {
         if (!alive) return;
         const seed = (r.values ?? {}) as Values;
@@ -402,7 +451,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     return () => {
       alive = false;
     };
-  }, [editing, upgrade, draft, project, name, effectiveVersion, activeTeam, standId, standsLoading]);
+  }, [editing, upgrade, draft, project, name, effectiveVersion, orderTeam, seedStandId, standsLoading]);
 
   // Fit the order's values to the target version's schema (upgrade only).
   //
@@ -470,7 +519,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (s.standId) setStandId(s.standId);
     setCluster(s.cluster);
     setNamespace(s.namespace);
-    if (!editing && !upgrade && s.selectedVersion) setSelectedVersion(s.selectedVersion);
+    if (!upgrade && s.selectedVersion) setSelectedVersion(s.selectedVersion);
     pluginStateRef.current = s.editorState ?? pluginStateRef.current;
     setValues(s.values ?? {});
     setRaw(s.raw ?? "");
@@ -494,7 +543,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   // Upgrade guard: wait for the catalog (source of allowed versions), then check
   // ?to=. A disallowed/missing target version won't open the upgrade form.
   if (upgrade) {
-    if (catalogLoading) return <OrderPageSkeleton />;
+    if (catalogLoading || needsUpgradeRecheck) return <OrderPageSkeleton />;
     if (!targetVersion || !allowedUpgrades.includes(targetVersion)) {
       return (
         <NotFound
@@ -507,9 +556,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     }
   }
 
-  // The form is reachable by its address even where no button leads to it, so
-  // the same explanation the closed button carries is said here in full.
-  const noTeam = noTeamNotice(user);
+  // A brand-new order needs a team to own it; editing a draft or upgrading a
+  // live order keeps the team the order already belongs to, so platform roles
+  // (admin, support) without team membership are allowed through.
+  const noTeam = orderFormBlocked(user, editing);
   if (noTeam) {
     return (
       <Card>
@@ -527,7 +577,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       // plugin mode surfaces the error explicitly instead of showing a graph
       // built from stale values.
       try {
-        setValues((yaml.load(raw) as Values) ?? {});
+        setValues(parseYamlValues(raw));
       } catch (e) {
         parseError = (e as Error).message;
       }
@@ -544,7 +594,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
   function collectValues(): { values: Values; svcName: string; destNamespace: string } | null {
     let finalValues: Values = {};
     try {
-      finalValues = mode === "raw" ? ((yaml.load(raw) as Values) ?? {}) : pruneEmpty(values);
+      finalValues = mode === "raw" ? parseYamlValues(raw) : pruneEmpty(values);
     } catch (e) {
       setSubmitErr({ message: "Невалидный YAML: " + (e as Error).message });
       return null;
@@ -603,6 +653,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     try {
       if (editing) {
         await api.updateRequest(id!, {
+          version:
+            effectiveVersion && effectiveVersion !== draft?.chart_version
+              ? effectiveVersion
+              : undefined,
           service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           stand_id: standId || undefined,
@@ -684,6 +738,10 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
       if (editing) {
         // Persist the latest edits, then finalise (opens the create MR).
         await api.updateRequest(id!, {
+          version:
+            effectiveVersion && effectiveVersion !== draft?.chart_version
+              ? effectiveVersion
+              : undefined,
           service_name: sentName(c.svcName),
           display_name: displayName || undefined,
           stand_id: standId || undefined,
@@ -732,7 +790,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
     if (!c) return;
     setBusy("submit");
     try {
-      await api.updateRequest(id!, { version: targetVersion, values: c.values });
+      await api.updateRequest(id!, {
+        version: targetVersion,
+        values: c.values,
+        editor_state: editorState(),
+      });
       dropStash();
       navigate(`/requests/${id}`);
     } catch (e) {
@@ -841,11 +903,11 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           onNamespace={setNamespace}
           hideNamespace={ns.hideField}
           namespaceHint={ns.hideField ? liveNamespace : undefined}
-          team={editing ? draft?.team : activeTeam ?? undefined}
+          team={orderTeam || undefined}
           version={effectiveVersion ?? undefined}
           latest={!editing && orderableVersions.length === 0}
-          versions={editing ? undefined : orderableVersions}
-          onVersion={editing ? undefined : setSelectedVersion}
+          versions={formVersions}
+          onVersion={setSelectedVersion}
           recommendedVersion={recommendedVersion}
           identityName={identityName}
           showErrors={showErrors}
@@ -881,10 +943,18 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           on the product page, but into the same values and as a single MR. */}
       {upgrade && schema && viewDoc && draft && (
         <UpgradeExtras
-          request={{ ...draft, chart_version: targetVersion, values_yaml: yaml.dump(pruneEmpty(values)) }}
+          request={{
+            ...draft,
+            chart_version: targetVersion,
+            values_yaml: mode === "raw" ? raw : yaml.dump(pruneEmpty(values)),
+          }}
           doc={viewDoc}
           schema={schema as Record<string, any>}
-          onValues={setValues}
+          chartDefaults={chartDefaults}
+          onValues={(next) => {
+            setValues(next);
+            if (mode === "raw") setRaw(yaml.dump(pruneEmpty(next)));
+          }}
         />
       )}
 
@@ -896,6 +966,7 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           schema={schema ?? undefined}
           view={orderView}
           values={effectiveValues}
+          defaults={chartDefaults}
         />
       )}
 
@@ -935,15 +1006,17 @@ export function OrderPage({ upgrade = false }: { upgrade?: boolean }) {
           </span>
         ) : (
           <>
-            <span title={orderOutage}>
-              <Button
-                variant="primary"
-                isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam) || !!orderOutage}
-                onPress={submit}
-              >
-                {busy === "submit" ? "Заказываем…" : "Заказать"}
-              </Button>
-            </span>
+            {(!editing || !draft || canModify(user, draft.team)) && (
+              <span title={orderOutage}>
+                <Button
+                  variant="primary"
+                  isDisabled={submitting || !effectiveVersion || (!editing && !activeTeam) || !!orderOutage}
+                  onPress={submit}
+                >
+                  {busy === "submit" ? "Заказываем…" : "Заказать"}
+                </Button>
+              </span>
+            )}
             <Button variant="secondary" isDisabled={submitting || !effectiveVersion} onPress={saveDraft}>
               {busy === "draft" ? "Сохраняем…" : "Сохранить черновик"}
             </Button>
@@ -966,11 +1039,13 @@ function UpgradeExtras({
   request,
   doc,
   schema,
+  chartDefaults,
   onValues,
 }: {
   request: OrderRequest;
   doc: ViewDocument;
   schema: Record<string, any>;
+  chartDefaults?: Values;
   onValues: (v: Values) => void;
 }) {
   const tabs = productTabs(doc);
@@ -986,6 +1061,7 @@ function UpgradeExtras({
           doc={doc}
           onChanged={() => {}}
           schema={schema}
+          chartDefaults={chartDefaults}
           persist={persist}
         />
       </div>
@@ -1007,6 +1083,7 @@ function UpgradeExtras({
                 doc={doc}
                 tab={t}
                 schema={schema}
+                chartDefaults={chartDefaults}
                 persist={persist}
               />
             </TabPanel>

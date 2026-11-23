@@ -53,10 +53,7 @@ func (s *Service) checkDriftOne(ctx context.Context, r *models.Request) {
 		s.logger().Debug("drift check skipped: repo unavailable", "order_id", r.ID, "err", err)
 		return
 	}
-	branch := proj.DefaultBranch
-	if branch == "" {
-		branch = s.defaultBranch
-	}
+	branch := s.projectBranch(proj)
 
 	var reasons []string
 

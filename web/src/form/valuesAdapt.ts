@@ -22,8 +22,9 @@
 // "0" next to the new fields is a list that was spread, and the element inside
 // it is where the answers are.
 
-import { deref, fieldBreadcrumb, type Schema } from "./fieldPath";
+import { deref, escapeToken, extraValueSchema, fieldBreadcrumb, mapValueSchema, type Schema } from "./fieldPath";
 import { mergeUnder } from "./valuesMerge";
+import { variantsOf } from "./variants";
 
 type Values = Record<string, unknown>;
 
@@ -42,7 +43,7 @@ const isIndex = (k: string) => /^\d+$/.test(k);
 
 // adaptToSchema fits values to the schema and returns them with a note per
 // change. Values the schema accepts as they are come back untouched, and so does
-// everything the walk cannot judge: a variant (oneOf), a map of free-form keys,
+// everything the walk cannot judge: a variant (oneOf, anyOf), a map of free-form keys,
 // a field the schema says nothing about. Being too careful here costs a person
 // one confusing field; being too eager costs them a value they meant to keep.
 export function adaptToSchema(schema: Schema, values: Values, view?: Schema): Adapted {
@@ -68,8 +69,9 @@ function adapt(
   // A variant node decides which branch it is by the value it holds, and that
   // decision is the form's (matchVariant). Fitting the value to the branch this
   // walk guessed would change the variant under the person.
-  if (Array.isArray(s.oneOf)) return { value };
+  if (variantsOf(s, root)) return { value };
   if (s.type === "object" && s.properties) return adaptObject(s, value, root, label, path, notes);
+  if (s.type === "object" && mapValueSchema(s)) return adaptMap(s, value, root, label, path, notes);
   if (s.type === "array") return adaptArray(s, value, root, label, path, notes);
   // A leaf that holds a whole structure is a field that used to be one - there
   // is no first element to take and no key to read it by.
@@ -121,6 +123,12 @@ function adaptObject(
   for (const [key, child] of Object.entries(obj)) {
     const childSchema = s.properties?.[key];
     if (!childSchema) {
+      const extra = extraValueSchema(s);
+      if (extra) {
+        const fitted = adapt(extra, child, root, label, `${path}/${escapeToken(key)}`, notes);
+        if (fitted) out[key] = fitted.value;
+        continue;
+      }
       // A chart that accepts unknown keys keeps them: Helm will take them too,
       // and a subchart the portal never mounted answers for its own values.
       if (s.additionalProperties !== false) {
@@ -146,6 +154,9 @@ function adaptObject(
 // already there, so anything typed since wins and the rest of the old element
 // comes back instead of staying out of reach.
 function recoverSpreadList(s: Schema, value: Values, name: string, notes: string[]): Values {
+  // Hybrid objects (properties + additionalProperties/patternProperties) admit
+  // arbitrary extra keys, including numeric ones like port numbers ("8080").
+  if (extraValueSchema(s)) return value;
   const spread = Object.keys(value).filter((k) => isIndex(k) && !s.properties?.[k]);
   if (spread.length === 0) return value;
   const kept: Values = {};
@@ -159,6 +170,34 @@ function recoverSpreadList(s: Schema, value: Values, name: string, notes: string
 function listToBlock(name: string, count: number): string {
   const head = `${name}: раньше это был список, теперь одно поле. Значения первого элемента перенесены.`;
   return count > 1 ? `${head} Остальные элементы удалены.` : head;
+}
+
+// adaptMap fits a value to a map of free keys: the keys are the person's own
+// and stay as they are, and each value is fitted to the schema every entry
+// follows, the way a list fits each of its rows. An entry is named by its key
+// in a note (fieldBreadcrumb), because that is the only name it has. The map
+// itself holding something other than an object is a field that changed kind,
+// and there is no key to read a value by.
+function adaptMap(
+  s: Schema,
+  value: unknown,
+  root: Schema,
+  label: (path: string) => string,
+  path: string,
+  notes: string[],
+): { value: unknown } | null {
+  if (value === undefined || value === null) return { value };
+  if (!isObject(value)) {
+    notes.push(`${label(path)}: прежнее значение не подходит новой версии. Поле очищено.`);
+    return null;
+  }
+  const entry = mapValueSchema(s) ?? {};
+  const out: Values = {};
+  for (const [key, child] of Object.entries(value)) {
+    const fitted = adapt(entry, child, root, label, `${path}/${escapeToken(key)}`, notes);
+    if (fitted) out[key] = fitted.value;
+  }
+  return { value: out };
 }
 
 // adaptArray fits a value to a list.

@@ -729,6 +729,7 @@ export interface ViewDocument {
   views?: Record<string, any>;
   tabs?: ViewTab[];
   actions?: { view: string; in: string; label?: string }[];
+  defaults?: Record<string, unknown>;
 }
 
 // Full publication (GET/PATCH /publications/*).

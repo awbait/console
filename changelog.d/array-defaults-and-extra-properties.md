@@ -1,0 +1,7 @@
+### Added
+
+#### en
+Lists with chart defaults on the order form now show their default items in a preview while untouched, without saving them into the order so chart updates keep applying. Actions next to the section title let you copy the default list into the order for editing or reset it back to the chart default. Pressing "+ Добавить" over defaults copies the default items first and adds a new row at the end, so adding one entry no longer replaces the base list. Object sections that define both named fields and open-ended parameters now show an extra parameters area with "+ Добавить" below the named fields, check added entries, and prevent duplicating a field already shown above.
+
+#### ru
+Списки со значениями по умолчанию из чарта теперь показывают эти элементы в форме заказа для просмотра, пока вы их не меняли, и не сохраняют их в заказ, чтобы обновления чарта продолжали применяться. Действия рядом с заголовком раздела позволяют скопировать список в заказ для редактирования или сбросить его обратно к значению чарта. Нажатие «+ Добавить» поверх значения по умолчанию сначала переносит базовые элементы и добавляет новую строку в конец, чтобы одна новая запись не затирала весь список чарта. В разделах, где есть и заранее заданные поля, и произвольные пары ключ-значение, под основными полями теперь отображается блок «Дополнительные параметры» с кнопкой «+ Добавить», проверкой введённых записей и защитой от дублирования полей, которые уже показаны выше.

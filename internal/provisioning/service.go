@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"gopkg.in/yaml.v3"
+
 	"console/internal/argocd"
 	"console/internal/catalog"
 	"console/internal/checks"
@@ -475,13 +476,13 @@ func (s *Service) templateVars(ctx context.Context, view []byte, standID string)
 	return models.VariableValuesOn(list, stand.ID), stand.Name, nil
 }
 
-// checkAppName refuses an order whose Argo CD application name a live order of
-// another stand already carries, when both stands' Argo CD reads Applications
-// from one namespace. The two app-of-apps repos would then define one
-// Application, each undoing what the other applied. The default app-name
-// template keeps stands apart, but a configured one may not, and a stand's
-// name may reduce to what another one's does. Orders of a stand that keeps
-// them in the portal write no Application and never collide.
+// checkAppName refuses an order whose Argo CD application name a live order
+// already carries, when both orders' Argo CD reads Applications from one
+// namespace. The two app-of-apps sources would then define one Application,
+// each undoing what the other applied. The default app-name template keeps
+// clusters and stands apart, but a configured one may not, and a stand's name
+// may reduce to what another one's does. Orders of a stand that keeps them in
+// the portal write no Application and never collide.
 func (s *Service) checkAppName(ctx context.Context, r *models.Request, st *models.Stand) error {
 	if r.ArgoCDAppName == "" || !st.WritesGit() {
 		return nil
@@ -492,7 +493,10 @@ func (s *Service) checkAppName(ctx context.Context, r *models.Request, st *model
 	}
 	ns := s.gitops.AppNamespaceOf(st)
 	for _, ex := range list {
-		if ex.ID == r.ID || ex.DeletedAt != nil || ex.ArgoCDAppName != r.ArgoCDAppName || ex.StandID == r.StandID {
+		if ex.ID == r.ID || ex.DeletedAt != nil || ex.ArgoCDAppName != r.ArgoCDAppName {
+			continue
+		}
+		if ex.Status == models.StatusDeleted || ex.Status == models.StatusMRClosed || ex.Status == models.StatusConsoleSaved {
 			continue
 		}
 		other := s.standOf(ctx, ex)
@@ -680,7 +684,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 		EditorState:   in.EditorState,
 		Status:        models.StatusDraft,
 	}
-	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, StandKey(stand)) // computed once
+	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, r.Cluster, StandKey(stand)) // computed once
 	// Same idea as the application name: rendered from a template once, at
 	// creation, and carried on the row. Re-rendering it later would follow a
 	// changed GITLAB_INSTANCE_DIR_TEMPLATE and point the portal at a folder its
@@ -723,7 +727,7 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	if err != nil {
 		return r, err // DRAFT persists; caller sees upstream error
 	}
-	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -758,6 +762,9 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 	if !validServiceName(r.ServiceName) {
 		return nil, &ValidationError{Message: MsgServiceName}
 	}
+	if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, r.ChartVersion); err != nil {
+		return nil, err
+	}
 	var values map[string]any
 	if uerr := yaml.Unmarshal([]byte(r.ValuesYAML), &values); uerr != nil {
 		return nil, &ValidationError{Message: MsgBadValues + uerr.Error()}
@@ -778,11 +785,14 @@ func (s *Service) Submit(ctx context.Context, u *models.User, id string) (*model
 		}
 		return r, nil
 	}
+	if err := s.checkAppName(ctx, r, stand); err != nil {
+		return nil, err
+	}
 	proj, err := s.ensureRepo(ctx, stand, r.Team, r.ChartName)
 	if err != nil {
 		return r, err
 	}
-	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	actions := []gitlab.FileAction{
 		{Action: "create", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "create", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -832,23 +842,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 		return nil, err
 	}
 
-	version := r.ChartVersion
-	if in.Version != "" {
-		version = in.Version
-	}
-	// Choosing a version and keeping the one you have are different questions,
-	// and only the first one the allowlist answers. A version can leave the
-	// catalog, or be taken out of support, long after somebody ordered it - and
-	// that must not freeze the values of what is already running on it. What
-	// still has to hold either way is that the registry has the chart.
-	if version != r.ChartVersion {
-		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-			return nil, err
-		}
-	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-		return nil, err
-	}
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	version, valuesYAML, err := s.prepareLiveValues(ctx, r, in)
 	if err != nil {
 		return nil, err
 	}
@@ -891,7 +885,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 	r.ChartVersion = version
 	r.ValuesYAML = valuesYAML
 	r.EditorState = in.EditorState // nil keeps what the store already holds
-	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL)
+	appYAML, _ := s.renderApp(r, stand, proj.PathWithNamespace, proj.WebURL, s.projectBranch(proj))
 	actions := []gitlab.FileAction{
 		{Action: "update", FilePath: s.gitops.AppPath(r), Content: appYAML},
 		{Action: "update", FilePath: s.gitops.ValuesPath(r), Content: valuesYAML},
@@ -910,18 +904,7 @@ func (s *Service) Update(ctx context.Context, u *models.User, id string, in Upda
 // then written in place, with a row in the history, because there is no Git
 // for a merge request to go to.
 func (s *Service) updateInPortal(ctx context.Context, u *models.User, r *models.Request, in UpdateInput) (*models.Request, error) {
-	version := r.ChartVersion
-	if in.Version != "" {
-		version = in.Version
-	}
-	if version != r.ChartVersion {
-		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-			return nil, err
-		}
-	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
-		return nil, err
-	}
-	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	version, valuesYAML, err := s.prepareLiveValues(ctx, r, in)
 	if err != nil {
 		return nil, err
 	}
@@ -941,6 +924,106 @@ func (s *Service) updateInPortal(ctx context.Context, u *models.User, r *models.
 		s.event(ctx, r, byUser(u), "updated", "", "")
 	}
 	return r, nil
+}
+
+// prepareLiveValues is what every edit of an existing (non-draft) order goes
+// through before anything is written: the version it lands on, the values as
+// they will be stored - stamped, checked against the chart's schema and the
+// view's rules - and the refusal to move a field the order was created with.
+// Update, the in-portal edit and the dry run (ValidateUpdate) share it, so a
+// check that passes is a save that passes.
+func (s *Service) prepareLiveValues(ctx context.Context, r *models.Request, in UpdateInput) (string, string, error) {
+	version := r.ChartVersion
+	if in.Version != "" {
+		version = in.Version
+	}
+	// Choosing a version and keeping the one you have are different questions,
+	// and only the first one the allowlist answers. A version can leave the
+	// catalog, or be taken out of support, long after somebody ordered it - and
+	// that must not freeze the values of what is already running on it. What
+	// still has to hold either way is that the registry has the chart.
+	if version != r.ChartVersion {
+		if err := s.ensureOrderable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+			return "", "", err
+		}
+	} else if err := s.ensureDeployable(ctx, r.ChartProject, r.ChartName, version); err != nil {
+		return "", "", err
+	}
+	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, version, r.Namespace, in.Values, true, stampOf(r))
+	if err != nil {
+		return "", "", err
+	}
+	if err := s.checkImmutable(ctx, r, version, valuesYAML); err != nil {
+		return "", "", err
+	}
+	return version, valuesYAML, nil
+}
+
+// checkImmutable refuses a change to a field the version's view or schema
+// freezes once the order exists (see views.ImmutableRules). The forms never
+// let one through; the YAML editor and the API would, and the result is an
+// order whose values no longer match what was deployed under its name.
+//
+// Compared after the stamps, so a field the portal writes itself on every save
+// is never held against the person. Not on a drifted order: there the stored
+// values are not what Git has, and settling the disagreement is exactly the
+// edit that has to go through.
+func (s *Service) checkImmutable(ctx context.Context, r *models.Request, version, valuesYAML string) error {
+	if r.Drifted {
+		return nil
+	}
+	schemaBytes, _, _ := s.catalog.FormSchema(ctx, r.ChartProject, r.ChartName, version)
+	rules := views.ImmutableRules(s.orderView(ctx, r.ChartProject, r.ChartName, version), schemaBytes)
+	if len(rules) == 0 {
+		return nil
+	}
+	var before, after map[string]any
+	if yaml.Unmarshal([]byte(r.ValuesYAML), &before) != nil || yaml.Unmarshal([]byte(valuesYAML), &after) != nil {
+		return nil
+	}
+	if field, changed := views.FirstImmutableChange(before, after, rules, version != r.ChartVersion); changed {
+		return &ValidationError{Message: fmt.Sprintf(MsgImmutableField, field)}
+	}
+	return nil
+}
+
+// ValidateResult is the answer of a dry run: the values as the portal would
+// store them, and whether that is a change at all.
+type ValidateResult struct {
+	ValuesYAML string `json:"values_yaml"`
+	Changed    bool   `json:"changed"`
+}
+
+// ValidateUpdate runs an edit of an existing order through every check Update
+// applies to its values, and writes nothing: no merge request, no row, no
+// event. The YAML editor asks it before saving, so a mistake in a hundred
+// lines is found with the editor still open rather than in a refused save.
+//
+// The open change and the order's status are deliberately not asked: they
+// decide whether the edit can be sent now, not whether what was typed is
+// right, and the editor says those things itself.
+func (s *Service) ValidateUpdate(ctx context.Context, u *models.User, id string, in UpdateInput) (*ValidateResult, error) {
+	r, err := s.store.GetRequest(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canEdit(u, r.Team) {
+		return nil, ErrForbidden
+	}
+	if r.DeletedAt != nil || r.Status == models.StatusDeleted {
+		return nil, models.ErrNotFound
+	}
+	if r.Status == models.StatusDraft {
+		return nil, &ValidationError{Message: MsgNotLiveEdit}
+	}
+	version, valuesYAML, err := s.prepareLiveValues(ctx, r, in)
+	if err != nil {
+		return nil, err
+	}
+	return &ValidateResult{
+		ValuesYAML: valuesYAML,
+		Changed:    valuesYAML != r.ValuesYAML || version != r.ChartVersion,
+	}, nil
 }
 
 // updateDraft persists draft edits (values, version, identity, display name)
@@ -1004,7 +1087,7 @@ func (s *Service) updateDraft(ctx context.Context, u *models.User, r *models.Req
 	// re-rendered here and nowhere else: a draft has nothing in Git yet, while an
 	// order that does keeps what it was created with - see NewInstancePath.
 	stand := s.standOf(ctx, r)
-	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, StandKey(stand))
+	r.ArgoCDAppName = s.gitops.AppName(r.Team, r.ChartName, r.DestNamespace(), r.ServiceName, r.Cluster, StandKey(stand))
 	r.InstancePath = s.gitops.NewInstancePath(stand, r)
 	valuesYAML, err := s.validateAndMarshal(ctx, r.ChartProject, r.ChartName, r.ChartVersion, r.Namespace, in.Values, false, stampOf(r))
 	if err != nil {
@@ -1109,7 +1192,7 @@ func (s *Service) Delete(ctx context.Context, u *models.User, id string) (*model
 		return nil, err
 	}
 	// delete every file in the instance folder
-	files, terr := s.gl.ListTree(ctx, proj.ID, s.defaultBranch, s.gitops.InstanceDir(r))
+	files, terr := s.gl.ListTree(ctx, proj.ID, s.projectBranch(proj), s.gitops.InstanceDir(r))
 	if terr != nil {
 		return nil, gitopsErr("list tree", terr)
 	}
@@ -1632,9 +1715,9 @@ func commitTitle(action models.MRAction, chart, service string) string {
 // GitLab (what changed, which instance, which team/cluster).
 func mrTitle(action models.MRAction, r *models.Request) string {
 	verb := map[models.MRAction]string{
-		models.ActionCreate: "deploy",
-		models.ActionUpdate: "update",
-		models.ActionDelete:    "remove",
+		models.ActionCreate:     "deploy",
+		models.ActionUpdate:     "update",
+		models.ActionDelete:     "remove",
 		models.ActionPublish:    "publish",
 		models.ActionUnpublish:  "unpublish",
 		models.ActionRegenerate: "regenerate",
@@ -1648,15 +1731,16 @@ func mrTitle(action models.MRAction, r *models.Request) string {
 func (s *Service) openChange(ctx context.Context, r *models.Request, proj *gitlab.Project,
 	action models.MRAction, actions []gitlab.FileAction) (*models.RequestMR, error) {
 
+	baseBranch := s.projectBranch(proj)
 	commitMsg := commitTitle(action, r.ChartName, r.ServiceName)
 	branch := fmt.Sprintf("portal/%s-%s-%s", action, r.ServiceName, shortID())
-	if err := s.gl.CreateBranch(ctx, proj.ID, branch, s.defaultBranch); err != nil {
+	if err := s.gl.CreateBranch(ctx, proj.ID, branch, baseBranch); err != nil {
 		return nil, gitopsErr("branch", err)
 	}
 	if err := s.gl.CommitFiles(ctx, proj.ID, branch, commitMsg, actions); err != nil {
 		return nil, gitopsErr("commit", err)
 	}
-	mr, err := s.gl.CreateMR(ctx, proj.ID, branch, s.defaultBranch, mrTitle(action, r))
+	mr, err := s.gl.CreateMR(ctx, proj.ID, branch, baseBranch, mrTitle(action, r))
 	if err != nil {
 		return nil, gitopsErr("mr", err)
 	}

@@ -2,6 +2,78 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.26.0] - 2026-10-28
+
+### Added
+- In the order form, single-line and multi-line text fields with chart defaults
+  now have “Copy value” and “Reset value” actions, each with a tooltip
+  explaining its effect. While a field is empty, its default appears in grey and
+  is not saved with the order, so the current chart default applies and updates
+  with newer chart versions. “Copy value” puts the default in the field as
+  editable text and saves it with the order, so newer chart defaults do not
+  replace it. “Reset value” clears the field so the chart default applies again
+  and follows newer versions. Chart authors no longer need to prefill these
+  fields in the order form just to make a default editable.
+- In order forms, dictionaries with entries that contain their own fields now
+  show each entry as a card with its name and fields. Numbers remain numbers,
+  choices appear in dropdowns, and text-only entries keep their familiar look
+  and behavior. Charts that describe all entries with one shared pattern now
+  show them in the form too. The form flags duplicate names, omits entries
+  without a name from the order, and checks chart rules for allowed names and
+  minimum entry counts before submission. Renaming an entry keeps its values and
+  position, and moving an order to a newer chart version adjusts each entry to
+  fit that version. Users and chart authors do not need to do anything.
+- A form being edited by someone else opens read-only with their name shown, and
+  its contents update automatically as they save. When they finish, a button in
+  the notice lets you start editing without reloading the page, while
+  administrators can take over after confirming. If editing is taken over or
+  your connection is down for too long, the page switches to read-only and warns
+  that your latest changes were not saved so you can copy them before the
+  current form appears. No action is needed otherwise.
+- When someone starts editing an order form for a chart version, it is reserved
+  for them, and the versions list shows who is editing each version. While it is
+  reserved, others cannot save the form or send it for approval, and an
+  administrator can take over if the editor has left it open. The form becomes
+  available again about a minute after the editor closes the page or loses
+  connection, so no action is needed.
+
+### Fixed
+- When a chart allows a list entry or field to be either a simple value or an
+  object with settings, the form now lets you choose the entry type and shows
+  its fields. The “Virtual hosts” tab now opens those fields instead of an empty
+  dialog with a YAML editor message, and such lists can be filled in through the
+  order form. Existing entries open as written, whether as a bare name or with
+  settings such as a deletion policy and Kubernetes resource name. New entries
+  start with the type that has fields, and an empty name is flagged as required
+  before saving. Choices between plain values, such as text, numbers, or
+  true/false, remain a single input. Developers and chart authors do not need to
+  do anything.
+- Service order forms now handle conditions based on nested settings correctly.
+  Dependent fields are marked required as soon as the setting is enabled,
+  including when it is enabled by default. While the setting is off, those
+  fields remain optional, and the form builder preview follows the same
+  behavior. The form also evaluates other kinds of conditions correctly, so
+  dependent fields are required only when those conditions are met. It also
+  honors field dependencies, requiring dependent fields when the source field
+  contains a value, including a default value.
+- Dictionary fields in order forms now save values using the types described by
+  the chart: unquoted numbers are saved as numbers, `true` and `false` as
+  boolean values, `null` as an empty value, and other input as text. Quoted
+  values such as `"5"` remain text, and values from saved orders or YAML keep
+  their type when another entry is edited. Users and chart authors do not need
+  to do anything.
+- When you leave a number field empty, its default value now appears in grey,
+  just like in text fields. The “Copy value” and “Reset value” actions are also
+  available next to the field name. If the default is not a number, it still
+  appears in grey but cannot be copied. No action is needed.
+- The chart version editor in the catalog and the version approval page now open
+  correctly when you refresh the page or follow a direct link.
+- Long multi-line fields in the service order form now grow to about 16 lines
+  before scrolling inside the field. Dragging a field’s corner is limited to the
+  same height, so long values and grey default text no longer stretch the form
+  across several screens. In an empty field, “Default” now appears on its own
+  line, with the suggested value below. No action is needed.
+
 ## [0.25.0] - 2026-10-23
 
 ### Added
@@ -1047,6 +1119,7 @@ catalog, GitOps provisioning, approval of chart publications and OIDC sign-in.
 
 [Unreleased]: https://github.com/awbait/console/compare/v0.18.0...HEAD
 
+[0.26.0]: https://github.com/awbait/console/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/awbait/console/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/awbait/console/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/awbait/console/compare/v0.22.0...v0.23.0

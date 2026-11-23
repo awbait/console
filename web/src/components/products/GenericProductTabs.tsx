@@ -6,12 +6,12 @@ import {
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
-import yaml from "js-yaml";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button as AriaButton, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { api, HttpError } from "@/api/client";
 import type { OrderRequest, ViewDocument, ViewTab } from "@/api/types";
 import { chartLabel } from "@/app/CatalogContext";
+import { parseSavedValues } from "@/features/orders/orderYaml";
 import { ChangeSummary } from "@/form/FieldDiff";
 import { fieldMsg } from "@/form/fieldErrors";
 import {
@@ -78,11 +78,7 @@ function revealSummary(ref: React.RefObject<HTMLDivElement | null>) {
 }
 
 function parseValues(valuesYaml: string): Values {
-  try {
-    return (yaml.load(valuesYaml) as Values) ?? {};
-  } catch {
-    return {};
-  }
+  return parseSavedValues(valuesYaml);
 }
 
 // fmtScalar renders a resolved cell value as plain text: a string map (e.g. a
@@ -157,6 +153,7 @@ export function GenericListTab({
   doc,
   tab,
   schema: schemaProp,
+  chartDefaults: chartDefaultsProp,
   persist,
 }: {
   request: OrderRequest;
@@ -166,20 +163,22 @@ export function GenericListTab({
   tab: ViewTab;
   // Preloaded schema (preview): when set, the component skips its own fetch.
   schema?: Values;
+  chartDefaults?: Values;
   // Local save adapter (preview): when set, edits are not written via the API.
   persist?: PersistValues;
 }) {
-  // Schema is loaded for the order's version, so the form matches what the order
-  // was created on (not the latest chart). In preview a schema is passed in, so
-  // we skip the fetch entirely.
+  // Schema and chart defaults are loaded for the order's version, so forms and
+  // validation match what the order was created on. In preview a schema is
+  // passed in, so we skip the fetch entirely.
   const fetched = useAsync(
     () =>
       schemaProp
         ? Promise.resolve(null)
-        : api.getFormSchema(request.chart_project, request.chart_name, request.chart_version),
+        : api.getDependencies(request.chart_project, request.chart_name, request.chart_version),
     [schemaProp, request.chart_project, request.chart_name, request.chart_version],
   );
-  const schema = schemaProp ?? fetched.data;
+  const schema = schemaProp ?? (fetched.data?.effective_schema as Values | undefined) ?? null;
+  const chartDefaults = chartDefaultsProp ?? (fetched.data?.defaults as Values | undefined);
   const loading = !schemaProp && fetched.loading;
   const error = schemaProp ? null : fetched.error;
   const resolved = useMemo(() => resolveTab(schema, tab, doc), [schema, tab, doc]);
@@ -209,7 +208,8 @@ export function GenericListTab({
       addLabel={tab.addLabel ?? `Добавить ${label}`}
       extraActions={actionViews(doc, `tab:${tab.id}`)}
       doc={doc}
-      schema={schemaProp}
+      schema={schemaProp ?? schema}
+      chartDefaults={chartDefaults}
       persist={persist}
     />
   );
@@ -225,6 +225,7 @@ function ListEditor({
   extraActions,
   doc,
   schema,
+  chartDefaults,
   persist,
 }: {
   request: OrderRequest;
@@ -236,6 +237,7 @@ function ListEditor({
   extraActions: ActionPlacement[];
   doc: ViewDocument;
   schema?: Values;
+  chartDefaults?: Values;
   persist?: PersistValues;
 }) {
   const full = useMemo(() => parseValues(request.values_yaml), [request.values_yaml]);
@@ -423,6 +425,7 @@ function ListEditor({
           onClose={() => setAction(null)}
           onSaved={reload}
           schema={schema}
+          chartDefaults={chartDefaults}
           persist={persist}
         />
       )}
@@ -468,19 +471,27 @@ function ItemModal({
   onSave: (item: Values) => Promise<void>;
 }) {
   const [item, setItem] = useState<Values>({});
+  const [baseline, setBaseline] = useState<Values | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<SubmitError | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
 
+  // Initialize only when opening so background SSE reloads of the order do not
+  // wipe in-progress edits while the dialog is open.
   useEffect(() => {
-    if (!isOpen) return;
-    // A new item is seeded with the schema's const/default values (e.g. route
-    // kind=HTTPRoute), so the value matches what the form shows and the table
-    // reads, instead of staying undefined until the user touches each field.
-    setItem(initial ? structuredClone(initial) : ((seedDefaults(itemSchema, itemSchema) as Values) ?? {}));
-    setShowErrors(false);
-    setErr(null);
+    if (isOpen && !wasOpen.current) {
+      // A new item is seeded with the schema's const/default values (e.g. route
+      // kind=HTTPRoute), so the value matches what the form shows and the table
+      // reads, instead of staying undefined until the user touches each field.
+      const base = initial ? structuredClone(initial) : null;
+      setBaseline(base);
+      setItem(base ? structuredClone(base) : ((seedDefaults(itemSchema, itemSchema) as Values) ?? {}));
+      setShowErrors(false);
+      setErr(null);
+    }
+    wasOpen.current = isOpen;
   }, [isOpen, initial, itemSchema]);
 
   // Dynamic enums (e.g. listener names for parentRefs[].sectionName) are injected
@@ -497,7 +508,7 @@ function ItemModal({
   // Saving an element back exactly as it was opens a merge request with an
   // empty diff, which then blocks every real edit until someone closes it. A
   // new element is a change by definition, so only editing is guarded.
-  const changed = !initial || !sameValues(pruneEmpty(item), pruneEmpty(initial));
+  const changed = !baseline || !sameValues(pruneEmpty(item), pruneEmpty(baseline));
 
   async function save() {
     if (errors.size > 0) {
@@ -555,7 +566,7 @@ function ItemModal({
       {/* What this edit moves. Only when an element is being changed: for a new
           one every field is new, and listing them all would just repeat the
           form above it. */}
-      {initial && <ChangeSummary before={initial} after={item} schema={schema} view={view} />}
+      {baseline && <ChangeSummary before={baseline} after={item} schema={schema} view={view} />}
       {/* One error surface for both kinds: the client-side field summary and
           the server (domain/422) error with its details. */}
       {(err || (showErrors && errors.size > 0)) && (
@@ -581,12 +592,14 @@ export function GenericInfoActions({
   doc,
   onChanged,
   schema,
+  chartDefaults,
   persist,
 }: {
   request: OrderRequest;
   doc: ViewDocument;
   onChanged: () => void;
   schema?: Values;
+  chartDefaults?: Values;
   persist?: PersistValues;
 }) {
   const actions = actionViews(doc, "info").filter((a) => doc.views?.[a.view]);
@@ -623,6 +636,7 @@ export function GenericInfoActions({
           onClose={() => setOpen(null)}
           onSaved={onChanged}
           schema={schema}
+          chartDefaults={chartDefaults}
           persist={persist}
         />
       )}
@@ -645,6 +659,7 @@ function ViewFormModal({
   onClose,
   onSaved,
   schema: schemaProp,
+  chartDefaults: chartDefaultsProp,
   persist,
 }: {
   request: OrderRequest;
@@ -657,40 +672,49 @@ function ViewFormModal({
   onClose: () => void;
   onSaved: () => void;
   schema?: Values;
+  chartDefaults?: Values;
   persist?: PersistValues;
 }) {
   const fetched = useAsync(
-    () => (isOpen && !schemaProp ? api.getFormSchema(project, name, version) : Promise.resolve(null)),
+    () => (isOpen && !schemaProp ? api.getDependencies(project, name, version) : Promise.resolve(null)),
     [isOpen, schemaProp, project, name, version],
   );
-  const schema = schemaProp ?? fetched.data;
+  const schema = schemaProp ?? (fetched.data?.effective_schema as Values | undefined) ?? null;
+  const chartDefaults = chartDefaultsProp ?? (fetched.data?.defaults as Values | undefined);
   const loading = !schemaProp && fetched.loading;
   const error = schemaProp ? null : fetched.error;
   const [value, setValue] = useState<Values>({});
+  const [baseline, setBaseline] = useState<Values>({});
   const [showErrors, setShowErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<SubmitError | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
 
-  // Client-side validation against the schema (honoring the view), like the order
-  // form and the list-item modal, so invalid/required fields are caught before the
-  // PATCH and surfaced inline plus in the summary below.
+  // Client-side validation against the schema (honoring the view and chart
+  // defaults), like the order form, so invalid/required fields are caught
+  // before the PATCH and surfaced inline plus in the summary below.
   const errors = useMemo(
-    () => (schema ? collectErrors(schema, value, view) : new Map<string, string>()),
-    [schema, value, view],
+    () => (schema ? collectErrors(schema, value, view, chartDefaults) : new Map<string, string>()),
+    [schema, value, view, chartDefaults],
   );
 
   // What the dialog was opened on, kept to compare against: saving the order
   // exactly as it stands opens a merge request with an empty diff, which then
   // blocks every real edit until someone closes it.
   const saved = useMemo(() => parseValues(request.values_yaml), [request.values_yaml]);
-  const changed = !sameValues(pruneEmpty(value), pruneEmpty(saved));
+  const changed = !sameValues(pruneEmpty(value), pruneEmpty(baseline));
 
+  // Capture saved values once when opening so SSE reloads while the modal is
+  // open do not discard unsaved edits.
   useEffect(() => {
-    if (!isOpen) return;
-    setValue(saved);
-    setShowErrors(false);
-    setErr(null);
+    if (isOpen && !wasOpen.current) {
+      setBaseline(saved);
+      setValue(saved);
+      setShowErrors(false);
+      setErr(null);
+    }
+    wasOpen.current = isOpen;
   }, [isOpen, saved]);
 
   async function save() {
@@ -752,6 +776,7 @@ function ViewFormModal({
           errors={errors}
           showErrors={showErrors}
           lockReadOnly
+          chartDefaults={chartDefaults}
         />
       ) : (
         <p className="text-sm text-gray-500">Нет схемы.</p>
@@ -759,7 +784,7 @@ function ViewFormModal({
       {/* The form shows only the fields this view projects, but the change goes
           to the whole order: the summary is of the values, so a field the view
           computes from what was typed is named here too. */}
-      <ChangeSummary before={saved} after={value} schema={schema ?? undefined} view={view} />
+      <ChangeSummary before={baseline} after={value} schema={schema ?? undefined} view={view} />
       {(err || (showErrors && errors.size > 0)) && (
         <div ref={summaryRef} className="mt-3 scroll-mb-3">
           <FormErrors
@@ -768,6 +793,7 @@ function ViewFormModal({
             fieldErrors={showErrors && errors.size > 0 ? errors : undefined}
             schema={schema ?? undefined}
             view={view}
+            defaults={chartDefaults}
           />
         </div>
       )}

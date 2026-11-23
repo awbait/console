@@ -1,7 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { IconPlus, IconShoppingCart } from "@tabler/icons-react";
 import { OrdersTable } from "../features/orders/OrdersTable";
-import { chartLabel, findCatalogChart, useCatalog } from "../app/CatalogContext";
+import { chartLabel, findCatalogChart, useCatalog, useRefreshCatalog } from "../app/CatalogContext";
 import { usePlatformHealth } from "../app/PlatformHealthContext";
 import { noTeamNotice } from "../auth/access";
 import { useUser } from "../auth/UserContext";
@@ -13,6 +13,7 @@ import { LinkButton } from "../components/ui";
 export function ProductPage() {
   const { project = "", name = "" } = useParams();
   const { charts, loading } = useCatalog();
+  useRefreshCatalog(`${project}/${name}`);
   const { blockedReason } = usePlatformHealth();
   const { user } = useUser();
   // Somebody in no team cannot order this or anything else, and no waiting or

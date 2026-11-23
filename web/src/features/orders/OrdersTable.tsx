@@ -19,7 +19,7 @@ import { changeInFlightText } from "@/api/errorText";
 import { isLive } from "@/api/orderStatus";
 import { qk } from "@/api/queryKeys";
 import { deploys, type OrderRequest } from "@/api/types";
-import { useCatalog } from "@/app/CatalogContext";
+import { useCatalog, useRefreshCatalog } from "@/app/CatalogContext";
 import { useTeam } from "@/app/TeamContext";
 import { useToast } from "@/app/ToastContext";
 import { canModify, useUser } from "@/auth/UserContext";
@@ -119,6 +119,7 @@ export function OrdersTable({ title, filter, orderTo, orderDisabledReason, empty
 
   // Order's category label from its chart's publication (for the "Category" column).
   const { categories, charts } = useCatalog();
+  useRefreshCatalog();
   const categoryOf = (project: string, name: string) => {
     const pub = charts.find((c) => c.project === project && c.name === name)?.publication;
     return categories.find((c) => c.id === pub?.category_id)?.label;

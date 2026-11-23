@@ -24,7 +24,6 @@
 // are there. Nothing to warn about, nothing to confirm.
 
 import { IconAlertTriangle, IconInfoCircle, IconSitemap, IconX } from "@tabler/icons-react";
-import yaml from "js-yaml";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button as AriaButton,
@@ -41,6 +40,7 @@ import { FormErrors, type SubmitError, toSubmitError } from "@/components/FormEr
 import type { PersistValues } from "@/components/products/GenericProductTabs";
 import { Button, buttonClass } from "@/components/ui";
 import { entriesHiddenFromTabs, entryCount, graphLock, sameValues } from "./orderGraph";
+import { parseSavedValues } from "./orderYaml";
 import type { ActiveValuesEditor } from "./valuesEditors";
 
 type Values = Record<string, unknown>;
@@ -49,14 +49,6 @@ type Values = Record<string, unknown>;
 // that dragging a node across the screen is one save, short enough that nobody
 // closes the window in between.
 const LAYOUT_SAVE_DELAY = 1200;
-
-function parseValues(text: string): Values {
-  try {
-    return (yaml.load(text) as Values) ?? {};
-  } catch {
-    return {};
-  }
-}
 
 export function OrderGraphDialog({
   request: r,
@@ -78,7 +70,7 @@ export function OrderGraphDialog({
 }) {
   const { plugin, mapping } = editor;
   const toast = useToast();
-  const saved = useMemo(() => parseValues(r.values_yaml), [r.values_yaml]);
+  const saved = useMemo(() => parseSavedValues(r.values_yaml), [r.values_yaml]);
   const [draft, setDraft] = useState<Values | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<SubmitError | null>(null);
@@ -102,6 +94,19 @@ export function OrderGraphDialog({
     },
     [],
   );
+
+  // Drop unsaved edits and pending layout saves if the dialog is reused for a
+  // different order (e.g. navigating between orders in the same namespace).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset local draft only when switching orders
+  useEffect(() => {
+    setDraft(null);
+    setErr(null);
+    layout.current = undefined;
+    if (layoutTimer.current) {
+      clearTimeout(layoutTimer.current);
+      layoutTimer.current = null;
+    }
+  }, [r.id]);
 
   function onEditorState(state: unknown) {
     layout.current = state;
@@ -213,7 +218,7 @@ export function OrderGraphDialog({
                       }
                     >
                       <plugin.Component
-                        key={`${r.namespace}:${generation}`}
+                        key={`${r.id}:${r.namespace}:${generation}`}
                         values={values}
                         onValues={setDraft}
                         namespace={r.namespace}
