@@ -54,6 +54,7 @@ export function ProductPage() {
 
   return (
     <OrdersTable
+      key={`${project}/${name}`}
       title={label}
       filter={(r) => r.chart_project === project && r.chart_name === name}
       orderTo={orderTo}
