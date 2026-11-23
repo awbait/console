@@ -67,7 +67,7 @@ export function VersionApprovalPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <VersionApproval
-        key={version}
+        key={`${pub.id}:${version}`}
         pub={pub}
         version={version}
         breadcrumbs={[
