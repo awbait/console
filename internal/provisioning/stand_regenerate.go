@@ -200,7 +200,10 @@ func (s *Service) advanceRegenerateJob(ctx context.Context, j *models.StandJob, 
 		j.Status, j.FinishedAt = models.StandJobDone, &now
 		s.logger().Info("stand regeneration done", "stand", st.ID, "job", j.ID, "updated", updated, "skipped", skipped, "failed", len(failed))
 	}
-	return s.store.UpdateStandJob(ctx, j)
+	if err := s.store.UpdateStandJob(ctx, j); err != nil && !errors.Is(err, models.ErrConflict) {
+		return err
+	}
+	return nil
 }
 
 // latestRegenerateMR is the change this job opened on the order, if the

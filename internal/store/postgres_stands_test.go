@@ -58,6 +58,14 @@ func TestPostgresStands(t *testing.T) {
 	if err != nil || def.ID != edge.ID {
 		t.Fatalf("default after move: %+v %v", def, err)
 	}
+	// Moving back to dev (reverse heap tuple order) and back to edge must not
+	// trip uniq_default_stand.
+	if err := pg.SetDefaultStand(ctx, dev.ID); err != nil {
+		t.Fatalf("move default back to dev: %v", err)
+	}
+	if err := pg.SetDefaultStand(ctx, edge.ID); err != nil {
+		t.Fatalf("move default back to edge: %v", err)
+	}
 	if err := pg.SetDefaultStand(ctx, uuid.NewString()); !errors.Is(err, models.ErrNotFound) {
 		t.Fatalf("move to a missing stand: want ErrNotFound, got %v", err)
 	}

@@ -87,7 +87,7 @@ func (p *Postgres) UpdateStandJob(ctx context.Context, j *models.StandJob) error
 	tag, err := p.db.Exec(ctx, `
 		UPDATE stand_jobs
 		SET status=$2, total=$3, done=$4, waiting=$5, failures=$6, finished_at=$7, skipped=$8, handled=$9
-		WHERE id=$1`,
+		WHERE id=$1 AND status='running'`,
 		j.ID, j.Status, j.Total, j.Done, j.Waiting, failures, j.FinishedAt, j.Skipped, handled)
 	if isInvalidUUID(err) {
 		return models.ErrNotFound
@@ -96,7 +96,12 @@ func (p *Postgres) UpdateStandJob(ctx context.Context, j *models.StandJob) error
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return models.ErrNotFound
+		// Distinguish a missing job from one that already stopped or finished
+		// concurrently while a poller pass was in flight.
+		if _, gerr := p.GetStandJob(ctx, j.ID); gerr != nil {
+			return gerr
+		}
+		return models.ErrConflict
 	}
 	return nil
 }

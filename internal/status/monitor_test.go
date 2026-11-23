@@ -219,6 +219,61 @@ func TestMonitorTriggerNil(t *testing.T) {
 	m.Trigger("upstream request failed") // must not panic
 }
 
+// TestMonitorTriggerWakesRunningLoop verifies that Trigger actually wakes Run
+// while it is sleeping on a long interval, rather than waiting for the next tick.
+func TestMonitorTriggerWakesRunningLoop(t *testing.T) {
+	probed := make(chan int, 4)
+	n := 0
+	log := slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+	m := NewMonitor(time.Hour, log, Probe{
+		Name: "harbor", Kind: "integration",
+		Check: func(context.Context) error {
+			n++
+			probed <- n
+			return nil
+		},
+	})
+	now := time.Now()
+	m.mu.Lock()
+	m.now = func() time.Time { return now }
+	m.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		m.Run(ctx)
+	}()
+
+	// Wait for the initial startup probe and its lastTick update to finish.
+	select {
+	case <-probed:
+	case <-time.After(time.Second):
+		t.Fatal("initial probe did not run")
+	}
+	deadline := time.Now().Add(time.Second)
+	for m.Snapshot()[0].CheckedAt.IsZero() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+
+	// Advance the clock past recheckDelay so the triggered probe fires at once.
+	m.mu.Lock()
+	now = now.Add(recheckDelay + time.Second)
+	m.mu.Unlock()
+
+	m.Trigger("502 from harbor")
+
+	select {
+	case <-probed:
+	case <-time.After(time.Second):
+		t.Fatal("Trigger did not wake Monitor.Run")
+	}
+
+	cancel()
+	<-done
+}
+
 // TestMonitorProbesRunConcurrently asserts one wedged probe does not serialise
 // the tick behind it: both probes must be in flight at the same time.
 func TestMonitorProbesRunConcurrently(t *testing.T) {
