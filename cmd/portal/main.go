@@ -31,6 +31,7 @@ import (
 	"console/internal/harbor"
 	"console/internal/leader"
 	"console/internal/maintenance"
+	"console/internal/mcp"
 	"console/internal/notify"
 	"console/internal/observability"
 	"console/internal/provisioning"
@@ -497,6 +498,62 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		}
 	}()
 
+	// Dedicated MCP Streamable HTTP listener, kept off the public app ingress
+	// (same isolation model as METRICS_PORT). Only started when MCP_ENABLED=true.
+	var mcpServer *http.Server
+	if cfg.MCPEnabled {
+		oidcAuth, ok := authn.(*auth.OIDC)
+		if !ok {
+			return errors.New("MCP_ENABLED requires AUTH_MODE=oidc")
+		}
+		audience := strings.TrimSpace(cfg.MCPOIDCAudience)
+		if audience == "" {
+			audience = cfg.OIDCClientID
+		}
+		mcpLog := observability.Component(log, "mcp")
+		bearer, err := auth.NewBearerVerifier(ctx, auth.BearerConfig{
+			Provider: oidcAuth.Provider(),
+			Issuer:   cfg.OIDCIssuer,
+			Audience: audience,
+			Log:      mcpLog,
+		}, c, oidcAuth.RBACConfig())
+		if err != nil {
+			return fmt.Errorf("mcp auth: %w", err)
+		}
+		mcpPublicURL := strings.TrimSpace(cfg.MCPPublicURL)
+		if mcpPublicURL == "" {
+			mcpPublicURL = "http://localhost:" + cfg.MCPPort
+		}
+		mcpSrv := &mcp.Server{
+			Auth:           bearer,
+			API:            srv,
+			PublicURL:      cfg.PublicURL,
+			MCPPublicURL:   mcpPublicURL,
+			MCPPath:        cfg.MCPPath,
+			OIDCIssuer:     cfg.OIDCIssuer,
+			OIDCScopes:     cfg.OIDCScopes,
+			WriteEnabled:   cfg.MCPWriteEnabled,
+			AllowedOrigins: cfg.MCPAllowedOrigins,
+			Log:            mcpLog,
+		}
+		mcpServer = &http.Server{
+			Addr:              ":" + cfg.MCPPort,
+			Handler:           mcpSrv.Handler(),
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			MaxHeaderBytes:    1 << 20,
+		}
+		go func() {
+			if err := mcpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				mcpLog.Error("mcp server failed", "err", err)
+			}
+		}()
+		mcpLog.Info("mcp listener starting",
+			"port", cfg.MCPPort, "path", cfg.MCPPath,
+			"public_url", mcpPublicURL, "write_enabled", cfg.MCPWriteEnabled,
+			"audience", audience)
+	}
+
 	go func() {
 		<-ctx.Done()
 		// Not ready first, then keep serving for the drain: the load balancer
@@ -511,6 +568,9 @@ func run(ctx context.Context, cfg *config.Config, log *slog.Logger) error {
 		defer cancel()
 		_ = httpServer.Shutdown(shutCtx)
 		_ = metricsServer.Shutdown(shutCtx)
+		if mcpServer != nil {
+			_ = mcpServer.Shutdown(shutCtx)
+		}
 	}()
 
 	log.Info("portal starting",

@@ -180,6 +180,12 @@ func (s *Server) deletedRetention() time.Duration {
 	return s.Config.DeletedOrdersRetention
 }
 
+// ArgoCDAppURL builds a deep link to the order's ArgoCD Application, or "" when
+// ArgoCD isn't configured / the app doesn't exist yet (draft).
+func (s *Server) ArgoCDAppURL(req *models.Request) string {
+	return s.argocdAppURL(req)
+}
+
 // argocdAppURL builds a deep link to the order's ArgoCD Application, or "" when
 // ArgoCD isn't configured / the app doesn't exist yet (draft).
 func (s *Server) argocdAppURL(req *models.Request) string {

@@ -191,6 +191,7 @@ func TestDescribeGroups(t *testing.T) {
 		"STATUS_POLL_INTERVAL": "sync",
 		"LOG_LEVEL":            "observability",
 		"HTTP_PORT":            "portal",
+		"MCP_ENABLED":          "mcp",
 	}
 	for name, group := range want {
 		if g := got[name].Group; g != group {

@@ -175,6 +175,15 @@ type Config struct {
 
 	LogLevel  string `env:"LOG_LEVEL" envDefault:"info" desc:"How much detail the log carries."`
 	LogFormat string `env:"LOG_FORMAT" envDefault:"json" desc:"Log format: machine-readable json or readable text."`
+
+	// MCP server (dedicated listener, separate from HTTP_PORT)
+	MCPEnabled        bool     `env:"MCP_ENABLED" envDefault:"false" desc:"Start the dedicated Model Context Protocol (MCP) HTTP listener."`
+	MCPPort           string   `env:"MCP_PORT" envDefault:"8090" desc:"Separate port the MCP server listens on when MCP_ENABLED is true, kept off the public app ingress."`
+	MCPPath           string   `env:"MCP_PATH" envDefault:"/mcp" desc:"HTTP path of the MCP Streamable HTTP endpoint."`
+	MCPPublicURL      string   `env:"MCP_PUBLIC_URL" desc:"External base URL of the MCP listener advertised in OAuth 2.0 Protected Resource Metadata (RFC 9728). Defaults to http://localhost:<MCP_PORT>." example:"https://mcp.console.internal"`
+	MCPWriteEnabled   bool     `env:"MCP_WRITE_ENABLED" envDefault:"false" desc:"Expose write MCP tools (such as creating draft orders). Keep false to run the MCP server in read-only mode."`
+	MCPOIDCAudience   string   `env:"MCP_OIDC_AUDIENCE" desc:"Expected audience claim (aud) in MCP Bearer JWT tokens. When empty, the portal verifies tokens against OIDC_CLIENT_ID." example:"portal-mcp"`
+	MCPAllowedOrigins []string `env:"MCP_ALLOWED_ORIGINS" envSeparator:"," desc:"Allowed Origin header values for browser-originated requests to the MCP listener. Empty allows only MCP_PUBLIC_URL and localhost." example:"https://mcp.console.internal"`
 }
 
 // Load parses configuration from the process environment.

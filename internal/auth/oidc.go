@@ -299,6 +299,13 @@ func (o *OIDC) failLogin(w http.ResponseWriter, r *http.Request, reason string, 
 	http.Redirect(w, r, withParam(o.postLogin, "auth_error", reason), http.StatusFound)
 }
 
+// Provider returns the discovered OIDC provider so other subsystems (such as
+// Bearer JWT verification for MCP) can share its JWKS and discovery metadata.
+func (o *OIDC) Provider() *oidc.Provider { return o.provider }
+
+// RBACConfig returns the RBAC mapping configured on this authenticator.
+func (o *OIDC) RBACConfig() RBAC { return o.rbac }
+
 func (o *OIDC) logger() *slog.Logger {
 	if o.log != nil {
 		return o.log

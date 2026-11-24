@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -510,9 +511,9 @@ func (s *Server) handleSetRecommendedVersion(w http.ResponseWriter, r *http.Requ
 
 // --- catalog overlay & active view ---
 
-// publicationSummary is a lightweight projection of a publication for the
+// PublicationSummary is a lightweight projection of a publication for the
 // catalog/menu (without view-document bodies).
-type publicationSummary struct {
+type PublicationSummary struct {
 	ID            string                   `json:"id"`
 	CategoryID    string                   `json:"category_id"`
 	OwnerTeam     string                   `json:"owner_team"`
@@ -544,7 +545,7 @@ type publicationSummary struct {
 	// which is what makes "this version is no longer offered" explainable to the
 	// person running it rather than only to the owner. Each carries the date and
 	// the owner's reason, because that is what the order's page has to say.
-	DeprecatedVersions []deprecatedVersion `json:"deprecated_versions,omitempty"`
+	DeprecatedVersions []DeprecatedVersion `json:"deprecated_versions,omitempty"`
 	// ApprovedDescription is the chart description at approval time (the catalog
 	// shows this, not the live one from Harbor).
 	ApprovedDescription string `json:"approved_description,omitempty"`
@@ -553,44 +554,42 @@ type publicationSummary struct {
 	ApprovedIconURL string `json:"approved_icon_url,omitempty"`
 }
 
-type catalogChart struct {
+// CatalogChart pairs a chart with its publication summary and availability flag.
+type CatalogChart struct {
 	models.Chart
-	Publication *publicationSummary `json:"publication,omitempty"`
+	Publication *PublicationSummary `json:"publication,omitempty"`
 	// Missing: the publication references a chart that is (no longer) in Harbor.
 	Missing bool `json:"missing,omitempty"`
 }
 
-// handleCatalog returns the catalog in one request: live Harbor listing of the
-// configured projects + categories + overlaid publication metadata. Charts
-// without a publication stay visible (live catalog); publications whose charts
-// lie outside the configured projects (added by path) are fetched from Harbor
-// one by one.
-// publicationSummaryFor renders a publication for the catalog: its metadata
-// plus what is orderable, which is the allowlist as it stands after the
-// registry has been taken into account (see publications.CatalogVersions).
-// A publication with nothing orderable reads as not published - there is
-// nothing behind the order button.
-// deprecatedVersion is one out-of-support version as the catalog reports it:
+// CatalogOverview is the full catalog response: categories plus charts with
+// overlaid publication metadata.
+type CatalogOverview struct {
+	Categories []*models.Category `json:"categories"`
+	Charts     []CatalogChart     `json:"charts"`
+}
+
+// DeprecatedVersion is one out-of-support version as the catalog reports it:
 // enough to write the sentence on an order that still runs it, without fetching
 // the publication's versions.
-type deprecatedVersion struct {
+type DeprecatedVersion struct {
 	Version string     `json:"version"`
 	At      *time.Time `json:"at,omitempty"`
 	Note    string     `json:"note,omitempty"`
 }
 
-func publicationSummaryFor(p *models.ChartPublication, cv publications.CatalogView) *publicationSummary {
+func publicationSummaryFor(p *models.ChartPublication, cv publications.CatalogView) *PublicationSummary {
 	orderable := cv.Orderable
-	deprecated := make([]deprecatedVersion, 0, len(cv.Deprecated))
+	deprecated := make([]DeprecatedVersion, 0, len(cv.Deprecated))
 	for _, v := range cv.Deprecated {
-		deprecated = append(deprecated, deprecatedVersion{
+		deprecated = append(deprecated, DeprecatedVersion{
 			Version: v.ChartVersion, At: v.DeprecatedAt, Note: v.DeprecationNote,
 		})
 	}
 	if len(deprecated) == 0 {
 		deprecated = nil // omitempty
 	}
-	sum := &publicationSummary{
+	sum := &PublicationSummary{
 		GoneVersions:       cv.Gone,
 		DeprecatedVersions: deprecated,
 		ID:                 p.ID,
@@ -622,23 +621,20 @@ func publicationSummaryFor(p *models.ChartPublication, cv publications.CatalogVi
 	return sum
 }
 
-func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	u := auth.UserFrom(ctx)
+// CatalogSnapshot returns the catalog visible to u: categories plus charts with
+// overlaid publication metadata, honoring chart AllowedTeams visibility.
+func (s *Server) CatalogSnapshot(ctx context.Context, u *models.User) (*CatalogOverview, error) {
 	charts, err := s.Catalog.ListCharts(ctx, u)
 	if err != nil {
-		s.writeDomainErr(w, r, err)
-		return
+		return nil, err
 	}
 	cats, err := s.Pubs.ListCategories(ctx)
 	if err != nil {
-		s.writeDomainErr(w, r, err)
-		return
+		return nil, err
 	}
 	pubs, err := s.Pubs.List(ctx, store.PublicationFilter{})
 	if err != nil {
-		s.writeDomainErr(w, r, err)
-		return
+		return nil, err
 	}
 	// What the registry holds right now, from the listing above: the allowlist is
 	// projected onto it, so a version deleted from the registry stops being
@@ -647,16 +643,8 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	for _, c := range charts {
 		inRegistry[c.Project+"/"+c.Name] = c.Versions
 	}
-	byChart := make(map[string]*publicationSummary, len(pubs))
+	byChart := make(map[string]*PublicationSummary, len(pubs))
 	for _, p := range pubs {
-		// Per-version allowlist projection; empty for services that have no
-		// orderable versions yet. Best-effort: on a lookup error the publication
-		// shows as not published. An orderable version always carries an approved
-		// view with an "order" form (submit/save enforce ValidateStructure), so
-		// any orderable version means the chart has an order form.
-		// A chart absent from the listing is either hidden from this user or gone
-		// from the registry; either way it has no versions to offer, and the
-		// publication below is shown as orphaned.
 		versions, listed := inRegistry[p.ChartProject+"/"+p.ChartName]
 		if listed && versions == nil {
 			versions = []string{}
@@ -664,11 +652,11 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		cv, _ := s.Pubs.CatalogVersions(ctx, p, versions)
 		byChart[p.ChartProject+"/"+p.ChartName] = publicationSummaryFor(p, cv)
 	}
-	out := make([]catalogChart, 0, len(charts))
+	out := make([]CatalogChart, 0, len(charts))
 	listed := make(map[string]bool, len(charts))
 	for _, c := range charts {
 		listed[c.Project+"/"+c.Name] = true
-		out = append(out, catalogChart{Chart: c, Publication: byChart[c.Project+"/"+c.Name]})
+		out = append(out, CatalogChart{Chart: c, Publication: byChart[c.Project+"/"+c.Name]})
 	}
 	// Publications for charts outside the Harbor listing, added by an arbitrary
 	// path: fetch metadata one by one; a chart gone from Harbor is shown with the
@@ -678,7 +666,7 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		if listed[key] {
 			continue
 		}
-		entry := catalogChart{
+		entry := CatalogChart{
 			Chart:       models.Chart{Project: p.ChartProject, Name: p.ChartName},
 			Publication: byChart[key],
 		}
@@ -687,25 +675,28 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			entry.Chart = *ch
-			// Now that the chart's versions are known, project the allowlist onto
-			// them, as the listed charts above already are.
 			if cv, verr := s.Pubs.CatalogVersions(ctx, p, ch.Versions); verr == nil {
 				entry.Publication = publicationSummaryFor(p, cv)
 			}
 		} else {
 			entry.Missing = true
-			// The chart is gone: nothing of it can be ordered, whatever the
-			// allowlist still says.
 			if cv, verr := s.Pubs.CatalogVersions(ctx, p, []string{}); verr == nil {
 				entry.Publication = publicationSummaryFor(p, cv)
 			}
 		}
 		out = append(out, entry)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"categories": cats,
-		"charts":     out,
-	})
+	return &CatalogOverview{Categories: cats, Charts: out}, nil
+}
+
+func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ov, err := s.CatalogSnapshot(ctx, auth.UserFrom(ctx))
+	if err != nil {
+		s.writeDomainErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ov)
 }
 
 type checkChartReq struct {

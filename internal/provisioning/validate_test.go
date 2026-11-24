@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"console/internal/provisioning"
+	"console/internal/store"
 	"console/pkg/models"
 )
 
@@ -172,5 +173,67 @@ func TestValidateUpdateDryRun(t *testing.T) {
 	}
 	if _, err := s.prov.ValidateUpdate(ctx, u, dr.ID, provisioning.UpdateInput{Values: validValues()}); !errors.As(err, &ve) {
 		t.Fatalf("draft validate: want validation error, got %v", err)
+	}
+}
+
+func TestValidateCreateDryRun(t *testing.T) {
+	ctx := context.Background()
+	s := newStack(t)
+	u := member("core")
+
+	view := []byte(`{
+		"views": {
+			"order": {
+				"identity": "/auth/database"
+			}
+		},
+		"defaults": {
+			"/auth/creator": "console"
+		}
+	}`)
+	seedVersionedPub(t, s, "platform", "postgres", "15.4.2", view)
+
+	// Valid new order returns stamped YAML without persisting anything.
+	res, err := s.prov.ValidateCreate(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg-new",
+		Values: map[string]any{
+			"auth":    map[string]any{"database": "app"},
+			"primary": map[string]any{"replicas": 2},
+		},
+	})
+	if err != nil {
+		t.Fatalf("validate valid create: %v", err)
+	}
+	if !strings.Contains(res.ValuesYAML, "creator: console") || !strings.Contains(res.ValuesYAML, "replicas: 2") {
+		t.Fatalf("unexpected validated yaml:\n%s", res.ValuesYAML)
+	}
+	reqs, _ := s.prov.List(ctx, u, store.RequestFilter{})
+	if len(reqs) != 0 {
+		t.Fatalf("dry run must not persist order: got %d orders", len(reqs))
+	}
+
+	// Schema violation returns structured FieldErrors.
+	_, err = s.prov.ValidateCreate(ctx, u, provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg-bad",
+		Values: map[string]any{
+			"auth":    map[string]any{"database": "app"},
+			"primary": map[string]any{"replicas": "not-a-number"},
+		},
+	})
+	var ve *provisioning.ValidationError
+	if !errors.As(err, &ve) || len(ve.Fields) == 0 || ve.Fields[0].Path != "/primary/replicas" {
+		t.Fatalf("want field error for /primary/replicas, got %v", err)
+	}
+
+	// Another team cannot validate a create for core.
+	_, err = s.prov.ValidateCreate(ctx, member("other"), provisioning.CreateInput{
+		ChartProject: "platform", ChartName: "postgres", Version: "15.4.2",
+		Team: "core", ServiceName: "pg-forbidden",
+		Values: validValues(),
+	})
+	if !errors.Is(err, provisioning.ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 }

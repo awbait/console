@@ -157,6 +157,21 @@ var (
 		Help: "Total deleted orders removed for good, with their history, after the retention period.",
 	})
 
+	// mcpToolCalls counts MCP tool invocations by tool name and outcome
+	// (ok|error|forbidden|not_found|validation_failed). No user identifiers in
+	// labels: /metrics is unauthenticated.
+	mcpToolCalls = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "console_mcp_tool_calls_total",
+		Help: "Total MCP tool invocations, by tool name and outcome.",
+	}, []string{"tool", "status"})
+
+	// mcpToolDuration tracks MCP tool execution latency in seconds.
+	mcpToolDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "console_mcp_tool_duration_seconds",
+		Help:    "Duration of an MCP tool invocation.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"tool"})
+
 	// ordersRecovered counts orders reconcile found holding an open merge request
 	// while sitting in a status that does not admit one, and brought back to the
 	// status that request implies. It means an order opened a change in GitLab and
@@ -447,4 +462,10 @@ func ObserveReconcile(name string, d time.Duration, err error) {
 	if err == nil {
 		reconcileLastSuccess.WithLabelValues(name).Set(float64(time.Now().Unix()))
 	}
+}
+
+// ObserveMCPTool records one MCP tool invocation's outcome and duration.
+func ObserveMCPTool(tool, status string, d time.Duration) {
+	mcpToolCalls.WithLabelValues(tool, status).Inc()
+	mcpToolDuration.WithLabelValues(tool).Observe(d.Seconds())
 }
