@@ -36,16 +36,11 @@ type ChecksResponse struct {
 	IntervalSeconds int `json:"interval_seconds"`
 }
 
-// handleStatusChecks reports what the configuration checks found. Platform
-// admins only, like the rest of the status page, and free: it reads the runner's
-// in-memory snapshot and touches no upstream.
-func (s *Server) handleStatusChecks(w http.ResponseWriter, r *http.Request) {
-	if !s.adminOnly(w, r, "configuration checks") {
-		return
-	}
+// StatusChecksSnapshot returns the latest configuration-check snapshot without
+// triggering an upstream round.
+func (s *Server) StatusChecksSnapshot() ChecksResponse {
 	if s.Checks == nil {
-		writeJSON(w, http.StatusOK, ChecksResponse{IntervalSeconds: int(checks.Interval.Seconds())})
-		return
+		return ChecksResponse{IntervalSeconds: int(checks.Interval.Seconds())}
 	}
 	snap := s.Checks.Snapshot()
 	out := ChecksResponse{
@@ -56,7 +51,17 @@ func (s *Server) handleStatusChecks(w http.ResponseWriter, r *http.Request) {
 	if !snap.CheckedAt.IsZero() {
 		out.CheckedAt = snap.CheckedAt.Format(time.RFC3339)
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out
+}
+
+// handleStatusChecks reports what the configuration checks found. Platform
+// admins only, like the rest of the status page, and free: it reads the runner's
+// in-memory snapshot and touches no upstream.
+func (s *Server) handleStatusChecks(w http.ResponseWriter, r *http.Request) {
+	if !s.adminOnly(w, r, "configuration checks") {
+		return
+	}
+	writeJSON(w, http.StatusOK, s.StatusChecksSnapshot())
 }
 
 // handleRunStatusChecks asks for a round now, for the admin who has just changed

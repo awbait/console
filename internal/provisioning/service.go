@@ -620,7 +620,22 @@ func (s *Service) Create(ctx context.Context, u *models.User, in CreateInput) (*
 	return s.create(ctx, u, in, false)
 }
 
-func (s *Service) create(ctx context.Context, u *models.User, in CreateInput, allowEmptyNamespaceField bool) (*models.Request, error) {
+// ValidateCreate is the dry run of Create: it runs the full authorization,
+// chart-orderability, stand, namespace, schema/view validation, and uniqueness
+// checks, and writes nothing to the store or GitLab. Returns the stamped YAML
+// as it would be stored.
+func (s *Service) ValidateCreate(ctx context.Context, u *models.User, in CreateInput) (*ValidateResult, error) {
+	r, err := s.prepareCreate(ctx, u, in, false, true)
+	if err != nil {
+		return nil, err
+	}
+	return &ValidateResult{
+		ValuesYAML: r.ValuesYAML,
+		Changed:    true,
+	}, nil
+}
+
+func (s *Service) prepareCreate(ctx context.Context, u *models.User, in CreateInput, allowEmptyNamespaceField, validateSchema bool) (*models.Request, error) {
 	if !canProvision(u, in.Team) {
 		return nil, ErrForbidden
 	}
@@ -671,9 +686,10 @@ func (s *Service) create(ctx context.Context, u *models.User, in CreateInput, al
 	if err != nil {
 		return nil, err
 	}
-	// A draft may hold incomplete values; defer schema validation to Submit.
+	// A draft may hold incomplete values; defer schema validation to Submit
+	// unless the caller asks for strict validation.
 	// namespace is passed so a view "namespace" mirror can stamp it into values.
-	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, !in.Draft, sc)
+	valuesYAML, err := s.validateAndMarshal(ctx, in.ChartProject, in.ChartName, in.Version, namespace, in.Values, validateSchema, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -715,6 +731,19 @@ func (s *Service) create(ctx context.Context, u *models.User, in CreateInput, al
 	if err := s.checkAppName(ctx, r, stand); err != nil {
 		return nil, err
 	}
+	return r, nil
+}
+
+func (s *Service) create(ctx context.Context, u *models.User, in CreateInput, allowEmptyNamespaceField bool) (*models.Request, error) {
+	r, err := s.prepareCreate(ctx, u, in, allowEmptyNamespaceField, !in.Draft)
+	if err != nil {
+		return nil, err
+	}
+	stand, err := s.resolveStand(ctx, r.StandID)
+	if err != nil {
+		return nil, err
+	}
+	valuesYAML := r.ValuesYAML
 
 	if err := s.store.CreateRequest(ctx, r); err != nil {
 		return nil, err // ErrConflict -> 409

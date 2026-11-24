@@ -148,31 +148,30 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"fields": config.Describe(s.Config)})
 }
 
+// PlatformHealthSnapshot reports which portal capabilities work right now.
+// Cheap and side-effect-free: reads the monitor's in-memory snapshot.
+func (s *Server) PlatformHealthSnapshot(ctx context.Context) PlatformHealth {
+	caps := status.Evaluate(s.componentStates())
+	out := PlatformHealth{Healthy: status.AllOK(caps), Capabilities: caps}
+	if s.Maintenance != nil {
+		if pub := s.Maintenance.Status(ctx).Public(); pub.State != models.MaintenanceOff {
+			out.Maintenance = &pub
+		}
+	}
+	return out
+}
+
 // handlePlatformHealth reports which portal capabilities work right now. Public
 // and cheap: it reads the monitor's in-memory snapshot, so hammering it costs
 // the upstreams nothing. Always 200 - "the platform is degraded" is an answer,
 // not a failure.
 func (s *Server) handlePlatformHealth(w http.ResponseWriter, r *http.Request) {
-	caps := status.Evaluate(s.componentStates())
-	out := PlatformHealth{Healthy: status.AllOK(caps), Capabilities: caps}
-	if s.Maintenance != nil {
-		if pub := s.Maintenance.Status(r.Context()).Public(); pub.State != models.MaintenanceOff {
-			out.Maintenance = &pub
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, s.PlatformHealthSnapshot(r.Context()))
 }
 
-// handleSystemStatus reports the health of every integration and storage backend
-// plus the background loops. Always returns 200 - the body's `healthy` flag
-// carries the verdict so the page can render partial failures rather than
-// erroring out.
-func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
-	// System status is a platform-admin tool (integration health, storage backends).
-	if u := auth.UserFrom(r.Context()); u == nil || !u.IsAdmin() {
-		writeErr(w, http.StatusForbidden, "forbidden", "system status is restricted to platform admins")
-		return
-	}
+// SystemStatusSnapshot returns the aggregate integration and storage health
+// payload shared by the admin status endpoint and MCP admin tools.
+func (s *Server) SystemStatusSnapshot() SystemStatus {
 	states := s.componentStates()
 	comps := make([]ComponentStatus, 0, len(states))
 	healthy := true
@@ -185,14 +184,27 @@ func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		comps = append(comps, c)
 	}
-	writeJSON(w, http.StatusOK, SystemStatus{
+	return SystemStatus{
 		Healthy:      healthy,
 		Components:   comps,
 		Capabilities: status.Evaluate(states),
 		Reconcilers:  s.reconcilerStatuses(),
 		Leader:       s.leading(),
 		GrafanaURL:   s.System.GrafanaURL,
-	})
+	}
+}
+
+// handleSystemStatus reports the health of every integration and storage backend
+// plus the background loops. Always returns 200 - the body's `healthy` flag
+// carries the verdict so the page can render partial failures rather than
+// erroring out.
+func (s *Server) handleSystemStatus(w http.ResponseWriter, r *http.Request) {
+	// System status is a platform-admin tool (integration health, storage backends).
+	if u := auth.UserFrom(r.Context()); u == nil || !u.IsAdmin() {
+		writeErr(w, http.StatusForbidden, "forbidden", "system status is restricted to platform admins")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.SystemStatusSnapshot())
 }
 
 // componentStates returns the monitor's snapshot, or nil when no monitor is

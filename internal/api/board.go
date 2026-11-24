@@ -147,19 +147,23 @@ var inProgress = map[models.RequestStatus]bool{
 	models.StatusDeleteMRMerged:  true,
 }
 
-func (s *Server) handleAdminBoard(w http.ResponseWriter, r *http.Request) {
-	if !s.adminOnly(w, r, "the duty board") {
-		return
-	}
-	// Days are the reader's: the browser sends its zone, and a zone the server
-	// does not know falls back to UTC rather than failing the page.
+// AdminBoardSnapshot builds the admin duty board for the given IANA timezone
+// name (falling back to UTC when empty or unknown).
+func (s *Server) AdminBoardSnapshot(ctx context.Context, tz string) (*Board, error) {
 	loc := time.UTC
-	if tz := r.URL.Query().Get("tz"); tz != "" {
+	if tz != "" {
 		if l, err := time.LoadLocation(tz); err == nil {
 			loc = l
 		}
 	}
-	b, err := s.buildBoard(r.Context(), time.Now(), loc)
+	return s.buildBoard(ctx, time.Now(), loc)
+}
+
+func (s *Server) handleAdminBoard(w http.ResponseWriter, r *http.Request) {
+	if !s.adminOnly(w, r, "the duty board") {
+		return
+	}
+	b, err := s.AdminBoardSnapshot(r.Context(), r.URL.Query().Get("tz"))
 	if err != nil {
 		s.writeDomainErr(w, r, err)
 		return

@@ -69,6 +69,8 @@ var groups = []struct {
 			"webhook: notifications only, no periodic poll. A startup sweep still runs, but a notification that never arrives is not retried until the next restart, so use this only where delivery is reliable. Needs GITLAB_WEBHOOK_TOKEN."},
 	{[]string{"LOG_", "GRAFANA_", "METRICS_"}, "observability", "Logs and metrics",
 		"What the portal writes about itself."},
+	{[]string{"MCP_"}, "mcp", "MCP server",
+		"Dedicated Model Context Protocol listener for IDE and CLI clients, kept off the public app ingress."},
 }
 
 // options lists the accepted values of the variables that take a fixed set of
