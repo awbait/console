@@ -199,7 +199,10 @@ func (v *PublicationVersion) Published() bool {
 type PublicationEvent struct {
 	ID            int64             `json:"id"`
 	PublicationID string            `json:"publication_id"`
-	Actor         string            `json:"actor"`
+	Actor string `json:"actor"`
+	// ActorName is what the portal knows the actor as, filled on read from the
+	// user directory; empty when the directory has no record of them.
+	ActorName     string            `json:"actor_name,omitempty"`
 	EventType     string            `json:"event_type"`
 	FromStatus    PublicationStatus `json:"from_status,omitempty"`
 	ToStatus      PublicationStatus `json:"to_status,omitempty"`

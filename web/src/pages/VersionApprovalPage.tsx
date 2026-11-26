@@ -28,6 +28,7 @@ import { FormErrors } from "../components/FormErrors";
 import { ProductIcon } from "../components/icons";
 import { PageHeader } from "../components/PageHeader";
 import { Button, Card, Chip, ErrorBox, Loading, TextField } from "../components/ui";
+import { registryText } from "../features/publications/registryText";
 import {
   EditorTab,
   PreviewBoundary,
@@ -49,7 +50,7 @@ export function VersionApprovalPage() {
     qk.publication(project, name),
   );
 
-  const parent = { label: "Согласование публикаций", to: "/admin/approvals" };
+  const parent = { label: registryText.title, to: "/admin/approvals" };
 
   if (loading && !pub) return <Loading label="Загружаем версию" />;
   if (error && !pub) return <ErrorBox error={error} />;
@@ -72,7 +73,7 @@ export function VersionApprovalPage() {
         version={version}
         breadcrumbs={[
           parent,
-          { label: chartLabel(name), to: `/admin/approvals/${project}/${name}` },
+          { label: chartLabel(name), to: `/admin/publications/${project}/${name}` },
           { label: version },
         ]}
       />
